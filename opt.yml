@@ -1,0 +1,15 @@
+- code: |-
+    EX DE,HL
+    EX DE,HL
+  replace_code: |-
+    ;
+- code: |-
+    LD @1,HL
+    LD HL,@1
+  replace_code: |-
+    LD @1,HL
+- code: |-
+     LD DE,0
+     ADD HL,DE
+  replace_code: |-
+    ;

@@ -1,0 +1,324 @@
+MULHLDE:
+  function_type: Machine
+  param_count: 2
+  code: |
+    LD A, L
+    SUB E
+    LD A, H
+    SBC A, D
+    JR NC, .mul1
+    EX DE, HL
+    .mul1
+    LD B, H
+    LD C, L
+    LD HL, 0000
+    LD A, D
+    OR A
+    JR Z, .mul2
+    .mul4
+    RRA
+    RR E
+    JR NC, .mul3
+    ADD HL, BC
+    .mul3
+    SLA C
+    RL B
+    OR A
+    JR NZ, .mul4
+    .mul2
+    LD A, E
+    .mul6
+    RRA
+    JR NC, .mul5
+    ADD HL, BC
+    .mul5
+    SLA C
+    RL B
+    OR A
+    JR NZ, .mul6
+    RET
+
+DIVHLDE:
+  calls:
+    - DIVHLDE8
+  code: |
+    LD A, L
+    SUB E
+    LD A, H
+    SBC A, D
+    JR NC, .div1
+    EX DE, HL
+    LD HL, 0000
+    RET
+    .div1
+    INC D
+    DEC D
+    JR Z, DIVHLDE8
+    LD C, L
+    LD L, H
+    XOR A
+    LD H, A
+    LD B, 08
+    .div3
+    ADD A, A
+    SLA C
+    ADC HL, HL
+    SBC HL, DE
+    JR NC, .div2
+    ADD HL, DE
+    DEC A
+    .div2
+    INC A
+    DJNZ .div3
+    EX DE, HL
+    LD H, B
+    LD L, A
+    RET
+
+DIVHLDE8:
+  code: |
+    INC E
+    DEC E
+    JR NZ, .div81
+    EX DE, HL
+    LD HL, 0000
+    RET
+    .div81
+    XOR A
+    LD B, $10
+    .div84
+    ADD HL, HL
+    ADC A, A
+    JR C, .div82
+    CP E
+    JR C, .div83
+    .div82
+    SUB E
+    INC L
+    .div83
+    DJNZ .div84
+    LD E, A
+    RET
+
+SDIVHLDE:
+  calls:
+    - "NEGHL"
+    - "DIVHLDE"
+  code: |
+    LD A, H
+    XOR D
+    LD B, A
+    BIT 7, H
+    CALL NZ, NEGHL
+    EX DE, HL
+    BIT 7, H
+    CALL NZ, NEGHL
+    EX DE, HL
+    BIT 7, B
+    JR Z, DIVHLDE
+    CALL DIVHLDE
+    JR NEGHL
+
+MODHLDE:
+  calls:
+    - DIVHLDE
+  code: |
+    CALL DIVHLDE
+    EX DE,HL
+    RET
+
+SMODHLDE:
+  calls:
+    - NEGHL
+    - MODHLDE
+  code: |
+    EX DE, HL
+    BIT 7, H
+    CALL NZ, NEGHL
+    EX DE, HL
+    BIT 7, H
+    JR Z, MODHLDE
+    CALL NEGHL
+    CALL MODHLDE
+
+NEGHL:
+  calls:
+    - CPLHL
+  code: |
+    DEC HL
+
+CPLHL:
+  code: |
+    LD A, H
+    CPL
+    LD H, A
+    LD A, L
+    CPL
+    LD L, A
+    RET
+
+NOTHL:
+  calls:
+    - OPEQHLDE
+  code: |
+
+OPEQHL:
+  code: |
+    LD A, H
+    OR L
+    LD HL, 0000
+    RET NZ
+    INC L
+    RET
+
+OPNEQHL:
+  code: |
+    LD A, H
+    OR L
+    RET Z
+    LD HL, 0001
+    RET
+
+OPGTHLDE:
+  calls:
+    - OPLTHLDE
+  code: |
+    EX DE,HL
+
+OPLTHLDE:
+  code: |
+    OR A
+    SBC HL, DE
+    LD HL, 0000
+    RET NC
+    INC L
+    RET   
+
+OPLEHLDE:
+  calls:
+    - OPGEHLDE
+  code: |
+
+OPGEHLDE:
+  code: |
+    OR A
+    SBC HL, DE
+    LD HL, 0000
+    RET C
+    INC L
+    RET
+
+OPSGTHLDE:
+  calls:
+    - OPSLTHLDE
+  code: |
+    EX DE,HL
+
+OPSLTHLDE:
+  calls:
+    - OPLTHLDE
+  code: |
+    BIT 7, H
+    JR NZ, .opslt1
+    BIT 7, D
+    JR Z, OPLTHLDE
+    LD HL, 0000
+    RET
+    .opslt1
+    BIT 7, D
+    JR NZ, OPLTHLDE
+    LD HL, 0001
+    RET
+
+OPSLEHLDE:
+  calls:
+    - OPSGEHLDE
+  code: |
+    EX DE,HL
+
+OPSGEHLDE:
+  calls:
+    - OPGEHLDE
+  code: |
+    BIT 7, H
+    JR NZ, .opsge1
+    BIT 7, D
+    JR Z, OPGEHLDE
+    LD HL, 0001
+    RET
+    .opsge1
+    BIT 7, D
+    JR NZ, OPGEHLDE
+    LD HL, 0000
+    RET   
+
+SLSHIFTHLDE:
+  calls:
+    - LSHIFTHLDE
+  code: |
+
+LSHIFTHLDE:
+  code: |
+    LD A, E
+    AND $0F
+    RET Z
+    .lshift1
+    ADD HL, HL
+    DEC A
+    JR NZ, .lshift1
+    RET
+
+
+RSHIFTHLDE:
+  code: |
+    LD A, E
+    AND $0F
+    RET Z
+    .rshift1
+    SRL H
+    RR L
+    DEC A
+    JR NZ, .rshift1
+    RET   
+
+SRSHIFTHLDE:
+  code: |
+    LD A, E
+    AND $0F
+    RET Z
+    .srshift1
+    SRA H
+    RR L
+    DEC A
+    JR NZ, .srshift1
+    RET
+
+ORHLDE:
+  code: |
+    LD A, L
+    OR E
+    LD L, A
+    LD A, H
+    OR D
+    LD H, A
+    RET
+
+ANDHLDE:
+  code: |
+    LD A, L
+    AND E
+    LD L, A
+    LD A, H
+    AND D
+    LD H, A
+    RET
+
+XORHLDE:
+  code: |
+    LD A, L
+    XOR E
+    LD L, A
+    LD A, H
+    XOR D
+    LD H, A
+    RET

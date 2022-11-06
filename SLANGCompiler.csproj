@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="SLANGCompilerTest\**" />
+    <EmbeddedResource Remove="SLANGCompilerTest\**" />
+    <None Remove="SLANGCompilerTest\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="YaccLexTools" Version="1.0.0" />
+    <PackageReference Include="YamlDotNet" Version="12.0.2" />
+  </ItemGroup>
+  <ItemGroup Label="SLANG">
+    <YaccFile Include="SLANG\SLANG.Language.grammar.y">
+      <OutputFile>SLANG\SLANG.Parser.Generated.cs</OutputFile>
+      <Arguments>/gplex /nolines /unicode</Arguments>
+    </YaccFile>
+    <None Include="SLANG\SLANG.Parser.Generated.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>SLANG.Language.grammar.y</DependentUpon>
+    </None>
+    <None Include="SLANG\SLANG.Scanner.Generated.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>SLANG.Language.analyzer.lex</DependentUpon>
+    </None>
+    <LexFile Include="SLANG\SLANG.Language.analyzer.lex">
+      <OutputFile>SLANG\SLANG.Scanner.Generated.cs</OutputFile>
+      <Arguments>/unicode</Arguments>
+    </LexFile>
+  </ItemGroup>
+</Project>
