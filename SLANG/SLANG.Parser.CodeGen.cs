@@ -657,6 +657,7 @@ namespace SLANGCompiler.SLANG
                 gencode(" PUSH HL\n");
                 genexp(right);
                 gencode(" POP DE\n");
+                gencode(" EX DE,HL\n");
                 gencode($" OR A\n");
                 gencode(" SBC HL,DE\n");
             }
