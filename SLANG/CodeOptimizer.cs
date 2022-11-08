@@ -199,7 +199,9 @@ namespace SLANGCompiler.SLANG
                     {
                         codeStr = codeStr.Replace($"@{pair.Key}", pair.Value);
                     }
-                    resultStrList.Add(codeStr);
+                    if(codeStr != ";"){
+                        resultStrList.Add(codeStr);
+                    }
                     replacedCode = resultStrList.ToArray();
                 }
             }
