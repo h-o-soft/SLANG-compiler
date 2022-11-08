@@ -1,11 +1,29 @@
 ﻿using System;
 using System.IO;
+using System.Reflection;
+using System.Linq;
 using System.Text;
+using System.Collections.Generic;
+using CommandLine;
+using CommandLine.Text;
+using System.Globalization;
 
 namespace SLANGCompiler
 {
     public class Program
-    {
+    { 
+        public class Options
+        {
+            [Option('L', "lib", Required = false, HelpText = "Library name(s). ( lib*.yml )")]
+            public IEnumerable<string> LibraryNames { get; set; }
+
+            [Option('O', "output", Required = false, HelpText = "Output file path.")]
+            public string OutputPath { get; set; }
+
+
+            [Value(0, Required = true, MetaName = "input files")]
+            public IEnumerable<string> Files { get; set; }
+        }
 
         // テスト用
         public string ParseString(string code, Stream errorStream = null)
@@ -34,39 +52,94 @@ namespace SLANGCompiler
             return result;
         }
 
-        static int Main(string[] args)
+        static void Main(string[] args)
         {
-            Console.WriteLine("SLANG Compiler version 0.0.1");
-            if(args.Length == 0)
-            {
-                Console.WriteLine("usage:");
-                Console.WriteLine(" SLANGCompiler [file]");
-                return 0;
-            }
+            var parser = new CommandLine.Parser(with => with.HelpWriter = null);
+            var parseResult = parser.ParseArguments<Options>(args);
+            parseResult.MapResult(
+                (Options options)=> Run(options),
+                errs => DisplayHelp<Options>(parseResult, errs));
+        }
 
+        static int DisplayHelp<T>(ParserResult<T> result, IEnumerable<Error> errs)
+        {
+            HelpText helpText = null;
+            if(errs.IsVersion())
+            {
+                helpText = HelpText.AutoBuild(result);
+            } else {
+                helpText = HelpText.AutoBuild(result, h =>
+                {
+                  h.AdditionalNewLineAfterOption = false;
+                  return HelpText.DefaultParsingErrorsHandler(result, h);
+                }, e => e);
+            }
+            Console.WriteLine(helpText);
+            return 1;
+        }
+
+        static int Run(Options opt)
+        {
+            //if(opt.DispVersion)
+            //{
+            //    Console.WriteLine($"  Build Date: {LoadBuildDateTime(typeof(Program).Assembly)}");
+            //    Environment.Exit(0);
+            //}
             var parser = new SLANG.SLANGParser();
 
-            var fileName = args[0];
-
-            if(!File.Exists(fileName))
+            // ライブラリ指定がない場合はデフォルトを読む
+            if(opt.LibraryNames == null || opt.LibraryNames.Count() == 0)
             {
-                Console.Error.WriteLine($"file not found. : {fileName}");
-                return 1;
+                parser.LoadRuntime($"lib.yml");
+            } else {
+                foreach(var lib in opt.LibraryNames)
+                {
+                    parser.LoadRuntime($"lib{lib}.yml");
+                }
             }
 
-            var outputPath = Path.GetFileNameWithoutExtension(fileName) + ".ASM";
+            foreach(var fileName in opt.Files)
+            {
+                if(!File.Exists(fileName))
+                {
+                    Console.Error.WriteLine($"file not found. : {fileName}");
+                    Environment.Exit(1);
+                }
+
+                parser.Parse(fileName);
+
+                if(parser.ErrorCount != 0)
+                {
+                    Environment.Exit(1);
+                }
+            }
+
+            string outputPath;
+            if(string.IsNullOrEmpty(opt.OutputPath))
+            {
+                outputPath = Path.GetFileNameWithoutExtension(opt.Files.ElementAt(0)) + ".ASM";
+            } else {
+                outputPath = opt.OutputPath;
+            }
             var outputStream = new FileStream(outputPath, FileMode.Create);
-
-            //parser.ParseString("CONST TEST=123,TEST2=456,TEST3=TEST1+TEST2+5;\nVAR TVAR=TEST3;");
-            parser.Parse(fileName);
-
-            if(parser.ErrorCount == 0)
-            {
-                parser.WriteToStream(outputStream);
-            }
+            parser.WriteToStream(outputStream);
             outputStream.Close();
 
-            return parser.ErrorCount == 0 ? 0 : 1;
+            Environment.Exit(0);
+            return 0;
+        }
+
+        private static string LoadBuildDateTime(Assembly assembly)
+        {
+            var metadata = assembly
+                .GetCustomAttributes<AssemblyMetadataAttribute>()
+                ?.Where(a => a.Key == "BuildDateTime")
+                ?.FirstOrDefault();
+            if (metadata != null)
+            {
+                return DateTime.ParseExact(metadata.Value, "o", CultureInfo.InvariantCulture).ToString();
+            }
+            return null;
         }
     }
 }

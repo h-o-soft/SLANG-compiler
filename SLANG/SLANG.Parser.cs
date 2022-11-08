@@ -58,6 +58,7 @@ namespace SLANGCompiler.SLANG
             codeRepository = new CodeRepository(this);
             stringDataManager = new StringDataManager();
             caseStack = new Stack<CaseInfo>();
+            runtimeManager = new RuntimeManager(symbolTableManager);
 
             SetErrorTextWriter(Console.Error);
         }
@@ -267,7 +268,7 @@ namespace SLANGCompiler.SLANG
             return fileName;
         }
 
-        private void LoadRuntime(string fileName)
+        public void LoadRuntime(string fileName)
         {
             var filePath = GetConfigPath(fileName);
             if(filePath == null)
@@ -281,13 +282,7 @@ namespace SLANGCompiler.SLANG
         private void StartParse()
         {
             // ランタイムの読み込み
-            {
-                runtimeManager = new RuntimeManager(symbolTableManager);
-                LoadRuntime(runtimeFileName);
-
-                // TODO OS依存のランタイムライブラリはコマンドラインオプション指定で切り替えられるようにしたい
-                LoadRuntime(libFileName);
-            }
+            LoadRuntime(runtimeFileName);
 
             {
                 var fileName = "opt.yml";

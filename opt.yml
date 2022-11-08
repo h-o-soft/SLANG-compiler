@@ -13,3 +13,8 @@
      ADD HL,DE
   replace_code: |-
     ;
+- code: |-
+     PUSH HL
+     POP HL
+  replace_code: |-
+    ;
