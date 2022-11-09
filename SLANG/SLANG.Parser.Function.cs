@@ -84,7 +84,13 @@ namespace SLANGCompiler.SLANG
             symbol = symbolDecl(tree, SymbolClass.Global, DeclNode.Func);
             if(symbol != null)
             {
-                symbolTableManager.Add(symbol);
+                // MAIN関数だけは何があってもそのまま使う
+                bool? useOriginalSymbol = null;
+                if(symbol.Name.ToUpper() == "MAIN")
+                {
+                    useOriginalSymbol = true;
+                }
+                symbol = symbolTableManager.Add(symbol, useOriginalSymbol);
             }
 
             if(symbol == null)

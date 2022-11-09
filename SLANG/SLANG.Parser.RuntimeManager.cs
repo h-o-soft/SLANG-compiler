@@ -141,7 +141,7 @@ namespace SLANGCompiler.SLANG
                 }
 
                 // シンボルテーブル側に反映させておく
-                symbolTableManager.AddFunction(runtimeCode.functionType, label, info.InsideName, runtimeCode.paramCount, address);
+                symbolTableManager.AddFunction(runtimeCode.functionType, label, info.InsideName, runtimeCode.paramCount, address, true);
             }
 
             /// <summary>
