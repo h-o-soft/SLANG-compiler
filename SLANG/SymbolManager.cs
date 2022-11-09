@@ -174,10 +174,11 @@ namespace SLANGCompiler.SLANG
                 {
                     continue;
                 }
-                if(symbol.InitialValueList == null)
+                if(symbol.InitialValueList == null && symbol.InitialValueCode == null)
                 {
                     continue;
                 }
+                // TODO InitialValueCode関連はここでは処理しない
 
                 var labelName = symbol.LabelName;
                 outputStreamWriter.WriteLine($"{labelName}:");

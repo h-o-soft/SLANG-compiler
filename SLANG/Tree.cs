@@ -54,6 +54,11 @@ namespace SLANGCompiler.SLANG
         public List<int> InitialValues { get; set; }
 
         /// <summary>
+        /// 初期値となるCODEリスト(Tree)
+        /// </summary>
+        public Tree initialValueCodeTree { get; set; }
+
+        /// <summary>
         /// 型情報
         /// </summary>
         public TypeInfo TypeInfo { get; set; }
@@ -85,6 +90,7 @@ namespace SLANGCompiler.SLANG
             this.IdentifierName = null;
             this.Address = -1;
             this.InitialValues = null;
+            this.initialValueCodeTree = null;
             this.TypeInfo = null;
             this.ArraySize = 0;
             this.First = null;
@@ -261,6 +267,15 @@ namespace SLANGCompiler.SLANG
                 p.Address = address.Value;
             }
             return p;
+        }
+
+        /// <summary>
+        /// Treeが持つ初期値コードリストにTreeを設定する
+        /// </summary>
+        public Tree SetInitialValueCode(Tree codeTree)
+        {
+            this.initialValueCodeTree = codeTree;
+            return this;
         }
 
         /// <summary>

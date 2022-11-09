@@ -22,6 +22,10 @@ ARRAY AAR[32]:$8100,BYTE AARB[256]:$8000;
 
 ARRAY A2[10][20];
 
+ARRAY ARI[32]={
+  1,2,3,%5,%6,%7
+};
+
 (* テスト番号 *)
 VAR TNUM;
 

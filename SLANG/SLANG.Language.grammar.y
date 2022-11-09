@@ -28,7 +28,7 @@
 %token <symbol>      IDENTIFIER STRFUNC
 %token <constValue>  CONSTANT
 %token <str>         STRING PLAIN
-%token               VAR BYTE WORD ARRAY CONST
+%token               VAR BYTE WORD ARRAY CONST PER
 %token IF THEN ELSE ELIF ENDIF
 %token WHILE DO WEND REPEAT UNTIL CASE OTHERS OF
 %token FOR TO DOWNTO NEXT
@@ -431,9 +431,9 @@ func_declarator_list
 
 declarator
        : BYTE declarator2 { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Byte, $2); }
-       | BYTE declarator2 OP_EQ BR_OPEN expr BR_CLOSE { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Byte, $2.UpdateIdentifier(null, $5)); }
+       | BYTE declarator2 OP_EQ begin code_expr_list end { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Byte, $2.SetInitialValueCode($5)); }
        | BYTE declarator2 OP_EQ expr { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Byte, $2.UpdateIdentifier( null, $4)); }
-       | word_spec declarator2 OP_EQ BR_OPEN expr BR_CLOSE { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Word, $2.UpdateIdentifier(null, $5)); }
+       | word_spec declarator2 OP_EQ begin code_expr_list end { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Word, $2.SetInitialValueCode($5)); }
        | word_spec declarator2 { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Word, $2); }
        | word_spec declarator2 OP_EQ expr { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Word, $2.UpdateIdentifier(null, $4)); }
        ;
@@ -547,6 +547,7 @@ nc_str_expr
               $$ = expStrFuncall("/", null);
         } 
        | STRFUNC P_OPEN expr_list P_CLOSE { $$ = expStrFuncall($1, $3);}
+       | PER P_OPEN expr_list P_CLOSE { $$ = expStrFuncall("%", $3);}
        | nc_expr
        ;
 
@@ -557,6 +558,7 @@ str_expr_list
 
 nc_code_expr
        : WORD CONSTANT { $$ = expConst($2); }
+       | PER CONSTANT { $$ = expConst($2); }
        | BYTE CONSTANT { $$ = expConst($2, TypeDataSize.Byte); }
        | CONSTANT { $$ = expConst($1, TypeDataSize.Byte); }
        | B_OPEN nc_expr B_CLOSE { $$ = $2; }
