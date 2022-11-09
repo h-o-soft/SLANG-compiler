@@ -20,6 +20,8 @@ namespace SLANGCompiler
             [Option('O', "output", Required = false, HelpText = "Output file path.")]
             public string OutputPath { get; set; }
 
+            [Option("use-symbol", Required = false, HelpText = "Use original symbol name.")]
+            public bool UseOriginalSymbol { get; set; }
 
             [Value(0, Required = true, MetaName = "input files")]
             public IEnumerable<string> Files { get; set; }
@@ -86,6 +88,9 @@ namespace SLANGCompiler
             //    Environment.Exit(0);
             //}
             var parser = new SLANG.SLANGParser();
+
+            // ソースファイルで指定した変数名、関数名をそのまま使うか、使わないか
+            parser.SetOriginalSymbolUse(opt.UseOriginalSymbol);
 
             // ライブラリ指定がない場合はデフォルトを読む
             if(opt.LibraryNames == null || opt.LibraryNames.Count() == 0)

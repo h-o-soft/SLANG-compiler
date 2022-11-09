@@ -193,7 +193,7 @@ namespace SLANGCompiler.SLANG
             if(table == null)
             {
                 // 宣言されていない識別子は一時定義関数として自動定義してやり、定義時に差し替える。定義されなかった場合はエラーとなる。
-                table = symbolTableManager.AddSymbol(name, TypeInfo.TempFunc);
+                table = symbolTableManager.AddSymbol(name, TypeInfo.TempFunc, null);
             }
 
             // 該当シンボルが使われた(^BCなどが使われない場合、CALL関数を最適化するために利用している)

@@ -70,17 +70,25 @@ namespace SLANGCompiler.SLANG
             };
             symbolTableManager.Add(memw);
 
-            symbolTableManager.AddSymbol("^BC", TypeInfo.WordTypeInfo);
-            symbolTableManager.AddSymbol("^DE", TypeInfo.WordTypeInfo);
-            symbolTableManager.AddSymbol("^HL", TypeInfo.WordTypeInfo);
-            symbolTableManager.AddSymbol("^IX", TypeInfo.WordTypeInfo);
-            symbolTableManager.AddSymbol("^IY", TypeInfo.WordTypeInfo);
-            symbolTableManager.AddSymbol("^AF", TypeInfo.WordTypeInfo);
-            symbolTableManager.AddSymbol("^A", TypeInfo.WordTypeInfo);      // AについてはAFの2バイト目を指すように改竄されるので注意。その関係でワークは1バイト無駄が出る。
-            symbolTableManager.AddSymbol("^CARRY", TypeInfo.WordTypeInfo);
-            symbolTableManager.AddSymbol("^ZERO", TypeInfo.WordTypeInfo);
-            symbolTableManager.AddSymbol("^SP", TypeInfo.WordTypeInfo);
+            symbolTableManager.AddSymbol("^BC", TypeInfo.WordTypeInfo, true);
+            symbolTableManager.AddSymbol("^DE", TypeInfo.WordTypeInfo, true);
+            symbolTableManager.AddSymbol("^HL", TypeInfo.WordTypeInfo, true);
+            symbolTableManager.AddSymbol("^IX", TypeInfo.WordTypeInfo, true);
+            symbolTableManager.AddSymbol("^IY", TypeInfo.WordTypeInfo, true);
+            symbolTableManager.AddSymbol("^AF", TypeInfo.WordTypeInfo, true);
+            symbolTableManager.AddSymbol("^A", TypeInfo.WordTypeInfo, true);      // AについてはAFの2バイト目を指すように改竄されるので注意。その関係でワークは1バイト無駄が出る。
+            symbolTableManager.AddSymbol("^CARRY", TypeInfo.WordTypeInfo, true);
+            symbolTableManager.AddSymbol("^ZERO", TypeInfo.WordTypeInfo, true);
+            symbolTableManager.AddSymbol("^SP", TypeInfo.WordTypeInfo, true);
 
+        }
+
+        /// <summary>
+        /// シンボルテーブルについてソースコードで使われた変数名、関数名をそのまま使う場合はtrue、内部番号に置換する場合はfalseを指定する
+        /// </summary>
+        public void SetOriginalSymbolUse(bool originalUse)
+        {
+            symbolTableManager.UseOriginalSymbol = originalUse;
         }
 
         /// <summary>

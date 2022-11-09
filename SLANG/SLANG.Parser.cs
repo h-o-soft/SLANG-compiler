@@ -205,7 +205,7 @@ namespace SLANGCompiler.SLANG
                 TypeInfo = new TypeInfo(TypeInfoClass.Array, 256, TypeDataSize.Byte, TypeInfo.ByteTypeInfo),
                 Size = 256
             };
-            symbolTableManager.Add(workArray);
+            symbolTableManager.Add(workArray, true);
 
             // WORK指定がされていて、それがORGのアドレスより前の場合は先にWORKの宣言を出力する(念のため)
             if(workAddressValue >=0 && workAddressValue < orgValue)

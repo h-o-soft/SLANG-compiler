@@ -21,10 +21,13 @@ namespace SLANGCompiler.SLANG
 
         private IErrorReporter errorReporter;
 
+        public bool UseOriginalSymbol { get; set; }
+
         public SymbolTableManager(IErrorReporter errorReporter)
         {
             this.errorReporter = errorReporter;
             Initialize();
+            UseOriginalSymbol = false;
         }
 
         /// <summary>
@@ -39,8 +42,12 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// 関数を追加する
         /// </summary>
-        public void AddFunction(FunctionType functionType, string name, string insideName, int paramCount, int Address = -1)
+        public void AddFunction(FunctionType functionType, string name, string insideName, int paramCount, int Address = -1, bool? useOriginalSymbol = null)
         {
+            if(useOriginalSymbol == null)
+            {
+                useOriginalSymbol = UseOriginalSymbol;
+            }
             var symbol = new SymbolTable()
             {
                 Name = name,
@@ -49,16 +56,22 @@ namespace SLANGCompiler.SLANG
                 SymbolClass = SymbolClass.Global,
                 TypeInfo = funcTypeInfo,
                 Size = paramCount,
-                Address = Address
+                Address = Address,
+                UseOriginalSymbol = (bool)useOriginalSymbol,
             };
             Add(symbol);
+            symbol.Id = symbolTableList.IndexOf(symbol);
         }
 
         /// <summary>
         /// シンボルを追加する
         /// </summary>
-        public void Add(SymbolTable table)
+        public SymbolTable Add(SymbolTable table, bool? useOriginalSymbol = null)
         {
+            if(useOriginalSymbol == null)
+            {
+                useOriginalSymbol = UseOriginalSymbol;
+            }
             foreach(var s in symbolTableList)
             {
                 if(s.Name == table.Name)
@@ -67,7 +80,7 @@ namespace SLANGCompiler.SLANG
                     if(!s.TypeInfo.IsFunction() || !table.TypeInfo.IsFunction())
                     {
                         errorReporter.Error("could not convert a temporary function to a normal function : " + s.Name);
-                        return;
+                        return null;
                     }
                     // 実宣言により一時定義関数を置き換える
                     if(s.TypeInfo.InfoClass == TypeInfoClass.TempFunc && table.TypeInfo.InfoClass == TypeInfoClass.Function)
@@ -75,17 +88,22 @@ namespace SLANGCompiler.SLANG
                         s.TypeInfo = table.TypeInfo;
                         s.Size = table.Size;
                         s.Address = table.Address;
-                        return;
+                        s.UseOriginalSymbol = (bool)useOriginalSymbol;
+                        table.Id = s.Id;
+                        return s;
                     }
                     // 引数の数が違う場合はエラーとなる
                     if(s.Size != table.Size)
                     {
                         errorReporter.Error("invalid function parameter count : " + s.Name);
                     }
-                    return;
+                    return s;
                 }
             }
+            table.UseOriginalSymbol = (bool)useOriginalSymbol;
             symbolTableList.Add(table);
+            table.Id = symbolTableList.IndexOf(table);
+            return table;
         }
 
         /// <summary>
@@ -107,15 +125,21 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// 型情報と共にシンボルを追加する
         /// </summary>
-        public SymbolTable AddSymbol(string name, TypeInfo typeInfo)
+        public SymbolTable AddSymbol(string name, TypeInfo typeInfo, bool? useOriginalSymbol)
         {
+            if(useOriginalSymbol == null)
+            {
+                useOriginalSymbol = UseOriginalSymbol;
+            }
             var table = new SymbolTable()
             {
                 Name = name,
                 TypeInfo = typeInfo,
-                Address = -1
+                Address = -1,
+                UseOriginalSymbol = (bool)useOriginalSymbol
             };
             symbolTableList.Add(table);
+            table.Id = symbolTableList.IndexOf(table);
 
             return table;
         }

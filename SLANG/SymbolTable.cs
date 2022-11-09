@@ -40,7 +40,12 @@ namespace SLANGCompiler.SLANG
         {
             get
             {
-                return "_" + LabelHeader+"_"+normalizeName;
+                if(UseOriginalSymbol)
+                {
+                    return "_" + LabelHeader+"_"+normalizeName;
+                } else {
+                    return "_" + LabelHeader+"_SYM"+Id;
+                }
             }
         }
 
@@ -63,6 +68,11 @@ namespace SLANGCompiler.SLANG
         /// シンボルの内部名称(ランタイムにて、プログラムで使われる名称と実際のラベル名称が異なる場合の、ラベル名称)
         /// </summary>
         public string InsideName { get; set; }
+
+        /// <summary>
+        /// シンボルID
+        /// </summary>
+        public int Id { get; set; }
 
         /// <summary>
         /// ランタイム関数において実際にアセンブラソースで使われる名称
@@ -109,6 +119,11 @@ namespace SLANGCompiler.SLANG
         public bool Used { get; set; }
 
         /// <summary>
+        /// シンボル名称を変数名、関数名などそのまま使うか、シンボル番号で置換するか
+        /// </summary>
+        public bool UseOriginalSymbol { get; set; }
+
+        /// <summary>
         /// シンボルが関数の場合、ユーザー定義の関数か、MACHINE定義(or ランタイム)の関数かを示す
         /// </summary>
         public FunctionType FunctionType;
@@ -125,6 +140,7 @@ namespace SLANGCompiler.SLANG
             this.InitialValueList = null;
             this.Used = false;
             this.FunctionType = FunctionType.Normal;
+            this.UseOriginalSymbol = false;
         }
 
         /// <summary>
