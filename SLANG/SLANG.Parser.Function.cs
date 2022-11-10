@@ -121,6 +121,7 @@ namespace SLANGCompiler.SLANG
                 }
             }
 
+            int paramCount = 0;
             for(p = p.Second; p != null; p = p.Second)
             {
                 var s = paramDecl(p.First.First.TypeInfo, p.First.First);
@@ -128,7 +129,10 @@ namespace SLANGCompiler.SLANG
                 {
                     localSymbolTableManager.Add(s);
                 }
+                paramCount++;
             }
+            // 関数の引数の数を設定
+            symbol.Size = paramCount;
 
         }
 

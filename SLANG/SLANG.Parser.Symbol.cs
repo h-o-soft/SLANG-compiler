@@ -19,6 +19,7 @@ namespace SLANGCompiler.SLANG
 
         // CONST値管理マネージャ
         private ConstTableManager constTableManager;
+        public ConstTableManager ConstTableManager => constTableManager;
 
         // シンボルテーブル群を初期化する。言語標準の変数もあわせて定義する。
         private void initSymbolTable()

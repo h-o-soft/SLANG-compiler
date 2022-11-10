@@ -92,7 +92,10 @@ namespace SLANGCompiler.SLANG
                     return leftValue >> rightValue;
                 case Opcode.SShr:
                     return (short)leftValue >> (short)rightValue;
-
+                case Opcode.And:
+                    return leftValue & rightValue;
+                case Opcode.Or:
+                    return leftValue | rightValue;
                 case Opcode.Eq: return leftValue == rightValue ? 1 : 0;
                 case Opcode.Neq: return leftValue != rightValue ? 1 : 0;
 
@@ -982,6 +985,13 @@ namespace SLANGCompiler.SLANG
             }
             Error("=: type mismatch " + ltype + "\n:" + rtype);
             return null;
+        }
+
+        public Expr LastConstExpr { get; private set; }
+        // 最終評価されたCONST式を保存しておく
+        void setConstExpr(Expr expr)
+        {
+            LastConstExpr = expr;
         }
     }
 }

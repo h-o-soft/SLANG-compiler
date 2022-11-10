@@ -12,7 +12,6 @@
 %x STRING
 %x CHARCONST
 %x INCL
-%x PREIF
 %x PREIFSKIP
 %x SKIPEOL
 %x ASM
@@ -27,7 +26,7 @@ Identifier      ({IdentSymbol}|[a-zA-Z\u3041-\u3096\u30A1-\u30FA々〇〻\u3400-
 
 PREIF   "#IF"
 PREELSE "#ELSE"
-PREEND  "#END"
+PREEND  "#END"|"#ENDIF"
 ASM     "#ASM"
 
 CMTSTART	"/\*"|"(*"
@@ -79,6 +78,7 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
 
 %{
     StringBuilder lexStrBuffer = null;
+    bool nextBraceIsArray = false;
 
     private class LocationInfo
     {
@@ -118,6 +118,7 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
 
 {Number}		{ GetNumber(); return (int)Token.CONSTANT; }
 
+"#CCHK#IF"         { return (int)Token.PRECONST; }
 \&\&			{ return (int)Token.logand; }
 \|\|			{ return (int)Token.logor; }
 {PER}           { return (int)Token.PER; }
@@ -143,17 +144,22 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
 ".<=."			{ return (int)GetScompop(); }
 {P_OPEN}		{ return (int)Token.P_OPEN; }
 {P_CLOSE}		{ return (int)Token.P_CLOSE; }
-{B_OPEN}		{ return (int)Token.B_OPEN; }
-{B_CLOSE}		{ return (int)Token.B_CLOSE; }
+{B_OPEN}		{
+                    int result;
+                    result = nextBraceIsArray ? (int)Token.AB_OPEN : (int)Token.B_OPEN;
+                    nextBraceIsArray = false;
+                    return result;
+                }
+{B_CLOSE}		{ nextBraceIsArray = true; return (int)Token.B_CLOSE; }
 {BR_OPEN}		{ return (int)Token.BR_OPEN; }
 {BR_CLOSE}		{ return (int)Token.BR_CLOSE; }
 {F_OPEN}		{ return (int)Token.F_OPEN; }
 {F_CLOSE}		{ return (int)Token.F_CLOSE; }
-{OP_EQ}			{ return (int)Token.OP_EQ; }
+{OP_EQ}			{ nextBraceIsArray = false; return (int)Token.OP_EQ; }
 {COMMA}			{ return (int)Token.COMMA; }
 {COLON}			{ return (int)Token.COLON; }
 {QUESTION}		{ return (int)Token.QUESTION; }
-{SC}			{ return (int)Token.SC; }
+{SC}			{ nextBraceIsArray = false; return (int)Token.SC; }
 {OP_LSHIFT}		{ return (int)GetShiftop(); }
 {OP_RSHIFT}		{ return (int)GetShiftop(); }
 \&			    { return (int)Token.OP_AMP; }
@@ -161,13 +167,13 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
 "--"			{ return (int)GetIncDecOp(); }
 "+="|"-="|"*="|"/="	{ yylval.op = yytext; return (int)Token.assignop; }
 
-{Identifier}	{ return (int)GetIdentifier(); }
+{Identifier}	{ nextBraceIsArray = true; return (int)GetIdentifier(); }
 
-{Space}+		/* skip */
+{Space}+		{ nextBraceIsArray = false; }
 
 {STRFUNC}       { yylval.symbol = yytext; return (int)Token.STRFUNC; }
 
-{Eol}           { LocationNextLine(); }
+{Eol}           { LocationNextLine(); nextBraceIsArray = false; }
 
 
 /* #INCLUDE */
@@ -179,10 +185,13 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
 <INCL>[^ \t]{dotchr}*        BEGIN(INITIAL); TryInclude(yytext);      
 
 /* #IF #ELSE #ENDIF */
-{PREIF}                     { BEGIN(PREIF); return (int)Token.PREIF; }
-<PREIF>{Eol}                 BEGIN(INITIAL); StartPreIf(null);
-<PREIF>[ \t]                 /* skip whitespace */
-<PREIF>[^ \t]{dotchr}*       BEGIN(INITIAL); StartPreIf(yytext);
+{PREIF}[ \t]+{dotchr}*       {
+        if(CheckConst(yytext)){
+            BEGIN(INITIAL);
+        } else {
+            BEGIN(PREIFSKIP);
+        };
+        }
 
 {PREEND}                    { BEGIN(SKIPEOL); }
 {PREELSE}                   { BEGIN(PREIFSKIP); }
@@ -381,6 +390,7 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
                 buffStack.Push(new ContextInfo(savedCtx, true)); // Don't push until file open succeeds!
                 PushLocation();
                 LocationInit();
+                currentFileName = fName;
             }
             catch
             {

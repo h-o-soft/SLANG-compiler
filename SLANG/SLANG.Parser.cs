@@ -170,15 +170,18 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// プリプロセッサのIFの処理を行う。定数値が0の場合は以下、#ELSEまたは#ENDまで無効、0以外の場合は有効とする。
         /// </summary>
-        private void procPreprocessIf(Expr expr)
+        private bool procPreprocessIf(Expr expr)
         {
+            bool iftrue = false;
             if(expr.IsConst())
             {
                 var slangScanner = (SLANGScanner)this.Scanner;
-                slangScanner.ProcIf(expr.Value != 0);
+                iftrue = expr.Value != 0;
+                slangScanner.ProcIf(iftrue);
             } else {
                 Error("#IF must be const parameter.");
             }
+            return iftrue;
         }
 
         /// <summary>
@@ -305,6 +308,32 @@ namespace SLANGCompiler.SLANG
             errorTextWriter = errorWriter;
         }
 
+        public void ParseConstExpr(string code, ConstTableManager constTableManager = null)
+        {
+            try
+            {
+                byte[] inputBuffer = System.Text.Encoding.UTF8.GetBytes(code);
+                MemoryStream stream = new MemoryStream(inputBuffer);
+
+                this.Scanner = new SLANGScanner(stream, "UTF-8");
+                var slangScanner = (SLANGScanner)this.Scanner;
+                slangScanner.currentFileName = "inner-code";
+                if(constTableManager == null)
+                {
+                    constTableManager = this.constTableManager;
+                }
+                slangScanner.SetConstTableManager(constTableManager);
+
+                StartParse();
+                this.Parse();
+                stream.Close();
+            } catch(Exception e)
+            {
+                SystemError(e.Message);
+                //Console.Error.WriteLine($"fatal error : " + e.ToString());
+            }
+        }
+
         /// <summary>
         /// 文字列で与えられたSLANGコードをパースする(テスト用)
         /// </summary>
@@ -318,6 +347,10 @@ namespace SLANGCompiler.SLANG
                 this.Scanner = new SLANGScanner(stream, "UTF-8");
                 var slangScanner = (SLANGScanner)this.Scanner;
                 slangScanner.currentFileName = "inner-code";
+                if(constTableManager == null)
+                {
+                    constTableManager = this.constTableManager;
+                }
                 slangScanner.SetConstTableManager(constTableManager);
 
                 StartParse();

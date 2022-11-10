@@ -36,11 +36,11 @@
 %token GOTO
 %token ORG WORK MACHINE
 %token PRINT CODE
-%token PREIF
 
 %token BEGIN END
-%token B_OPEN B_CLOSE F_OPEN F_CLOSE BR_OPEN BR_CLOSE
+%token B_OPEN B_CLOSE F_OPEN F_CLOSE BR_OPEN BR_CLOSE AB_OPEN
 %token COLON SC
+%token PRECONST
 
 %token <op> addop shiftop sshiftop compop scompop eqop
 %token <op> incdecop assignop
@@ -64,7 +64,7 @@
 %nonassoc incdecop
 
 %type <tree> declaration
-%type <tree> declarator_list declarator declarator2 func_declarator func_declarator_list
+%type <tree> declarator_list declarator declarator2 func_declarator func_declarator_list func_head_decl
 %type <tree> const_list const
 %type <tree> param_list param_decl
 %type <tree> expr_list str_expr_list code_expr_list
@@ -78,19 +78,19 @@
 file
        : def
        | file def
+       | PRECONST nc_expr { setConstExpr($2); }
        ;
 def
        : func_def
        | declaration { globalDataDecl($1); }
        | ORG nc_expr { SetOrg($2); }
        | WORK nc_expr { SetWork($2); }
-       | PREIF expr { procPreprocessIf($2); }
        | PLAIN { procPlainString($1); }
        | sc
        ;
 
 func_def
-       : declarator
+       : func_head_decl
               {
                      funcDef($1);
                      initFunc();
@@ -123,6 +123,7 @@ func_begin
 
 func_end
        : end sc { $$ = null; }
+       | end { $$ = null; }
        | end P_OPEN expr P_CLOSE sc { $$ = $3; }
        ;
 
@@ -133,7 +134,6 @@ stmt_list
 
 stmt
        : compound_stmt
-       | PREIF expr { procPreprocessIf($2); }
        | PLAIN { procPlainString($1); }
        | expr sc  { expstmt($1); resetHeap(); }
        | IF {
@@ -238,6 +238,8 @@ case_stmt_list
 case_stmt
        : case_stmt_head COLON { doCase($1); } stmt 
        | OTHERS COLON { doCase(null); } stmt 
+       | case_stmt_head { doCase($1); } stmt 
+       | OTHERS { doCase(null); } stmt 
        | sc
        ;
 
@@ -372,18 +374,17 @@ compound_while_stmt
        : wbegin { yyerrok(); }
          stmt_list
          wend
+       | stmt
        ;
 
 wbegin
        : DO
        | begin
-       |
        ;
 
 wend
        : WEND
        | end
-       |
        ;
 
 for_begin
@@ -447,10 +448,13 @@ word_spec
 declarator2
        : IDENTIFIER { $$ = Tree.CreateDeclIdentifier(DeclNode.Id, $1); }
        | declarator2 COLON expr { $$ = $1.UpdateIdentifier($3); } // Address
-       | declarator2 B_OPEN B_CLOSE { $$ = Tree.CreateArray($1, null);  } // Array or Indirect
-       | declarator2 B_OPEN expr B_CLOSE { $$ = Tree.CreateArray($1, $3);  } // Array(with size)
-       | declarator2 P_OPEN P_CLOSE { $$ = Tree.CreateTree3(DeclNode.Func, $1, null ); } // Function
-       | declarator2 P_OPEN param_list P_CLOSE { $$ = Tree.CreateTree3(DeclNode.Func, $1, $3 ); } // Function(with param)
+       | declarator2 AB_OPEN B_CLOSE { $$ = Tree.CreateArray($1, null);  } // Array or Indirect
+       | declarator2 AB_OPEN expr B_CLOSE { $$ = Tree.CreateArray($1, $3);  } // Array(with size)
+       ;
+
+func_head_decl
+       : declarator2 P_OPEN P_CLOSE { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Word, Tree.CreateTree3(DeclNode.Func, $1, null )); } // Function
+       | declarator2 P_OPEN param_list P_CLOSE { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Word, Tree.CreateTree3(DeclNode.Func, $1, $3 )); } // Function(with param)
        ;
 
 func_declarator
@@ -531,7 +535,7 @@ primary :
          IDENTIFIER                                             { $$ = expIdent($1); }
        | CONSTANT                                               { $$ = expConst($1); }
        | STRING                                                 { $$ = expString($1); }
-       | primary B_OPEN expr B_CLOSE { $$ = expArray($1, $3); }
+       | primary AB_OPEN expr B_CLOSE { $$ = expArray($1, $3); }
        | P_OPEN nc_expr P_CLOSE           { $$ = $2; }
        | primary P_OPEN expr_list P_CLOSE { $$ = expFuncall($1, $3); }
        | primary P_OPEN P_CLOSE { $$ = expFuncall($1, null); }
