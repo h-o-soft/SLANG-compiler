@@ -5,7 +5,7 @@ using System.Text;
 
 namespace SLANGCompiler.SLANG
 {
-    internal partial class SLANGParser
+    internal partial class SLANGParser : ICodeStatementGenerator
     {
         // 初期化コードの生成
         private void genInitCode()
@@ -64,8 +64,9 @@ namespace SLANGCompiler.SLANG
         }
 
         // CODE文の生成
-        private void genCode(Tree paramList)
+        public int GenerateCodeStmt(Tree paramList)
         {
+            int codeSize = 0;
             var exprList = new List<Expr>();
             for(Tree p = paramList; p != null; p = p.First)
             {
@@ -85,23 +86,30 @@ namespace SLANGCompiler.SLANG
                     // CONSTの場合、ByteかWordか調べる
                     if(expr.TypeInfo.GetDataSize() == TypeDataSize.Byte)
                     {
+                        codeSize++;
                         gencode($" DB ${expr.Value:X2}\n");
                     } else {
+                        codeSize+=2;
                         gencode($" DW ${expr.Value:X4}\n");
                     }
                 } else if(expr.Opcode == Opcode.Str)
                 {
                     var strData = stringDataManager.GetString(expr.Value);
                     stringDataManager.Remove(expr.Value);
-                    var code = stringDataManager.GetStringCode(strData, false);
+                    int strSize;
+                    var code = stringDataManager.GetStringCode(strData, false, out strSize);
+                    codeSize += strSize;
                     gencode($" DB {code}");
                 } else if(expr.Opcode == Opcode.Label)
                 {
+                    codeSize += 2;
                     genLabelAddress(expr.Value);
                 } else {
+                    // TODO これが初期値で記載された場合初期値サイズがおかしくなる(無駄に増える)ので注意
                     genexptop(expr);
                 }
             }
+            return codeSize;
         }
 
         // PRINT文の生成
@@ -132,7 +140,8 @@ namespace SLANGCompiler.SLANG
                     genRuntimeCall("MPRNT");
                     var strData = stringDataManager.GetString(expr.Value);
                     stringDataManager.Remove(expr.Value);
-                    var code = stringDataManager.GetStringCode(strData, false);
+                    int strSize;
+                    var code = stringDataManager.GetStringCode(strData, false, out strSize);
                     gencode($" DB {code}");
                     gencode($" DB 0\n");
 

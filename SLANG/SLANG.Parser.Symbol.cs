@@ -149,9 +149,11 @@ namespace SLANGCompiler.SLANG
                                 dataSize *= arraySize;
                             }
                             List<int> initialValueList;
+                            Tree initialValueCode = null;
                             if(isArray)
                             {
-                                initialValueList = arrayTree.InitialValues;
+                                initialValueList = null;
+                                initialValueCode = arrayTree.initialValueCodeTree;
                             } else {
                                 initialValueList = tree.InitialValues;
                             }
@@ -173,6 +175,7 @@ namespace SLANGCompiler.SLANG
                                 Address = address,
                                 Size = isMachine ? paramCount : dataSize,
                                 InitialValueList = initialValueList,
+                                InitialValueCode = initialValueCode,
                                 FunctionType = functionType,
                                 Used = true
                             };

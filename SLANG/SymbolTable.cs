@@ -109,9 +109,14 @@ namespace SLANGCompiler.SLANG
         public int Size;
 
         /// <summary>
-        /// シンボルの初期化値
+        /// シンボルの初期化値(単独)
         /// </summary>
         public List<int> InitialValueList { get; set; }
+
+        /// <summary>
+        /// シンボルの初期化値(CODE)
+        /// </summary>
+        public Tree InitialValueCode { get; set; }
 
         /// <summary>
         /// シンボルがプログラム内で使われたかどうか
@@ -138,6 +143,7 @@ namespace SLANGCompiler.SLANG
             this.Address = -1;
             this.Size = 0;
             this.InitialValueList = null;
+            this.InitialValueCode = null;
             this.Used = false;
             this.FunctionType = FunctionType.Normal;
             this.UseOriginalSymbol = false;

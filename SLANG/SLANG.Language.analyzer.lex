@@ -75,7 +75,7 @@ CHRD  CHR\$
 SPCD  SPC\$
 CRD   CR\$
 TABD  TAB\$
-STRFUNC {FORMD}|{DECID}|{PER}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|{SPCD}|{CRD}|{TABD}
+STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|{SPCD}|{CRD}|{TABD}
 
 %{
     StringBuilder lexStrBuffer = null;
@@ -118,9 +118,9 @@ STRFUNC {FORMD}|{DECID}|{PER}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{
 
 {Number}		{ GetNumber(); return (int)Token.CONSTANT; }
 
-// ELIF、EFを ELSE IFに偽装するためのヒドい対応
 \&\&			{ return (int)Token.logand; }
 \|\|			{ return (int)Token.logor; }
+{PER}           { return (int)Token.PER; }
 {CP_EQ}			{ return (int)GetEqop(); }
 {CP_NE}			{ return (int)GetEqop(); }
 "!="			{ return (int)GetEqop(); }
