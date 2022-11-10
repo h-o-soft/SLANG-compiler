@@ -70,9 +70,12 @@ namespace SLANGCompiler.SLANG
             /// <summary>
             /// 文字列のアセンブラ定義用コードを得る
             /// </summary>
-            public string GetStringCode(string str, bool requireZero)
+            public string GetStringCode(string str, bool requireZero, out int dataSize)
             {
                 var codeList = new List<string>();
+
+                // 文字列のデータサイズ
+                dataSize = 0;
 
                 int crCount = 0;
                 bool insideString = false;
@@ -93,6 +96,7 @@ namespace SLANGCompiler.SLANG
                         {
                             sb.Append(',');
                         }
+                        dataSize++;
                         sb.Append($"${(int)ch:X2}");
                         requireComma = true;
                         crCount += 3;
@@ -108,6 +112,8 @@ namespace SLANGCompiler.SLANG
                             insideString = true;
                             requireComma = true;
                         }
+                        // TODO 1文字を必ず1バイトとしており、マルチバイト未対応となる
+                        dataSize++;
                         sb.Append(ch);
                         crCount++;
                     }
@@ -121,6 +127,7 @@ namespace SLANGCompiler.SLANG
                 {
                     if(requireComma)
                     {
+                        dataSize++;
                         sb.Append(',');
                         requireComma = false;
                     }
@@ -147,7 +154,8 @@ namespace SLANGCompiler.SLANG
 
                         writer.Write(" DB ");
 
-                        var code = GetStringCode(str, true);
+                        int strSize;
+                        var code = GetStringCode(str, true, out strSize);
 
                         writer.Write(code);
                     }

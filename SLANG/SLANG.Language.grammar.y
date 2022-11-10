@@ -198,7 +198,7 @@ stmt
                      genjump(exitLabel);
               }
        | PRINT P_OPEN str_expr_list P_CLOSE { genPrint($3); }
-       | CODE P_OPEN code_expr_list P_CLOSE { genCode($3); }
+       | CODE P_OPEN code_expr_list P_CLOSE { GenerateCodeStmt($3); }
        | case_head begin case_stmt_list end { doCaseEnd(); }
        | for_head for_stmt
               {

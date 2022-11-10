@@ -213,6 +213,8 @@ namespace SLANGCompiler.SLANG
                 genSymbolTable(outputStreamWriter);
             }
 
+            // 初期値つきシンボルテーブルを末尾に追加する
+            symbolTableManager.GenerateInitialValueSymbol(codeRepository, this);
 
             // プログラムコードを出力する
             var codeList = codeRepository.GenerateCodeList(orgValue);
@@ -227,11 +229,6 @@ namespace SLANGCompiler.SLANG
 
             // ランタイムを出力する
             runtimeManager.Generate(outputStreamWriter);
-
-            // 初期値つきのグローバル変数を出力する
-            outputStreamWriter.WriteLine("; Variables (has initial values)");
-            outputStreamWriter.Flush();
-            symbolTableManager.GenerateCode(outputStreamWriter, null);
 
             // 文字列データの出力
             stringDataManager.GenerateCode(outputStreamWriter);

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace SLANGCompiler.SLANG
 {
@@ -153,82 +154,6 @@ namespace SLANGCompiler.SLANG
             }
         }
 
-        // 初期値ありのシンボルテーブルコードを生成する
-        private void generateCodeInitialValues(StreamWriter outputStreamWriter)
-        {
-            // Global Classの変数のコードを出力する
-            foreach(var symbol in symbolTableList)
-            {
-                if(symbol.SymbolClass != SymbolClass.Global)
-                {
-                    continue;
-                }
-                // PORT配列、メモリ配列、関数は出力しない
-                var infoClass = symbol.TypeInfo.InfoClass;
-                if(infoClass == TypeInfoClass.PortArray || infoClass == TypeInfoClass.MemoryArray || infoClass == TypeInfoClass.Function)
-                {
-                    continue;
-                }
-                // アドレス指定がしてある場合も出力しない
-                if(symbol.Address >= 0)
-                {
-                    continue;
-                }
-                if(symbol.InitialValueList == null && symbol.InitialValueCode == null)
-                {
-                    continue;
-                }
-                // TODO InitialValueCode関連はここでは処理しない
-
-                var labelName = symbol.LabelName;
-                outputStreamWriter.WriteLine($"{labelName}:");
-
-                var isByte = symbol.TypeInfo.GetDataSize() == TypeDataSize.Byte;
-                isByte = isByte && !symbol.TypeInfo.IsIndirect();
-                string dataDefine = isByte ? "DB" : "DW";
-
-                if(symbol.TypeInfo.IsArray())
-                {
-                    var arraySize = symbol.Size;
-                    var oneDataSize = (symbol.TypeInfo.GetDataSize() == TypeDataSize.Byte ? 1 : 2);
-                    var arrayCount = arraySize / oneDataSize;
-                    if(symbol.InitialValueList == null)
-                    {
-                        outputStreamWriter.WriteLine($" ds {symbol.Size}");
-                    } else {
-                        var initCount = symbol.InitialValueList.Count;
-                        initCount = Math.Min(initCount, arrayCount);
-                        outputStreamWriter.Write($" {dataDefine} ");
-                        for(int i = 0; i < initCount; i++)
-                        {
-                            outputStreamWriter.Write($"{symbol.InitialValueList[i]}");
-                            if(i != initCount - 1)
-                            {
-                                outputStreamWriter.Write($",");
-                            }
-                            if( (i % 32) == 31)
-                            {
-                                outputStreamWriter.Write($"\n{dataDefine} ");
-                            }
-                        }
-                        outputStreamWriter.Write("\n");
-                        if(initCount < arrayCount)
-                        {
-                            var restSize = arraySize - initCount * oneDataSize; 
-                            outputStreamWriter.WriteLine($" ds {restSize}");
-                        }
-                    }
-                } else {
-                    if(symbol.InitialValueList == null)
-                    {
-                        outputStreamWriter.WriteLine($" {dataDefine} 0");
-                    } else {
-                        outputStreamWriter.WriteLine($" {dataDefine} {symbol.InitialValueList[0]}");
-                    }
-                }
-            }
-        }
-
         // 初期値なしのシンボルテーブルコードを生成する(EQUにより定義される)
         private int generateCodeWorks(StreamWriter outputStreamWriter, string workLabel, int workOffset)
         {
@@ -250,7 +175,7 @@ namespace SLANGCompiler.SLANG
                 {
                     continue;
                 }
-                if(symbol.InitialValueList != null)
+                if(symbol.InitialValueList != null || symbol.InitialValueCode != null)
                 {
                     continue;
                 }
@@ -297,15 +222,79 @@ namespace SLANGCompiler.SLANG
             return hasError;
         }
 
+        public void GenerateInitialValueSymbol(CodeRepository codeRepository, ICodeStatementGenerator codeStatementGenerator)
+        {
+            codeRepository.AddCode("\n");
+            codeRepository.AddCode("; Variables (has initial values)\n");
+
+            // Global Classの変数のコードを出力する
+            foreach(var symbol in symbolTableList)
+            {
+                if(symbol.SymbolClass != SymbolClass.Global)
+                {
+                    continue;
+                }
+                // PORT配列、メモリ配列、関数は出力しない
+                var infoClass = symbol.TypeInfo.InfoClass;
+                if(infoClass == TypeInfoClass.PortArray || infoClass == TypeInfoClass.MemoryArray || infoClass == TypeInfoClass.Function)
+                {
+                    continue;
+                }
+                // アドレス指定がしてある場合も出力しない
+                if(symbol.Address >= 0)
+                {
+                    continue;
+                }
+                if(symbol.InitialValueList == null && symbol.InitialValueCode == null)
+                {
+                    continue;
+                }
+
+                var labelName = symbol.LabelName;
+                codeRepository.AddCode($"{labelName}:\n");
+
+                var isByte = symbol.TypeInfo.GetDataSize() == TypeDataSize.Byte;
+                isByte = isByte && !symbol.TypeInfo.IsIndirect();
+                string dataDefine = isByte ? "DB" : "DW";
+
+                if(symbol.TypeInfo.IsArray())
+                {
+                    var arraySize = symbol.Size;
+                    var oneDataSize = (symbol.TypeInfo.GetDataSize() == TypeDataSize.Byte ? 1 : 2);
+                    var arrayCount = arraySize / oneDataSize;
+                    int initByteSize = 0;
+
+                    if(symbol.InitialValueCode != null)
+                    {
+                        initByteSize = codeStatementGenerator.GenerateCodeStmt(symbol.InitialValueCode);
+                    } else {
+                        errorReporter.Error("Could not be found initial array value : " + labelName);
+                    }
+                    if(initByteSize < arrayCount)
+                    {
+                        var restSize = arraySize - initByteSize;
+                        codeRepository.AddCode($" DS {restSize}\n");
+                    }
+                } else {
+                    if(symbol.InitialValueList == null)
+                    {
+                        codeRepository.AddCode($" {dataDefine} 0\n");
+                    } else {
+                        codeRepository.AddCode($" {dataDefine} {symbol.InitialValueList[0]}\n");
+                    }
+                }
+            }
+
+            codeRepository.AddCode("\n");
+        }
+
         /// <summary>
         /// シンボルテーブルのコードを出力する
         /// </summary>
         public int GenerateCode(StreamWriter outputStreamWriter, string workLabel, int workOffset = 0)
         {
-            if(workLabel == null)
+            if(workLabel != null)
             {
-                generateCodeInitialValues(outputStreamWriter);
-            } else {
                 workOffset = generateCodeWorks(outputStreamWriter, workLabel, workOffset);
             }
 
