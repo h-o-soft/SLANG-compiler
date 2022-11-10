@@ -2035,10 +2035,10 @@ namespace SLANGCompiler.SLANG
                         gencode(" ADD HL,DE\n");
                     }
                 }
-            } else if(right.Opcode == Opcode.Adr)
-            {
-                // なんだここ
-                Error("scaleadd error (Adr)");
+//            } else if(right.Opcode == Opcode.Adr)
+//            {
+//                // なんだここ
+//                Error("scaleadd error (Adr)");
             } else {
                 if(left.CanLoadDirect())
                 {

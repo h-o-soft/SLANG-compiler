@@ -8,11 +8,26 @@ namespace SLANGCompiler.SLANG
     {
 
         ConstTableManager constTableManager;
+        SLANGParser constParser = new SLANGParser();
 
         public void SetConstTableManager(ConstTableManager constTableManager)
         {
             this.constTableManager = constTableManager;
         }
+
+        public bool CheckConst(string constStr)
+        {
+            constParser.ParseConstExpr("#CCHK" + constStr, constTableManager);
+            if(constParser.LastConstExpr.IsConst())
+            {
+                // Console.WriteLine("Check:" + constParser.LastConstExpr.Value);
+                return constParser.LastConstExpr.Value != 0;
+            } else {
+                error("expr must be const.");
+            }
+            return false;
+        }
+
 
         void GetChar(string charStr)
         {
