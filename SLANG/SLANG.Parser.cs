@@ -5,6 +5,7 @@ using System.Text;
 using YamlDotNet.RepresentationModel;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
+using UtfUnknown;
 
 namespace SLANGCompiler.SLANG
 {
@@ -37,6 +38,7 @@ namespace SLANGCompiler.SLANG
 
         private int orgValue = 0x100;
         private int workAddressValue = -1;
+        private int offsetAddressValue = -1;
 
         /// <summary>
         /// エラー発生数
@@ -87,6 +89,19 @@ namespace SLANGCompiler.SLANG
                 return;
             }
             workAddressValue = expr.Value;
+        }
+
+        /// <summary>
+        /// OFFSETを設定する
+        /// </summary>
+        public void SetOffset(Expr expr)
+        {
+            if(!expr.IsConst())
+            {
+                Error("OFFSET must be const.");
+                return;
+            }
+            offsetAddressValue = expr.Value;
         }
 
         private int computeSize(TypeInfo typeInfo)
@@ -197,7 +212,7 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public void WriteToStream(Stream outputStream)
         {
-            StreamWriter outputStreamWriter = new StreamWriter(outputStream);
+            StreamWriter outputStreamWriter = new StreamWriter(outputStream, System.Text.Encoding.GetEncoding("shift_jis"));
 
             // コード生成タイミングでワーク末尾に関数パラメータ等用の領域を確保する
             // ※IYがここを指すだけでいいのか？？
@@ -219,8 +234,17 @@ namespace SLANGCompiler.SLANG
             // 初期値つきシンボルテーブルを末尾に追加する
             symbolTableManager.GenerateInitialValueSymbol(codeRepository, this);
 
+            // 関数の静的宣言の出力
+            functionSymbolTableManagerList.Add(localSymbolTableManager);
+            localSymbolTableManager = null;
+            foreach(var manager in functionSymbolTableManagerList)
+            {
+                manager.GenerateInitialValueSymbol(codeRepository, this);
+                //manager.GenerateCode(outputStreamWriter, null);
+            }
+
             // プログラムコードを出力する
-            var codeList = codeRepository.GenerateCodeList(orgValue);
+            var codeList = codeRepository.GenerateCodeList(orgValue, offsetAddressValue);
 
             // 出力されたコードを最適化する
             codeOptimizer.PeepholeOptimize(codeList);
@@ -236,13 +260,6 @@ namespace SLANGCompiler.SLANG
             // 文字列データの出力
             stringDataManager.GenerateCode(outputStreamWriter);
 
-            // 関数の静的宣言の出力
-            functionSymbolTableManagerList.Add(localSymbolTableManager);
-            localSymbolTableManager = null;
-            foreach(var manager in functionSymbolTableManagerList)
-            {
-                manager.GenerateCode(outputStreamWriter, null);
-            }
 
             // ORGよりWORKの位置が後の場合のWORKの出力
             if(workAddressValue <0 || workAddressValue > orgValue)
@@ -377,7 +394,9 @@ namespace SLANGCompiler.SLANG
             try
             {
                 Stream stream = new FileStream(fileName, FileMode.Open);
-                this.Scanner = new SLANGScanner(stream, "UTF-8");
+                var charsetDetectedResult = CharsetDetector.DetectFromStream(stream);
+                stream.Position = 0;
+                this.Scanner = new SLANGScanner(stream, charsetDetectedResult.Detected.EncodingName);
                 var slangScanner = (SLANGScanner)this.Scanner;
                 slangScanner.currentFileName = fileName;
                 slangScanner.SetConstTableManager(constTableManager);

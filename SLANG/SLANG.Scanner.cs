@@ -23,7 +23,7 @@ namespace SLANGCompiler.SLANG
                 // Console.WriteLine("Check:" + constParser.LastConstExpr.Value);
                 return constParser.LastConstExpr.Value != 0;
             } else {
-                error("expr must be const.");
+                error("expr must be const. : " + constStr);
             }
             return false;
         }
@@ -73,6 +73,7 @@ namespace SLANGCompiler.SLANG
             {"THEN", Token.THEN},
             {"ELSE", Token.ELSE},
             {"ELIF", Token.ELIF},
+            {"ELSEIF", Token.ELIF},
             {"EF", Token.ELIF},
             {"ENDIF", Token.ENDIF},
             {"WHILE", Token.WHILE},
@@ -99,6 +100,7 @@ namespace SLANGCompiler.SLANG
             {"GOTO", Token.GOTO},
             {"ORG", Token.ORG},
             {"WORK", Token.WORK},
+            {"OFFSET", Token.OFFSET},
             {"MACHINE", Token.MACHINE},
             {"RETURN", Token.RETURN},
             {"PRINT", Token.PRINT},

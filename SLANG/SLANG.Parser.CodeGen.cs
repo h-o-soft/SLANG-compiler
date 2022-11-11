@@ -63,6 +63,33 @@ namespace SLANGCompiler.SLANG
             codeRepository.AddJump(labelNum);
         }
 
+        // 式を文字列に戻すが、現状、アドレスに対する単純な加算にしか対応していない
+        private string createExprString(Expr expr)
+        {
+            StringBuilder sb = new StringBuilder();
+            switch(expr.Opcode)
+            {
+                case Opcode.Add:
+                {
+                    sb.Append(createExprString(expr.Left));
+                    sb.Append("+");
+                    sb.Append(createExprString(expr.Right));
+                    break;
+                }
+                case Opcode.Const:
+                {
+                    sb.Append(expr.Value.ToString());
+                    break;
+                }
+                case Opcode.Adr:
+                {
+                    sb.Append(expr.Symbol.LabelName);
+                    break;
+                }
+            }
+            return sb.ToString();
+        }
+
         // CODE文の生成
         public int GenerateCodeStmt(Tree paramList)
         {
@@ -104,9 +131,18 @@ namespace SLANGCompiler.SLANG
                 {
                     codeSize += 2;
                     genLabelAddress(expr.Value);
+                } else if(expr.Opcode == Opcode.CodeExpr)
+                {
+                    genexptop(expr.Left);
                 } else {
-                    // TODO これが初期値で記載された場合初期値サイズがおかしくなる(無駄に増える)ので注意
-                    genexptop(expr);
+                    // CONST式であると解釈しつつアセンブラが解釈出来る式を文字列で出力する
+                    // ARRAY   BYTE    SCC[70];
+                    // の場合、
+                    // %SCC+1 → __SCC+1
+                    // と、する(うーむ……)
+                    //codeSize += GenerateConstExpr(expr);
+                    // genexptop(expr);
+                    gencode(" DW " + createExprString(expr) + "\n");
                 }
             }
             return codeSize;
@@ -567,7 +603,7 @@ namespace SLANGCompiler.SLANG
             if(right != null & right.IsConst())
             {
                 genexp(left);
-                if(left.TypeInfo.GetDataSize() == TypeDataSize.Word)
+                //if(left.TypeInfo.GetDataSize() == TypeDataSize.Word || left.OpType == OperatorType.Pointer)
                 {
                     // 4加算まではINCにしてそれ以上は普通に足してみる
                     if(right.Value < 4)
@@ -580,19 +616,21 @@ namespace SLANGCompiler.SLANG
                         gencode($" LD DE,{right.Value}\n");
                         gencode($" ADD HL,DE\n");
                     }
-                } else {
-                    // 基本的にはWORDにキャストされているはずなのでここにはこないはず……
-                    if(right.Value < 4)
-                    {
-                        // 4加算まではINCにしてそれ以上は普通に足してみる
-                        for(int i = 0; i < right.Value; i++)
-                        {
-                            gencode(" INC L\n");
-                        }
-                    } else {
-                        gencode($" ADD L,{right.Value}\n");
-                    }
                 }
+                // TODO 本当に全ての演算はキャストされるのか？後でチェック。
+                // else {
+                //    // 基本的にはWORDにキャストされているはずなのでここにはこないはず……
+                //    if(right.Value < 4)
+                //    {
+                //        // 4加算まではINCにしてそれ以上は普通に足してみる
+                //        for(int i = 0; i < right.Value; i++)
+                //        {
+                //            gencode(" INC L\n");
+                //        }
+                //    } else {
+                //        gencode($" ADD L,{right.Value}\n");
+                //    }
+                //}
             } else if(right.CanLoadDirect())
             {
                 // これとここの下、Byte加算に対応していないので注意(手前で左右ともにWORDになっているはず)
@@ -1818,6 +1856,11 @@ namespace SLANGCompiler.SLANG
                 case Opcode.PortAccess:
                 {
                     genportIn(left, right);
+                    break;
+                }
+                case Opcode.Code:
+                {
+                    GenerateCodeStmt(expr.paramList);
                     break;
                 }
                 default:

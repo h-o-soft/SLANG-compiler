@@ -128,6 +128,10 @@ namespace SLANGCompiler.SLANG
         Comma,
         /// <summary>CASE文の範囲指定</summary>
         Range,
+        /// <summary>CODE関数</summary>
+        Code,
+        /// <summary>CODE関数の中の式をアセンブルしたものを埋め込む指示</summary>
+        CodeExpr,
     }
 
     /// <summary>

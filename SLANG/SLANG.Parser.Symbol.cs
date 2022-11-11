@@ -90,6 +90,7 @@ namespace SLANGCompiler.SLANG
         public void SetOriginalSymbolUse(bool originalUse)
         {
             symbolTableManager.UseOriginalSymbol = originalUse;
+            localSymbolTableManager.UseOriginalSymbol = originalUse;
         }
 
         /// <summary>

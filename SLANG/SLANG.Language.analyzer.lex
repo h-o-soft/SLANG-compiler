@@ -369,7 +369,9 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
 
             byte[] inputBuffer = System.Text.Encoding.UTF8.GetBytes(exprStr + ";");
             MemoryStream stream = new MemoryStream(inputBuffer);
-            SetSource(stream);
+            var charsetDetectedResult = UtfUnknown.CharsetDetector.DetectFromStream(stream);
+            stream.Position = 0;
+            SetSource(stream, CodePageHandling.GetCodePage(charsetDetectedResult.Detected.EncodingName));
             buffStack.Push(new ContextInfo(savedCtx, false));
         }
     }
@@ -385,7 +387,10 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
                   fName = fName.Trim('"');
                 }
                 BufferContext savedCtx = MkBuffCtx();
-                SetSource(new FileStream(fName, FileMode.Open));
+                var stream = new FileStream(fName, FileMode.Open);
+                var charsetDetectedResult = UtfUnknown.CharsetDetector.DetectFromStream(stream);
+                stream.Position = 0;
+                SetSource(stream, CodePageHandling.GetCodePage(charsetDetectedResult.Detected.EncodingName));
                 Console.WriteLine("; include {0}", fName);
                 buffStack.Push(new ContextInfo(savedCtx, true)); // Don't push until file open succeeds!
                 PushLocation();
