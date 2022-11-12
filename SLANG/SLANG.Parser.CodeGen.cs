@@ -114,10 +114,10 @@ namespace SLANGCompiler.SLANG
                     if(expr.TypeInfo.GetDataSize() == TypeDataSize.Byte)
                     {
                         codeSize++;
-                        gencode($" DB ${expr.Value:X2}\n");
+                        gencode($" DB ${expr.Value & 0xFF:X2}\n");
                     } else {
                         codeSize+=2;
-                        gencode($" DW ${expr.Value:X4}\n");
+                        gencode($" DW ${expr.Value & 0xFFFF:X4}\n");
                     }
                 } else if(expr.Opcode == Opcode.Str)
                 {
@@ -1544,12 +1544,14 @@ namespace SLANGCompiler.SLANG
             if(isNormalCall && exprList.Count < 4)
             {
                 // 1. 直接レジスタに入らないものを先に入れてPUSHする
+                int pushIdx = 0;
                 foreach(var param in exprList)
                 {
                     if(!param.CanLoadDirect())
                     {
                         genexp(param);
                         gencode(" PUSH HL\n");
+                        pushIdx++;
                     }
                 }
 
@@ -1565,14 +1567,13 @@ namespace SLANGCompiler.SLANG
                 }
 
                 // 3. 1でPUSHしたものを正しいレジスタで拾う
-                idx = 0;
-                foreach(var param in exprList)
+                for(idx = exprList.Count - 1; idx >= 0; idx-- )
                 {
+                    var param = exprList[idx];
                     if(!param.CanLoadDirect())
                     {
                         gencode($" POP {paramRegs[idx].GetCode()}\n");
                     }
-                    idx++;
                 }
             } else {
                 // 引数の数が4つ以上の場合は全て順にスタックに詰む
