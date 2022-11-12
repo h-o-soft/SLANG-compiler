@@ -169,9 +169,11 @@ namespace SLANGCompiler.SLANG
             CodeList.Clear();
 
            WriteCode($"\n\tORG\t${orgValue:X}\n");
+
            if(offsetValue >= 0)
            {
-            WriteCode($"\tOFFSET\t${offsetValue:X}\n");
+            // OFFSETは未対応
+            WriteCode($";\tOFFSET\t${offsetValue:X}\n");
            }
 
             string condStr = "";

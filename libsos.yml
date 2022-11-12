@@ -1,0 +1,688 @@
+SLANGINIT:
+  calls:
+    - RRET
+  code: |
+    EXX
+    POP HL
+    LD (RETADR-2), HL
+    EXX
+    PUSH BC
+    PUSH DE
+    PUSH HL
+    PUSH IX
+    PUSH IY
+    LD (RSP-2),SP
+
+    ; WORK ZERO CLEAR
+    XOR A
+    LD HL,__WORK__
+    LD DE,__WORK__+1
+    LD BC,__WORKEND__-__WORK__-1
+    LD (HL),A
+    LDIR
+
+    ; SP=$0000
+    DB 0,0,0
+
+    LD IY,__IYWORK
+
+    CALL __MAIN
+    OR A
+
+RRET:
+  code: |
+    LD SP,0
+    RSP:
+    POP IY
+    POP IX
+    POP HL
+    POP DE
+    POP BC
+    JP $0000
+    RETADR:
+
+STOP:
+  param_count: 0
+  calls:
+    - RRET
+  code: |
+    SCF
+    JR RRET
+
+SOSCALLS:
+  code: |
+    sLPTOF  EQU 1FD6H
+    sLPTON  EQU 1FD9H
+    sLPRNT  EQU 1FDCH
+    sPRINT  EQU 1FF4H
+    sWIDCH  EQU 2030H
+    sSCRN   EQU 201BH
+    sLOC    EQU 201EH
+    sGETKY  EQU 1FD0H
+    sFLGET  EQU 2021H
+    sINKEY  EQU 1FCAH
+    sCSR    EQU 2018H
+    sGETL   EQU 1FD3H
+    sHLHEX  EQU 1FB2H
+
+WIDTH:
+  param_count: 1
+  calls:
+    - SOSCALLS
+  code: |
+    LD A,L
+    CALL sWIDCH
+    RET
+
+PRMODE:
+  param_count: 1
+  calls:
+    - SOSCALLS
+    - PRT
+  code: |
+    LD A,L
+    CP 1
+    LD HL,sPRINT
+    JR NC,.prmode1
+    CALL sLPTOF
+    JR .prmode2
+    .prmode1
+    JR NZ, .prmode3
+    CALL sLPTON
+    JR .prmode2
+    .prmode3
+    LD HL,sLPRNT
+    .prmode2
+    LD (PRT+1), HL
+    RET
+
+BIT:
+  param_count: 2
+  calls:
+    - RSHIFTHLDE
+  code: |
+    CALL RSHIFTHLDE
+    BIT 0,L
+    LD HL,0
+    RET Z
+    INC HL
+    RET 
+
+SET:
+  param_count: 2
+  calls:
+    - ORHLDE
+  code: |
+    EX DE,HL
+    LD A,L
+    AND $0F
+    LD HL,1
+    JR Z,.set1
+    .set2
+    ADD HL,HL
+    DEC A
+    JR NZ,.set2
+    .set1
+    JP ORHLDE
+
+RESET:
+  param_count: 2
+  calls:
+    - ANDHLDE
+  code: |
+    EX DE,HL
+    LD A,L
+    AND $0F
+    LD HL,$FFFE
+    JR Z,.reset1
+    .reset2
+    SCF
+    ADC HL, HL
+    DEC A
+    JR NZ,.reset2
+    .reset1
+    JP ANDHLDE
+
+ABS:
+  param_count: 1
+  calls:
+    - NEGHL
+  code: |
+    BIT 7,H
+    CALL NZ,NEGHL
+    RET
+
+SGN:
+  param_count: 1
+  calls:
+    - ABS
+  code: |
+    LD A,H
+    OR L
+    RET Z
+    BIT 7,H
+    LD HL,1
+    JR ABS
+    BIT 7,L
+    LD H,0
+    RET Z
+    DEC H
+    RET
+
+SEX:
+  param_count: 1
+  code: |
+    BIT 7,L
+    LD H,0
+    RET Z
+    DEC H
+    RET
+
+RND:
+  param_count: 1
+  calls:
+    - MULHLDE
+    - MODHLDE
+  code: |
+    PUSH HL
+    LD HL,(wRND)
+    LD DE,$0383
+    CALL MULHLDE
+    LD A,L
+    LD L,H
+    LD A,R
+    ADD A,H
+    LD H,A
+    LD (wRND),HL
+    POP DE
+    LD A,D
+    OR E
+    JR NZ,.rnd1
+    EX DE,HL
+    RET
+    .rnd1
+    JP MODHLDE
+    wRND:
+    DW $E933
+
+SCREEN:
+  param_count: 2
+  calls:
+    - SOSCALLS
+  code: |
+    LD H,E
+    CALL sSCRN
+    LD L,A
+    LD H,0
+    RET
+
+LOCATE:
+  param_count: 2
+  calls:
+    - SOSCALLS
+  code: |
+    LD H,E
+    JP sLOC
+
+INKEY:
+  param_count: 1
+  calls:
+    - SOSCALLS
+  code: |
+    LD A,L
+    CP 1
+    JR NC,.inkey1
+    CALL sGETKY
+    JR .inkey_end
+    .inkey1 
+    JR NZ,.inkey2
+    CALL sFLGET
+    JR .inkey_end
+    .inkey2
+    CALL sINKEY
+    .inkey_end
+    LD L,A
+    LD H,0
+    RET
+
+LINPUT:
+  param_count: 2
+  calls:
+    - SOSCALLS
+    - GETL
+  code: |
+    PUSH HL
+    CALL sCSR
+    LD D,L
+    POP HL
+    JR GETLPROC
+
+GETL:
+  param_count: 1
+  calls:
+    - GETLIN
+  code: |
+    LD E,0
+GETLIN:
+  param_count: 2
+  calls:
+    - SOSCALLS
+  code: |
+    LD D,0
+    GETLPROC:
+    PUSH DE
+    LD DE,sKBFAD
+    CALL sGETL
+    POP BC
+    LD A,(DE)
+    CP $1B
+    JR NZ, .getlin1
+    LD (HL),A
+    LD HL,$FFFF
+    RET
+    .getlin1
+    INC B
+    DEC B
+    JR Z,.getlin2
+    LD A,(DE)
+    OR A
+    JR Z,.getlin2
+    INC DE
+    DEC B
+    JR .getlin1
+    .getlin2
+    LD B,0
+    .getlin4
+    LD A,(DE)
+    INC DE
+    OR A
+    JR Z,.getlin3
+    LD (HL),A
+    INC HL
+    INC B
+    DEC C
+    JR NZ,.getlin4
+    .getlin3
+    LD (HL),0
+    LD L,B
+    LD H,0
+    RET
+
+INPUT:
+  param_count: 0
+  calls:
+    - LINPUT
+    - ADECI
+    - SOSCALLS
+  code: |
+    LD BC,0
+    LD (___CARRY),BC
+    LD HL,sKBFAD
+    LD DE,0
+    CALL LINPUT
+    LD DE,sKBFAD
+    .linput2
+    LD A,(DE)
+    CP $20
+    JR NZ, .input1
+    INC DE
+    JR .linput2
+    .input1
+    LD A,(DE)
+    CP $24
+    JR NZ,.input3
+    INC DE
+    CALL sHLHEX
+    JR C,.input4
+    RET
+    .input3
+    LD HL,0
+    LD A,(DE)
+    CALL ADECI
+    JR C,.input4
+    .input5
+    ADD HL,HL
+    LD B,H
+    LD C,L
+    ADD HL,HL
+    ADD HL,HL
+    ADD HL,BC
+    LD B,0
+    LD C,A
+    ADD HL,BC
+    INC DE
+    LD A, (DE)
+    CALL ADECI
+    JR NC, .input5
+    RET
+    .input4
+    LD BC,1
+    LD (___CARRY),BC
+    LD HL,0
+    RET
+
+ADECI:
+  param_count: 0
+  code: |
+    SUB $30
+    RET C
+    CP $0A
+    CCF
+    RET
+
+PTAB:
+  param_count: 1
+  calls:
+    - PCR1
+  code: |
+    LD E,$1C
+    JR PCR1
+
+PSPC:
+  param_count: 1
+  calls:
+    - PCR1
+  code: |
+    LD E,' '
+    JR PCR1
+
+PCRONE:
+  param_count: 0
+  calls:
+    - PCR
+  code: |
+    LD HL,1
+
+PCR:
+  param_count: 1
+  calls:
+    - PSTR2
+  code: |
+    LD E,$0D
+
+PCR1:
+  param_count: 1
+  calls:
+    - PSTR
+  code: |
+    EX DE,HL
+
+PSTR:
+  param_count: 2
+  calls:
+    - PRT
+  code: |
+    .pstr1
+    LD A,D
+    OR E
+    RET Z
+    LD A,L
+    CALL PRT
+    DEC DE
+    JR .pstr1
+
+PCHR:
+  calls:
+    - PRT
+  code: |
+    LD A, H
+    CALL PRT
+    LD A, L
+    JR PRT
+
+CRDISP:
+  calls:
+    - PRT
+  code: |
+    LD A,$0D
+    JR PRT
+
+PHEX4:
+  param_count: 1
+  calls:
+    - PHEX2
+  code: |
+    LD A,H
+    CALL PHEX
+
+PHEX2:
+  param_count: 1
+  calls:
+    - PHEX
+  code: |
+    LD A,L
+
+PHEX:
+  param_count: 1
+  calls:
+    - SASC
+    - PRT
+  code: |
+    PUSH AF
+    RRCA
+    RRCA
+    RRCA
+    RRCA
+    CALL SASC
+    CALL PRT
+
+    POP AF
+    CALL SASC
+
+PRT:
+  param_count: 1
+  code: |
+    JP sPRINT
+
+    WORK10:
+    DB  "12345",0
+    DS  4
+
+PSIGN:
+  param_count: 1
+  calls:
+    - PRT
+    - NEGHL
+    - P10
+  code: |
+    BIT 7, H
+    JR Z,.psign1
+    LD A, $2D
+    CALL PRT
+    CALL NEGHL
+    .psign1
+
+P10:
+  function_type: Machine
+  param_count: 1
+  calls:
+    - P10to5
+    - P10toN
+  code: |
+    LD DE, -1
+    JR P10toN
+
+P10to5:
+  function_type: Machine
+  param_count: 1
+  calls:
+    - P10toN
+  code: |
+    LD DE, 0005
+
+P10toN:
+  calls:
+    - PRT
+    - VTOS
+    - PMSX
+  function_type: Machine
+  param_count: 2
+  code: |
+    PUSH DE
+    LD DE, WORK10
+    CALL VTOS
+    EX DE, HL
+    POP DE
+    LD A, E
+    CP $05
+    JR NC, .p10ton1
+    LD A, $05
+    SUB E
+    .p10ton2
+    INC HL
+    DEC A
+    JR NZ, .p10ton2
+    JR PMSX
+    .p10ton1
+    LD A, E
+    CP $FF
+    JR NZ, PMSX
+    .p10ton4
+    LD A, (HL)
+    CP $20
+    JR NZ, PMSX
+    INC HL
+    JR .p10ton4
+
+PMSX:
+  calls:
+    - PMSX1
+  code: |
+    LD B, 00
+
+PMSX1:
+  calls:
+    - PRT
+    - PMSG
+  code: |
+    LD A, (HL)
+    CP B
+    RET Z
+    CALL PRT
+    INC HL
+    JR PMSX1
+
+PMSG:
+  calls:
+    - PMSX1
+  code: |
+    LD B, $0D
+    JR PMSX1
+
+MPRNT:
+  calls:
+    - PRT
+  code: |
+    EX (SP),HL
+    .mprnt2
+    LD A, (HL)
+    INC HL
+    OR A
+    JR Z, .mprnt1
+    CALL PRT
+    JR .mprnt2
+    .mprnt1
+    EX (SP),HL
+    RET
+
+VTOS:
+  function_type: Machine
+  param_count: 2
+  calls:
+    - DIVHLDE8
+  code: |
+    PUSH HL
+    EXX
+    POP HL
+    EXX
+    LD HL, $0005
+    ADD HL, DE
+    LD (HL), $00
+    LD B, $05
+    .vtos1
+    EXX
+    LD E, $0A
+    CALL DIVHLDE8
+    LD A, E
+    ADD A, $30
+    EXX
+    DEC HL
+    LD (HL), A
+    DJNZ .vtos1
+    LD B, $04
+    .vtos3
+    LD A, (HL)
+    CP $30
+    JR NZ, .vtos2
+    LD (HL), $20
+    INC HL
+    DJNZ .vtos3
+    .vtos2
+    RET
+
+CALL:
+  inside_name: RCALL
+  calls:
+    - GETREG
+  code: |
+    PUSH IY
+    LD DE,.call1
+    PUSH DE
+    PUSH HL
+    LD A,(___AF)
+    LD BC,(___BC)
+    LD DE,(___DE)
+    LD HL,(___HL)
+    LD IX,(___IX)
+    LD IY,(___IY)
+    RET
+    .call1
+    PUSH HL
+    CALL GETREG
+    LD HL,0006
+    ADD HL,SP
+    POP HL
+    POP IY
+    RET
+
+GETREG:
+  code: |
+    PUSH HL
+    LD (___IY), IY
+    LD (___IX), IX
+    LD (___HL), HL
+    LD (___DE), DE
+    LD (___BC), BC
+    PUSH AF
+    POP HL
+    LD (___AF), HL
+    LD HL, 0000
+    JR NC, .getreg1
+    INC HL
+    .getreg1
+    LD (___CARRY), HL
+    LD HL, 0000
+    JR NZ, .getreg2
+    INC HL
+    .getreg2
+    LD (___ZERO), HL
+    LD HL, 0004
+    ADD HL, SP
+    LD (___SP), HL
+    POP HL
+    RET
+
+SASC:
+  code: |
+    AND	$0F
+    ADD	A,'0'
+    CP	3AH
+    CCF
+    RET	NC
+    ADD	A,'A'-$3A
+    RET
+
+BEEP:
+  code: |
+    CALL $1FC4
+    RET
