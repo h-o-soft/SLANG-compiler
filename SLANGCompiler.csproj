@@ -4,7 +4,7 @@
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <Copyright>Copyright (c) 2022 OGINO Hiroshi / H.O SOFT</Copyright>
     <Company>H.O SOFT</Company>
-    <Version>0.0.2</Version>
+    <Version>0.1.0</Version>
     <AssemblyTitle>SLANG Compiler</AssemblyTitle>
   </PropertyGroup>
   <ItemGroup>

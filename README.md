@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.0.2
+SLANG Compiler (Z80) 0.1.0
 
 # 概要
 
@@ -7,7 +7,7 @@ SLANG Compiler (Z80) 0.0.2
 
 コンパイルする事で、Z80のアセンブラソースを出力するため、柔軟な活用が可能です。
 
-現状、LSX-Dodgersで動作するように作られていますが、OS依存部分を個々作る事で、CPUにZ80を採用している様々な環境で動かす事が出来るはずです。
+現状、LSX-Dodgers及びS-OSで動作するように作られていますが、OS依存部分を個々作る事で、CPUにZ80を採用している様々な環境で動かす事が出来るはずです。
 
 # 使い方
 
@@ -16,11 +16,12 @@ SLANG Compiler (Z80) 0.0.2
 ```
 SLANGCompiler filename [-L library-name] [-O output-path]
 
-SLANG Compiler 0.0.2
+SLANG Compiler 0.1.0
 Copyright (c) 2022 OGINO Hiroshi / H.O SOFT
 
   -L, --lib               Library name(s). ( lib*.yml )
   -O, --output            Output file path.
+  --use-symbol            Use original symbol name.
   --help                  Display this help screen.
   --version               Display version information.
 ```
@@ -30,6 +31,8 @@ Copyright (c) 2022 OGINO Hiroshi / H.O SOFT
 アセンブラソースは、Z80アセンブラ [AILZ80ASM](https://github.com/AILight/AILZ80ASM) でアセンブル出来るものが出力されますので、適宜ご利用ください。
 
 -L オプションに続けて、後述のランタイムライブラリの名前を付与する事で、指定のライブラリを読み込む事が出来ます( -L x1 とする事で、 libx1.yml というライブラリを読み込みます)。
+
+--use-symbol をつけると、変数名、関数名について、ソースコードで利用した名前をそのまま使ってアセンブラソースが出力されます。つけない場合は、「SYM(数字)」という名前に置き換えられますので、アセンブラがラベルとして識別出来ない変数名、関数名を使っている場合は、--use-symbolをつけないようにしてください。
 
 # ランタイムについて
 
@@ -43,7 +46,7 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
 例えば掛け算や割り算など、OSなどの環境に関わらないルーチンはこちらに含まれています。普通のYAML形式のテキストファイルなので、
 より高速なものに自分で差し替える事も可能です(というか、いいコードが出来たらプルリクください)。
 
-##  lib.yml (for LSX-Dodgers)
+##  lib.yml / liblsx.yml (for LSX-Dodgers)
 こちらは、ライブラリのうち、OSに依存するルーチンが含まれるものとなります。
 現状X1/turbo/ZやMZ-700/1500やPC-8801mkIISRでCP/M80やMSX-DOSのソフトを実行するためのOS [LSX-Dodgers](https://github.com/tablacus/LSX-Dodgers) 用のコードになっています(初期化処理やPRINT、LOCATEなど)。
 
@@ -51,12 +54,19 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
 
 -L オプションに何も指定しない場合はこのファイルが読み込まれます。
 
+また、明示的に -L lsx を指定する事で liblsx.yml が読み込まれますが、lib.ymlとliblsx.ymlは同じ内容となっています。
+
 ## libx1.yml (for SHARP X1)
 こちらはLSX-Dodgers版をベースに、WIDTH関数とPRINT関数のみX1専用に書き換えたランタイムライブラリとなります。
 
 -L x1 とオプションを付与する事で、lib.ymlのかわりにこちらを読み込みます。
 
 現状、WIDTH(40)、WIDTH(80)の指定が可能となり、PRINT文が高速化されます(そのかわりいくつかの機能が無効になります)。
+
+## libsos.yml (for S-OS)
+S-OS版のランタイムです。これを読み込む事で、従来のSLANGで作られたアプリをコンパイルし、S-OSで実行出来ます。
+
+-L sos とオプションを付与する事で、lib.ymlのかわりにこちらを読み込みます。
 
 
 ## ランタイムのパスについて
@@ -74,6 +84,20 @@ runtime.yml と lib*.ymlは、カレントパス、あるいはユーザーフ�
 MIT
 
 # 更新履歴
+- Version 0.1.0
+  - --use-symbolオプションを追加
+  - 配列の初期化をCODEリストで行うよう修正
+  - プリプロセッサのIFの定数評価の仕組みを調整
+  - OFFSET文対応(無視されます)
+  - ソースファイルの文字コードを自動判別するよう対応
+  - 出力されるアセンブラソースをShiftJIS固定に(どうするか検討中。このままかも)
+  - CODE項についてアドレス値とその加算の構文に対応( (配列名)+1 で、配列+1のアドレスを埋め込むような対応)
+  - ELSEIFを追加
+  - 二次元配列の初期化が出来ない問題を修正
+  - MACHINE関数呼び出しの引数設定がおかしくなる事がある問題の修正
+  - SGNが正常に動作しないバグを修正
+  - OS非依存ランタイムをruntime.ymlに移動
+  - 通常関数呼び出し時にパラメータが正しく渡らない事がある問題を修正 
 - Version 0.0.2
   - 符号反転(NEGHL)が正常に機能しない問題を修正
   - 減算処理が正常に機能しない事がある問題を修正
