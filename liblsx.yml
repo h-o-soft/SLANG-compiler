@@ -114,6 +114,7 @@ GETLIN:
   param_count: 2
   calls:
     - sGETL
+    - sWORK
   code: |
     LD D,0
     GETLPROC:
