@@ -143,7 +143,7 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
 ".>=."			{ return (int)GetScompop(); }
 ".<=."			{ return (int)GetScompop(); }
 {P_OPEN}		{ return (int)Token.P_OPEN; }
-{P_CLOSE}		{ return (int)Token.P_CLOSE; }
+{P_CLOSE}		{ nextBraceIsArray = false; return (int)Token.P_CLOSE; }
 {B_OPEN}		{
                     int result;
                     result = nextBraceIsArray ? (int)Token.AB_OPEN : (int)Token.B_OPEN;

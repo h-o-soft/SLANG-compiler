@@ -456,6 +456,7 @@ declarator2
 func_head_decl
        : declarator2 P_OPEN P_CLOSE { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Word, Tree.CreateTree3(DeclNode.Func, $1, null )); } // Function
        | declarator2 P_OPEN param_list P_CLOSE { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Word, Tree.CreateTree3(DeclNode.Func, $1, $3 )); } // Function(with param)
+       | declarator2 P_OPEN CONSTANT P_CLOSE { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Word, Tree.CreateTreeExpr(DeclNode.Func, $1, expConst($3,TypeDataSize.Byte))); } // Machine Function(with param count)
        ;
 
 func_declarator

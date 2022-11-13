@@ -92,11 +92,13 @@ namespace SLANGCompiler.SLANG
                         s.UseOriginalSymbol = (bool)useOriginalSymbol;
                         table.Id = s.Id;
                         return s;
-                    }
-                    // 引数の数が違う場合はエラーとなる
-                    if(s.Size != table.Size)
+                    } else if(s.FunctionType != FunctionType.Machine)
                     {
-                        errorReporter.Error("invalid function parameter count : " + s.Name);
+                        // 引数の数が違う場合はエラーとなる(MACHINE宣言された場合はパラメータの違いは無視する(というか、tableで届いたものは捨てる))
+                        if(s.Size != table.Size)
+                        {
+                            errorReporter.Error("invalid function parameter count : " + s.Name);
+                        }
                     }
                     return s;
                 }
