@@ -43,7 +43,7 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// 関数を追加する
         /// </summary>
-        public void AddFunction(FunctionType functionType, string name, string insideName, int paramCount, int Address = -1, bool? useOriginalSymbol = null)
+        public void AddFunction(FunctionType functionType, string name, string insideName, int paramCount, ConstInfo Address = null, bool? useOriginalSymbol = null)
         {
             if(useOriginalSymbol == null)
             {
@@ -138,7 +138,7 @@ namespace SLANGCompiler.SLANG
             {
                 Name = name,
                 TypeInfo = typeInfo,
-                Address = -1,
+                Address = null,
                 UseOriginalSymbol = (bool)useOriginalSymbol
             };
             symbolTableList.Add(table);
@@ -173,7 +173,7 @@ namespace SLANGCompiler.SLANG
                     continue;
                 }
                 // アドレス指定がしてある場合も出力しない
-                if(symbol.Address >= 0)
+                if(symbol.Address != null)
                 {
                     continue;
                 }
@@ -241,7 +241,7 @@ namespace SLANGCompiler.SLANG
                     continue;
                 }
                 // アドレス指定がしてある場合も出力しない
-                if(symbol.Address >= 0)
+                if(symbol.Address != null)
                 {
                     continue;
                 }

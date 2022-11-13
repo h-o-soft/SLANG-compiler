@@ -195,7 +195,7 @@ namespace SLANGCompiler.SLANG
                     Error("#IF must be value const parameter.");
                 }
                 var slangScanner = (SLANGScanner)this.Scanner;
-                iftrue = expr.ConstValue.value != 0;
+                iftrue = expr.ConstValue.Value != 0;
                 slangScanner.ProcIf(iftrue);
             } else {
                 Error("#IF must be const parameter.");
@@ -368,10 +368,6 @@ namespace SLANGCompiler.SLANG
                 this.Scanner = new SLANGScanner(stream, "UTF-8");
                 var slangScanner = (SLANGScanner)this.Scanner;
                 slangScanner.currentFileName = "inner-code";
-                if(constTableManager == null)
-                {
-                    constTableManager = this.constTableManager;
-                }
                 slangScanner.SetConstTableManager(constTableManager);
 
                 StartParse();

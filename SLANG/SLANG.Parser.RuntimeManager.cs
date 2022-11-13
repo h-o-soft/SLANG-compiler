@@ -119,7 +119,9 @@ namespace SLANGCompiler.SLANG
                 runtimeInfoList.Add(info);
 
                 // 関数アドレス指定が入っている場合は16進数、2進数での指定を考慮し、変換してから渡す
+                // 文字列の場合は文字列CONSTとして渡す
                 int address = -1;
+                string addressStr = null;
                 if(!string.IsNullOrEmpty(runtimeCode.address))
                 {
                     var adrStr = runtimeCode.address;
@@ -136,12 +138,26 @@ namespace SLANGCompiler.SLANG
                         // 2進数
                         address = Convert.ToInt32(adrStr.Substring(0, adrStr.Length - 1), 2);
                     } else {
-                        address = int.Parse(adrStr);
+                        if(!int.TryParse(adrStr, out address))
+                        {
+                            address = -1;
+                            addressStr = runtimeCode.address;
+                        }
                     }
+                }
+                ConstInfo addressInfo = null;
+                if(address == -1)
+                {
+                    if(addressStr != null)
+                    {
+                        addressInfo = new ConstInfo(addressStr);
+                    }
+                } else {
+                    addressInfo = new ConstInfo(address);
                 }
 
                 // シンボルテーブル側に反映させておく
-                symbolTableManager.AddFunction(runtimeCode.functionType, label, info.InsideName, runtimeCode.paramCount, address, true);
+                symbolTableManager.AddFunction(runtimeCode.functionType, label, info.InsideName, runtimeCode.paramCount, addressInfo, true);
             }
 
             /// <summary>

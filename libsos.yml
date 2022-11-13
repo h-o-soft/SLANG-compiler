@@ -29,8 +29,7 @@ SLANGINIT:
     CALL __MAIN
     OR A
 
-RRET:
-  code: |
+    RRET:
     LD SP,0
     RSP:
     POP IY
@@ -43,11 +42,9 @@ RRET:
 
 STOP:
   param_count: 0
-  calls:
-    - RRET
   code: |
     SCF
-    JR RRET
+    JP RRET
 
 SOSCALLS:
   code: |

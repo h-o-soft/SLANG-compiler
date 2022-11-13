@@ -101,7 +101,7 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// シンボルの存在するアドレス位置(-1の場合は適宜定義される)
         /// </summary>
-        public int Address { get; set; } 
+        public ConstInfo Address { get; set; } 
 
         /// <summary>
         /// シンボルのサイズ(バイト)
@@ -133,6 +133,11 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public FunctionType FunctionType;
 
+        public bool IsMemoryArray()
+        {
+             return Address != null && Address.ConstInfoType == ConstInfoType.Value && Address.Value == 0;
+        }
+
         public SymbolTable()
         {
             this.LabelHeader = null;
@@ -140,7 +145,7 @@ namespace SLANGCompiler.SLANG
             this.InsideName = null;
             this.SymbolClass = SymbolClass.Global;
             this.TypeInfo = null;
-            this.Address = -1;
+            this.Address = null;
             this.Size = 0;
             this.InitialValueList = null;
             this.InitialValueCode = null;

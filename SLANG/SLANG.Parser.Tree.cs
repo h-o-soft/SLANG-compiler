@@ -30,7 +30,7 @@ namespace SLANGCompiler.SLANG
                 Name = name,
                 SymbolClass = SymbolClass.Global,
                 TypeInfo = tpInfo,
-                Address = -1,
+                Address =null,
                 Size = 1,
                 InitialValueCode = codeTree,
                 InitialValueList = null,

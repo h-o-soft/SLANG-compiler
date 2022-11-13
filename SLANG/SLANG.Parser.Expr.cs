@@ -169,13 +169,13 @@ namespace SLANGCompiler.SLANG
         }
 
         // 定数式を作る
-        public Expr expConst(Const c, TypeDataSize dataSize = TypeDataSize.Word)
+        public Expr expConst(ConstInfo c, TypeDataSize dataSize = TypeDataSize.Word)
         {
             TypeInfo typeInfo = dataSize == TypeDataSize.Word ? TypeInfo.WordTypeInfo : TypeInfo.ByteTypeInfo;
             Expr result = makeNode1( Opcode.Const, OperatorType.Constant, typeInfo, null );
-            result.ConstValue = c;
+            result.ConstValue = c.Clone();
             // TODO 本来は不必要
-            result.Value = c.value;
+            result.Value = c.Value;
 
             return result;
         }
@@ -595,7 +595,7 @@ namespace SLANGCompiler.SLANG
             }
             if(expr.IsValueConst())
             {
-                expr.Value = fold1(opcode, expr.Value);
+                expr.ConstValue = new ConstInfo(fold1(opcode, expr.ConstValue.Value));
                 return expr;
             }
             if(opcode == Opcode.Not)
@@ -681,11 +681,11 @@ namespace SLANGCompiler.SLANG
                 int value;
                 if(opcode == Opcode.Low)
                 {
-                    value = expr.Value & 0xff;
+                    value = expr.ConstValue.Value & 0xff;
                 } else{ // Opcode.High
-                    value = (expr.Value >> 8) & 0xff;
+                    value = (expr.ConstValue.Value >> 8) & 0xff;
                 }
-                expr.Value = value;
+                expr.ConstValue = new ConstInfo(value);
                 return expr;
             }
             return makeNode1(opcode, OperatorType.Byte, expr.TypeInfo, expr);
@@ -703,7 +703,7 @@ namespace SLANGCompiler.SLANG
             // 加減算をまとめる
             if(left.IsValueConst() && right.IsValueConst())
             {
-                left.Value = fold2(opcode, left.Value, right.Value);
+                left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.Value, right.ConstValue.Value));
                 return left;
             }
             // 強制的にWORD同士の演算にする
@@ -723,7 +723,7 @@ namespace SLANGCompiler.SLANG
             // 定数はまとめる
             if(left.IsValueConst() && right.IsValueConst())
             {
-                left.Value = fold2(opcode, left.Value, right.Value);
+                left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.Value, right.ConstValue.Value));
                 return left;
             }
             var opType = OperatorType.Word;
@@ -746,7 +746,7 @@ namespace SLANGCompiler.SLANG
             // 乗除算をまとめる
             if(left.IsValueConst() && right.IsValueConst())
             {
-                left.Value = fold2(opcode, left.Value, right.Value);
+                left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.Value, right.ConstValue.Value));
                 return left;
             }
             OperatorType opType = adjust(left.OpType, right.OpType);
@@ -774,7 +774,7 @@ namespace SLANGCompiler.SLANG
             // 乗除算をまとめる
             if(left.IsValueConst() && right.IsValueConst())
             {
-                left.Value = fold2(opcode, left.Value, right.Value);
+                left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.Value, right.ConstValue.Value));
                 return left;
             }
             var opType = adjust(left.OpType, right.OpType);
@@ -807,7 +807,7 @@ namespace SLANGCompiler.SLANG
             }
             if(left.IsValueConst() && right.IsValueConst())
             {
-                left.Value = fold2(opcode, left.Value, right.Value);
+                left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.Value, right.ConstValue.Value));
                 return left;
             }
 

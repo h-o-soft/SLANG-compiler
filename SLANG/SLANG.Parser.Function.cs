@@ -141,7 +141,7 @@ namespace SLANGCompiler.SLANG
         private SymbolTable paramDecl(TypeInfo typeInfo, Tree tree)
         {
             TypeInfo firstTypeInfo = null;
-            int address = -1;
+            ConstInfo address = null;
 
             while(true)
             {
@@ -149,7 +149,7 @@ namespace SLANGCompiler.SLANG
                 {
                     case DeclNode.Id:
                         {
-                            if(tree.Address >= 0)
+                            if(tree.Address != null)
                             {
                                 address = tree.Address;
                             }
@@ -192,7 +192,7 @@ namespace SLANGCompiler.SLANG
                             typeInfo = tree.TypeInfo.Clone();
                             firstTypeInfo = tree.TypeInfo.Clone();
                             tree = tree.First;
-                            if(tree.Address >= 0)
+                            if(tree.Address != null)
                             {
                                 address = tree.Address;
                             }
@@ -228,7 +228,7 @@ namespace SLANGCompiler.SLANG
                     p.LabelHeader = "F" + funcNumber;
                     continue;
                 }
-                p.Address = offset;
+                p.Address = new ConstInfo(offset);
                 if(p.TypeInfo.IsArray())
                 {
                     offset += p.Size;
@@ -245,7 +245,7 @@ namespace SLANGCompiler.SLANG
                 {
                     continue;
                 }
-                p.Address += localOffset;
+                p.Address.Value += localOffset;
             }
             return offset;
         }

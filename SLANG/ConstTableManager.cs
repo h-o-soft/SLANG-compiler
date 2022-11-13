@@ -33,6 +33,36 @@ namespace SLANGCompiler.SLANG
             this.Value = 0;
             this.SymbolString = symbolStr;
         }
+
+        public ConstInfo Clone()
+        {
+            if(ConstInfoType == ConstInfoType.Value)
+            {
+                return new ConstInfo(Value);
+            } else {
+                return new ConstInfo(SymbolString);
+            }
+        }
+
+        public string GetConstStr(SymbolTableManager symbolManager)
+        {
+            if(ConstInfoType == ConstInfoType.Code)
+            {
+                var constSymbol = symbolManager.SearchSymbol(SymbolString);
+                if(constSymbol == null)
+                {
+                    return null;
+                }
+                return constSymbol.LabelName;
+            } else {
+                if(Value > 255)
+                {
+                    return $"${Value:X4}";
+                } else {
+                    return $"${Value:X2}";
+                }
+            }
+        }
     }
     /// <summary>
     /// CONST定義されたシンボルとその値を管理するマネージャ

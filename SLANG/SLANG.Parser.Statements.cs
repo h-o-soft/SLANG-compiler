@@ -141,7 +141,7 @@ namespace SLANGCompiler.SLANG
                 // 単独一致
                 if(expr.IsValueConst())
                 {
-                    gencode($" LD HL,{expr.ConstValue.value}\n");
+                    gencode($" LD HL,{expr.ConstValue.Value}\n");
                 } else {
                     var constStr = GetConstStr(expr);
                     gencode($" LD HL,{constStr}\n");
