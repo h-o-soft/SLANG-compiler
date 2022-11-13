@@ -1495,19 +1495,45 @@ namespace SLANGCompiler.SLANG
 
             // パラメータが逆順に入っているので逆にする
             var exprList = new List<Expr>();
+            bool requirePush = false;
             for(Tree p = paramList; p != null; p = p.First)
             {
                 Expr param = p.Expr;
                 exprList.Insert(0, param);
+                if(param.Opcode == Opcode.Func && param.Left.Symbol.FunctionType == FunctionType.Normal)
+                {
+                    requirePush = true;
+                }
             }
+
+
+            Expr prevParam = null;
             foreach(var param in exprList)
             {
                 genexp(param);
-                gencode($" LD (IY+{startAdr}),L\n");
-                gencode($" LD (IY+{startAdr+1}),H\n");
+                if(requirePush)
+                {
+                    gencode($" PUSH HL\n");
+                } else {
+                    gencode($" LD (IY+{startAdr}),L\n");
+                    gencode($" LD (IY+{startAdr+1}),H\n");
+                }
+                prevParam = param;
 
                 startAdr += 2;
                 count++;
+            }
+
+            if(requirePush)
+            {
+                startAdr -= 2;
+                foreach(var param in exprList)
+                {
+                    gencode($" POP HL\n");
+                    gencode($" LD (IY+{startAdr}),L\n");
+                    gencode($" LD (IY+{startAdr+1}),H\n");
+                    startAdr -= 2;
+                }
             }
 
             gencall(func.Symbol.LabelName);
