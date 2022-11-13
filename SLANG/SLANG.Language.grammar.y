@@ -417,6 +417,7 @@ const_list
 // CONSTは1つ1つ定義する(一行の中で定義したものを使用可能にするため……)
 const
        : IDENTIFIER OP_EQ expr { $$ = DefineConst(Tree.CreateDeclIdentifier(DeclNode.Id, $1), $3); }
+       | IDENTIFIER OP_EQ begin code_expr_list end { $$ = DefineConst(Tree.CreateDeclIdentifier(DeclNode.Id, $1), $4); }
        | IDENTIFIER error { Error("CONST required initial value"); }
        ;
 

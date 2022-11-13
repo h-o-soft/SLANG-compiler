@@ -139,7 +139,13 @@ namespace SLANGCompiler.SLANG
             } else if(expr.IsConst())
             {
                 // 単独一致
-                gencode($" LD HL,{expr.Value}\n");
+                if(expr.IsValueConst())
+                {
+                    gencode($" LD HL,{expr.ConstValue.value}\n");
+                } else {
+                    var constStr = GetConstStr(expr);
+                    gencode($" LD HL,{constStr}\n");
+                }
                 gencode(" OR A\n");
                 gencode(" SBC HL,DE\n");
                 gencondjump(OperatorType.Word, ComparisonOp.Neq, currentCaseInfo.NextLabel, 0);
