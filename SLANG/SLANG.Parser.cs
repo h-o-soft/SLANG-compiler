@@ -110,11 +110,11 @@ namespace SLANGCompiler.SLANG
             {
                 return 0;
             }
-            if(typeInfo.IsByteTypeInfo())
+            if(typeInfo.Parent == null && typeInfo.IsByteTypeInfo())
             {
                 return 1;
             }
-            if(typeInfo.IsWordTypeInfo())
+            if(typeInfo.Parent == null && typeInfo.IsWordTypeInfo())
             {
                 return 2;
             }
