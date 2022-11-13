@@ -17,7 +17,8 @@ namespace SLANGCompiler.SLANG
         Byte,
         /// <summary>WORD定数</summary>
         Word,
-        // String
+        /// <summary>CODE定数(CODEのアドレスを指す)/summary>
+        Code,
     }
 
     /// <summary>
@@ -27,5 +28,6 @@ namespace SLANGCompiler.SLANG
     {
         public ConstType constType;
         public int value;
+        public string symbolValue;
     }
 }

@@ -21,7 +21,7 @@ namespace SLANGCompiler.SLANG
             if(constParser.LastConstExpr.IsConst())
             {
                 // Console.WriteLine("Check:" + constParser.LastConstExpr.Value);
-                return constParser.LastConstExpr.Value != 0;
+                return constParser.LastConstExpr.ConstValue.value != 0;
             } else {
                 error("expr must be const. : " + constStr);
             }
@@ -118,13 +118,19 @@ namespace SLANGCompiler.SLANG
             {
                 return token;
             }
-            int value;
-            if(constTableManager.TryGetValue(yytext, out value))
+            ConstInfo info;
+            if(constTableManager.TryGetValue(yytext, out info))
             {
-                yylval.constValue.value = value;
+                if(info.ConstInfoType == ConstInfoType.Value)
+                {
+                    yylval.constValue.constType = ConstType.Word;
+                    yylval.constValue.value = info.Value;
+                } else {
+                    yylval.constValue.constType = ConstType.Code;
+                    yylval.constValue.symbolValue = info.SymbolString;
+                }
                 return Token.CONSTANT;
             }
-
 
             yylval.symbol = yytext;
             return Token.IDENTIFIER;

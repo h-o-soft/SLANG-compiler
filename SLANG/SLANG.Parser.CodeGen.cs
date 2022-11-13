@@ -78,7 +78,13 @@ namespace SLANGCompiler.SLANG
                 }
                 case Opcode.Const:
                 {
-                    sb.Append(expr.Value.ToString());
+                    if(expr.ConstValue.constType == ConstType.Code)
+                    {
+                        var constSymbol = symbolTableManager.SearchSymbol(expr.ConstValue.symbolValue);
+                        sb.Append(constSymbol.LabelName);
+                    } else {
+                        sb.Append(expr.ConstValue.value.ToString());
+                    }
                     break;
                 }
                 case Opcode.Adr:
@@ -110,14 +116,21 @@ namespace SLANGCompiler.SLANG
             {
                 if(expr.IsConst())
                 {
-                    // CONSTの場合、ByteかWordか調べる
-                    if(expr.TypeInfo.GetDataSize() == TypeDataSize.Byte)
+                    // CONSTの場合、ByteかWordかCodeか調べる
+                    if(expr.ConstValue.constType == ConstType.Code)
                     {
-                        codeSize++;
-                        gencode($" DB ${expr.Value & 0xFF:X2}\n");
-                    } else {
+                        var constSymbol = symbolTableManager.SearchSymbol(expr.ConstValue.symbolValue);
                         codeSize+=2;
-                        gencode($" DW ${expr.Value & 0xFFFF:X4}\n");
+                        gencode($" DW {constSymbol.LabelName}\n");
+                    } else {
+                        if(expr.TypeInfo.GetDataSize() == TypeDataSize.Byte)
+                        {
+                            codeSize++;
+                            gencode($" DB ${expr.Value & 0xFF:X2}\n");
+                        } else {
+                            codeSize+=2;
+                            gencode($" DW ${expr.Value & 0xFFFF:X4}\n");
+                        }
                     }
                 } else if(expr.Opcode == Opcode.Str)
                 {
@@ -441,12 +454,29 @@ namespace SLANGCompiler.SLANG
                     var ofs = symbol.Address + left.Left.SymbolOffset;
                     if(right.IsConst())
                     {
-                        var lowVal = right.Value & 0xff;
-                        var highVal = (right.Value >> 8) & 0xff;
-                        gencode($" LD (IY+{ofs}),{lowVal}\n");
-                        if(!isByte)
+                        if(right.IsValueConst())
                         {
-                            gencode($" LD (IY+{ofs+1}),{highVal}\n");
+                            var lowVal = right.ConstValue.value & 0xff;
+                            var highVal = (right.ConstValue.value >> 8) & 0xff;
+                            gencode($" LD (IY+{ofs}),{lowVal}\n");
+                            if(!isByte)
+                            {
+                                gencode($" LD (IY+{ofs+1}),{highVal}\n");
+                            }
+                        } else {
+                            var constStr = right.GetConstStr(localSymbolTableManager);
+                            if(constStr == null)
+                            {
+                                constStr = right.GetConstStr(symbolTableManager);
+                            }
+                            if(constStr != null)
+                            {
+                                gencode($" LD (IY+{ofs}),LOW {constStr}\n");
+                                if(!isByte)
+                                {
+                                    gencode($" LD (IY+{ofs+1}),HIGH {constStr}\n");
+                                }
+                            }
                         }
                     } else {
                         genexp(right);
@@ -548,14 +578,40 @@ namespace SLANGCompiler.SLANG
             genRuntimeCall(callName);
         }
 
+        private string GetConstStr(Expr constExpr)
+        {
+            if(!constExpr.IsConst())
+            {
+                Error("Could not found const");
+                return null;
+            }
+            var constStr = constExpr.GetConstStr(localSymbolTableManager);
+            if(constStr == null)
+            {
+                constStr = constExpr.GetConstStr(symbolTableManager);
+            }
+            if(constStr != null)
+            {
+                return constStr;
+            }
+            Error("Could not found const");
+            return null;
+        }
+
         // CPL式を出力する
         private void gencpl(Expr expr)
         {
             if(expr.Left.IsConst())
             {
-                // 事前最適化されているはずだが念の為処理しておく
-                var val = ~expr.Value;
-                gencode($" LD HL,{val}\n");
+                var constExpr = expr.Left;
+                if(constExpr.IsValueConst())
+                {
+                    var val = ~expr.ConstValue.value;
+                    gencode($" LD HL,{val}\n");
+                } else {
+                    var constStr = GetConstStr(constExpr);
+                    gencode($" LD HL,~{constStr}\n");
+                }
                 return;
             }
             genexp(expr.Left);
@@ -567,9 +623,15 @@ namespace SLANGCompiler.SLANG
         {
             if(expr.Left.IsConst())
             {
-                // 事前最適化されているはずだが念の為処理しておく
-                var val = expr.Value * -1;
-                gencode($" LD HL,{val}\n");
+                var constExpr = expr.Left;
+                if(constExpr.IsValueConst())
+                {
+                    var val = expr.ConstValue.value * -1;
+                    gencode($" LD HL,{val}\n");
+                } else {
+                    var constStr = GetConstStr(constExpr);
+                    gencode($" LD HL,-{constStr}\n");
+                }
                 return;
             }
             genexp(expr.Left);
@@ -581,9 +643,15 @@ namespace SLANGCompiler.SLANG
         {
             if(expr.Left.IsConst())
             {
-                // 事前最適化されているはずだが念の為処理しておく
-                var val = expr.Value == 0 ? 1 : 0;
-                gencode($" LD HL,{val}\n");
+                var constExpr = expr.Left;
+                if(constExpr.IsValueConst())
+                {
+                    var val = expr.ConstValue.value == 0 ? 1 : 0;
+                    gencode($" LD HL,{val}\n");
+                } else {
+                    var constStr = GetConstStr(constExpr);
+                    gencode($" LD HL,{constStr} == 0 ? 1 : 0\n");
+                }
                 return;
             }
             genexp(expr.Left);
@@ -605,16 +673,24 @@ namespace SLANGCompiler.SLANG
                 genexp(left);
                 //if(left.TypeInfo.GetDataSize() == TypeDataSize.Word || left.OpType == OperatorType.Pointer)
                 {
-                    // 4加算まではINCにしてそれ以上は普通に足してみる
-                    if(right.Value < 4)
+                    if(right.ConstValue.constType == ConstType.Code)
                     {
-                        for(int i = 0; i < right.Value; i++)
-                        {
-                            gencode(" INC HL\n");
-                        }
-                    } else {
-                        gencode($" LD DE,{right.Value}\n");
+                        var constStr = GetConstStr(right);
+                        gencode($" LD DE,{constStr}\n");
                         gencode($" ADD HL,DE\n");
+                    } else {
+                        // 4加算まではINCにしてそれ以上は普通に足してみる
+                        var constVal = right.ConstValue.value;
+                        if(constVal < 4)
+                        {
+                            for(int i = 0; i < constVal; i++)
+                            {
+                                gencode(" INC HL\n");
+                            }
+                        } else {
+                            gencode($" LD DE,{constVal}\n");
+                            gencode($" ADD HL,DE\n");
+                        }
                     }
                 }
                 // TODO 本当に全ての演算はキャストされるのか？後でチェック。
@@ -657,18 +733,24 @@ namespace SLANGCompiler.SLANG
         {
             if(right != null && right.IsConst())
             {
+                if(right.ConstValue.constType == ConstType.Code)
+                {
+                    Error("CODE Const can not sub");
+                    return;
+                }
                 genexp(left);
                 if(left.TypeInfo.GetDataSize() == TypeDataSize.Word)
                 {
-                    if(right.Value < 4)
+                    int constVal = right.ConstValue.value;
+                    if(constVal< 4)
                     {
-                        for(int i = 0; i < right.Value; i++)
+                        for(int i = 0; i < constVal; i++)
                         {
                             gencode(" DEC HL\n");
                         }
                     } else {
                         // 定数の減算
-                        gencode($" LD DE,{-right.Value}\n");
+                        gencode($" LD DE,{-constVal}\n");
                         gencode($" ADD HL,DE\n");
                     }
                 } else {
@@ -722,30 +804,35 @@ namespace SLANGCompiler.SLANG
             }
             if(right.IsConst() && isUnsigned)
             {
-
-                genexp(left);
-                if(right.Value == 1)
+                if(!right.IsValueConst())
                 {
-                } else if(right.Value == 2)
+                    Error("CODE Const can not mul");
+                    return;
+                }
+                genexp(left);
+                var constValue = right.ConstValue.value;
+                if(constValue == 1)
+                {
+                } else if(constValue == 2)
                 {
                     gencode(" ADD HL,HL\n");
-                } else if(right.Value == 3)
+                } else if(constValue == 3)
                 {
                     gencode(" LD D,H\n");
                     gencode(" LD E,L\n");
                     gencode(" ADD HL,HL\n");
                     gencode(" ADD HL,DE\n");
-                } else if(right.Value == 4)
+                } else if(constValue == 4)
                 {
                     gencode(" ADD HL,HL\n");
                     gencode(" ADD HL,HL\n");
-                } else if(right.Value == 8)
+                } else if(constValue == 8)
                 {
                     gencode(" ADD HL,HL\n");
                     gencode(" ADD HL,HL\n");
                     gencode(" ADD HL,HL\n");
                 } else {
-                    gencode($" LD DE,{right.Value}\n");
+                    gencode($" LD DE,{constValue}\n");
                     genRuntimeCall(callName);
                 }
             } else if(right.CanLoadDirect())
@@ -772,8 +859,13 @@ namespace SLANGCompiler.SLANG
         {
             if(left.IsConst() && right.IsConst())
             {
+                if(!left.IsValueConst() || !right.IsValueConst())
+                {
+                    Error("CODE Const can not shift");
+                    return;
+                }
                 // 事前最適化されているはずだが念の為処理しておく
-                var val = isLeft ? (left.Value << right.Value) : (left.Value >> right.Value);
+                var val = isLeft ? (left.ConstValue.value << right.ConstValue.value) : (left.ConstValue.value >> right.ConstValue.value);
                 gencode($" LD HL,{val}\n");
                 return;
             }
@@ -938,7 +1030,7 @@ namespace SLANGCompiler.SLANG
                 gencondjump(opType, ComparisonOp.Neq, trueLabelNum, falseLabelNum);
             } else {
                 // 右が0でEQ or NEQの場合はいちいちSBCしないで0かどうかのみ調べる
-                if(right.IsConst() && right.Value == 0 && (expr.ComparisonOp == ComparisonOp.Eq || expr.ComparisonOp == ComparisonOp.Neq))
+                if(right.IsValueConst() && right.ConstValue.value == 0 && (expr.ComparisonOp == ComparisonOp.Eq || expr.ComparisonOp == ComparisonOp.Neq))
                 {
                     genexp(left);
                     gencode(" LD A,H\n");
@@ -1225,7 +1317,7 @@ namespace SLANGCompiler.SLANG
             {
                 // HL / DEまたはHL % DEで、HLに返す
                 genexp(left);
-                gencode($" LD DE,{right.Value}\n");
+                gencode($" LD DE,{right.ConstValue.value}\n");
                 genRuntimeCall(callName);
             } else if(right.CanLoadDirect())
             {
@@ -1650,8 +1742,14 @@ namespace SLANGCompiler.SLANG
             // HLに現在のFOR変数の値が入っているのでそれを使うと良い
             if(forExpr.IsConst())
             {
-                var lowValue  =  forExpr.Value & 0xff;
-                var highValue = (forExpr.Value >> 8) & 0xff;
+                if(!forExpr.IsValueConst())
+                {
+                    Error("for expr is not value const");
+                    return;
+                }
+                var forValue = forExpr.ConstValue.value;
+                var lowValue  =  forValue & 0xff;
+                var highValue = (forValue >> 8) & 0xff;
                 if(forOp == "TO")
                 {
                     gencode(" LD A,L\n");
@@ -1721,7 +1819,13 @@ namespace SLANGCompiler.SLANG
                 }
                 case Opcode.Const:
                 {
-                    gencode($" LD HL,{expr.Value}\n");
+                    if(expr.ConstValue.constType == ConstType.Code)
+                    {
+                        var constSymbol = symbolTableManager.SearchSymbol(expr.ConstValue.symbolValue);
+                        gencode($" LD HL,{constSymbol.LabelName}\n");
+                    } else {
+                        gencode($" LD HL,{expr.ConstValue.value}\n");
+                    }
                     break;
                 }
                 case Opcode.Str:
@@ -1915,15 +2019,34 @@ namespace SLANGCompiler.SLANG
             // DE or HLにexprを代入する
             if(targetExpr.IsConst())
             {
-                var val = targetExpr.Value;
-                switch(dataSize)
+                if(targetExpr.IsValueConst())
                 {
-                    case TypeDataSize.Byte:
-                        gencode($" LD {regLow},{val & 0xff}\n");
-                        break;
-                    default:
-                        gencode($" LD {targetReg},{val}\n");
-                        break;
+                    var val = targetExpr.ConstValue.value;
+                    switch(dataSize)
+                    {
+                        case TypeDataSize.Byte:
+                            gencode($" LD {regLow},{val & 0xff}\n");
+                            break;
+                        default:
+                            gencode($" LD {targetReg},{val}\n");
+                            break;
+                    }
+                } else {
+                    var constStr = GetConstStr(targetExpr);
+                    if(constStr == null)
+                    {
+                        Error("const load error");
+                        return;
+                    }
+                    switch(dataSize)
+                    {
+                        case TypeDataSize.Byte:
+                            gencode($" LD {regLow},LOW {constStr}\n");
+                            break;
+                        default:
+                            gencode($" LD {targetReg},{constStr}\n");
+                            break;
+                    }
                 }
                 return;
             }
@@ -2062,8 +2185,13 @@ namespace SLANGCompiler.SLANG
 
             if(right.IsConst())
             {
+                if(!right.IsValueConst())
+                {
+                    Error("const scaled error");
+                    return;
+                }
                 genexp(left);
-                gencode($" LD DE,{right.Value * scale}\n");
+                gencode($" LD DE,{right.ConstValue.value * scale}\n");
                 gencode(" ADD HL,DE\n");
             } else if(right.IsVariable())
             {

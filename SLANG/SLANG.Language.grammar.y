@@ -417,6 +417,7 @@ const_list
 // CONSTは1つ1つ定義する(一行の中で定義したものを使用可能にするため……)
 const
        : IDENTIFIER OP_EQ expr { $$ = DefineConst(Tree.CreateDeclIdentifier(DeclNode.Id, $1), $3); }
+       | IDENTIFIER OP_EQ begin code_expr_list end { $$ = DefineConst(Tree.CreateDeclIdentifier(DeclNode.Id, $1), $4); }
        | IDENTIFIER error { Error("CONST required initial value"); }
        ;
 
@@ -455,6 +456,7 @@ declarator2
 func_head_decl
        : declarator2 P_OPEN P_CLOSE { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Word, Tree.CreateTree3(DeclNode.Func, $1, null )); } // Function
        | declarator2 P_OPEN param_list P_CLOSE { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Word, Tree.CreateTree3(DeclNode.Func, $1, $3 )); } // Function(with param)
+       | declarator2 P_OPEN CONSTANT P_CLOSE { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Word, Tree.CreateTreeExpr(DeclNode.Func, $1, expConst($3,TypeDataSize.Byte))); } // Machine Function(with param count)
        ;
 
 func_declarator

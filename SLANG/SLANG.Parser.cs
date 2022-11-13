@@ -190,8 +190,12 @@ namespace SLANGCompiler.SLANG
             bool iftrue = false;
             if(expr.IsConst())
             {
+                if(!expr.IsValueConst())
+                {
+                    Error("#IF must be value const parameter.");
+                }
                 var slangScanner = (SLANGScanner)this.Scanner;
-                iftrue = expr.Value != 0;
+                iftrue = expr.ConstValue.value != 0;
                 slangScanner.ProcIf(iftrue);
             } else {
                 Error("#IF must be const parameter.");
