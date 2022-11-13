@@ -14,6 +14,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CommandLineParser" Version="2.9.1" />
+    <PackageReference Include="UTF.unknown" Version="2.5.1" />
     <PackageReference Include="YaccLexTools" Version="1.0.0" />
     <PackageReference Include="YamlDotNet" Version="12.0.2" />
   </ItemGroup>
@@ -40,7 +41,8 @@
   <ItemGroup>
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>BuildDateTime</_Parameter1>
-      <_Parameter2>$([System.DateTime]::UtcNow.ToString("o"))</_Parameter2> <!-- 2021-07-21T00:00:00.000000Z -->
+      <_Parameter2>$([System.DateTime]::UtcNow.ToString("o"))</_Parameter2>
+      <!-- 2021-07-21T00:00:00.000000Z -->
     </AssemblyAttribute>
   </ItemGroup>
 </Project>

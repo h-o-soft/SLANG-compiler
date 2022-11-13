@@ -34,7 +34,7 @@
 %token FOR TO DOWNTO NEXT
 %token EXIT CONTINUE RETURN
 %token GOTO
-%token ORG WORK MACHINE
+%token ORG WORK OFFSET MACHINE
 %token PRINT CODE
 
 %token BEGIN END
@@ -85,6 +85,7 @@ def
        | declaration { globalDataDecl($1); }
        | ORG nc_expr { SetOrg($2); }
        | WORK nc_expr { SetWork($2); }
+       | OFFSET nc_expr { SetOffset($2); }
        | PLAIN { procPlainString($1); }
        | sc
        ;
@@ -198,7 +199,6 @@ stmt
                      genjump(exitLabel);
               }
        | PRINT P_OPEN str_expr_list P_CLOSE { genPrint($3); }
-       | CODE P_OPEN code_expr_list P_CLOSE { GenerateCodeStmt($3); }
        | case_head begin case_stmt_list end { doCaseEnd(); }
        | for_head for_stmt
               {
@@ -474,6 +474,8 @@ param_decl
        ;
 
 nc_expr : primary    { $$ = $1; }
+       | PER nc_expr { $$ = coerce($2, OperatorType.Word); }
+       | CODE P_OPEN code_expr_list P_CLOSE { $$ = expCode($3); }
        | OP_AMP nc_expr %prec unop { $$ = expAddrof($2); }
        | HIGH nc_expr %prec unop { $$ = expHighlow( Opcode.High, $2); }
        | LOW nc_expr %prec unop { $$ = expHighlow( Opcode.Low, $2); }
@@ -533,7 +535,7 @@ expr
 
 primary : 
          IDENTIFIER                                             { $$ = expIdent($1); }
-       | CONSTANT                                               { $$ = expConst($1); }
+       | CONSTANT                                               { $$ = expConst($1,TypeDataSize.Byte); }
        | STRING                                                 { $$ = expString($1); }
        | primary AB_OPEN expr B_CLOSE { $$ = expArray($1, $3); }
        | P_OPEN nc_expr P_CLOSE           { $$ = $2; }
@@ -561,11 +563,8 @@ str_expr_list
        ;
 
 nc_code_expr
-       : WORD CONSTANT { $$ = expConst($2); }
-       | PER CONSTANT { $$ = expConst($2); }
-       | BYTE CONSTANT { $$ = expConst($2, TypeDataSize.Byte); }
-       | CONSTANT { $$ = expConst($1, TypeDataSize.Byte); }
-       | B_OPEN nc_expr B_CLOSE { $$ = $2; }
+       : nc_expr
+       | B_OPEN nc_expr B_CLOSE { $$ = makeNode1(Opcode.CodeExpr, OperatorType.Word, TypeInfo.WordTypeInfo, $2); }
        | STRING { $$ = expString($1); }
        | compop IDENTIFIER compop { if($1 == "<" && $3 == ">") { $$ = expLabel($2); } }
        ;

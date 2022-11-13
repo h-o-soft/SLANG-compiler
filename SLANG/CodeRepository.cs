@@ -162,13 +162,19 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// コードリポジトリに蓄積されたアセンブラコードを出力する。
         /// </summary>
-        public List<string> GenerateCodeList(int orgValue)
+        public List<string> GenerateCodeList(int orgValue, int offsetValue)
         {
             int prevLabel = -1;
 
             CodeList.Clear();
 
            WriteCode($"\n\tORG\t${orgValue:X}\n");
+
+           if(offsetValue >= 0)
+           {
+            // OFFSETは未対応
+            WriteCode($";\tOFFSET\t${offsetValue:X}\n");
+           }
 
             string condStr = "";
             foreach(var code in codeList)

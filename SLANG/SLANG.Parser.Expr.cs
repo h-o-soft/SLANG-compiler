@@ -398,6 +398,8 @@ namespace SLANGCompiler.SLANG
                     switch(from)
                     {
                         case OperatorType.Constant:
+                            a.TypeInfo = TypeInfo.ByteTypeInfo;
+                            return a;
                         case OperatorType.Byte:
                             return a;
                         case OperatorType.Word:
@@ -415,6 +417,8 @@ namespace SLANGCompiler.SLANG
                     switch(from)
                     {
                         case OperatorType.Constant:
+                            a.TypeInfo = TypeInfo.WordTypeInfo;
+                            return a;
                         case OperatorType.Word:
                         case OperatorType.Pointer:
                             return a;
@@ -985,6 +989,13 @@ namespace SLANGCompiler.SLANG
             }
             Error("=: type mismatch " + ltype + "\n:" + rtype);
             return null;
+        }
+
+        private Expr expCode(Tree tree)
+        {
+            var expr = makeNode1(Opcode.Code, OperatorType.Word, TypeInfo.WordTypeInfo, null);
+            expr.paramList = tree;
+            return expr;
         }
 
         public Expr LastConstExpr { get; private set; }

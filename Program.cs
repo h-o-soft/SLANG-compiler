@@ -56,6 +56,8 @@ namespace SLANGCompiler
 
         static void Main(string[] args)
         {
+            System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance); 
+
             var parser = new CommandLine.Parser(with => with.HelpWriter = null);
             var parseResult = parser.ParseArguments<Options>(args);
             parseResult.MapResult(

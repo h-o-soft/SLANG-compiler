@@ -41,7 +41,7 @@ namespace SLANGCompiler.SLANG
                 public RuntimeInfo(string name, string insideName, bool used, string code, string[] insideCalls)
                 {
                     Name = name;
-                    InsideCalls = insideCalls;
+                    InsideName = insideName;
                     Used = used;
                     Code = code;
                     InsideCalls = insideCalls;

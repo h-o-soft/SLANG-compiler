@@ -90,6 +90,7 @@ namespace SLANGCompiler.SLANG
         public void SetOriginalSymbolUse(bool originalUse)
         {
             symbolTableManager.UseOriginalSymbol = originalUse;
+            localSymbolTableManager.UseOriginalSymbol = originalUse;
         }
 
         /// <summary>
@@ -118,6 +119,7 @@ namespace SLANGCompiler.SLANG
             int arrayCount = 0;
             int paramCount = 0;
             FunctionType functionType = isMachine ? FunctionType.Machine : FunctionType.Normal;
+            Tree initialValueCodeTree = null;
 
             while(true)
             {
@@ -154,7 +156,7 @@ namespace SLANGCompiler.SLANG
                             if(isArray)
                             {
                                 initialValueList = null;
-                                initialValueCode = arrayTree.initialValueCodeTree;
+                                initialValueCode = initialValueCodeTree;
                             } else {
                                 initialValueList = tree.InitialValues;
                             }
@@ -205,12 +207,16 @@ namespace SLANGCompiler.SLANG
                         }
                         arrayTree = tree;
                         var baseType = typeInfo;
-                        var tp = new TypeInfo(isArray ? TypeInfoClass.Array : TypeInfoClass.Indirect, tree.ArraySize + 1, TypeDataSize.Word, typeInfo);
+                        var tp = new TypeInfo(isArray ? TypeInfoClass.Array : TypeInfoClass.Indirect, tree.ArraySize + 1, typeInfo.GetDataSize(), typeInfo);
                         typeInfo = tp;
                         arraySize *= (tree.ArraySize+1);
                         if(tree.Address >= 0)
                         {
                             address = tree.Address;
+                        }
+                        if(tree.initialValueCodeTree != null)
+                        {
+                            initialValueCodeTree = tree.initialValueCodeTree;
                         }
                         tree = tree.First;
                         break;

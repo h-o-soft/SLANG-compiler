@@ -63,6 +63,33 @@ namespace SLANGCompiler.SLANG
             codeRepository.AddJump(labelNum);
         }
 
+        // 式を文字列に戻すが、現状、アドレスに対する単純な加算にしか対応していない
+        private string createExprString(Expr expr)
+        {
+            StringBuilder sb = new StringBuilder();
+            switch(expr.Opcode)
+            {
+                case Opcode.Add:
+                {
+                    sb.Append(createExprString(expr.Left));
+                    sb.Append("+");
+                    sb.Append(createExprString(expr.Right));
+                    break;
+                }
+                case Opcode.Const:
+                {
+                    sb.Append(expr.Value.ToString());
+                    break;
+                }
+                case Opcode.Adr:
+                {
+                    sb.Append(expr.Symbol.LabelName);
+                    break;
+                }
+            }
+            return sb.ToString();
+        }
+
         // CODE文の生成
         public int GenerateCodeStmt(Tree paramList)
         {
@@ -87,10 +114,10 @@ namespace SLANGCompiler.SLANG
                     if(expr.TypeInfo.GetDataSize() == TypeDataSize.Byte)
                     {
                         codeSize++;
-                        gencode($" DB ${expr.Value:X2}\n");
+                        gencode($" DB ${expr.Value & 0xFF:X2}\n");
                     } else {
                         codeSize+=2;
-                        gencode($" DW ${expr.Value:X4}\n");
+                        gencode($" DW ${expr.Value & 0xFFFF:X4}\n");
                     }
                 } else if(expr.Opcode == Opcode.Str)
                 {
@@ -104,9 +131,18 @@ namespace SLANGCompiler.SLANG
                 {
                     codeSize += 2;
                     genLabelAddress(expr.Value);
+                } else if(expr.Opcode == Opcode.CodeExpr)
+                {
+                    genexptop(expr.Left);
                 } else {
-                    // TODO これが初期値で記載された場合初期値サイズがおかしくなる(無駄に増える)ので注意
-                    genexptop(expr);
+                    // CONST式であると解釈しつつアセンブラが解釈出来る式を文字列で出力する
+                    // ARRAY   BYTE    SCC[70];
+                    // の場合、
+                    // %SCC+1 → __SCC+1
+                    // と、する(うーむ……)
+                    //codeSize += GenerateConstExpr(expr);
+                    // genexptop(expr);
+                    gencode(" DW " + createExprString(expr) + "\n");
                 }
             }
             return codeSize;
@@ -567,7 +603,7 @@ namespace SLANGCompiler.SLANG
             if(right != null & right.IsConst())
             {
                 genexp(left);
-                if(left.TypeInfo.GetDataSize() == TypeDataSize.Word)
+                //if(left.TypeInfo.GetDataSize() == TypeDataSize.Word || left.OpType == OperatorType.Pointer)
                 {
                     // 4加算まではINCにしてそれ以上は普通に足してみる
                     if(right.Value < 4)
@@ -580,19 +616,21 @@ namespace SLANGCompiler.SLANG
                         gencode($" LD DE,{right.Value}\n");
                         gencode($" ADD HL,DE\n");
                     }
-                } else {
-                    // 基本的にはWORDにキャストされているはずなのでここにはこないはず……
-                    if(right.Value < 4)
-                    {
-                        // 4加算まではINCにしてそれ以上は普通に足してみる
-                        for(int i = 0; i < right.Value; i++)
-                        {
-                            gencode(" INC L\n");
-                        }
-                    } else {
-                        gencode($" ADD L,{right.Value}\n");
-                    }
                 }
+                // TODO 本当に全ての演算はキャストされるのか？後でチェック。
+                // else {
+                //    // 基本的にはWORDにキャストされているはずなのでここにはこないはず……
+                //    if(right.Value < 4)
+                //    {
+                //        // 4加算まではINCにしてそれ以上は普通に足してみる
+                //        for(int i = 0; i < right.Value; i++)
+                //        {
+                //            gencode(" INC L\n");
+                //        }
+                //    } else {
+                //        gencode($" ADD L,{right.Value}\n");
+                //    }
+                //}
             } else if(right.CanLoadDirect())
             {
                 // これとここの下、Byte加算に対応していないので注意(手前で左右ともにWORDになっているはず)
@@ -1457,19 +1495,45 @@ namespace SLANGCompiler.SLANG
 
             // パラメータが逆順に入っているので逆にする
             var exprList = new List<Expr>();
+            bool requirePush = false;
             for(Tree p = paramList; p != null; p = p.First)
             {
                 Expr param = p.Expr;
                 exprList.Insert(0, param);
+                if(param.Opcode == Opcode.Func && param.Left.Symbol.FunctionType == FunctionType.Normal)
+                {
+                    requirePush = true;
+                }
             }
+
+
+            Expr prevParam = null;
             foreach(var param in exprList)
             {
                 genexp(param);
-                gencode($" LD (IY+{startAdr}),L\n");
-                gencode($" LD (IY+{startAdr+1}),H\n");
+                if(requirePush)
+                {
+                    gencode($" PUSH HL\n");
+                } else {
+                    gencode($" LD (IY+{startAdr}),L\n");
+                    gencode($" LD (IY+{startAdr+1}),H\n");
+                }
+                prevParam = param;
 
                 startAdr += 2;
                 count++;
+            }
+
+            if(requirePush)
+            {
+                startAdr -= 2;
+                foreach(var param in exprList)
+                {
+                    gencode($" POP HL\n");
+                    gencode($" LD (IY+{startAdr}),L\n");
+                    gencode($" LD (IY+{startAdr+1}),H\n");
+                    startAdr -= 2;
+                }
             }
 
             gencall(func.Symbol.LabelName);
@@ -1506,12 +1570,14 @@ namespace SLANGCompiler.SLANG
             if(isNormalCall && exprList.Count < 4)
             {
                 // 1. 直接レジスタに入らないものを先に入れてPUSHする
+                int pushIdx = 0;
                 foreach(var param in exprList)
                 {
                     if(!param.CanLoadDirect())
                     {
                         genexp(param);
                         gencode(" PUSH HL\n");
+                        pushIdx++;
                     }
                 }
 
@@ -1527,14 +1593,13 @@ namespace SLANGCompiler.SLANG
                 }
 
                 // 3. 1でPUSHしたものを正しいレジスタで拾う
-                idx = 0;
-                foreach(var param in exprList)
+                for(idx = exprList.Count - 1; idx >= 0; idx-- )
                 {
+                    var param = exprList[idx];
                     if(!param.CanLoadDirect())
                     {
                         gencode($" POP {paramRegs[idx].GetCode()}\n");
                     }
-                    idx++;
                 }
             } else {
                 // 引数の数が4つ以上の場合は全て順にスタックに詰む
@@ -1818,6 +1883,11 @@ namespace SLANGCompiler.SLANG
                 case Opcode.PortAccess:
                 {
                     genportIn(left, right);
+                    break;
+                }
+                case Opcode.Code:
+                {
+                    GenerateCodeStmt(expr.paramList);
                     break;
                 }
                 default:

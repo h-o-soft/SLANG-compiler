@@ -224,9 +224,7 @@ namespace SLANGCompiler.SLANG
 
         public void GenerateInitialValueSymbol(CodeRepository codeRepository, ICodeStatementGenerator codeStatementGenerator)
         {
-            codeRepository.AddCode("\n");
-            codeRepository.AddCode("; Variables (has initial values)\n");
-
+            bool isFirst = true;
             // Global Classの変数のコードを出力する
             foreach(var symbol in symbolTableList)
             {
@@ -248,6 +246,13 @@ namespace SLANGCompiler.SLANG
                 if(symbol.InitialValueList == null && symbol.InitialValueCode == null)
                 {
                     continue;
+                }
+
+                if(isFirst)
+                {
+                    codeRepository.AddCode("\n");
+                    codeRepository.AddCode("; Variables (has initial values)\n");
+                    isFirst = false;
                 }
 
                 var labelName = symbol.LabelName;
@@ -284,8 +289,10 @@ namespace SLANGCompiler.SLANG
                     }
                 }
             }
-
-            codeRepository.AddCode("\n");
+            if(!isFirst)
+            {
+                codeRepository.AddCode("\n");
+            }
         }
 
         /// <summary>

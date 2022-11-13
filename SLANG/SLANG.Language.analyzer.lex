@@ -293,7 +293,8 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
                     switch(yytext[yyleng-1]){
                     case 'n' :
                     case '/' : lexStrBuffer.Append((char)0x0d);
-                               lexStrBuffer.Append((char)0x0a);
+                                // TODO LSX-Dodgersではこれを有効にしないと駄目
+                               //lexStrBuffer.Append((char)0x0a);
                                break;
 
                     case 'C' :
@@ -301,7 +302,9 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
                                break;
 
                     case 'R' :
-                    case 'r' : lexStrBuffer.Append('\r');
+                    case 'r' :
+                               lexStrBuffer.Append((char)0x1c);
+                               //lexStrBuffer.Append('\r');
                                break;
 
                     case 'L' :
@@ -369,7 +372,9 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
 
             byte[] inputBuffer = System.Text.Encoding.UTF8.GetBytes(exprStr + ";");
             MemoryStream stream = new MemoryStream(inputBuffer);
-            SetSource(stream);
+            var charsetDetectedResult = UtfUnknown.CharsetDetector.DetectFromStream(stream);
+            stream.Position = 0;
+            SetSource(stream, CodePageHandling.GetCodePage(charsetDetectedResult.Detected.EncodingName));
             buffStack.Push(new ContextInfo(savedCtx, false));
         }
     }
@@ -385,7 +390,10 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
                   fName = fName.Trim('"');
                 }
                 BufferContext savedCtx = MkBuffCtx();
-                SetSource(new FileStream(fName, FileMode.Open));
+                var stream = new FileStream(fName, FileMode.Open);
+                var charsetDetectedResult = UtfUnknown.CharsetDetector.DetectFromStream(stream);
+                stream.Position = 0;
+                SetSource(stream, CodePageHandling.GetCodePage(charsetDetectedResult.Detected.EncodingName));
                 Console.WriteLine("; include {0}", fName);
                 buffStack.Push(new ContextInfo(savedCtx, true)); // Don't push until file open succeeds!
                 PushLocation();
@@ -407,5 +415,5 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
         {
           PopLocation();
         }
-        return false;     
+        return false;
     }

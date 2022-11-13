@@ -109,6 +109,7 @@ namespace SLANGCompiler.SLANG
             // ローカル変数定義
             functionSymbolTableManagerList.Add(localSymbolTableManager);
             localSymbolTableManager = new SymbolTableManager(this);
+            localSymbolTableManager.UseOriginalSymbol = symbolTableManager.UseOriginalSymbol;
             funcNumber++;
 
             // 関数のパラメータがくっついているTreeを探す
