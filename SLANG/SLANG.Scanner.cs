@@ -21,7 +21,7 @@ namespace SLANGCompiler.SLANG
             if(constParser.LastConstExpr.IsConst())
             {
                 // Console.WriteLine("Check:" + constParser.LastConstExpr.Value);
-                return constParser.LastConstExpr.ConstValue.value != 0;
+                return constParser.LastConstExpr.ConstValue.Value != 0;
             } else {
                 error("expr must be const. : " + constStr);
             }
@@ -31,17 +31,16 @@ namespace SLANGCompiler.SLANG
 
         void GetChar(string charStr)
         {
-            yylval.constValue.constType = ConstType.Word;
             if(charStr.Length != 1)
             {
                 yyerror("invalid char format");
                 return;
             }
-            yylval.constValue.value = (int)charStr[0];
+            var constValue = new ConstInfo((int)charStr[0]);
+            yylval.constValue = constValue;
         }
         void GetNumber()
         {
-            yylval.constValue.constType = ConstType.Word;
 
             int number;
             // 16進数か？
@@ -57,7 +56,8 @@ namespace SLANGCompiler.SLANG
             } else {
                 number = int.Parse(yytext);
             }
-            yylval.constValue.value = number;
+            var constValue = new ConstInfo(number);
+            yylval.constValue = constValue;
             // yylval.s = yytext;
             // yylval.n = int.Parse(yytext);
         }
@@ -121,14 +121,7 @@ namespace SLANGCompiler.SLANG
             ConstInfo info;
             if(constTableManager.TryGetValue(yytext, out info))
             {
-                if(info.ConstInfoType == ConstInfoType.Value)
-                {
-                    yylval.constValue.constType = ConstType.Word;
-                    yylval.constValue.value = info.Value;
-                } else {
-                    yylval.constValue.constType = ConstType.Code;
-                    yylval.constValue.symbolValue = info.SymbolString;
-                }
+                yylval.constValue = info;
                 return Token.CONSTANT;
             }
 

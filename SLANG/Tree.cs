@@ -47,7 +47,7 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// 識別子が配置されるアドレス(-1の場合はコンパイラが定義を行う)
         /// </summary>
-        public int Address { get; set; }
+        public ConstInfo Address { get; set; }
         /// <summary>
         /// 初期値(無い場合はnull)
         /// </summary>
@@ -88,7 +88,7 @@ namespace SLANGCompiler.SLANG
         {
             this.Node = DeclNode.Dummy;
             this.IdentifierName = null;
-            this.Address = -1;
+            this.Address = null;
             this.InitialValues = null;
             this.initialValueCodeTree = null;
             this.TypeInfo = null;
@@ -243,7 +243,7 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// 配列宣言のTreeを作る
         /// </summary>
-        public static Tree CreateArray(Tree tree, Expr size = null, Expr address = null )
+        public static Tree CreateArray(Tree tree, Expr size = null)
         {
             Tree p = new Tree()
             {
@@ -257,14 +257,6 @@ namespace SLANGCompiler.SLANG
                     throw new System.Exception("配列宣言の添字が定数ではありません");
                 }
                 p.ArraySize = size.Value;
-            }
-            if( address != null)
-            {
-                if(address.OpType != OperatorType.Constant)
-                {
-                    throw new System.Exception("配列宣言のアドレスが定数ではありません");
-                }
-                p.Address = address.Value;
             }
             return p;
         }
@@ -289,7 +281,7 @@ namespace SLANGCompiler.SLANG
                 {
                     throw new System.Exception("識別子のアドレス指定は定数である必要があります");
                 }
-                this.Address = address.Value;
+                this.Address = address.ConstValue;
             }
             if(initialValue != null)
             {

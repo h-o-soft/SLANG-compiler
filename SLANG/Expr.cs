@@ -217,7 +217,7 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// Constの値
         /// </summary>
-        public Const ConstValue { get; set; }
+        public ConstInfo ConstValue { get; set; }
 
         /// <summary>
         /// 式が持つシンボル値
@@ -265,7 +265,7 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public bool IsValueConst()
         {
-            return Opcode == Opcode.Const && ConstValue.constType != ConstType.Code;
+            return Opcode == Opcode.Const && ConstValue.ConstInfoType != ConstInfoType.Code;
         }
 
         /// <summary>
@@ -275,17 +275,7 @@ namespace SLANGCompiler.SLANG
         {
             if(Opcode == Opcode.Const)
             {
-                if(ConstValue.constType == ConstType.Code)
-                {
-                    var constSymbol = symbolManager.SearchSymbol(ConstValue.symbolValue);
-                    if(constSymbol == null)
-                    {
-                        return null;
-                    }
-                    return constSymbol.LabelName;
-                } else {
-                    return ConstValue.value.ToString();
-                }
+                return ConstValue.GetConstStr(symbolManager);
             }
             throw new Exception("not const");
         }

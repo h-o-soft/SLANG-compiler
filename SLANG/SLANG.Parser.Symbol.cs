@@ -56,7 +56,7 @@ namespace SLANGCompiler.SLANG
                 Name = "MEM",
                 SymbolClass = SymbolClass.Global,
                 TypeInfo = TypeInfo.MemoryByte,
-                Address = 0,
+                Address = new ConstInfo(0),
                 Size = 65536
             };
             symbolTableManager.Add(mem);
@@ -66,7 +66,7 @@ namespace SLANGCompiler.SLANG
                 Name = "MEMW",
                 SymbolClass = SymbolClass.Global,
                 TypeInfo = TypeInfo.MemoryWord,
-                Address = 0,
+                Address = new ConstInfo(0),
                 Size = 65536
             };
             symbolTableManager.Add(memw);
@@ -115,7 +115,7 @@ namespace SLANGCompiler.SLANG
             bool isIndirect = false;
             Tree arrayTree = null;
             int arraySize = 1;
-            int address = -1;
+            ConstInfo address = null;
             int arrayCount = 0;
             int paramCount = 0;
             FunctionType functionType = isMachine ? FunctionType.Machine : FunctionType.Normal;
@@ -134,7 +134,7 @@ namespace SLANGCompiler.SLANG
                             typeInfo = tree.TypeInfo.Clone();
                             firstTypeInfo = typeInfo.Clone();
                             tree = tree.First;
-                            if(tree.Address >= 0)
+                            if(tree.Address != null)
                             {
                                 address = tree.Address;
                             }
@@ -142,7 +142,7 @@ namespace SLANGCompiler.SLANG
                         }
                     case DeclNode.Id:
                         {
-                            if(tree.Address >= 0)
+                            if(tree.Address != null)
                             {
                                 address = tree.Address;
                             }
@@ -210,7 +210,7 @@ namespace SLANGCompiler.SLANG
                         var tp = new TypeInfo(isArray ? TypeInfoClass.Array : TypeInfoClass.Indirect, tree.ArraySize + 1, typeInfo.GetDataSize(), typeInfo);
                         typeInfo = tp;
                         arraySize *= (tree.ArraySize+1);
-                        if(tree.Address >= 0)
+                        if(tree.Address != null)
                         {
                             address = tree.Address;
                         }
@@ -227,7 +227,7 @@ namespace SLANGCompiler.SLANG
                         if(isMachine)
                         {
                             paramCount = tree.ArraySize;
-                            if(tree.Address >= 0)
+                            if(tree.Address != null)
                             {
                                 address = tree.Address;
                             }

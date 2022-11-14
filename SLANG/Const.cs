@@ -20,14 +20,4 @@ namespace SLANGCompiler.SLANG
         /// <summary>CODE定数(CODEのアドレスを指す)/summary>
         Code,
     }
-
-    /// <summary>
-    /// CONST値クラス(パースされた直後にこれに格納される)
-    /// </summary>
-    public struct Const
-    {
-        public ConstType constType;
-        public int value;
-        public string symbolValue;
-    }
 }

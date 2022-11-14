@@ -8,18 +8,31 @@ using YamlDotNet.Serialization.NamingConventions;
 
 namespace SLANGCompiler.SLANG
 {
+
+    /// <summary>
+    /// Const値の型
+    /// </summary>
     public enum ConstInfoType
     {
+        /// <summary>数値型</summary>
         Value,
+        /// <summary>CODEアドレス参照型</summary>
         Code,
     }
 
+    /// <summary>
+    /// Const値の情報を持つクラス
+    /// </summary>
     public class ConstInfo
     {
+        /// <summary>CONST値の型</summary>
         public ConstInfoType ConstInfoType { get; set; }
+        /// <summary>CONST値(値)</summary>
         public int Value { get; set; }
+        /// <summary>CONST値(CODEを参照する場合のシンボル名)</summary>
         public string SymbolString { get; set; }
 
+        /// <summary>値を持つCONST値のコンストラクタ</summary>
         public ConstInfo(int value)
         {
             this.ConstInfoType = ConstInfoType.Value;
@@ -27,11 +40,44 @@ namespace SLANGCompiler.SLANG
             this.SymbolString = null;
         }
 
+        /// <summary>CODEシンボル名を持つCONST値のコンストラクタ</summary>
         public ConstInfo(string symbolStr)
         {
             this.ConstInfoType = ConstInfoType.Code;
             this.Value = 0;
             this.SymbolString = symbolStr;
+        }
+
+        /// <summary>CONST値の複製</summary>
+        public ConstInfo Clone()
+        {
+            if(ConstInfoType == ConstInfoType.Value)
+            {
+                return new ConstInfo(Value);
+            } else {
+                return new ConstInfo(SymbolString);
+            }
+        }
+
+        /// <summary>このConstInfoのCONST情報を文字列で返す</summary>
+        public string GetConstStr(SymbolTableManager symbolManager)
+        {
+            if(ConstInfoType == ConstInfoType.Code)
+            {
+                var constSymbol = symbolManager.SearchSymbol(SymbolString);
+                if(constSymbol == null)
+                {
+                    return null;
+                }
+                return constSymbol.LabelName;
+            } else {
+                if(Value > 255)
+                {
+                    return $"${Value:X4}";
+                } else {
+                    return $"${Value:X2}";
+                }
+            }
         }
     }
     /// <summary>
