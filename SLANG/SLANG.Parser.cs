@@ -350,7 +350,7 @@ namespace SLANGCompiler.SLANG
                 stream.Close();
             } catch(Exception e)
             {
-                SystemError(e.Message);
+                SystemError(e.ToString());
                 //Console.Error.WriteLine($"fatal error : " + e.ToString());
             }
         }
@@ -380,7 +380,7 @@ namespace SLANGCompiler.SLANG
                 Console.WriteLine($"{ErrorCount} error(s)");
             } catch(Exception e)
             {
-                SystemError(e.Message);
+                SystemError(e.ToString());
                 //Console.Error.WriteLine($"fatal error : " + e.ToString());
             }
         }
@@ -413,7 +413,7 @@ namespace SLANGCompiler.SLANG
                 Console.WriteLine($"{ErrorCount} error(s)");
             } catch(Exception e)
             {
-                SystemError(e.Message);
+                SystemError(e.ToString());
                 //Console.Error.WriteLine($"fatal error : " + e.ToString());
             }
         }

@@ -366,7 +366,7 @@ namespace SLANGCompiler.SLANG
                 boolOp = ComparisonOp.Neq;
             }
             Expr zero = makeNode1(Opcode.Const, OperatorType.Constant, TypeInfo.WordTypeInfo, null);
-            zero.Value = 0;
+            zero.ConstValue = new ConstInfo(0);
             p = makeNode2(Opcode.Bool, OperatorType.Bool, TypeInfo.WordTypeInfo, coerce(p, OperatorType.Word), zero);
             p.ComparisonOp = boolOp;
             return p;

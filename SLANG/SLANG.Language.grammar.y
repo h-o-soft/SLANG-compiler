@@ -5,7 +5,7 @@
 %tokentype Token
 
 %union { 
-       public Const constValue;
+       public ConstInfo constValue;
        public Expr expr;
        public string symbol;
        public Tree tree;
@@ -210,7 +210,7 @@ stmt
                      genlabel($1.Label + 1);
                      // 1足す
                      Expr one = makeNode1(Opcode.Const, OperatorType.Constant, TypeInfo.WordTypeInfo, null);
-                     one.Value = 1;
+                     one.ConstValue = new ConstInfo(1);
                      genexp(expIncdec(forOp == "TO" ? Opcode.PostInc : Opcode.PostDec, forIdentifier));
 
                      genForloop(forOp, forIdentifier, forExpr, $1.Label);
