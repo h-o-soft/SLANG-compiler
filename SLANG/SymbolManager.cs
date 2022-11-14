@@ -24,11 +24,14 @@ namespace SLANGCompiler.SLANG
 
         public bool UseOriginalSymbol { get; set; }
 
+        public bool CaseSensitive { get; set; }
+
         public SymbolTableManager(IErrorReporter errorReporter)
         {
             this.errorReporter = errorReporter;
             Initialize();
             UseOriginalSymbol = false;
+            CaseSensitive = false;
         }
 
         /// <summary>
@@ -114,11 +117,12 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public SymbolTable SearchSymbol(string name)
         {
-            var symName = name;
+            var symName = CaseSensitive ? name : name.ToUpper();
             foreach(var table in symbolTableList)
             {
+                var tableName = CaseSensitive ? table.Name : table.Name.ToUpper();
                 // シンボル名を探す
-                if(symName == table.Name)
+                if(symName == tableName)
                 {
                     return table;
                 }
@@ -128,7 +132,8 @@ namespace SLANGCompiler.SLANG
                 {
                     foreach(var aliasName in table.AliasNameList)
                     {
-                        if(symName == aliasName)
+                        var aName = CaseSensitive ? aliasName : aliasName.ToUpper();
+                        if(symName == aName)
                         {
                             return table;
                         }

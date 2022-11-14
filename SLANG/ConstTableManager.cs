@@ -32,6 +32,8 @@ namespace SLANGCompiler.SLANG
         /// <summary>CONST値(CODEを参照する場合のシンボル名)</summary>
         public string SymbolString { get; set; }
 
+        public bool CaseSensitive { get; set; }
+
         /// <summary>値を持つCONST値のコンストラクタ</summary>
         public ConstInfo(int value)
         {
@@ -88,6 +90,8 @@ namespace SLANGCompiler.SLANG
 
         private Dictionary<string, ConstInfo> constTableDictionary = new Dictionary<string, ConstInfo>();
 
+        public bool CaseSensitive { get; set; }
+
         /// <summary>
         /// CONST定義されたシンボルと値を追加する
         /// </summary>
@@ -109,10 +113,23 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public bool TryGetValue(string name, out ConstInfo info)
         {
-            if(constTableDictionary.TryGetValue(name, out info))
+            if(CaseSensitive)
             {
-                return true;
+                if(constTableDictionary.TryGetValue(name, out info))
+                {
+                    return true;
+                }
+            } else {
+                foreach(var pair in constTableDictionary)
+                {
+                    if(pair.Key.ToUpper() == name.ToUpper())
+                    {
+                        info = pair.Value;
+                        return true;
+                    }
+                }
             }
+            info = null;
             return false;
         }
 
