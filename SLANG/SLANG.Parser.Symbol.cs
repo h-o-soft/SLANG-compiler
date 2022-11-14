@@ -78,7 +78,7 @@ namespace SLANGCompiler.SLANG
             symbolTableManager.AddSymbol("^IY", TypeInfo.WordTypeInfo, true);
             symbolTableManager.AddSymbol("^AF", TypeInfo.WordTypeInfo, true);
             symbolTableManager.AddSymbol("^A", TypeInfo.WordTypeInfo, true);      // AについてはAFの2バイト目を指すように改竄されるので注意。その関係でワークは1バイト無駄が出る。
-            symbolTableManager.AddSymbol("^CARRY", TypeInfo.WordTypeInfo, true);
+            symbolTableManager.AddSymbol("^CARRY", TypeInfo.WordTypeInfo, true).AddAliasName("^CY");
             symbolTableManager.AddSymbol("^ZERO", TypeInfo.WordTypeInfo, true);
             symbolTableManager.AddSymbol("^SP", TypeInfo.WordTypeInfo, true);
 

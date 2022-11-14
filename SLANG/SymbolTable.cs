@@ -65,6 +65,11 @@ namespace SLANGCompiler.SLANG
         public string Name { get; set; }
 
         /// <summary>
+        /// シンボルの別名
+        /// </summary>
+        public List<string> AliasNameList { get; set; }
+
+        /// <summary>
         /// シンボルの内部名称(ランタイムにて、プログラムで使われる名称と実際のラベル名称が異なる場合の、ラベル名称)
         /// </summary>
         public string InsideName { get; set; }
@@ -138,10 +143,21 @@ namespace SLANGCompiler.SLANG
              return Address != null && Address.ConstInfoType == ConstInfoType.Value && Address.Value == 0;
         }
 
+        public SymbolTable AddAliasName(string name)
+        {
+            if(AliasNameList == null)
+            {
+                AliasNameList = new List<string>();
+            }
+            AliasNameList.Add(name);
+            return this;
+        }
+
         public SymbolTable()
         {
             this.LabelHeader = null;
             this.Name = null;
+            this.AliasNameList = null;
             this.InsideName = null;
             this.SymbolClass = SymbolClass.Global;
             this.TypeInfo = null;

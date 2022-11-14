@@ -117,9 +117,22 @@ namespace SLANGCompiler.SLANG
             var symName = name;
             foreach(var table in symbolTableList)
             {
+                // シンボル名を探す
                 if(symName == table.Name)
                 {
                     return table;
+                }
+
+                // 別名も探す
+                if(table.AliasNameList != null)
+                {
+                    foreach(var aliasName in table.AliasNameList)
+                    {
+                        if(symName == aliasName)
+                        {
+                            return table;
+                        }
+                    }
                 }
             }
             return null;
