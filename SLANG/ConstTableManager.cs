@@ -92,6 +92,9 @@ namespace SLANGCompiler.SLANG
 
         public bool CaseSensitive { get; set; }
 
+        private ConstInfo zeroConst = new ConstInfo(0);
+        public ConstInfo ZeroConst => zeroConst;
+
         /// <summary>
         /// CONST定義されたシンボルと値を追加する
         /// </summary>
