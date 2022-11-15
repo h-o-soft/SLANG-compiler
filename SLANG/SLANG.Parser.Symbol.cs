@@ -94,6 +94,16 @@ namespace SLANGCompiler.SLANG
         }
 
         /// <summary>
+        /// シンボルテーブルとCONSTテーブルについて大文字小文字の区別をする場合はtrue、しない場合はfalseを指定する
+        /// </summary>
+        public void SetCaseSensitiveSymbol(bool caseSensitive)
+        {
+            symbolTableManager.CaseSensitive = caseSensitive;
+            localSymbolTableManager.CaseSensitive = caseSensitive;
+            constTableManager.CaseSensitive = caseSensitive;
+        }
+
+        /// <summary>
         /// シンボルテーブルの状態を表示する(デバッグ用)
         /// </summary>
         public void dispSymbolTable()

@@ -110,6 +110,7 @@ namespace SLANGCompiler.SLANG
             functionSymbolTableManagerList.Add(localSymbolTableManager);
             localSymbolTableManager = new SymbolTableManager(this);
             localSymbolTableManager.UseOriginalSymbol = symbolTableManager.UseOriginalSymbol;
+            localSymbolTableManager.CaseSensitive = symbolTableManager.CaseSensitive;
             funcNumber++;
 
             // 関数のパラメータがくっついているTreeを探す
