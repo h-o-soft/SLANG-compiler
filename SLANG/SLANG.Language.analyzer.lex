@@ -24,10 +24,11 @@ Number          ([0-9]+|$[0-9a-fA-F]+|[0-9a-fA-F][Hh]|[01]+[Bb])
 IdentSymbol     [_@\^]
 Identifier      ({IdentSymbol}|[a-zA-Z\u3041-\u3096\u30A1-\u30FA々〇〻\u3400-\u9FFF\uF900-\uFAFF\uD840-\uD87F\uDC00-\uDFFF])({IdentSymbol}|[0-9a-zA-Z\u3041-\u3096\u30A1-\u30FA々〇〻\u3400-\u9FFF\uF900-\uFAFF\uD840-\uD87F\uDC00-\uDFFF])*
 
-PREIF   "#IF"
-PREELSE "#ELSE"
-PREEND  "#END"|"#ENDIF"
-ASM     "#ASM"
+
+PREIF   #[Ii][Ff]
+PREELSE #[Ee][Ll][Ss][Ee]
+PREEND  #[Ee][Nn][Dd]|#[Ee][Nn][Dd][Ii][Ff]
+ASM     #[Aa][Ss][Mm]
 
 CMTSTART	"/\*"|"(*"
 CMTEND		"*\/"|"*)"
@@ -35,8 +36,8 @@ CMTEND		"*\/"|"*)"
 hex (x|X)[0-9a-fA-F]{1,2}
 oct [0-7]{1,3}
 
-ELIF        ELIF
-EF          EF
+ELIF        [Ee][Ll][Ss][Ee]
+EF          [Ee][Ff]
 OP_ADD      \+
 OP_SUB      -
 OP_MUL      \*
@@ -60,6 +61,8 @@ SC          ;
 CP_EQ       ==
 CP_NE       <>
 
+EXC   !
+
 FORMD FORM\$
 DECID DECI\$
 PER   \%
@@ -68,13 +71,12 @@ HEX2D HEX2\$
 HEX4D HEX4\$
 MSGD  MSG\$
 MSXD  MSX\$
-EXC   !
 STRD  STR\$
 CHRD  CHR\$
 SPCD  SPC\$
 CRD   CR\$
 TABD  TAB\$
-STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|{SPCD}|{CRD}|{TABD}
+STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}|{CRD}|{TABD}
 
 %{
     StringBuilder lexStrBuffer = null;
@@ -172,13 +174,14 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{EXC}|{STRD}|{CHRD}|
 {Space}+		{ nextBraceIsArray = false; }
 
 {STRFUNC}       { yylval.symbol = yytext; return (int)Token.STRFUNC; }
+{EXC}           { yylval.symbol = "!"; return (int)Token.EXC; }
 
 {Eol}           { LocationNextLine(); nextBraceIsArray = false; }
 
 
 /* #INCLUDE */
 
-^"#INCLUDE"                  BEGIN(INCL);
+^#[Ii][Nn][Cc][Ll][Uu][Dd][Ee]                  BEGIN(INCL);
 
 <INCL>{Eol}                  BEGIN(INITIAL); TryInclude(null);
 <INCL>[ \t]                  /* skip whitespace */
