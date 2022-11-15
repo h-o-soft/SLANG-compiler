@@ -197,8 +197,12 @@ namespace SLANGCompiler.SLANG
             Expr e;
             if(table == null)
             {
-                // 宣言されていない識別子は一時定義関数として自動定義してやり、定義時に差し替える。定義されなかった場合はエラーとなる。
-                table = symbolTableManager.AddSymbol(name, TypeInfo.TempFunc, null);
+                // 宣言されていない識別子は一時的にConstの0値として設定しておく(ConstValueのSymbolStringに識別子名を入れておく(暫定))
+                // 一時定義関数として自動定義してやり、定義時に差し替える。定義されなかった場合はエラーとなる。
+                var result = expConst(ConstTableManager.ZeroConst.Clone(), TypeDataSize.Word);
+                result.ConstValue.SymbolString = name;
+                return result;
+                //table = symbolTableManager.AddSymbol(name, TypeInfo.TempFunc, null);
             }
 
             // 該当シンボルが使われた(^BCなどが使われない場合、CALL関数を最適化するために利用している)
@@ -296,6 +300,17 @@ namespace SLANGCompiler.SLANG
             {
                 return null;
             }
+            // 左が未定義CONST(0値で、CONST名を持つ)の場合はTempFuncに差し替える
+            if(func.Opcode == Opcode.Const && func.ConstValue.Value == 0 && func.ConstValue.SymbolString != null)
+            {
+                var table = symbolTableManager.AddSymbol(func.ConstValue.SymbolString, TypeInfo.TempFunc, null);
+                var temptypeInfo = table.TypeInfo.Clone();
+                var e = makeNode1(Opcode.Adr, OperatorType.Pointer, temptypeInfo.MakePointer(), null);
+                e.Symbol = table;
+                e.SymbolOffset = 0;
+                func = e;
+            }
+
             TypeInfo typeInfo = func.TypeInfo.Clone();
             if(typeInfo.IsFunction())
             {
@@ -330,7 +345,7 @@ namespace SLANGCompiler.SLANG
                 funcSymbol.Size = paramCount;
             } else if(funcSymbol.Size != paramCount && funcSymbol.Size >= 0)
             {
-                Error("invalid function paramater size " + funcSymbol.Name);
+                Error($"invalid function paramater size ({paramCount} / {funcSymbol.Size}) " + funcSymbol.Name);
                 return null;
             }
 
