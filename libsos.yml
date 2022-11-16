@@ -361,6 +361,8 @@ PHEX:
 
 PRT:
   param_count: 1
+  calls:
+    - SOSCALLS
   code: |
     JP sPRINT
 

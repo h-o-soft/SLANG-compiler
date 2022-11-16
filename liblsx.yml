@@ -29,6 +29,9 @@ LSXCALLS:
     CONST	EQU	$0B
     lSCRN EQU $EFD0
     lLOC EQU $EFD6
+    FCB1	EQU	005CH
+    FCB2	EQU	006CH
+    DTA1	EQU	0080H
 
 WIDTH:
   param_count: 1
@@ -65,7 +68,6 @@ LOCATE:
   calls:
     - sLOC
   code: |
-    EX DE,HL
     LD H,E
     JP sLOC
 
