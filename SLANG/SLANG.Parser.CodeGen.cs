@@ -391,6 +391,12 @@ namespace SLANGCompiler.SLANG
         // expr.leftにHLを代入する
         private void genstore(Expr expr, bool needLvalue)
         {
+            // キャストを無視する
+            if(expr.Opcode == Opcode.BtoW)
+            {
+                expr = expr.Left;
+            }
+
             Expr left = expr;
 
             // Byteへの代入である
@@ -508,7 +514,7 @@ namespace SLANGCompiler.SLANG
                         }
                     }
                 } else {
-                    var loadByte = isByte && !typeInfo.IsIndirect();
+                    var loadByte = isByte && !symbol.TypeInfo.IsIndirectType();
                     if(loadByte)
                     {
                         if(right.CanLoadDirect())
@@ -1380,7 +1386,7 @@ namespace SLANGCompiler.SLANG
                         gencode($" LD H,(IY+{ofs+1})\n");
                     }
                 } else {
-                    var isIndirect = symbol.TypeInfo.IsIndirect();
+                    var isIndirect = symbol.TypeInfo.IsIndirectType();
                     if(!isIndirect && typeInfo.GetDataSize() == TypeDataSize.Byte)
                     {
                         gencode(" LD HL,%a\n", expr.Left);
@@ -2083,7 +2089,11 @@ namespace SLANGCompiler.SLANG
             if(targetExpr.IsVariable())
             {
                 var symbol = targetExpr.Left.Symbol;
-                if(symbol.TypeInfo.IsArray())
+                // 間接変数に対しては必ずWORDアクセスする(?)
+                if(symbol.TypeInfo.IsIndirectType())
+                {
+                    isByte = false;
+                } else if(symbol.TypeInfo.IsArray())
                 {
                     // Arrayの場合は直下のDataSizeでアクセスする(MEMW対策)
                     isByte = targetExpr.Left.Symbol.TypeInfo.DataSize == TypeDataSize.Byte;
@@ -2218,9 +2228,18 @@ namespace SLANGCompiler.SLANG
                     Error("const scaled error");
                     return;
                 }
-                genexp(left);
-                gencode($" LD DE,{right.ConstValue.Value * scale}\n");
-                gencode(" ADD HL,DE\n");
+                // 二次元配列の添字が両方とも定数の場合は混ぜられる
+                if(left.Opcode == Opcode.ScaleAdd && left.Right.IsValueConst())
+                {
+                    int rightScale = computeSize(left.Left.TypeInfo.Parent) * left.Right.ConstValue.Value;
+                    genld(Register.HL, left.Left, TypeDataSize.Word);
+                    gencode($" LD DE,{right.ConstValue.Value * scale + rightScale}\n");
+                    gencode(" ADD HL,DE\n");
+                } else {
+                    genexp(left);
+                    gencode($" LD DE,{right.ConstValue.Value * scale}\n");
+                    gencode(" ADD HL,DE\n");
+                }
             } else if(right.IsVariable())
             {
                 if(right.CanLoadDirect() && scale <= 2)

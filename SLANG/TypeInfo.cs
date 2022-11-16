@@ -152,6 +152,23 @@ namespace SLANGCompiler.SLANG
         }
 
         /// <summary>
+        /// この型が間接変数の場合true、そうでない場合falseを返す
+        /// </summary>
+        public bool IsIndirectType()
+        {
+            var parent = this.Parent;
+            while(parent != null)
+            {
+                if(parent.InfoClass == TypeInfoClass.Indirect)
+                {
+                    return true;
+                }
+                parent = parent.Parent;
+            }
+            return this.InfoClass == TypeInfoClass.Indirect;
+        }
+
+        /// <summary>
         /// この型がI/Oポートアクセス配列の場合true、そうでない場合falseを返す
         /// </summary>
         public bool IsPortArray()

@@ -126,6 +126,8 @@ namespace SLANGCompiler.SLANG
                     return typeInfo.Size * (typeInfo.DataSize == TypeDataSize.Byte ? 1 : 2); //computeSize(typeInfo.Parent);
                 case TypeInfoClass.Function:
                     return 1;
+                case TypeInfoClass.Indirect:
+                    return typeInfo.Size * (typeInfo.GetDataSize() == TypeDataSize.Byte ? 1 : 2);
                 default:
                     Error("bug computeSize : " + typeInfo.InfoClass + ":" + typeInfo.DataSize);
                     break;

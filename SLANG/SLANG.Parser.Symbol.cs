@@ -217,7 +217,7 @@ namespace SLANGCompiler.SLANG
                         }
                         arrayTree = tree;
                         var baseType = typeInfo;
-                        var tp = new TypeInfo(isArray ? TypeInfoClass.Array : TypeInfoClass.Indirect, tree.ArraySize + 1, typeInfo.GetDataSize(), typeInfo);
+                        var tp = new TypeInfo((isArray || arrayCount > 1) ? TypeInfoClass.Array : TypeInfoClass.Indirect, tree.ArraySize + 1, typeInfo.GetDataSize(), typeInfo);
                         typeInfo = tp;
                         arraySize *= (tree.ArraySize+1);
                         if(tree.Address != null)
