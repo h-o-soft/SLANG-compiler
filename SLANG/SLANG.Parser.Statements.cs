@@ -260,7 +260,7 @@ namespace SLANGCompiler.SLANG
         }
 
         // EXIT / CONTINUE管理用のラベルスタック
-        private Stack<int> labelStack = new Stack<int>();
+        private List<int> labelStack = new List<int>();
 
         // 現在のEXITラベル
         private int breakLabel;
@@ -270,15 +270,47 @@ namespace SLANGCompiler.SLANG
         // EXIT/CONTINUEラベルをPUSH
         private void pushLabels()
         {
-            labelStack.Push(breakLabel);
-            labelStack.Push(contLabel);
+            labelStack.Add(breakLabel);
+            labelStack.Add(contLabel);
         }
 
         // EXIT/CONTINUEラベルをPOP
         private void popLabels()
         {
-            contLabel = labelStack.Pop();
-            breakLabel = labelStack.Pop();
+            contLabel = labelStack[labelStack.Count - 1];
+            labelStack.RemoveAt(labelStack.Count - 1);
+            breakLabel = labelStack[labelStack.Count - 1];
+            labelStack.RemoveAt(labelStack.Count - 1);
+        }
+
+        private int peekContLabel(int idx)
+        {
+            idx--;
+            if(idx < 0)
+            {
+                return contLabel;
+            }
+            var listIndex = labelStack.Count - 1 - idx * 2;
+            if(labelStack.Count <= listIndex)
+            {
+                return -1;
+            }
+            return labelStack[listIndex];
+        }
+
+        private int peekBreakLabel(int idx)
+        {
+            idx--;
+            if(idx < 0)
+            {
+                return breakLabel;
+            }
+            var listIndex = labelStack.Count - 2 - idx * 2;
+            if(labelStack.Count <= listIndex)
+            {
+                return -1;
+            }
+            return labelStack[listIndex];
         }
     }
 }
