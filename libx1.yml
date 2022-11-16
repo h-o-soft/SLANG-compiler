@@ -264,7 +264,6 @@ LOCATE:
     - AT_VRCALC
     - sWORK
   code: |
-    EX DE,HL
     LD H,E
     PUSH	BC
     PUSH	HL
