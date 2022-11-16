@@ -16,7 +16,20 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public Tree DefineConst(Tree symbolTree, Expr value)
         {
-            constTableManager.Add(symbolTree.IdentifierName, value.Value);
+            if(value.IsValueConst())
+            {
+                // 普通の数値
+                constTableManager.Add(symbolTree.IdentifierName, value.Value);
+            } else if(value.Opcode == Opcode.Adr && value.Symbol.FunctionType == FunctionType.Machine){
+                // シンボル(関数ラベル)
+                // ランタイムにある場合は利用フラグを立てる
+                runtimeManager.Use(value.Symbol.Name);
+                constTableManager.AddCode(symbolTree.IdentifierName, value.Symbol.Name);
+            } else {
+                // この場合は文字列定数として扱う
+                var str = createExprString(value);
+                constTableManager.AddString(symbolTree.IdentifierName, str);
+            }
             return Tree.CreateTree1(DeclNode.Dummy);
         }
 

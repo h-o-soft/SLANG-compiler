@@ -265,7 +265,7 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public bool IsValueConst()
         {
-            return Opcode == Opcode.Const && ConstValue.ConstInfoType != ConstInfoType.Code;
+            return Opcode == Opcode.Const && ConstValue.ConstInfoType == ConstInfoType.Value;
         }
 
         /// <summary>

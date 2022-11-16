@@ -79,7 +79,7 @@
 file
        : def
        | file def
-       | PRECONST nc_expr { setConstExpr($2); }
+       | PRECONST { SetConstMode(true); } nc_expr { setConstExpr($3); SetConstMode(false); }
        ;
 def
        : func_def
@@ -267,7 +267,8 @@ until_stmt
 
 for_stmt
        : for_begin stmt_list for_end
-       | {} stmt
+       | stmt NEXT sc
+       | stmt
        ;
 
 for_head
@@ -396,6 +397,7 @@ for_begin
 for_end
        : end NEXT sc
        | end
+       | NEXT sc
        ;
 
 then

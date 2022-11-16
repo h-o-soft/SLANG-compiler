@@ -23,6 +23,9 @@ namespace SLANGCompiler
             [Option("use-symbol", Required = false, HelpText = "Use original symbol name.")]
             public bool UseOriginalSymbol { get; set; }
 
+            [Option("case-sensitive", Required = false, HelpText = "Set symbols to be case-sensitive.")]
+            public bool CaseSensitive { get; set; }
+
             [Value(0, Required = true, MetaName = "input files")]
             public IEnumerable<string> Files { get; set; }
         }
@@ -93,6 +96,7 @@ namespace SLANGCompiler
 
             // ソースファイルで指定した変数名、関数名をそのまま使うか、使わないか
             parser.SetOriginalSymbolUse(opt.UseOriginalSymbol);
+            parser.SetCaseSensitiveSymbol(opt.CaseSensitive);
 
             // ライブラリ指定がない場合はデフォルトを読む
             if(opt.LibraryNames == null || opt.LibraryNames.Count() == 0)

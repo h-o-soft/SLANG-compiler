@@ -20,7 +20,7 @@ Eol             (\r\n?|\n)
 dotchr          [^\r\n]
 NotWh           [^ \t\r\n]
 Space           [ \t]
-Number          ([0-9]+|$[0-9a-fA-F]+|[0-9a-fA-F][Hh]|[01]+[Bb])
+Number          ([0-9]+|$[0-9a-fA-F]+|[0-9a-fA-F]+[Hh]|[01]+[Bb])
 IdentSymbol     [_@\^]
 Identifier      ({IdentSymbol}|[a-zA-Z\u3041-\u3096\u30A1-\u30FA々〇〻\u3400-\u9FFF\uF900-\uFAFF\uD840-\uD87F\uDC00-\uDFFF])({IdentSymbol}|[0-9a-zA-Z\u3041-\u3096\u30A1-\u30FA々〇〻\u3400-\u9FFF\uF900-\uFAFF\uD840-\uD87F\uDC00-\uDFFF])*
 

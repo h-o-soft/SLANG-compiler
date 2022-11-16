@@ -81,7 +81,16 @@ namespace SLANGCompiler.SLANG
                     if(expr.ConstValue.ConstInfoType == ConstInfoType.Code)
                     {
                         var constSymbol = symbolTableManager.SearchSymbol(expr.ConstValue.SymbolString);
-                        sb.Append(constSymbol.LabelName);
+                        if(constSymbol.IsRuntime)
+                        {
+                            runtimeManager.Use(constSymbol.Name);
+                            sb.Append(constSymbol.RuntimeName);
+                        } else {
+                            sb.Append(constSymbol.LabelName);
+                        }
+                    } else if(expr.ConstValue.ConstInfoType == ConstInfoType.String)
+                    {
+                        sb.Append(expr.ConstValue.SymbolString);
                     } else {
                         sb.Append(expr.ConstValue.Value.ToString());
                     }
@@ -89,7 +98,14 @@ namespace SLANGCompiler.SLANG
                 }
                 case Opcode.Adr:
                 {
-                    sb.Append(expr.Symbol.LabelName);
+                    var sym = expr.Symbol;
+                    if(sym.IsRuntime)
+                    {
+                        runtimeManager.Use(sym.Name);
+                        sb.Append(sym.RuntimeName);
+                    } else {
+                        sb.Append(sym.LabelName);
+                    }
                     break;
                 }
             }
@@ -122,6 +138,11 @@ namespace SLANGCompiler.SLANG
                         var constSymbol = symbolTableManager.SearchSymbol(expr.ConstValue.SymbolString);
                         codeSize+=2;
                         gencode($" DW {constSymbol.LabelName}\n");
+                    } else if(expr.ConstValue.ConstInfoType == ConstInfoType.String)
+                    {
+                        // 文字列CONSTの場合はそのまま使う
+                        codeSize+=2;
+                        gencode($" DW {expr.ConstValue.SymbolString}\n");
                     } else {
                         if(expr.TypeInfo.GetDataSize() == TypeDataSize.Byte)
                         {
@@ -677,6 +698,10 @@ namespace SLANGCompiler.SLANG
                     {
                         var constStr = GetConstStr(right);
                         gencode($" LD DE,{constStr}\n");
+                        gencode($" ADD HL,DE\n");
+                    } else if(right.ConstValue.ConstInfoType == ConstInfoType.String)
+                    {
+                        gencode($" LD DE,{right.ConstValue.SymbolString}\n");
                         gencode($" ADD HL,DE\n");
                     } else {
                         // 4加算まではINCにしてそれ以上は普通に足してみる
@@ -1823,6 +1848,9 @@ namespace SLANGCompiler.SLANG
                     {
                         var constSymbol = symbolTableManager.SearchSymbol(expr.ConstValue.SymbolString);
                         gencode($" LD HL,{constSymbol.LabelName}\n");
+                    } else if(expr.ConstValue.ConstInfoType == ConstInfoType.String)
+                    {
+                        gencode($" LD HL,{expr.ConstValue.SymbolString}\n");
                     } else {
                         gencode($" LD HL,{expr.ConstValue.Value}\n");
                     }
