@@ -63,19 +63,19 @@ CP_NE       <>
 
 EXC   !
 
-FORMD FORM\$
-DECID DECI\$
+FORMD [Ff][Oo][Rr][Mm]\$
+DECID [Dd][Ee][Cc][Ii]\$
 PER   \%
-PND   PN\$
-HEX2D HEX2\$
-HEX4D HEX4\$
-MSGD  MSG\$
-MSXD  MSX\$
-STRD  STR\$
-CHRD  CHR\$
-SPCD  SPC\$
-CRD   CR\$
-TABD  TAB\$
+PND   [Pp][Nn]\$
+HEX2D [Hh][Ee][Xx]2\$
+HEX4D [Hh][Ee][Xx]4\$
+MSGD  [Mm][Ss][Gg]\$
+MSXD  [Mm][Ss][Xx]\$
+STRD  [Ss][Tt][Rr]\$
+CHRD  [Cc][Hh][Rr]\$
+SPCD  [Ss][Pp][Cc]\$
+CRD   [Cc][Rr]\$
+TABD  [Tt][Aa][Bb]\$
 STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}|{CRD}|{TABD}
 
 %{
@@ -159,7 +159,7 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
 {F_CLOSE}		{ return (int)Token.F_CLOSE; }
 {OP_EQ}			{ nextBraceIsArray = false; return (int)Token.OP_EQ; }
 {COMMA}			{ return (int)Token.COMMA; }
-{COLON}			{ return (int)Token.COLON; }
+{COLON}			{ nextBraceIsArray = false; return (int)Token.COLON; }
 {QUESTION}		{ return (int)Token.QUESTION; }
 {SC}			{ nextBraceIsArray = false; return (int)Token.SC; }
 {OP_LSHIFT}		{ return (int)GetShiftop(); }

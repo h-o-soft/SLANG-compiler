@@ -176,6 +176,21 @@ stmt
                      }
                      genjump(breakLabel);
               }
+       | EXIT P_OPEN expr P_CLOSE sc
+              {
+                     if(!$3.IsConst())
+                     {
+                            Error("exit param must be const.");
+                     }
+                     int brkLabel = peekBreakLabel($3.ConstValue.Value - 1);
+                     Console.WriteLine("brkLabel:" + brkLabel);
+                     if(brkLabel >= 0)
+                     {
+                            genjump(brkLabel);
+                     } else {
+                            Error("could not exit outside loop");
+                     }
+              }
        | CONTINUE sc
               {
                      if (contLabel == 0)
