@@ -324,6 +324,7 @@ XORHLDE:
     RET
 
 BIT:
+  inside_name: RBIT
   param_count: 2
   calls:
     - RSHIFTHLDE
@@ -336,6 +337,7 @@ BIT:
     RET 
 
 SET:
+  inside_name: RSET
   param_count: 2
   calls:
     - ORHLDE
