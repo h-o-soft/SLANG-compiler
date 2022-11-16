@@ -108,6 +108,7 @@ namespace SLANGCompiler.SLANG
             {"CASE", Token.CASE},
             {"OTHERS", Token.OTHERS},
             {"OF", Token.OF},
+            {"LOOP", Token.LOOP},
         };
 
         Token GetIdentifier()

@@ -31,7 +31,7 @@
 %token <symbol> EXC
 %token               VAR BYTE WORD ARRAY CONST PER
 %token IF THEN ELSE ELIF ENDIF
-%token WHILE DO WEND REPEAT UNTIL CASE OTHERS OF
+%token WHILE DO WEND REPEAT UNTIL CASE OTHERS OF LOOP
 %token FOR TO DOWNTO NEXT
 %token EXIT CONTINUE RETURN
 %token GOTO
@@ -70,7 +70,7 @@
 %type <tree> param_list param_decl
 %type <tree> expr_list str_expr_list code_expr_list
 %type <expr> primary nc_expr expr func_body func_end nc_str_expr nc_code_expr case_stmt_head
-%type <label> then_part then_head then_part_list while_head repeat_head
+%type <label> then_part then_head then_part_list while_head repeat_head loop_head
 %type <forInfo> for_head
 %type <op> for_to_or_downto
 
@@ -149,6 +149,12 @@ stmt
                      genlabel(label);
                      var elseLabel = popElseLabel();
                      if(elseLabel >= 0)genlabel(elseLabel);
+              }
+       | loop_head stmt
+              {
+                     genjump($1);
+                     genlabel($1 + 1);
+                     popLabels();
               }
        | while_head compound_while_stmt
        {
@@ -294,6 +300,16 @@ for_head
 for_to_or_downto
        : TO  { $$ = "TO"; }
        | DOWNTO { $$ = "DOWNTO"; }
+       ;
+
+loop_head
+       : LOOP {
+              int label;
+              $$ = label = genNewLabel() ; genNewLabel();
+              pushLabels();
+              breakLabel = label + 1; contLabel = label;
+              genlabel(label);
+              }
        ;
 
 while_head
