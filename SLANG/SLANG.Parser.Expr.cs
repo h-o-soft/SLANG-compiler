@@ -214,7 +214,8 @@ namespace SLANGCompiler.SLANG
             table.Used = true;
 
             var typeInfo = table.TypeInfo.Clone();
-            if(typeInfo.IsArray())
+            // 間接配列変数の場合はIndir->Adrにて通常変数扱いにするため親を覗き見て対応(強引)
+            if(typeInfo.IsArray() && typeInfo.Parent != null && !typeInfo.Parent.IsIndirect())
             {
                 // 配列
                 e = makeNode1(Opcode.Adr, OperatorType.Pointer, typeInfo, null);
@@ -544,7 +545,7 @@ namespace SLANGCompiler.SLANG
             }
 
             typeInfo = typeInfo.Parent;
-            if(typeInfo.IsArray())
+            if(typeInfo.IsArray() || typeInfo.IsIndirect())
             {
                 p.TypeInfo = typeInfo;
                 return p;
@@ -968,7 +969,7 @@ namespace SLANGCompiler.SLANG
 
             if((ltype.IsNumeric() || ltype.IsPointer()) && (rtype.IsNumeric() || rtype.IsPointer()))
             {
-                var result = makeNode2(Opcode.AssignOp, ltype.ToOptype(), ltype, left, coerce(right, opType));
+                var result = makeNode2(Opcode.AssignOp, ltype.ToOptype(), ltype, coerce(left, opType), coerce(right, opType));
                 result.AssignOpCode = opcode;
                 return result;
             }
