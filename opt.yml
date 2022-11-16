@@ -18,3 +18,10 @@
      POP HL
   replace_code: |-
     ;
+- code: |-
+    PUSH HL
+    LD HL,@1
+    POP DE
+  replace_code: |-
+    EX DE,HL
+    LD HL,@1
