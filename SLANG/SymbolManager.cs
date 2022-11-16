@@ -46,7 +46,7 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// 関数を追加する
         /// </summary>
-        public void AddFunction(FunctionType functionType, string name, string insideName, int paramCount, ConstInfo Address = null, bool? useOriginalSymbol = null)
+        public void AddFunction(FunctionType functionType, string name, string insideName, int paramCount, ConstInfo Address = null, bool? useOriginalSymbol = null, bool isRuntime = false)
         {
             if(useOriginalSymbol == null)
             {
@@ -62,6 +62,7 @@ namespace SLANGCompiler.SLANG
                 Size = paramCount,
                 Address = Address,
                 UseOriginalSymbol = (bool)useOriginalSymbol,
+                IsRuntime = isRuntime
             };
             Add(symbol);
             symbol.Id = symbolTableList.IndexOf(symbol);
@@ -236,7 +237,7 @@ namespace SLANGCompiler.SLANG
                 if(table.IsTempFunction())
                 {
                     hasError = true;
-                    errorReporter.Error($"Could not found identifier : {table.Name}");
+                    errorReporter.Error($"Could not found identifier : {table.Name}", true);
                 }
             }
             return hasError;

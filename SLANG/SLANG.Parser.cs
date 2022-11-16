@@ -144,9 +144,14 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// 処理中の行番号とファイル名と共にコンパイラのエラーメッセージを表示する。
         /// </summary>
-        public void Error(string error)
+        public void Error(string error, bool noDispLine = false)
         {
-            this.Scanner.yyerror("error:" + error);
+            if(noDispLine)
+            {
+                ((SLANGScanner)this.Scanner).error("error:" + error);
+            } else {
+                this.Scanner.yyerror("error:" + error);
+            }
         }
 
         /// <summary>

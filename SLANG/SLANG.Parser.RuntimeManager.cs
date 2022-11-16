@@ -150,14 +150,14 @@ namespace SLANGCompiler.SLANG
                 {
                     if(addressStr != null)
                     {
-                        addressInfo = new ConstInfo(addressStr);
+                        addressInfo = new ConstInfo(addressStr, true);
                     }
                 } else {
                     addressInfo = new ConstInfo(address);
                 }
 
                 // シンボルテーブル側に反映させておく
-                symbolTableManager.AddFunction(runtimeCode.functionType, label, info.InsideName, runtimeCode.paramCount, addressInfo, true);
+                symbolTableManager.AddFunction(runtimeCode.functionType, label, info.InsideName, runtimeCode.paramCount, addressInfo, true, true);
             }
 
             /// <summary>

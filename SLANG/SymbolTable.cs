@@ -138,6 +138,11 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public FunctionType FunctionType;
 
+        /// <summary>
+        /// ランタイムシンボルかどうか
+        /// </summary>
+        public bool IsRuntime;
+
         public bool IsMemoryArray()
         {
              return Address != null && Address.ConstInfoType == ConstInfoType.Value && Address.Value == 0;
@@ -168,6 +173,7 @@ namespace SLANGCompiler.SLANG
             this.Used = false;
             this.FunctionType = FunctionType.Normal;
             this.UseOriginalSymbol = false;
+            this.IsRuntime = false;
         }
 
         /// <summary>

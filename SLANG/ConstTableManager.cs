@@ -18,6 +18,7 @@ namespace SLANGCompiler.SLANG
         Value,
         /// <summary>CODEアドレス参照型</summary>
         Code,
+        String,
     }
 
     /// <summary>
@@ -42,10 +43,10 @@ namespace SLANGCompiler.SLANG
             this.SymbolString = null;
         }
 
-        /// <summary>CODEシンボル名を持つCONST値のコンストラクタ</summary>
-        public ConstInfo(string symbolStr)
+        /// <summary>CODEシンボル名または文字列を持つCONST値のコンストラクタ</summary>
+        public ConstInfo(string symbolStr, bool isCode)
         {
-            this.ConstInfoType = ConstInfoType.Code;
+            this.ConstInfoType = isCode ? ConstInfoType.Code : ConstInfoType.String;
             this.Value = 0;
             this.SymbolString = symbolStr;
         }
@@ -57,7 +58,7 @@ namespace SLANGCompiler.SLANG
             {
                 return new ConstInfo(Value);
             } else {
-                return new ConstInfo(SymbolString);
+                return new ConstInfo(SymbolString, ConstInfoType == ConstInfoType.Code);
             }
         }
 
@@ -71,7 +72,15 @@ namespace SLANGCompiler.SLANG
                 {
                     return null;
                 }
-                return constSymbol.LabelName;
+                if(constSymbol.IsRuntime)
+                {
+                    return constSymbol.RuntimeName;
+                } else {
+                    return constSymbol.LabelName;
+                }
+            } else if(ConstInfoType == ConstInfoType.String)
+            {
+                return SymbolString;
             } else {
                 if(Value > 255)
                 {
@@ -108,7 +117,15 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public void AddCode(string name, string codeName)
         {
-            constTableDictionary[name] = new ConstInfo(codeName);
+            constTableDictionary[name] = new ConstInfo(codeName, true);
+        }
+
+        /// <summary>
+        /// CONST定義された文字列を追加する
+        /// </summary>
+        public void AddString(string name, string str)
+        {
+            constTableDictionary[name] = new ConstInfo(str, false);
         }
 
         /// <summary>
