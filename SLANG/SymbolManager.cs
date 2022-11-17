@@ -84,7 +84,7 @@ namespace SLANGCompiler.SLANG
                     // 一時定義関数を実関数宣言に入れ替えられるか？
                     if(!s.TypeInfo.IsFunction() || !table.TypeInfo.IsFunction())
                     {
-                        errorReporter.Error("could not convert a temporary function to a normal function : " + s.Name);
+                        errorReporter.Error($"symbol \"{s.Name}\" already defined.");
                         return null;
                     }
                     // 実宣言により一時定義関数を置き換える

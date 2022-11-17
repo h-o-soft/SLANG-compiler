@@ -25,3 +25,8 @@
   replace_code: |-
     EX DE,HL
     LD HL,@1
+- code: |-
+    JP @1
+    JP @1
+  replace_code: |-
+    JP @1
