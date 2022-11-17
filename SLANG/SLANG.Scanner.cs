@@ -53,6 +53,9 @@ namespace SLANGCompiler.SLANG
             } else if(Char.ToLower(yytext[yytext.Length-1]) == 'b')
             {
                 number = Convert.ToInt32(yytext.Substring(0, yytext.Length - 1), 2);
+            } else if(yytext.StartsWith("0x"))
+            {
+                number = Convert.ToInt32(yytext.Substring(2), 16);
             } else {
                 number = int.Parse(yytext);
             }
