@@ -70,7 +70,7 @@
 %type <tree> param_list param_decl
 %type <tree> expr_list str_expr_list code_expr_list
 %type <expr> primary nc_expr expr func_body func_end nc_str_expr nc_code_expr case_stmt_head
-%type <label> then_part then_head then_part_list while_head repeat_head loop_head
+%type <label> then_part then_head then_part_list while_head repeat_head loop_head case_head
 %type <forInfo> for_head
 %type <op> for_to_or_downto
 
@@ -221,7 +221,11 @@ stmt
                      genjump(exitLabel);
               }
        | PRINT P_OPEN str_expr_list P_CLOSE { genPrint($3); }
-       | case_head begin case_stmt_list end { doCaseEnd(); }
+       | case_head begin case_stmt_list end {
+              doCaseEnd();
+              genlabel($1 + 1);
+              popLabels();
+       }
        | for_head for_stmt
               {
                      var forIdentifier = $1.Expr;
@@ -244,7 +248,16 @@ stmt
        ;
 
 case_head
-       : CASE expr of { doCaseHead($2); }
+       : CASE expr of {
+              int label;
+              $$ = label = genNewLabel(); genNewLabel();
+              pushLabels();
+              breakLabel = label + 1;
+              contLabel = label;
+              genlabel(label);
+
+              doCaseHead($2);
+       }
        ;
 
 of
