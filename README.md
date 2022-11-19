@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.1.0
+SLANG Compiler (Z80) 0.2.0
 
 # 概要
 
@@ -22,6 +22,7 @@ Copyright (c) 2022 OGINO Hiroshi / H.O SOFT
   -L, --lib               Library name(s). ( lib*.yml )
   -O, --output            Output file path.
   --use-symbol            Use original symbol name.
+  --case-sensitive        Set symbols to be case-sensitive.
   --help                  Display this help screen.
   --version               Display version information.
 ```
@@ -33,6 +34,8 @@ Copyright (c) 2022 OGINO Hiroshi / H.O SOFT
 -L オプションに続けて、後述のランタイムライブラリの名前を付与する事で、指定のライブラリを読み込む事が出来ます( -L x1 とする事で、 libx1.yml というライブラリを読み込みます)。
 
 --use-symbol をつけると、変数名、関数名について、ソースコードで利用した名前をそのまま使ってアセンブラソースが出力されます。つけない場合は、「SYM(数字)」という名前に置き換えられますので、アセンブラがラベルとして識別出来ない変数名、関数名を使っている場合は、--use-symbolをつけないようにしてください。
+
+--case-sensitiveをつけると、識別子について大文字小文字が区別されます。つけない場合は区別されません。
 
 # ランタイムについて
 
@@ -84,6 +87,23 @@ runtime.yml と lib*.ymlは、カレントパス、あるいはユーザーフ�
 MIT
 
 # 更新履歴
+- Version 0.2.0
+  - CONSTにCODEリストを与える事が出来るよう対応
+  - MACHINE関数について定義のみで実装出来なかった不具合を修正
+  - 変数宣言のアドレス指定にCODEアドレスを持つCONST値を指定出来るよう対応
+  - CONST関連の処理を見直し
+  - ^CARRYと^CYを同じものとして扱うよう対応
+  - 関数名と変数名についてデフォルトで大文字小文字を区別しないよう変更(--case-sensitiveオプションの追加)
+  - 「!」をBYTEの別名として扱うよう対応
+  - プリプロセッサ命令の一部を大文字小文字区別しないよう対応
+  - CONST定義にランタイム(ラベル)を指定出来るよう対応
+  - LOOP文(無限ループ)に対応
+  - 間接変数の二次元配列に対応
+  - EXIT(num)でnum個ぶんループを抜けられるよう対応(numは定数である必要があります)
+  - 不正なランタイム関数名の内部名称の変更(BIT/SET)
+  - examplesフォルダ追加
+  - 0x〜で16進数として扱われるよう対応
+  - CASE文の中からEXITで抜けられなかったのを修正
 - Version 0.1.0
   - --use-symbolオプションを追加
   - 配列の初期化をCODEリストで行うよう修正
