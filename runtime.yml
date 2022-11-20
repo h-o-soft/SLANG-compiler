@@ -479,7 +479,7 @@ CALL:
     LD DE,.call1
     PUSH DE
     PUSH HL
-    LD A,(___AF)
+    LD A,(___AF+1)
     LD BC,(___BC)
     LD DE,(___DE)
     LD HL,(___HL)

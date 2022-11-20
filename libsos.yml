@@ -63,6 +63,17 @@ SOSCALLS:
     sHLHEX  EQU 1FB2H
     sKBFAD  EQU 1F76H
 
+    sFILE   EQU 1FA3H
+    sDSK    EQU 1F5DH
+    sFATPOS EQU 1F5EH
+    sDIRPS  EQU 1F60H
+    sDTBUF  EQU 1F64H
+    sIBFAD  EQU 1F74H
+    sDRDSB  EQU 2000H
+    sDWTSB  EQU 2003H
+
+    sTPCHK  EQU 2863H
+
 WIDTH:
   param_count: 1
   calls:
@@ -286,7 +297,7 @@ PCRONE:
 PCR:
   param_count: 1
   calls:
-    - PSTR2
+    - PCR1
   code: |
     LD E,$0D
 
@@ -482,3 +493,887 @@ BEEP:
   code: |
     CALL $1FC4
     RET
+
+
+FILEWORKS:
+  code: |
+    FBADDEVICE    EQU $0f
+    FOUTOFFILE    EQU $11
+    FALREADYOPEN  EQU $12
+    FDOUBLEOPEN   EQU $13
+    FTOOLONGFILE  EQU $14
+
+    CMODE:
+    DB 0
+    FBUFAD:
+    DW C800H
+    SCBUFAD:
+    DW CC00H
+    FBUFDEV:
+    DB 0,0,0,0
+    FBWRFLG:
+    DS 4
+    SPACEOS:
+    DS 1
+    DIREND:
+    DS 2
+    FWORK0:
+    DB 0,0
+    DS 12
+    FWORK1:
+    DB 1,0
+    DS 12
+    WORK2:
+    DB 2,0
+    DS 12
+    WORK3:
+    DB 3,0
+    DS 12
+
+FOPEN:
+  param_count: 3
+  calls:
+    - SOSCALLS
+    - FILEWORKS
+    - FILEUTIL
+  code: |
+    CALL SETIX
+    JP C, FILEERROR
+    LD A, FALREADYOPEN
+    JP NZ, FILEERROR
+    LD A, C
+    AND $fc
+    OR B
+    LD A, $0e ; bad data
+    JP NZ, FILEERROR
+    LD (IX+(2)), C
+    LD A, 4
+    CALL sFILE
+    JP C, FILEERROR
+    LD A, (sDSK)
+    CALL sTPCHK
+    LD C, A
+    LD A, FBADDEVICE
+    JP Z, FILEERROR
+    LD (IX+(3)), C
+    CALL SCHDIR
+    JP C, FILEERROR
+    LD (IX+(5)), D
+    INC E
+    DEC E
+    JR NZ, FOPEN3
+    EX DE, HL
+    PUSH IY
+    LD IY, FWORK0
+    LD DE, FWORK1-FWORK0
+    LD B, 04
+    FOPEN1:
+    LD A, (IY+(1))
+    OR A
+    JR Z, FOPEN2
+    LD A, (IY+(3))
+    CP (IX+(3))
+    JR NZ, FOPEN2
+    LD A, (IY+(5))
+    CP H
+    JR NZ, FOPEN2
+    LD A, (IY+(2))
+    OR (IX+(2))
+    JR Z, FOPEN2
+    POP IY
+    LD A, FDOUBLEOPEN
+    JP FILEERROR
+    FOPEN2:
+    ADD IY, DE
+    DJNZ FOPEN1
+    POP IY
+    EX DE, HL
+    FOPEN3:
+    LD A, (IX+(2))
+    CP 03
+    JP Z, FOPEN7
+    INC E
+    DEC E
+    LD C, A
+    LD A, 08  ; file not found
+    JP NZ, FILEERROR
+    LD HL, (sIBFAD)
+    LD A, (HL)
+    AND 7
+    CP 4
+    JP NZ, FBADFILEMODE
+    LD DE, 18
+    ADD HL, DE
+    LD E, (HL)
+    INC HL
+    LD D, (HL)
+    INC C
+    DEC C
+    JR Z, FOPEN4
+    BIT 6, A
+    JP NZ, FWRITEPROTECTED
+    FOPEN4:
+    LD (IX+(12)), E
+    LD (IX+(13)), D
+    LD BC, $000b
+    ADD HL, BC
+    LD A, (HL)
+    LD (IX+(10)), A
+    PUSH DE
+    CALL FATOPEN
+    POP DE
+    JP C, FILEERROR
+    LD A, D
+    OR E
+    JR NZ, FOPEN5
+    CALL INVFAT
+    JP C, FOERROR
+    SUB $7f
+    LD C, A
+    LD A, B
+    CP $10
+    LD A, FTOOLONGFILE
+    JP NC, FOERROR
+    LD A, B
+    RLCA
+    RLCA
+    RLCA
+    RLCA
+    ADD A, C
+    LD D, A
+    OR A
+    LD A, FTOOLONGFILE
+    JP Z, FOERROR
+    FOPEN5:
+    LD (IX+(6)), E
+    LD (IX+(7)), D
+    XOR A
+    CALL SCRWRDY
+    CALL NC, sDRDSB
+    JP C, FOERROR
+    FOPEN6:
+    XOR A
+    LD (IX+(4)), A
+    LD (IX+(8)), A
+    LD (IX+(9)), A
+    LD (IX+(11)), A
+    LD (IX+(1)), 1
+    LD L, A
+    JP FNORMAL
+    ;
+    FOPEN7:
+    DEC E
+    JR Z, FOPEN9
+    LD HL, (sIBFAD)
+    LD A, 7
+    AND (HL)
+    CP 4
+    JP NZ, FBADFILEMODE
+    BIT 6, (HL)
+    JP NZ, FWRITEPROTECTED
+    LD DE, $001e
+    ADD HL, DE
+    LD E, (HL)
+    LD (IX+(10)), E
+    CALL FATOPEN
+    JP C, FILEERROR
+    CALL INVFAT
+    JP C, FOERROR
+    LD BC, $0080
+    LD A, (IX+(10))
+    FOPEN8:
+    LD H, B
+    LD L, A
+    ADD HL, DE
+    LD A, (HL)
+    LD (HL), B
+    CP C
+    JR C, FOPEN8
+    FOPEN9:
+    CALL FATOPEN
+    JP C, FILEERROR
+    CALL ASSIGNC
+    JR C, FOERROR
+    LD HL, (sIBFAD)
+    LD DE, $0012
+    ADD HL, DE
+    LD (HL), 1
+    LD B, $0b
+    FOPEN10:
+    INC HL
+    LD (HL), D
+    DJNZ FOPEN10
+    INC HL
+    LD (HL), A
+    LD (IX+(10)), A
+    LD C, 1
+    CALL RWDIR
+    JR C, FOERROR
+    EX DE, HL
+    LD HL, (sIBFAD)
+    LD BC, $0020
+    LDIR
+    CALL RWDIR
+    JR C, FOERROR
+    LD (IX+(6)), 1
+    LD (IX+(7)), 0
+    LD (IX+(12)), 1
+    LD (IX+(13)), 0
+    JP FOPEN6
+    ;
+    FOERROR:
+    PUSH AF
+    CALL FATCLOSE
+    POP AF
+    JP FILEERROR
+
+FSEEK:
+  param_count: 3
+  calls:
+    - SOSCALLS
+    - FILEWORKS
+    - FILEUTIL
+  code: |
+    CALL SETIX
+    JP C, FSERROR
+    LD A, $0c
+    JP Z, FSERROR
+    LD A, $0e
+    INC B
+    DEC B
+    JP NZ, FSERROR
+    INC C
+    DEC C
+    JR Z, FSEEK3
+    DEC C
+    JR Z, FSEEK1
+    DEC C
+    JR NZ, FSERROR
+    LD L, (IX+(6))
+    LD H, (IX+(7))
+    ADD HL, DE
+    EX DE, HL
+    JR FSEEK3
+    FSEEK1:
+    LD L, (IX+(8))
+    LD H, (IX+(9))
+    ADD HL, DE
+    BIT 7, D
+    JR Z, FSEEK2
+    CCF
+    FSEEK2:
+    JP C, FSOUTOFFILE
+    EX DE, HL
+    FSEEK3:
+    LD L, (IX+(6))
+    LD H, (IX+(7))
+    XOR A
+    SBC HL, DE
+    JP C, FSOUTOFFILE
+    LD (IX+(8)), E
+    LD (IX+(9)), D
+    EX DE, HL
+    RET
+
+    FSOUTOFFILE:
+    LD A, FOUTOFFILE
+    FSERROR:
+    LD HL, $ffff
+    SCF
+    RET
+
+FPUTC:
+  param_count: 2
+  calls:
+    - SOSCALLS
+    - FILEWORKS
+    - FILEUTIL
+    - FPG
+  code: |
+    LD C, 0
+    CALL FPG
+    LD (HL), E
+    LD (IX+(4)), 01
+    LD L, 0
+    JP FNORMAL
+
+FGETC:
+  param_count: 1
+  calls:
+    - SOSCALLS
+    - FILEWORKS
+    - FILEUTIL
+    - FPG
+  code: |
+    LD D, 0
+    LD C, 1
+    CALL FPG
+    LD L, (HL)
+    JP FNORMAL
+
+FPG:
+  calls:
+    - SOSCALLS
+    - FILEWORKS
+    - FILEUTIL
+    - FPG
+  code: |
+    PUSH DE
+    CALL SETIX
+    JP C, FPGERROR
+    JR NZ, FPG1
+    LD A, $0c
+    JP FPGERROR
+    FPG1:
+    LD A, (IX+(2))
+    CP C
+    LD A, $10
+    JP Z, FPGERROR
+    INC D
+    DEC D
+    JR Z, FPG2
+    LD A, $0e
+    JP FPGERROR
+    FPG2:
+    LD E, (IX+(8))
+    LD A, (IX+(6))
+    CP E
+    JR NZ, FPG5
+    LD D, (IX+(9))
+    LD A, (IX+(7))
+    CP D
+    JR NZ, FPG5
+    DEC C
+    LD A, FOUTOFFILE
+    JP Z, FPGERROR
+    LD A, D
+    AND E
+    INC A
+    LD A, FTOOLONGFILE
+    JP Z, FPGERROR
+    INC E
+    DEC E
+    JR NZ, FPG4
+    CALL GETFATNO
+    LD A, D
+    AND $0f
+    SET 7, A
+    JR NZ, FPG3
+    CALL ASSIGNC
+    JP C, FPGERROR
+    FPG3:
+    EX AF, AF'
+    PUSH DE
+    CALL INVFAT
+    POP DE
+    JP C, FPGERROR
+    EX AF, AF'
+    LD (HL), A
+    LD HL, FBWRFLG
+    LD B, 0
+    ADD HL, BC
+    LD (HL), 1
+    FPG4:
+    INC DE
+    LD (IX+(6)), E
+    LD (IX+(7)), D
+    FPG5:
+    LD A, (CMODE)
+    OR A
+    LD A, (IX+(9))
+    JR Z, FPG6
+    AND $f0
+    FPG6:
+    CP (IX+(11))
+    JR Z, FPG9
+    LD A, (IX+(4))
+    OR A
+    JR Z, FPG7
+    LD A, (IX+(11))
+    CALL SCRWRDY
+    CALL NC, sDWTSB
+    JP C, FPGERROR
+    LD (IX+(4)), 00
+    FPG7:
+    LD A, (IX+(9))
+    CALL SCRWRDY
+    LD C, A
+    CALL NC, sDRDSB
+    JP C, FPGERROR
+    LD A, (IX+(9))
+    DEC C
+    JR Z, FPG8
+    AND $f0
+    FPG8:
+    LD (IX+(11)), A
+    FPG9:
+    LD HL, (SCBUFAD)
+    LD A, (CMODE)
+    OR A
+    LD A, (IX+(0))
+    JR Z, FPG10
+    ADD A, A
+    ADD A, A
+    ADD A, A
+    ADD A, A
+    LD E, A
+    LD A, (IX+(9))
+    AND $0f
+    ADD A, E
+    FPG10:
+    ADD A, H
+    LD H, A
+    LD E, (IX+(8))
+    LD D, 0
+    ADD HL, DE
+    LD E, (IX+(8))
+    LD D, (IX+(9))
+    INC DE
+    LD (IX+(8)), E
+    LD (IX+(9)), D
+    POP DE
+    RET
+
+    FPGERROR:
+    POP HL
+    POP HL
+    JP FILEERROR
+
+FCLOSE:
+  param_count: 1
+  calls:
+    - SOSCALLS
+    - FILEWORKS
+    - FILEUTIL
+  code: |
+    CALL SETIX
+    JP C, FILEERROR
+    LD A, $0c
+    JP Z, FILEERROR
+    LD A, (IX+(4))
+    OR A
+    JR Z, FCLOSE1
+    LD A, (IX+(11))
+    CALL SCRWRDY
+    CALL NC, sDWTSB
+    JP C, FILEERROR
+    FCLOSE1:
+    LD A, (IX+(6))
+    CP (IX+(12))
+    JR NZ, FCLOSE2
+    LD A, (IX+(7))
+    CP (IX+(13))
+    JR Z, FCLOSE3
+    FCLOSE2:
+    LD C, 1
+    CALL RWDIR
+    JP C, FILEERROR
+    LD DE, $0012
+    ADD HL, DE
+    LD A, (IX+(6))
+    LD (HL), A
+    LD A, (IX+(7))
+    INC HL
+    LD (HL), A
+    LD C, D
+    CALL RWDIR
+    JP C, FILEERROR
+    FCLOSE3:
+    LD (IX+(1)), 00
+    CALL FATCLOSE
+    LD L, 0
+    JP NC, FNORMAL
+    LD (IX+(1)), 01
+    JP FILEERROR
+
+FILEUTIL:
+  code: |
+    SCHDIR:
+    LD A, $ff
+    LD (SPACEOS), A
+    LD C, 0
+    LD DE, (sDIRPS)
+    LD HL, $0010
+    ADD HL, DE
+    LD (DIREND), HL
+    SCHDIR1:
+    LD HL, (sDTBUF)
+    LD A, 1
+    CALL sDRDSB
+    RET C
+    LD B, 8
+    SCHDIR2:
+    LD A, (HL)
+    INC A
+    JR Z, SCHDIR8
+    DEC A
+    JR NZ, SCHDIR3
+    LD A, (SPACEOS)
+    INC A
+    JR NZ, SCHDIR6
+    LD A, C
+    LD (SPACEOS), A
+    JR SCHDIR6
+    SCHDIR3:
+    PUSH HL
+    PUSH DE
+    PUSH BC
+    LD DE, (sIBFAD)
+    LD B, $10
+    SCHDIR4:
+    INC HL
+    INC DE
+    LD A, (DE)
+    CP (HL)
+    JR NZ, SCHDIR5
+    DJNZ SCHDIR4
+    SCHDIR5:
+    POP BC
+    POP DE
+    POP HL
+    JR NZ, SCHDIR6
+    LD A, C
+    LD DE, (sIBFAD)
+    LD BC, $0020
+    LDIR
+    LD D, A
+    LD E, B
+    OR A
+    RET
+
+    SCHDIR6:
+    INC C
+    LD A, $20
+    ADD A, L
+    LD L, A
+    JR NC, SCHDIR7
+    INC H
+    SCHDIR7:
+    DJNZ SCHDIR2
+    INC DE
+    LD HL, (DIREND)
+    OR A
+    SBC HL, DE
+    JR NZ, SCHDIR1
+    SCHDIR8:
+    LD A, (SPACEOS)
+    CP $ff
+    JR NZ, SCHDIR9
+    LD A, C
+    SCHDIR9:
+    LD D, A
+    LD E, 1
+    OR A
+    RET
+
+    RWDIR:
+    LD A, (IX+(3))
+    LD (sDSK), A
+    LD A, (IX+(5))
+    RRCA
+    RRCA
+    RRCA
+    LD B, A
+    AND $1f
+    LD DE, (sDIRPS)
+    ADD A, E
+    LD E, A
+    JR NC, RWDIR1
+    INC D
+    RWDIR1:
+    LD HL, (sDTBUF)
+    LD A, 1
+    INC C
+    DEC C
+    JR NZ, RWDIR2
+    CALL sDWTSB
+    RET
+    RWDIR2:
+    CALL sDRDSB
+    RET C
+    LD A, B
+    AND $e0
+    ADD A, L
+    LD L, A
+    RET NC
+    INC H
+    OR A
+    RET
+
+    SCRWRDY:
+    LD E, (IX+(10))
+    LD D, A
+    AND $f0
+    JR Z, SCRWRDY4
+    RRCA
+    RRCA
+    RRCA
+    RRCA
+    PUSH AF
+    CALL GETFATNO
+    LD A, C
+    CALL GETFBAD
+    POP BC
+    LD C, D
+    LD D, 00
+    EX DE, HL
+    SCRWRDY1:
+    ADD HL, DE
+    LD A, (HL)
+    OR A
+    JR Z, SCRWRDY2
+    CP $80
+    JR C, SCRWRDY3
+    SCRWRDY2:
+    LD A, 7
+    SCF
+    RET
+    SCRWRDY3:
+    LD H, 0
+    LD L, A
+    DJNZ SCRWRDY1
+    LD A, C
+    AND $0f
+    LD D, A
+    LD E, L
+    SCRWRDY4:
+    LD A, (IX+(3))
+    LD (sDSK), A
+    LD C, D
+    LD A, E
+    RLCA
+    RLCA
+    RLCA
+    RLCA
+    LD E, A
+    AND $0f
+    LD D, A
+    LD A, E
+    AND $f0
+    ADD A, C
+    LD E, A
+    LD HL, (SCBUFAD)
+    LD A, (CMODE)
+    OR A
+    LD A, (IX+(0))
+    JR NZ, SCRWRDY5
+    ADD A, H
+    LD H, A
+    XOR A
+    INC A
+    RET
+    SCRWRDY5:
+    ADD A, A
+    ADD A, A
+    ADD A, A
+    ADD A, A
+    ADD A, H
+    LD H, A
+    LD A, E
+    AND $f0
+    LD E, A
+    LD A, $10
+    RET
+
+    FATOPEN:
+    CALL GETFATNO
+    LD A, C
+    CP 4
+    CCF
+    RET NC
+    LD HL, FBUFDEV-1
+    LD C, -1
+    XOR A
+    FATOPEN1:
+    INC HL
+    INC C
+    CP (HL)
+    JR NZ, FATOPEN1
+    LD A, (IX+(3))
+    LD (sDSK), A
+    LD B, A
+    LD A, C
+    CALL GETFBAD
+    LD DE, (sFATPOS)
+    LD A, 1
+    CALL sDRDSB
+    RET C
+    LD HL, FBUFDEV
+    LD A, C
+    ADD A, L
+    LD L, A
+    JR NC, FATOPEN2
+    INC H
+    FATOPEN2:
+    LD (HL), B
+    LD DE, FBWRFLG-FBUFDEV
+    ADD HL, DE
+    LD (HL), 0
+    OR A
+    RET
+
+    FATCLOSE:
+    LD C, (IX+(3))
+    PUSH IX
+    LD IX, FWORK0
+    LD DE, FWORK1-FWORK0
+    LD L, 1
+    LD B, 4
+    FATCLOSE1:
+    LD A, (IX+(1))
+    OR A
+    JR Z, FATCLOSE2
+    LD A, (IX+(3))
+    CP C
+    JR NZ, FATCLOSE2
+    INC L
+    FATCLOSE2:
+    ADD IX, DE
+    DJNZ FATCLOSE1
+    POP IX
+    OR A
+    DEC L
+    RET NZ
+    ;
+    CALL GETFATNO
+    LD HL, FBWRFLG
+    LD A, C
+    ADD A, L
+    LD L, A
+    JR NC, FATCLOSE3
+    INC H
+    FATCLOSE3:
+    LD A, (HL)
+    LD DE, FBWRFLG-FBUFDEV
+    OR A
+    SBC HL, DE
+    LD (HL), 0
+    OR A
+    RET Z
+    ;
+    PUSH HL
+    LD A, (IX+(3))
+    LD (sDSK), A
+    LD B, A
+    LD A, C
+    CALL GETFBAD
+    LD DE, (sFATPOS)
+    LD A, 1
+    CALL sDWTSB
+    POP HL
+    RET NC
+    LD (HL), B
+    RET
+
+    INVFAT:
+    LD A, C
+    CALL GETFBAD
+    EX DE, HL
+    LD H, 0
+    LD L, (IX+(10))
+    LD B, H
+    INVFAT1:
+    ADD HL, DE
+    LD A, (HL)
+    OR A
+    JR Z, INVFAT3
+    CP $80
+    JR NC, INVFAT2
+    INC B
+    LD L, A
+    LD H, 0
+    JR INVFAT1
+    INVFAT2:
+    CP $90
+    CCF
+    RET NC
+    INVFAT3:
+    LD A, 7
+    SCF
+    RET
+
+    GETFATNO:
+    LD HL, FBUFDEV
+    LD BC, 4*256+0
+    LD A, (IX+(3))
+    GETFATNO1:
+    CP (HL)
+    RET Z
+    INC HL
+    INC C
+    DJNZ GETFATNO1
+    RET
+
+    ASSIGNC:
+    LD A, C
+    CALL GETFBAD
+    XOR A
+    LD B, $80
+    GETASSIGNC1:
+    CP (HL)
+    JR Z, GETASSIGNC2
+    INC HL
+    DJNZ GETASSIGNC1
+    LD A, 9
+    SCF
+    RET
+    GETASSIGNC2:
+    LD (HL), $80
+    LD A, $80
+    SUB B
+    LD B, 00
+    LD HL, FBWRFLG
+    ADD HL, BC
+    LD (HL), 1
+    OR A
+    RET
+
+    GETFBAD:
+    LD HL, (FBUFAD)
+    ADD A, H
+    LD H, A
+    RET
+
+    SETIX:
+    LD A, L
+    AND $fc
+    OR H
+    LD A, $0e
+    SCF
+    RET NZ
+    PUSH DE
+    LD DE, FWORK1-FWORK0
+    LD IX, FWORK0
+    LD A, L
+    RRCA
+    JR NC, SETIX1
+    ADD IX, DE
+    SETIX1:
+    RRCA
+    JR NC, SETIX2
+    ADD IX, DE
+    ADD IX, DE
+    SETIX2:
+    POP DE
+    LD A, (IX+(1))
+    OR A
+    RET
+
+    FNORMAL:
+    XOR A
+    LD H, A
+    RET
+
+    FWRITEPROTECTED:
+    LD A, 4
+    JR FILEERROR
+
+    FBADFILEMODE:
+    LD A, 6
+
+    FILEERROR:
+    LD H, $ff
+    LD L, A
+    SCF
+    RET
+
