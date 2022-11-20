@@ -498,6 +498,7 @@ BEEP:
 FILEWORKS:
   code: |
     FBADDEVICE    EQU $0f
+    FOPENMODEERROR  EQU $10
     FOUTOFFILE    EQU $11
     FALREADYOPEN  EQU $12
     FDOUBLEOPEN   EQU $13
@@ -542,12 +543,22 @@ FOPEN:
     LD A, FALREADYOPEN
     JP NZ, FILEERROR
     LD A, C
-    AND $fc
+    AND $f8
     OR B
     LD A, $0e ; bad data
     JP NZ, FILEERROR
-    LD (IX+(2)), C
-    LD A, 4
+    LD A,C
+    AND 3
+    LD (IX+(2)), A
+    LD A,C
+    AND 4
+    CP 0
+    JR NZ,.setbinary
+    LD A,4
+    JR .setattr
+    .setbinary
+    LD A,1
+    .setattr
     CALL sFILE
     JP C, FILEERROR
     LD A, (sDSK)
@@ -590,18 +601,19 @@ FOPEN:
     EX DE, HL
     FOPEN3:
     LD A, (IX+(2))
-    CP 03
+    CP 3
     JP Z, FOPEN7
     INC E
     DEC E
     LD C, A
-    LD A, 08  ; file not found
+    LD A, 8  ; file not found
     JP NZ, FILEERROR
     LD HL, (sIBFAD)
     LD A, (HL)
     AND 7
     CP 4
-    JP NZ, FBADFILEMODE
+    ; no check filemode
+    ;JP NZ, FBADFILEMODE
     LD DE, 18
     ADD HL, DE
     LD E, (HL)
@@ -668,7 +680,8 @@ FOPEN:
     LD A, 7
     AND (HL)
     CP 4
-    JP NZ, FBADFILEMODE
+    ; no check filemode
+    ;JP NZ, FBADFILEMODE
     BIT 6, (HL)
     JP NZ, FWRITEPROTECTED
     LD DE, $001e
@@ -827,7 +840,7 @@ FPG:
     FPG1:
     LD A, (IX+(2))
     CP C
-    LD A, $10
+    LD A, FOPENMODEERROR
     JP Z, FPGERROR
     INC D
     DEC D
@@ -985,6 +998,93 @@ FCLOSE:
     JP NC, FNORMAL
     LD (IX+(1)), 01
     JP FILEERROR
+
+FREAD:
+  calls:
+    - FGETC
+  code: |
+    ; HL = fnum DE = address BC = size
+    LD (.freadnum),HL
+    LD (.freadaddr),DE
+    LD (.freadsize),BC
+
+    .freadloop
+    LD HL,(.freadsize)
+    LD A,H
+    OR L
+    JP Z,.freadend
+
+    LD HL,(.freadnum)
+    CALL FGETC
+    JR C,.freaderror
+    EX DE,HL
+    LD HL,(.freadaddr)
+    LD (HL),E
+    INC HL
+    LD (.freadaddr),HL
+
+    LD HL,(.freadsize)
+    DEC HL
+    LD (.freadsize),HL
+    JP .freadloop
+
+    .freadend
+    .freaderror
+    RET
+
+    .freadnum
+    DW  0
+
+    .freadaddr
+    DW  0
+
+    .freadsize
+    DW  0
+
+FWRITE:
+  calls:
+    - FPUTC
+  code: |
+    ; HL = fnum DE = address BC = size
+    LD (.fwritenum),HL
+    LD (.fwriteaddr),DE
+    LD (.fwritesize),BC
+
+    .fwriteloop
+    LD HL,(.fwritesize)
+    LD A,H
+    OR L
+    JP Z,.fwriteend
+
+    LD HL,(.fwriteaddr)
+    LD E,(HL)
+    LD D,0
+    LD HL,(.fwritenum)
+    CALL FPUTC
+    JR C,.fwriteerror
+    LD HL,(.fwriteaddr)
+    INC HL
+    LD (.fwriteaddr),HL
+
+    LD HL,(.fwritesize)
+    DEC HL
+    LD (.fwritesize),HL
+    JP .fwriteloop
+
+    .fwriteend
+    .fwriteerror
+    RET
+
+    .fwritenum
+    DW  0
+
+    .fwriteaddr
+    DW  0
+
+    .fwritesize
+    DW  0
+
+
 
 FILEUTIL:
   code: |
