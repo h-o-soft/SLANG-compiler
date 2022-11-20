@@ -517,6 +517,10 @@ FOPEN:
     LD C,$5C  ; _PFILE
     CALL BDOS
 
+    LD A,E
+    AND 3
+    LD E,A
+
     LD HL,(LSXFMODE)
     ; mode >= 3
     LD DE,3
