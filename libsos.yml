@@ -161,7 +161,7 @@ GETLIN:
     LD D,0
     GETLPROC:
     PUSH DE
-    LD DE,sKBFAD
+    LD DE,(sKBFAD)
     CALL sGETL
     POP BC
     LD A,(DE)
@@ -207,10 +207,10 @@ INPUT:
   code: |
     LD BC,0
     LD (___CARRY),BC
-    LD HL,sKBFAD
+    LD HL,(sKBFAD)
     LD DE,0
     CALL LINPUT
-    LD DE,sKBFAD
+    LD DE,(sKBFAD)
     .linput2
     LD A,(DE)
     CP $20
