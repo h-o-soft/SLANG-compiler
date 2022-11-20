@@ -348,7 +348,12 @@ while_head
               pushLabels();
               breakLabel = label + 1; contLabel = label;
               genlabel(label);
-              genbool(enBool($2), 0, label + 1);
+              if($2.IsValueConst() && $2.ConstValue.Value != 0)
+              {
+                     // expr no check
+              } else {
+                     genbool(enBool($2), 0, label + 1);
+              }
               resetHeap();
        }
        ;
