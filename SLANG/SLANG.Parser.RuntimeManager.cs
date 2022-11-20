@@ -243,7 +243,7 @@ namespace SLANGCompiler.SLANG
                 writer.Write(" LD DE,.call1\n");
                 writer.Write(" PUSH DE\n");
                 writer.Write(" PUSH HL\n");
-                writer.Write(" LD A,(___AF)\n");
+                writer.Write(" LD A,(___AF+1)\n");
                 // レジスタ変数未使用の場合は0を入れ、使用済みの場合は普通に代入する
                 for(int i = 0; i < registers.Length; i++)
                 {
