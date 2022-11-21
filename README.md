@@ -49,7 +49,7 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
 例えば掛け算や割り算など、OSなどの環境に関わらないルーチンはこちらに含まれています。普通のYAML形式のテキストファイルなので、
 より高速なものに自分で差し替える事も可能です(というか、いいコードが出来たらプルリクください)。
 
-##  lib.yml / liblsx.yml (for LSX-Dodgers)
+##  lib.yml / liblsx.yml (for LSX-Dodgers/MSX-DOS(2))
 こちらは、ライブラリのうち、OSに依存するルーチンが含まれるものとなります。
 現状X1/turbo/ZやMZ-700/1500やPC-8801mkIISRでCP/M80やMSX-DOSのソフトを実行するためのOS [LSX-Dodgers](https://github.com/tablacus/LSX-Dodgers) 用のコードになっています(初期化処理やPRINT、LOCATEなど)。
 
@@ -57,7 +57,9 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
 
 -L オプションに何も指定しない場合はこのファイルが読み込まれます。
 
-また、明示的に -L lsx を指定する事で liblsx.yml が読み込まれますが、lib.ymlとliblsx.ymlは同じ内容となっています。
+また、明示的に -L lsx を指定する事で liblsx.yml が読み込まれますが、lib.ymlとliblsx.ymlはほぼ同じ内容となっています。
+
+liblsx.ymlではファイルオープンの際のMSX-DOS2の処理を省略しています。
 
 ## libx1.yml (for SHARP X1)
 こちらはLSX-Dodgers版をベースに、WIDTH関数とPRINT関数のみX1専用に書き換えたランタイムライブラリとなります。
@@ -70,6 +72,11 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
 S-OS版のランタイムです。これを読み込む事で、従来のSLANGで作られたアプリをコンパイルし、S-OSで実行出来ます。
 
 -L sos とオプションを付与する事で、lib.ymlのかわりにこちらを読み込みます。
+
+## libmsx2.yml (for MSX-DOS2)
+こちらは、ライブラリのうち、OSに依存するルーチンが含まれるものとなります。
+lib.ymlをベースにファイル入出力ライブラリをファイルハンドルを用いたものに差し替えています。
+lib.ymlでもMSX-DOS2であればファイル入出力ライブラリが使えますが、FCBを用いているためにMSX-DOS2ではカレントデディレクトリにしか対応していないので、サブディレクトリを使う場合はこちらを使用してください。
 
 
 ## ランタイムのパスについて

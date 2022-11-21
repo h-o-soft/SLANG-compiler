@@ -29,6 +29,9 @@ LSXCALLS:
     CONST	EQU	$0B
     lSCRN EQU $EFD0
     lLOC EQU $EFD6
+    FCB1	EQU	005CH
+    FCB2	EQU	006CH
+    DTA1	EQU	0080H
 
 WIDTH:
   param_count: 1
@@ -497,6 +500,9 @@ FOPEN:
   code: |
     ; HL=fnum DE=fname addr BC=mode
     LD (LSXFCB),HL
+    LD A,C
+    AND 3
+    LD C,A
     LD (LSXFMODE),BC
 
     CALL LSXFCHECKNUM
@@ -511,7 +517,31 @@ FOPEN:
     CALL LSXCALCFCB
     LD (LSXFCB),HL
 
+    PUSH DE
+    LD C,$6F  ; _DOSVER
+    CALL BDOS
+    POP DE
+    LD A,B
+    CP 2
+    JR NC,.fopen_dos2
+    LD C,$29  ; _PPATH    ;for LSX-Dodgers
+    LD HL,(LSXFCB)
+    JR .fopen_lsx
+    .fopen_dos2           ;for MSX-DOS2
+    LD A,(DE)
+    CP $20
+    JR NZ,.fopen_dos2_1
+    INC DE
+    JR .fopen_dos2
+    .fopen_dos2_1
+    LD BC,$005B ; _PARSE
+    CALL BDOS
+    EX DE,HL
+    LD HL,(LSXFCB)
+    LD (HL),C
+    INC HL
     LD C,$5C  ; _PFILE
+    .fopen_lsx
     CALL BDOS
 
     LD HL,(LSXFMODE)
@@ -568,9 +598,42 @@ FSEEK:
     JP C,.fseek_head
 
     ; fseek_tail
-    ; not support!
-    LD HL,1
-    RET
+    PUSH DE
+    PUSH HL
+    LD BC,33
+    ADD HL,BC
+    EX DE,HL    ; DE=(FCB)Random record
+    POP HL
+    LD BC,16
+    ADD HL,BC   ; HL=(FCB)File size
+    EX (SP),HL
+    CALL NEGHL
+    EX (SP),HL
+    POP BC      ; BC=-offset
+
+    LD A,(HL)
+    INC HL
+    SCF
+    SBC A,C
+    LD (DE),A
+    INC DE
+
+    LD A,(HL)
+    INC HL
+    SBC A,B
+    LD (DE),A
+    INC DE
+
+    LD A,(HL)
+    INC HL
+    SBC A,0
+    LD (DE),A
+    INC DE
+
+    LD A,(HL)
+    SBC A,0
+    LD (DE),A
+    JR .fseek_end
 
     .fseek_head
     LD BC,33
@@ -803,10 +866,11 @@ FREAD:
 
     LD C,$27
     CALL BDOS
-
+    ADD A,1
+    SBC A,A
+    RET NC
     LD L,A
-    LD H,0
-
+    LD H,A  ;HL=$FFFF CF=1
     RET
 
 FWRITE:
