@@ -467,14 +467,10 @@ LSXFILE:
   code: |
     ; fnum to FCB address
     LSXCALCFCB:
-    PUSH BC
     PUSH DE
-    LD DE,37
-    CALL MULHLDE
     LD DE,LSXFCBS
     ADD HL,DE
     POP DE
-    POP BC
     RET
 
     ; HL >= 8 ?
@@ -512,13 +508,32 @@ FOPEN:
     RET
 
     .fopen1
-    ; LSXFCB=fnum*37+LSXFCBS
+    ; LSXFCB=fnum+LSXFCBS
+    .fopen_sp1           ;SPCUT
+    LD A,(DE)
+    CP $20
+    JR NZ,.fopen_sp2
+    INC DE
+    JR .fopen_sp1
+    .fopen_sp2
+
+    LD B,64
+    LD HL,LSXPATH
+    .fopen_path1
+    LD A,(DE)
+    CP $20+1
+    JR C,.fopen_path2
+    INC DE
+    LD (HL),A
+    INC HL
+    DJNZ .fopen_path1
+    .fopen_path2
+    XOR A
+    LD (HL),A
+
     LD HL,(LSXFCB)
     CALL LSXCALCFCB
     LD (LSXFCB),HL
-
-    LD C,$29  ; _PPATH
-    CALL BDOS
 
     LD HL,(LSXFMODE)
     ; mode >= 3
@@ -526,28 +541,24 @@ FOPEN:
     OR A
     SBC HL,DE
     JR C,.fopen2
-    LD C,$16  ; _FMAKE
+    LD BC,$2044  ; _CREATE
     JR .fopen3
     .fopen2
-    LD C,$0F  ; _FOPEN
+    LD C,$43  ; _OPEN
     .fopen3
-    LD DE,(LSXFCB)
+
+    LD DE,LSXPATH
+    XOR A
     CALL BDOS
-
-    ; SET RANDOM RECORD to 0(4bytes)
+    LD C,A
     LD HL,(LSXFCB)
-    LD DE,33
-    ADD HL,DE
-    LD (HL),0
-    INC HL
-    LD (HL),0
-    INC HL
-    LD (HL),0
-    INC HL
-    LD (HL),0
-
+    LD (HL),B
+    LD A,C
     LD L,A
-    LD H,0
+    ADD A,0FFH
+    SBC A,A
+    LD H,A
+    LD A,L
     RET
 
 FSEEK:
@@ -564,89 +575,23 @@ FSEEK:
     RET
 
     .fseek1
-    ; LSXFCB=fnum*37+LSXFCBS
+    ; LSXFCB=fnum+LSXFCBS
     CALL LSXCALCFCB
-    LD (LSXFCB),HL
-
-    LD A,C
-    CP 1
-    JP Z,.fseek_current
-    JP C,.fseek_head
-
-    ; fseek_tail
-    PUSH DE
-    PUSH HL
-    LD BC,33
-    ADD HL,BC
-    EX DE,HL    ; DE=(FCB)Random record
-    POP HL
-    LD BC,16
-    ADD HL,BC   ; HL=(FCB)File size
-    EX (SP),HL
-    CALL NEGHL
-    EX (SP),HL
-    POP BC      ; BC=-offset
-
-    LD A,(HL)
-    INC HL
-    SCF
-    SBC A,C
-    LD (DE),A
-    INC DE
-
-    LD A,(HL)
-    INC HL
-    SBC A,B
-    LD (DE),A
-    INC DE
-
-    LD A,(HL)
-    INC HL
-    SBC A,0
-    LD (DE),A
-    INC DE
-
-    LD A,(HL)
-    SBC A,0
-    LD (DE),A
-    JP .fseek_end
-
-    .fseek_head
-    LD BC,33
-    ADD HL,BC
-    LD (HL),E ; FCB+33
-    INC HL
-    LD (HL),D ; FCB+34
-    INC HL
-    LD (HL),0 ; FCB+35
-    INC HL
-    LD (HL),0 ; FCB=36
-
-    JP .fseek_end
-
-    .fseek_current
-    LD BC,33
-    ADD HL,BC
-
-    ; FCB+33-36 += DE
-    LD A,E
-    ADD A,(HL)
-    LD (HL),A
-    LD A,D
-    INC HL
-    ADC A,(HL)
-    LD (HL),A
-    INC HL
-    LD A,0
-    ADC A,(HL)
-    LD (HL),A
-    INC HL
-    LD A,0
-    ADC A,(HL)
-    LD (HL),A
-
-    .fseek_end
-    LD HL,0
+    LD B,(HL)
+    EX DE,HL
+    LD A,H
+    ADD A,A
+    SBC A,A
+    LD E,A
+    LD D,A
+    LD C,$4A  ; _SEEK
+    CALL BDOS
+    LD L,A
+    LD A,L
+    ADD A,0FFH
+    SBC A,A
+    LD H,A
+    LD A,L
     RET
 
 FGETC:
@@ -664,32 +609,14 @@ FGETC:
     RET
 
     .fgetc1
-    ; LSXFCB=fnum*37+LSXFCBS
+    ; LSXFCB=fnum+LSXFCBS
     CALL LSXCALCFCB
-    LD (LSXFCB),HL
+    LD B,(HL)
 
-    ; SET DTA
-    PUSH HL
     LD  DE,.fgetbuf
-    LD  C,$1A ; _SETDTA
+    LD  HL,1
+    LD  C,$48 ; _READ
     CALL  BDOS
-    POP HL
-
-    ; FCB head to DE
-    LD E,L
-    LD D,H
-
-    ; SET RECORD SIZE(FCB+14)
-    LD BC,14
-    ADD HL,BC
-    LD (HL),1
-    INC HL
-    LD (HL),0
-
-    LD HL,1     ; read record size
-
-    LD C,$27    ; _RDBLK
-    CALL BDOS
     CP 0
     JR NZ,.fgeterr
 
@@ -724,38 +651,15 @@ FPUTC:
     LD HL,255
     RET
 
-    .fgetc1
-    ; LSXFCB=fnum*37+LSXFCBS
+    .fputc1
+    ; LSXFCB=fnum+LSXFCBS
     CALL LSXCALCFCB
-    LD (LSXFCB),HL
+    LD B,(HL)
 
-
-    ; SET DTA
-    PUSH HL
-
-    LD HL,.fputbuf
-    LD (HL),E
-
-    LD  DE,.fputbuf
-    LD  C,$1A ; _SETDTA
+    LD  DE,.fgetbuf
+    LD  HL,1
+    LD  C,$49 ; _WRITE
     CALL  BDOS
-    POP HL
-
-    ; FCB head to DE
-    LD E,L
-    LD D,H
-
-    ; SET RECORD SIZE(FCB+14)
-    LD BC,14
-    ADD HL,BC
-    LD (HL),1
-    INC HL
-    LD (HL),0
-
-    LD HL,1     ; write record size
-
-    LD C,$26    ; _WRBLK
-    CALL BDOS
     CP 0
     JR NZ,.fputerr
 
@@ -785,45 +689,21 @@ FCLOSE:
   code: |
     ; HL=fnum
     CALL LSXCALCFCB
-    EX DE,HL
-    LD C,$10  ; _FCLOSE
+    LD B,(HL)
+    LD (HL),0
+    LD C,$45  ; _CLOSE
     CALL BDOS
     LD L,A
     LD H,0
     RET
 
 
-FREADWRITE:
-  code: |
-    ; SET DTA (DE)
-    PUSH BC
-    LD  C,$1A ; _SETDTA
-    CALL  BDOS
-
-    ; SET RECORD SIZE(FCB+14)
-    LD HL,(LSXFCB)
-    LD BC,14
-    ADD HL,BC
-    LD (HL),1
-    INC HL
-    LD (HL),0
-
-    POP BC
-
-    LD HL,(LSXFCB)  ; DE->FCB
-    EX DE,HL
-
-    LD L,C          ; HL->read record size
-    LD H,B
-
-    RET
 
 FREAD:
   calls:
     - LSXCALLS
     - FWORK
     - LSXFILE
-    - FREADWRITE
   code: |
     ; HL=fnum DE=address BC=size
 
@@ -834,15 +714,14 @@ FREAD:
     RET
 
     .fread1
-    ; LSXFCB=fnum*37+LSXFCBS
+    ; LSXFCB=fnum+LSXFCBS
     CALL LSXCALCFCB
-    LD (LSXFCB),HL
-
-    CALL FREADWRITE
-
-    LD C,$27
+    PUSH BC
+    LD B,(HL)
+    POP HL
+    LD C,$48 ; _READ
     CALL BDOS
-    ADD A,1
+    ADD A,$FF
     SBC A,A
     RET NC
     LD L,A
@@ -854,7 +733,6 @@ FWRITE:
     - LSXCALLS
     - FWORK
     - LSXFILE
-    - FREADWRITE
   code: |
     ; HL=fnum DE=address BC=size
 
@@ -865,13 +743,12 @@ FWRITE:
     RET
 
     .fread1
-    ; LSXFCB=fnum*37+LSXFCBS
+    ; LSXFCB=fnum+LSXFCBS
     CALL LSXCALCFCB
-    LD (LSXFCB),HL
-
-    CALL FREADWRITE
-
-    LD C,$26
+    PUSH BC
+    LD B,(HL)
+    POP HL
+    LD C,$49  ; _WRITE
     CALL BDOS
 
     LD L,A
@@ -881,10 +758,10 @@ FWRITE:
 
 FWORK:
   code: |
-    LSXFCBS: DS 37*8
+    LSXFCBS: DS 8
     LSXFCB: DW 0
     LSXFMODE: DW 0
-
+    LSXPATH: DS 64
 
 sSYSTEM:
   param_count: 0
