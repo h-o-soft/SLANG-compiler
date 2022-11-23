@@ -885,6 +885,119 @@ FWORK:
     LSXFCB: DW 0
     LSXFMODE: DW 0
 
+PCGDEF:
+  code: |
+    ; HL = ascii code DE = address
+    PUSH DE
+    LD E,L
+
+    LD A,(AT_WIDTH)  ; 40 or 80
+    CP 40
+    JR Z,PCGDEF40
+
+    ; WIDTH 80
+    LD HL,$07D0
+    LD D,48
+    JR PCG_SETNODISP
+
+    PCGDEF40:
+    ; WIDTH 40(screen 0)
+    LD HL,$03E8
+    LD D,24
+
+    PCG_SETNODISP:
+    LD (PCG_NODISPADR),HL
+
+    POP HL
+    CALL PCGSET0
+    CALL SETPCG
+    RET
+
+    PCGSET0:
+    PUSH HL
+    PUSH DE
+    LD BC,$1FD0
+    XOR A
+    OUT (C),A
+    ;
+    LD BC,(PCG_NODISPADR)
+    LD HL,$2800 ; ATTRIBUTE
+    POP DE
+    PUSH DE
+    LD A,20H    ; PCG COLOR 0
+    CALL PCGSET1
+    ;
+    LD BC,(PCG_NODISPADR)
+    LD HL,$3000 ; VRAM
+    POP DE
+    LD A,E      ; ASCII CODE
+    CALL PCGSET1
+    ;
+    POP HL
+    RET
+
+    PCGSET1:
+    ADD HL,BC
+    LD B,H
+    LD C,L
+    PCGSET2:
+    OUT (C),A
+    INC BC
+    DEC D
+    JR NZ,PCGSET2
+    RET
+
+    PCGBLUE EQU $15+1
+    PCGRED EQU $16+1
+    PCGGREEN EQU $17+1
+    SETPCG:
+    LD B,PCGBLUE
+    LD C,0
+    LD D,PCGRED
+    LD E,PCGGREEN
+    LD A,$08
+    EX AF,AF'
+    EXX
+    ;
+    DI
+    LD BC,$1A01
+    PCGVDSP0:
+    IN A,(C)
+    JP P,PCGVDSP0
+    PCGVDSP1:
+    IN A,(C)
+    JP M,PCGVDSP1
+    ;
+    EXX
+    EX AF,AF'
+    PCGSETP:
+    OUTI
+    LD B,D
+    OUTI
+    LD B,E
+    OUTI
+    ;
+    LD B,PCGBLUE
+    EX AF,AF'
+    LD A,0BH
+    PCGDLY:
+    DEC A
+    JP NZ,PCGDLY
+    EX AF,AF'
+    ;
+    INC C
+    DEC A
+    JP NZ,PCGSETP
+    ;
+    EI
+    RET
+
+    PCG_NODISPADR:
+    DW 0
+    ; DW $03E8  ; WIDTH 40 SCREEN 0
+    ; DW $07E8  ; WIDTH 40 SCREEN 1
+    ; DW $07D0  ; WIDTH 80
+
 
 sSYSTEM:
   param_count: 0

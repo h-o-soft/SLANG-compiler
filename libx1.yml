@@ -131,115 +131,6 @@ PRMODE:
     ; PRMODE not supported
     RET
 
-BIT:
-  param_count: 2
-  calls:
-    - RSHIFTHLDE
-  code: |
-    CALL RSHIFTHLDE
-    BIT 0,L
-    LD HL,0
-    RET Z
-    INC HL
-    RET 
-
-SET:
-  param_count: 2
-  calls:
-    - ORHLDE
-  code: |
-    EX DE,HL
-    LD A,L
-    AND $0F
-    LD HL,1
-    JR Z,.set1
-    .set2
-    ADD HL,HL
-    DEC A
-    JR NZ,.set2
-    .set1
-    JP ORHLDE
-
-RESET:
-  param_count: 2
-  calls:
-    - ANDHLDE
-  code: |
-    EX DE,HL
-    LD A,L
-    AND $0F
-    LD HL,$FFFE
-    JR Z,.reset1
-    .reset2
-    SCF
-    ADC HL, HL
-    DEC A
-    JR NZ,.reset2
-    .reset1
-    JP ANDHLDE
-
-ABS:
-  param_count: 1
-  calls:
-    - NEGHL
-  code: |
-    BIT 7,H
-    CALL NZ,NEGHL
-    RET
-
-SGN:
-  param_count: 1
-  calls:
-    - ABS
-  code: |
-    LD A,H
-    OR L
-    RET Z
-    BIT 7,H
-    LD HL,1
-    JR ABS
-    BIT 7,L
-    LD H,0
-    RET Z
-    DEC H
-    RET
-
-SEX:
-  param_count: 1
-  code: |
-    BIT 7,L
-    LD H,0
-    RET Z
-    DEC H
-    RET
-
-RND:
-  param_count: 1
-  calls:
-    - MULHLDE
-    - MODHLDE
-  code: |
-    PUSH HL
-    LD HL,(wRND)
-    LD DE,$0383
-    CALL MULHLDE
-    LD A,L
-    LD L,H
-    LD A,R
-    ADD A,H
-    LD H,A
-    LD (wRND),HL
-    POP DE
-    LD A,D
-    OR E
-    JR NZ,.rnd1
-    EX DE,HL
-    RET
-    .rnd1
-    JP MODHLDE
-    wRND:
-    DW $E933
-
 SCREEN:
   param_count: 2
   calls:
@@ -340,6 +231,7 @@ GETLIN:
   param_count: 2
   calls:
     - sGETL
+    - sWORK
   code: |
     LD D,0
     GETLPROC:
@@ -789,6 +681,510 @@ SASC:
     RET	NC
     ADD	A,'A'-$3A
     RET
+
+LSXFILE:
+  calls:
+    - MULHLDE
+  code: |
+    ; fnum to FCB address
+    LSXCALCFCB:
+    PUSH BC
+    PUSH DE
+    LD DE,37
+    CALL MULHLDE
+    LD DE,LSXFCBS
+    ADD HL,DE
+    POP DE
+    POP BC
+    RET
+
+    ; HL >= 8 ?
+    LSXFCHECKNUM:
+    PUSH HL
+    PUSH DE
+
+    ; HL >= 8
+    LD DE,8
+    OR A
+    SBC HL,DE
+    ; non carry (HL >= 8)
+
+    POP DE
+    POP HL
+    RET
+
+FOPEN:
+  calls:
+    - LSXCALLS
+    - FWORK
+    - LSXFILE
+  code: |
+    ; HL=fnum DE=fname addr BC=mode
+    LD (LSXFCB),HL
+    LD (LSXFMODE),BC
+
+    CALL LSXFCHECKNUM
+    JP C,.fopen1
+    ; return $FF
+    LD HL,255
+    RET
+
+    .fopen1
+    ; LSXFCB=fnum*37+LSXFCBS
+    LD HL,(LSXFCB)
+    CALL LSXCALCFCB
+    LD (LSXFCB),HL
+
+    LD C,$5C  ; _PFILE
+    CALL BDOS
+
+    LD A,E
+    AND 3
+    LD E,A
+
+    LD HL,(LSXFMODE)
+    ; mode >= 3
+    LD DE,3
+    OR A
+    SBC HL,DE
+    JR C,.fopen2
+    LD C,$16  ; _FMAKE
+    JR .fopen3
+    .fopen2
+    LD C,$0F  ; _FOPEN
+    .fopen3
+    LD DE,(LSXFCB)
+    CALL BDOS
+
+    ; SET RANDOM RECORD to 0(4bytes)
+    LD HL,(LSXFCB)
+    LD DE,33
+    ADD HL,DE
+    LD (HL),0
+    INC HL
+    LD (HL),0
+    INC HL
+    LD (HL),0
+    INC HL
+    LD (HL),0
+
+    LD L,A
+    LD H,0
+    RET
+
+FSEEK:
+  calls:
+    - LSXCALLS
+    - FWORK
+    - LSXFILE
+  code: |
+    ; HL=fnum DE=offset BC=mode(0=head, 1=current, 2=tail)
+    CALL LSXFCHECKNUM
+    JP C,.fseek1
+    ; return $FF
+    LD HL,255
+    RET
+
+    .fseek1
+    ; LSXFCB=fnum*37+LSXFCBS
+    CALL LSXCALCFCB
+    LD (LSXFCB),HL
+
+    LD A,C
+    CP 1
+    JP Z,.fseek_current
+    JP C,.fseek_head
+
+    ; fseek_tail
+    ; not support!
+    LD HL,1
+    RET
+
+    .fseek_head
+    LD BC,33
+    ADD HL,BC
+    LD (HL),E ; FCB+33
+    INC HL
+    LD (HL),D ; FCB+34
+    INC HL
+    LD (HL),0 ; FCB+35
+    INC HL
+    LD (HL),0 ; FCB=36
+
+    JP .fseek_end
+
+    .fseek_current
+    LD BC,33
+    ADD HL,BC
+
+    ; FCB+33-36 += DE
+    LD A,E
+    ADD A,(HL)
+    LD (HL),A
+    LD A,D
+    INC HL
+    ADC A,(HL)
+    LD (HL),A
+    INC HL
+    LD A,0
+    ADC A,(HL)
+    LD (HL),A
+    INC HL
+    LD A,0
+    ADC A,(HL)
+    LD (HL),A
+
+    .fseek_end
+    LD HL,0
+    RET
+
+FGETC:
+  calls:
+    - LSXCALLS
+    - FWORK
+    - LSXFILE
+  code: |
+    ; HL=fnum
+
+    CALL LSXFCHECKNUM
+    JP C,.fgetc1
+    ; return $FF
+    LD HL,255
+    RET
+
+    .fgetc1
+    ; LSXFCB=fnum*37+LSXFCBS
+    CALL LSXCALCFCB
+    LD (LSXFCB),HL
+
+    ; SET DTA
+    PUSH HL
+    LD  DE,.fgetbuf
+    LD  C,$1A ; _SETDTA
+    CALL  BDOS
+    POP HL
+
+    ; FCB head to DE
+    LD E,L
+    LD D,H
+
+    ; SET RECORD SIZE(FCB+14)
+    LD BC,14
+    ADD HL,BC
+    LD (HL),1
+    INC HL
+    LD (HL),0
+
+    LD HL,1     ; read record size
+
+    LD C,$27    ; _RDBLK
+    CALL BDOS
+    CP 0
+    JR NZ,.fgeterr
+
+    ; ok
+    LD A,(.fgetbuf)
+    LD L,A
+    LD H,0
+    LD A,0
+    RET
+
+    .fgeterr
+    LD H,$FF
+    LD L,1    ; error code (tekito-)
+    LD A,L
+    SCF
+    RET
+
+    .fgetbuf
+    DS  1
+
+FPUTC:
+  calls:
+    - LSXCALLS
+    - FWORK
+    - LSXFILE
+  code: |
+    ; HL=fnum DE=chr
+
+    CALL LSXFCHECKNUM
+    JP C,.fgetc1
+    ; return $FF
+    LD HL,255
+    RET
+
+    .fgetc1
+    ; LSXFCB=fnum*37+LSXFCBS
+    CALL LSXCALCFCB
+    LD (LSXFCB),HL
+
+
+    ; SET DTA
+    PUSH HL
+
+    LD HL,.fputbuf
+    LD (HL),E
+
+    LD  DE,.fputbuf
+    LD  C,$1A ; _SETDTA
+    CALL  BDOS
+    POP HL
+
+    ; FCB head to DE
+    LD E,L
+    LD D,H
+
+    ; SET RECORD SIZE(FCB+14)
+    LD BC,14
+    ADD HL,BC
+    LD (HL),1
+    INC HL
+    LD (HL),0
+
+    LD HL,1     ; write record size
+
+    LD C,$26    ; _WRBLK
+    CALL BDOS
+    CP 0
+    JR NZ,.fputerr
+
+    ; ok
+    LD A,(.fputbuf)
+    LD L,A
+    LD H,0
+    LD A,0
+    RET
+
+    .fputerr
+    LD H,$FF
+    LD L,1    ; error code (tekito-)
+    LD A,L
+    SCF
+    RET
+
+    .fputbuf
+    DS  1
+
+
+FCLOSE:
+  calls:
+    - LSXCALLS
+    - FWORK
+    - LSXFILE
+  code: |
+    ; HL=fnum
+    CALL LSXCALCFCB
+    EX DE,HL
+    LD C,$10  ; _FCLOSE
+    CALL BDOS
+    LD L,A
+    LD H,0
+    RET
+
+
+FREADWRITE:
+  code: |
+    ; SET DTA (DE)
+    PUSH BC
+    LD  C,$1A ; _SETDTA
+    CALL  BDOS
+
+    ; SET RECORD SIZE(FCB+14)
+    LD HL,(LSXFCB)
+    LD BC,14
+    ADD HL,BC
+    LD (HL),1
+    INC HL
+    LD (HL),0
+
+    POP BC
+
+    LD HL,(LSXFCB)  ; DE->FCB
+    EX DE,HL
+
+    LD L,C          ; HL->read record size
+    LD H,B
+
+    RET
+
+FREAD:
+  calls:
+    - LSXCALLS
+    - FWORK
+    - LSXFILE
+    - FREADWRITE
+  code: |
+    ; HL=fnum DE=address BC=size
+
+    CALL LSXFCHECKNUM
+    JP C,.fread1
+    ; return $FF
+    LD HL,255
+    RET
+
+    .fread1
+    ; LSXFCB=fnum*37+LSXFCBS
+    CALL LSXCALCFCB
+    LD (LSXFCB),HL
+
+    CALL FREADWRITE
+
+    LD C,$27
+    CALL BDOS
+
+    LD L,A
+    LD H,0
+
+    RET
+
+FWRITE:
+  calls:
+    - LSXCALLS
+    - FWORK
+    - LSXFILE
+    - FREADWRITE
+  code: |
+    ; HL=fnum DE=address BC=size
+
+    CALL LSXFCHECKNUM
+    JP C,.fread1
+    ; return $FF
+    LD HL,255
+    RET
+
+    .fread1
+    ; LSXFCB=fnum*37+LSXFCBS
+    CALL LSXCALCFCB
+    LD (LSXFCB),HL
+
+    CALL FREADWRITE
+
+    LD C,$26
+    CALL BDOS
+
+    LD L,A
+    LD H,0
+
+    RET
+
+FWORK:
+  code: |
+    LSXFCBS: DS 37*8
+    LSXFCB: DW 0
+    LSXFMODE: DW 0
+
+PCGDEF:
+  code: |
+    ; HL = ascii code DE = address
+    PUSH DE
+    LD E,L
+
+    LD A,(AT_WIDTH)  ; 40 or 80
+    CP 40
+    JR Z,PCGDEF40
+
+    ; WIDTH 80
+    LD HL,$07D0
+    LD D,48
+    JR PCG_SETNODISP
+
+    PCGDEF40:
+    ; WIDTH 40(screen 0)
+    LD HL,$03E8
+    LD D,24
+
+    PCG_SETNODISP:
+    LD (PCG_NODISPADR),HL
+
+    POP HL
+    CALL PCGSET0
+    CALL SETPCG
+    RET
+
+    PCGSET0:
+    PUSH HL
+    PUSH DE
+    LD BC,$1FD0
+    XOR A
+    OUT (C),A
+    ;
+    LD BC,(PCG_NODISPADR)
+    LD HL,$2800 ; ATTRIBUTE
+    POP DE
+    PUSH DE
+    LD A,20H    ; PCG COLOR 0
+    CALL PCGSET1
+    ;
+    LD BC,(PCG_NODISPADR)
+    LD HL,$3000 ; VRAM
+    POP DE
+    LD A,E      ; ASCII CODE
+    CALL PCGSET1
+    ;
+    POP HL
+    RET
+
+    PCGSET1:
+    ADD HL,BC
+    LD B,H
+    LD C,L
+    PCGSET2:
+    OUT (C),A
+    INC BC
+    DEC D
+    JR NZ,PCGSET2
+    RET
+
+    PCGBLUE EQU $15+1
+    PCGRED EQU $16+1
+    PCGGREEN EQU $17+1
+    SETPCG:
+    LD B,PCGBLUE
+    LD C,0
+    LD D,PCGRED
+    LD E,PCGGREEN
+    LD A,$08
+    EX AF,AF'
+    EXX
+    ;
+    DI
+    LD BC,$1A01
+    PCGVDSP0:
+    IN A,(C)
+    JP P,PCGVDSP0
+    PCGVDSP1:
+    IN A,(C)
+    JP M,PCGVDSP1
+    ;
+    EXX
+    EX AF,AF'
+    PCGSETP:
+    OUTI
+    LD B,D
+    OUTI
+    LD B,E
+    OUTI
+    ;
+    LD B,PCGBLUE
+    EX AF,AF'
+    LD A,0BH
+    PCGDLY:
+    DEC A
+    JP NZ,PCGDLY
+    EX AF,AF'
+    ;
+    INC C
+    DEC A
+    JP NZ,PCGSETP
+    ;
+    EI
+    RET
+
+    PCG_NODISPADR:
+    DW 0
+    ; DW $03E8  ; WIDTH 40 SCREEN 0
+    ; DW $07E8  ; WIDTH 40 SCREEN 1
+    ; DW $07D0  ; WIDTH 80
 
 sSYSTEM:
   param_count: 0
