@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.2.0
+SLANG Compiler (Z80) 0.3.0
 
 # 概要
 
@@ -16,7 +16,7 @@ SLANG Compiler (Z80) 0.2.0
 ```
 SLANGCompiler filename [-L library-name] [-O output-path]
 
-SLANG Compiler 0.1.0
+SLANG Compiler 0.3.0
 Copyright (c) 2022 OGINO Hiroshi / H.O SOFT
 
   -L, --lib               Library name(s). ( lib*.yml )
@@ -94,6 +94,12 @@ runtime.yml と lib*.ymlは、カレントパス、あるいはユーザーフ�
 MIT
 
 # 更新履歴
+- Version 0.3.0
+  - S-OS環境で文字入力によりワークが壊れる問題を修正 
+  - ファイル入出力ライブラリの追加(FOPEN、FCLOSE、FGETC、FPUTC、FREAD、FWRITE)
+  - WHILEの条件式に定数の0以外の値が入った場合に無限ループと判断し条件判断をしないよう最適化 
+  - ファイル入出力ライブラリのMSX-DOS2対応
+  - X1のPCG定義関数を追加 
 - Version 0.2.0
   - CONSTにCODEリストを与える事が出来るよう対応
   - MACHINE関数について定義のみで実装出来なかった不具合を修正
