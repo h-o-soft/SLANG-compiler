@@ -1,0 +1,83 @@
+
+SLANGINIT:
+  calls:
+    - RRET
+  code: |
+    EXX
+    POP HL
+    LD (RETADR-2), HL
+    EXX
+    PUSH BC
+    PUSH DE
+    PUSH HL
+    PUSH IX
+    PUSH IY
+    LD (RSP-2),SP
+
+    ; WORK ZERO CLEAR
+    XOR A
+    LD HL,__WORK__
+    LD DE,__WORK__+1
+    LD BC,__WORKEND__-__WORK__-1
+    LD (HL),A
+    LDIR
+
+    ; SP=$0000
+    DB 0,0,0
+
+    LD IY,__IYWORK
+
+    CALL __MAIN
+    OR A
+
+    RRET:
+    LD SP,0
+    RSP:
+    POP IY
+    POP IX
+    POP HL
+    POP DE
+    POP BC
+    JP $0000
+    RETADR:
+
+STOP:
+  param_count: 0
+  code: |
+    SCF
+    JP RRET
+
+SOSCALLS:
+  code: |
+    sLPTOF  EQU 1FD6H
+    sLPTON  EQU 1FD9H
+    sLPRNT  EQU 1FDCH
+    sPRINT  EQU 1FF4H
+    sWIDCH  EQU 2030H
+    sSCRN   EQU 201BH
+    sLOC    EQU 201EH
+    sGETKY  EQU 1FD0H
+    sFLGET  EQU 2021H
+    sINKEY  EQU 1FCAH
+    sCSR    EQU 2018H
+    sGETL   EQU 1FD3H
+    sHLHEX  EQU 1FB2H
+    sKBFAD  EQU 1F76H
+
+    sFILE   EQU 1FA3H
+    sDSK    EQU 1F5DH
+    sFATPOS EQU 1F5EH
+    sDIRPS  EQU 1F60H
+    sDTBUF  EQU 1F64H
+    sIBFAD  EQU 1F74H
+    sDRDSB  EQU 2000H
+    sDWTSB  EQU 2003H
+
+    sTPCHK  EQU 2863H
+
+    sWIDTH  EQU 1F5CH
+
+BEEP:
+  code: |
+    CALL $1FC4
+    RET

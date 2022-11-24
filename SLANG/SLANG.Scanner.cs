@@ -41,28 +41,9 @@ namespace SLANGCompiler.SLANG
         }
         void GetNumber()
         {
-
-            int number;
-            // 16進数か？
-            if(yytext[0] == '$')
-            {
-                number = Convert.ToInt32(yytext.Substring(1), 16);
-            } else if(Char.ToLower(yytext[yytext.Length-1]) == 'h')
-            {
-                number = Convert.ToInt32(yytext.Substring(0, yytext.Length - 1), 16);
-            } else if(Char.ToLower(yytext[yytext.Length-1]) == 'b')
-            {
-                number = Convert.ToInt32(yytext.Substring(0, yytext.Length - 1), 2);
-            } else if(yytext.StartsWith("0x"))
-            {
-                number = Convert.ToInt32(yytext.Substring(2), 16);
-            } else {
-                number = int.Parse(yytext);
-            }
+            var number = SLANGCommonUtility.GetValue(yytext);
             var constValue = new ConstInfo(number);
             yylval.constValue = constValue;
-            // yylval.s = yytext;
-            // yylval.n = int.Parse(yytext);
         }
 
         private Dictionary<string, Token> keywordDictionary = new Dictionary<string, Token>()
