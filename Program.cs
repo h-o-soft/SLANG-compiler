@@ -14,6 +14,8 @@ namespace SLANGCompiler
     { 
         public class Options
         {
+            [Option('E', "env", Required = false, HelpText = "Environment name.")]
+            public string EnvironmentName { get; set; }
             [Option('L', "lib", Required = false, HelpText = "Library name(s). ( lib*.yml )")]
             public IEnumerable<string> LibraryNames { get; set; }
 
@@ -98,16 +100,14 @@ namespace SLANGCompiler
             parser.SetOriginalSymbolUse(opt.UseOriginalSymbol);
             parser.SetCaseSensitiveSymbol(opt.CaseSensitive);
 
-            // ライブラリ指定がない場合はデフォルトを読む
-            if(opt.LibraryNames == null || opt.LibraryNames.Count() == 0)
+            // 環境名を設定する(設定されていない場合はLSX-Dodgers環境をデフォルトとする)
+            string envName = opt.EnvironmentName;
+            if(string.IsNullOrEmpty(envName))
             {
-                parser.LoadRuntime($"lib.yml");
-            } else {
-                foreach(var lib in opt.LibraryNames)
-                {
-                    parser.LoadRuntime($"lib{lib}.yml");
-                }
+                envName = "lsx";
             }
+
+            parser.SetupEnvironment(envName);
 
             foreach(var fileName in opt.Files)
             {

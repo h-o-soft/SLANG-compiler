@@ -1,0 +1,305 @@
+
+WIDTH:
+  param_count: 1
+  code: |
+    ; WIDTH not supported
+    RET
+
+PRMODE:
+  param_count: 1
+  code: |
+    ; PRMODE not supported
+    RET
+
+SCREEN:
+  param_count: 2
+  calls:
+    - sSCRN
+  code: |
+    LD H,E
+    CALL sSCRN
+    LD L,A
+    LD H,0
+    RET
+
+LOCATE:
+  param_count: 2
+  calls:
+    - sLOC
+  code: |
+    LD H,E
+    JP sLOC
+
+PTAB:
+  param_count: 1
+  calls:
+    - PCR1
+  code: |
+    LD E,$09
+    JR PCR1
+
+PSPC:
+  param_count: 1
+  calls:
+    - PCR1
+  code: |
+    LD E,' '
+    JR PCR1
+
+PCRONE:
+  param_count: 0
+  calls:
+    - PCR
+  code: |
+    LD HL,1
+
+PCR:
+  param_count: 1
+  calls:
+    - PSTR2
+  code: |
+    EX DE,HL
+    LD HL,$0D0A
+    JR PSTR2
+
+PCR1:
+  param_count: 1
+  calls:
+    - PSTR
+  code: |
+    EX DE,HL
+
+PSTR:
+  param_count: 2
+  calls:
+    - PRT
+  code: |
+    .pstr1
+    LD A,D
+    OR E
+    RET Z
+    LD A,L
+    CALL PRT
+    DEC DE
+    JR .pstr1
+
+PSTR2:
+  param_count: 2
+  calls:
+    - PCHR
+  code: |
+    .pstr1
+    LD A,D
+    OR E
+    RET Z
+    CALL PCHR
+    DEC DE
+    JR .pstr1
+
+PCHR:
+  calls:
+    - PRT
+  code: |
+    LD A, H
+    CALL PRT
+    LD A, L
+    JR PRT
+
+CRDISP:
+  calls:
+    - PRT
+  code: |
+    LD A,$0D
+    JR PRT
+
+PHEX4:
+  param_count: 1
+  calls:
+    - PHEX2
+  code: |
+    LD A,H
+    CALL PHEX
+
+PHEX2:
+  param_count: 1
+  calls:
+    - PHEX
+  code: |
+    LD A,L
+
+PHEX:
+  param_count: 1
+  calls:
+    - SASC
+    - PRT
+  code: |
+    PUSH AF
+    RRCA
+    RRCA
+    RRCA
+    RRCA
+    CALL SASC
+    CALL PRT
+
+    POP AF
+    CALL SASC
+
+PRT:
+  param_count: 1
+  code: |
+    PUSH HL
+    PUSH DE
+    PUSH BC
+    LD E,A
+    LD C,$06
+    CALL $0005
+    POP BC
+    POP DE
+    POP HL
+    RET
+
+    WORK10:
+    DB  "12345",0
+    DS  4
+
+PSIGN:
+  param_count: 1
+  calls:
+    - PRT
+    - NEGHL
+    - P10
+  code: |
+    BIT 7, H
+    JR Z,.psign1
+    LD A, $2D
+    CALL PRT
+    CALL NEGHL
+    .psign1
+
+P10:
+  function_type: Machine
+  param_count: 1
+  calls:
+    - P10to5
+    - P10toN
+  code: |
+    LD DE, -1
+    JR P10toN
+
+P10to5:
+  function_type: Machine
+  param_count: 1
+  calls:
+    - P10toN
+  code: |
+    LD DE, 0005
+
+P10toN:
+  calls:
+    - PRT
+    - VTOS
+    - PMSX
+  function_type: Machine
+  param_count: 2
+  code: |
+    PUSH DE
+    LD DE, WORK10
+    CALL VTOS
+    EX DE, HL
+    POP DE
+    LD A, E
+    CP $05
+    JR NC, .p10ton1
+    LD A, $05
+    SUB E
+    .p10ton2
+    INC HL
+    DEC A
+    JR NZ, .p10ton2
+    JR PMSX
+    .p10ton1
+    LD A, E
+    CP $FF
+    JR NZ, PMSX
+    .p10ton4
+    LD A, (HL)
+    CP $20
+    JR NZ, PMSX
+    INC HL
+    JR .p10ton4
+
+PMSX:
+  calls:
+    - PMSX1
+  code: |
+    LD B, 00
+
+PMSX1:
+  calls:
+    - PRT
+    - PMSG
+  code: |
+    LD A, (HL)
+    CP B
+    RET Z
+    CALL PRT
+    INC HL
+    JR PMSX1
+
+PMSG:
+  calls:
+    - PMSX1
+  code: |
+    LD B, $0D
+    JR PMSX1
+
+MPRNT:
+  calls:
+    - PRT
+  code: |
+    EX (SP),HL
+    .mprnt2
+    LD A, (HL)
+    INC HL
+    OR A
+    JR Z, .mprnt1
+    CALL PRT
+    JR .mprnt2
+    .mprnt1
+    EX (SP),HL
+    RET
+
+VTOS:
+  function_type: Machine
+  param_count: 2
+  calls:
+    - DIVHLDE8
+  code: |
+    PUSH HL
+    EXX
+    POP HL
+    EXX
+    LD HL, $0005
+    ADD HL, DE
+    LD (HL), $00
+    LD B, $05
+    .vtos1
+    EXX
+    LD E, $0A
+    CALL DIVHLDE8
+    LD A, E
+    ADD A, $30
+    EXX
+    DEC HL
+    LD (HL), A
+    DJNZ .vtos1
+    LD B, $04
+    .vtos3
+    LD A, (HL)
+    CP $30
+    JR NZ, .vtos2
+    LD (HL), $20
+    INC HL
+    DJNZ .vtos3
+    .vtos2
+    RET

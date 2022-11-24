@@ -12,7 +12,7 @@ namespace SLANGCompiler.SLANG
     /// <summary>
     /// SLANGパーサクラス
     /// </summary>
-    internal partial class SLANGParser: ILabelCreator, IErrorReporter
+    internal partial class SLANGParser: ILabelCreator, IErrorReporter, IORGSetter
     {
         private static readonly bool DebugEnabled = false;
 
@@ -70,12 +70,20 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public void SetOrg(Expr expr)
         {
-            if(!expr.IsConst())
+            if(!expr.IsValueConst())
             {
                 Error("ORG must be const.");
                 return;
             }
-            orgValue = expr.Value;
+            SetOrg(expr.ConstValue.Value);
+        }
+
+        /// <summary>
+        /// ORGアドレスを設定する
+        /// </summary>
+        public void SetOrg(int orgValue)
+        {
+            this.orgValue = orgValue;
         }
 
         /// <summary>
@@ -294,6 +302,22 @@ namespace SLANGCompiler.SLANG
                 }
             }
             return fileName;
+        }
+
+        // 環境設定ファイルを元に環境設定を行う
+        // * デフォルトORGの設定
+        // * ランタイムライブラリの読み込み
+        public void SetupEnvironment(string envName)
+        {
+            string envPath;
+            if(!envName.Contains("."))
+            {
+                envPath = envName + ".env";
+            } else {
+                envPath = envName;
+            }
+            var environmentManager = new EnvironmentManager(runtimeManager, this);
+            environmentManager.Load(envPath);
         }
 
         public void LoadRuntime(string fileName)
