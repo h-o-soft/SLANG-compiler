@@ -253,10 +253,20 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// のぞき穴的最適化を行う
         /// </summary>
-        public int PeepholeOptimize(List<string> codeList)
+        public int PeepholeOptimize(List<string> codeListOrig)
         {
             int totalCount = 0;
             int optimizeCount;
+            // コメントを削除したリストを作る
+            var codeList = new List<string>();
+            foreach(var code in codeListOrig)
+            {
+                if(code.Length == 0 || code[0] != ';')
+                {
+                    codeList.Add(code);
+                }
+            }
+
             do
             {
                 optimizeCount = 0;

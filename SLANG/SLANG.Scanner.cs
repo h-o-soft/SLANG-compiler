@@ -7,8 +7,14 @@ namespace SLANGCompiler.SLANG
     internal partial class SLANGScanner
     {
 
+        CodeRepository codeRepository;
         ConstTableManager constTableManager;
         SLANGParser constParser = new SLANGParser();
+
+        public void SetCodeRepository(CodeRepository codeRepository)
+        {
+            this.codeRepository = codeRepository;
+        }
 
         public void SetConstTableManager(ConstTableManager constTableManager)
         {
@@ -219,5 +225,19 @@ namespace SLANGCompiler.SLANG
             error(string.Format(format, args));
             //Console.WriteLine($"yylloc StartLine:{yylloc.StartLine} EndLine:{yylloc.EndLine} StartColumn:{yylloc.StartColumn} EndColumn:{yylloc.EndColumn}");
 		}
+
+
+        private void genSourceComment(string source)
+        {
+
+            var comments = source.Replace("\r","").Split("\n");
+            foreach(var comment in comments)
+            {
+                if(!string.IsNullOrEmpty(comment))
+                {
+                    codeRepository.AddComment(comment);
+                }
+            }
+        }
     }
 }

@@ -80,6 +80,7 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
 
 %{
     StringBuilder lexStrBuffer = null;
+    int prevTokEPos = 0;
     bool nextBraceIsArray = false;
 
     private class LocationInfo
@@ -176,7 +177,10 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
 {STRFUNC}       { yylval.symbol = yytext; return (int)Token.STRFUNC; }
 {EXC}           { yylval.symbol = "!"; return (int)Token.EXC; }
 
-{Eol}           { LocationNextLine(); nextBraceIsArray = false; }
+{Eol}           { LocationNextLine(); nextBraceIsArray = false;
+                genSourceComment(buffer.GetString(prevTokEPos,tokEPos));
+                prevTokEPos = tokEPos;
+ }
 
 
 /* #INCLUDE */

@@ -104,6 +104,20 @@ namespace SLANGCompiler.SLANG
             codeList.Add(code);
         }
 
+        /// <summary>
+        /// コメントを追加する
+        /// </summary>
+        public void AddComment(string commentString)
+        {
+            var code = new Code(
+                CodeType.Comment,
+                lineNumber,
+                "; " + commentString,
+                0,
+                ConditionalCode.None);
+            codeList.Add(code);
+        }
+
         // ラベル番号をラベル文字列に変換する
         public string GetLabelString(int labelNum)
         {
@@ -176,6 +190,23 @@ namespace SLANGCompiler.SLANG
             WriteCode($";\tOFFSET\t${offsetValue:X}\n");
            }
 
+            // コメントが一行ぶん後にズレているので1つずつ前に戻す(もっといい方法がありそう)
+            Code prevCode = null;
+            foreach(var code in codeList)
+            {
+                if(code.CodeType == CodeType.Comment)
+                {
+                    if(prevCode != null)
+                    {
+                        prevCode.UpdateCodeString(prevCode.CodeString + code.CodeString);
+                        prevCode = code;
+                        code.UpdateCodeString("");
+                    } else {
+                        prevCode = code;
+                    }
+                }
+            }
+
             string condStr = "";
             foreach(var code in codeList)
             {
@@ -211,6 +242,11 @@ namespace SLANGCompiler.SLANG
                             prevLabel = code.LineNumber;
                         }
                         break;
+                    case CodeType.Comment:
+                        {
+                            WriteCode(code.CodeString + "\n");
+                            break;
+                        }
                 }
             }
             return CodeList;

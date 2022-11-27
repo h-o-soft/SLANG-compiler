@@ -375,6 +375,7 @@ namespace SLANGCompiler.SLANG
                     constTableManager = this.constTableManager;
                 }
                 slangScanner.SetConstTableManager(constTableManager);
+                slangScanner.SetCodeRepository(codeRepository);
 
                 StartParse();
                 this.Parse();
@@ -400,6 +401,7 @@ namespace SLANGCompiler.SLANG
                 var slangScanner = (SLANGScanner)this.Scanner;
                 slangScanner.currentFileName = "inner-code";
                 slangScanner.SetConstTableManager(constTableManager);
+                slangScanner.SetCodeRepository(codeRepository);
 
                 StartParse();
                 this.Parse();
@@ -431,6 +433,7 @@ namespace SLANGCompiler.SLANG
                 var slangScanner = (SLANGScanner)this.Scanner;
                 slangScanner.currentFileName = fileName;
                 slangScanner.SetConstTableManager(constTableManager);
+                slangScanner.SetCodeRepository(codeRepository);
 
                 StartParse();
                 genInitCode();
