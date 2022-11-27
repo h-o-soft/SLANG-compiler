@@ -15,6 +15,8 @@ namespace SLANGCompiler.SLANG
         JumpNear,
         /// <summary>ラベルのアドレス値(DW _LABEL 的なコード)</summary>
         LabelAddress,
+        /// <summary>コメント</summary>
+        Comment,
     }
 
     /// <summary>
@@ -72,6 +74,11 @@ namespace SLANGCompiler.SLANG
             this.CodeString = codeString;
             this.LabelNumber = labelNumber;
             this.ConditionalCode = conditionalCode;
+        }
+
+        public void UpdateCodeString(string code)
+        {
+            CodeString = code;
         }
     }
 }
