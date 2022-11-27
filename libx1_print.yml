@@ -3,6 +3,7 @@ WIDTH:
   param_count: 1
   calls:
     - sWORK
+    - X1WORK
     - CTRL0C
   code: |
     PUSH	BC
@@ -63,6 +64,7 @@ WIDTH:
 CTRL0B:
   calls:
     - sWORK
+    - X1WORK
   code: |
     LD	HL,0
     LD	(_TXADR),HL
@@ -72,6 +74,7 @@ CTRL0C:
   calls:
     - CTRL0B
     - sWORK
+    - X1WORK
   code: |
     CALL	CTRL0B
     CTRL06:
@@ -116,6 +119,7 @@ LOCATE:
   calls:
     - AT_VRCALC
     - sWORK
+    - X1WORK
   code: |
     LD H,E
     PUSH	BC
@@ -130,6 +134,7 @@ AT_VRCALC:
   param_count: 1
   calls:
     - sWORK
+    - X1WORK
   code: |
     PUSH	DE
     LD C,L
@@ -431,3 +436,45 @@ VTOS:
     DJNZ .vtos3
     .vtos2
     RET
+
+X1WORK:
+  code: |
+    _TXADR: DW 0
+
+    AT_COLORF:
+    DB	7
+    AT_WIDTH:
+    DB	80
+    _WK1FD0:DB  0
+    
+    CRTC_LINE EQU 25
+    _CRTCD:
+    DB	06FH,050H,059H,038H,01FH,002H,019H,01CH
+    DB	000H,007H
+    DW	0-80*CRTC_LINE,0-80
+    DB	00CH
+    WK1FD0:	DB	0A0H
+    _C8025L:
+    DB	06FH,050H,059H,038H,01FH,002H,019H,01CH
+    DB	000H,007H
+    DW	0-80*CRTC_LINE,0-80
+    DB	00CH
+    DB	0A0H
+    _C8025H:
+    DB	06BH,050H,059H,088H,01BH,001H,019H,01AH
+    DB	000H,00FH
+    DW	0-80*CRTC_LINE,0-80
+    DB	00CH
+    DB	0A3H
+    _C4025L:
+    DB	037H,028H,02DH,034H,01FH,002H,019H,01CH
+    DB	000H,007H
+    DW	0-40*CRTC_LINE,0-40
+    DB	00DH
+    DB	0A0H
+    _C4025H:
+    DB	035H,028H,02DH,084H,01BH,001H,019H,01AH
+    DB	000H,00FH
+    DW	0-40*CRTC_LINE,0-40
+    DB	00DH
+    DB	0A3H
