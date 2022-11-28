@@ -35,6 +35,8 @@ namespace SLANGCompiler.SLANG
 
         CodeOptimizer codeOptimizer;
 
+        bool isSourceComment;
+
 
         private int orgValue = 0x100;
         private int workAddressValue = -1;
@@ -360,6 +362,15 @@ namespace SLANGCompiler.SLANG
             errorTextWriter = errorWriter;
         }
 
+
+        /// <summary>
+        /// SLANGのソースコードをアセンブラソースにコメントとして含めるかどうかを設定する
+        /// </summary>
+        public void SetSourceComment(bool sourceComment)
+        {
+            this.isSourceComment = sourceComment;
+        }
+
         public void ParseConstExpr(string code, ConstTableManager constTableManager = null)
         {
             try
@@ -402,6 +413,7 @@ namespace SLANGCompiler.SLANG
                 slangScanner.currentFileName = "inner-code";
                 slangScanner.SetConstTableManager(constTableManager);
                 slangScanner.SetCodeRepository(codeRepository);
+                slangScanner.SetSourceComment(isSourceComment);
 
                 StartParse();
                 this.Parse();
@@ -434,6 +446,7 @@ namespace SLANGCompiler.SLANG
                 slangScanner.currentFileName = fileName;
                 slangScanner.SetConstTableManager(constTableManager);
                 slangScanner.SetCodeRepository(codeRepository);
+                slangScanner.SetSourceComment(isSourceComment);
 
                 StartParse();
                 genInitCode();
