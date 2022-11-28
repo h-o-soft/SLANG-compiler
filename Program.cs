@@ -27,6 +27,8 @@ namespace SLANGCompiler
 
             [Option("case-sensitive", Required = false, HelpText = "Set symbols to be case-sensitive.")]
             public bool CaseSensitive { get; set; }
+            [Option("source-comment", Required = false, HelpText = "Include source code as comments.")]
+            public bool SourceComment { get; set; }
 
             [Value(0, Required = true, MetaName = "input files")]
             public IEnumerable<string> Files { get; set; }
@@ -99,6 +101,7 @@ namespace SLANGCompiler
             // ソースファイルで指定した変数名、関数名をそのまま使うか、使わないか
             parser.SetOriginalSymbolUse(opt.UseOriginalSymbol);
             parser.SetCaseSensitiveSymbol(opt.CaseSensitive);
+            parser.SetSourceComment(opt.SourceComment);
 
             // 環境名を設定する(設定されていない場合はLSX-Dodgers環境をデフォルトとする)
             string envName = opt.EnvironmentName;

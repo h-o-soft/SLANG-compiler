@@ -6,10 +6,11 @@ namespace SLANGCompiler.SLANG
 {
     internal partial class SLANGScanner
     {
-
         CodeRepository codeRepository;
         ConstTableManager constTableManager;
         SLANGParser constParser = new SLANGParser();
+
+        private bool isSourceComment = false;
 
         public void SetCodeRepository(CodeRepository codeRepository)
         {
@@ -229,15 +230,25 @@ namespace SLANGCompiler.SLANG
 
         private void genSourceComment(string source)
         {
-
-            var comments = source.Replace("\r","").Split("\n");
-            foreach(var comment in comments)
+            if(isSourceComment)
             {
-                if(!string.IsNullOrEmpty(comment))
+                var comments = source.Replace("\r","").Split("\n");
+                foreach(var comment in comments)
                 {
-                    codeRepository.AddComment(comment);
+                    if(!string.IsNullOrEmpty(comment))
+                    {
+                        codeRepository.AddComment(comment);
+                    }
                 }
             }
+        }
+
+        /// <summary>
+        /// SLANGのソースコードをアセンブラソースにコメントとして含めるかどうかを設定する
+        /// </summary>
+        public void SetSourceComment(bool isSourceComment)
+        {
+            this.isSourceComment = isSourceComment;
         }
     }
 }
