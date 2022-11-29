@@ -15,7 +15,7 @@ SLANGINIT:
 
     LD IY,__IYWORK
 
-    CALL __MAIN
+    CALL MAIN
     JP 0
 
 LSXCALLS:
@@ -801,22 +801,16 @@ sHLHEX:
 sWORK:
   param_count: 0
   code: |
-    ;WIDTH	EQU	80
-    ;_WIDTH:	DB	WIDTH
-    ;_XYADR:	DW	XYADR
     sCRTCD: DB $6F
-    sWIDTH: DB 80
+  works:
+    sXYADR:	2
+    sKBFAD:	128
+    sKBFAD0: 1
+    sKBFAD1: 1
+    sKBFADX: 81
+    sPRBF:	80
+    sSUBPS:	2
+    sSUBBF: 256
+    sSPBK: 2
+    WBOOTBK: 2
 
-    sXYADR:	DW	0
-
-    sKBFAD:	DS	128
-    sKBFAD0:	DB	80
-    sKBFAD1:	DB	0
-    sKBFADX:	DS	80
-    DB 0
-
-    sPRBF:	DS	80
-    sSUBPS:	DW	0
-    sSUBBF: DS	256
-    sSPBK: DW 0
-    WBOOTBK: DW 1

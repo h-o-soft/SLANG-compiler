@@ -204,9 +204,9 @@ namespace SLANGCompiler.SLANG
                 var labelName = symbol.LabelName;
 
                 // 強引。^Aは^AFの2バイト目を指すようにする
-                if(labelName == "___A")
+                if(labelName == "_A")
                 {
-                    outputStreamWriter.WriteLine($"{labelName} EQU (___AF + 1)");
+                    outputStreamWriter.WriteLine($"{labelName} EQU (_AF + 1)");
                 } else {
                     outputStreamWriter.WriteLine($"{labelName} EQU (__WORK__ + {workOffset})");
                 }

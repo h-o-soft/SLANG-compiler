@@ -186,18 +186,13 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// 宣言用の識別子Treeを作る
         /// </summary>
-        public static Tree CreateDeclIdentifier(DeclNode nodeType, string identifierName, Expr address = null, int? initialValue = null )
+        public static Tree CreateDeclIdentifier(DeclNode nodeType, string identifierName)
         {
             Tree p = new Tree()
             {
                 Node = nodeType,
                 IdentifierName = identifierName
             };
-            if(initialValue != null)
-            {
-                p.InitialValues = new List<int>(){ (int)initialValue };
-            }
-            p.UpdateIdentifier(address);
             return p;
         }
 
@@ -273,15 +268,11 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// Treeが持つ識別子の情報(アドレスまたは初期値)を更新する
         /// </summary>
-        public Tree UpdateIdentifier(Expr address = null, Expr initialValue = null)
+        public Tree UpdateIdentifier(string address = null, Expr initialValue = null)
         {
             if(address != null)
             {
-                if(address.OpType != OperatorType.Constant)
-                {
-                    throw new System.Exception("識別子のアドレス指定は定数である必要があります");
-                }
-                this.Address = address.ConstValue;
+                this.Address = new ConstInfo(address, false);
             }
             if(initialValue != null)
             {

@@ -235,11 +235,14 @@ namespace SLANGCompiler.SLANG
         {
             StreamWriter outputStreamWriter = new StreamWriter(outputStream, System.Text.Encoding.GetEncoding("shift_jis"));
 
+            // RuntimeManagerが保持するSymbolTableManagerに対して、利用されたワーク変数を追加する
+            runtimeManager.AddWorkSymbol();
+
             // コード生成タイミングでワーク末尾に関数パラメータ等用の領域を確保する
             // ※IYがここを指すだけでいいのか？？
             var workArray = new SymbolTable()
             {
-                Name = "IYWORK",
+                Name = "__IYWORK",
                 SymbolClass = SymbolClass.Global,
                 TypeInfo = new TypeInfo(TypeInfoClass.Array, 256, TypeDataSize.Byte, TypeInfo.ByteTypeInfo),
                 Size = 256
