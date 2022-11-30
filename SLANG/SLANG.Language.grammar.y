@@ -505,7 +505,7 @@ byte_spec
 
 declarator2
        : IDENTIFIER { $$ = Tree.CreateDeclIdentifier(DeclNode.Id, $1); }
-       | declarator2 COLON expr { $$ = $1.UpdateIdentifier($3); } // Address
+       | declarator2 COLON expr { $$ = $1.UpdateIdentifier(createExprString($3)); } // Address
        | declarator2 AB_OPEN B_CLOSE { $$ = Tree.CreateArray($1, null);  } // Array or Indirect
        | declarator2 AB_OPEN expr B_CLOSE { $$ = Tree.CreateArray($1, $3);  } // Array(with size)
        ;
@@ -518,7 +518,7 @@ func_head_decl
 
 func_declarator
        : IDENTIFIER { $$ = Tree.CreateDeclIdentifier(DeclNode.Id, $1); }
-       | func_declarator COLON expr { $$ = $1.UpdateIdentifier($3); }
+       | func_declarator COLON expr { $$ = $1.UpdateIdentifier(createExprString($3)); }
        | func_declarator P_OPEN P_CLOSE { $$ = Tree.CreateFuncDecl($1, null ); }
        | func_declarator P_OPEN expr P_CLOSE { $$ = Tree.CreateFuncDecl($1, $3 ); }
        ;

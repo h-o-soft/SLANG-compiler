@@ -22,6 +22,7 @@ namespace SLANGCompiler.SLANG
             public FunctionType functionType = FunctionType.Machine;
             public int paramCount = 0;
             public string address = null;
+            public Dictionary<string, int> works = null;
         }
 
         /// <summary>
@@ -38,13 +39,16 @@ namespace SLANGCompiler.SLANG
                 public string Code { get; set; }
                 public string[] InsideCalls { get; private set; }
 
-                public RuntimeInfo(string name, string insideName, bool used, string code, string[] insideCalls)
+                public Dictionary<string, int> WorkDictionary { get; private set; }
+
+                public RuntimeInfo(string name, string insideName, bool used, string code, string[] insideCalls, Dictionary<string, int> workDictionary)
                 {
                     Name = name;
                     InsideName = insideName;
                     Used = used;
                     Code = code;
                     InsideCalls = insideCalls;
+                    WorkDictionary = workDictionary;
                 }
 
                 public void Use()
@@ -100,7 +104,7 @@ namespace SLANGCompiler.SLANG
                 var calls = runtimeCode.calls;
                 var code = runtimeCode.code;
 
-                var info = new RuntimeInfo(label, runtimeCode.insideName, false, null, runtimeCode.calls);
+                var info = new RuntimeInfo(label, runtimeCode.insideName, false, null, runtimeCode.calls, runtimeCode.works);
 
                 var sb = new StringBuilder();
                 var codes = code.Split("\n");
@@ -229,6 +233,36 @@ namespace SLANGCompiler.SLANG
                             writer.Write(info.Code);
                         }
                         writer.WriteLine("");
+                    }
+                }
+            }
+
+            public void AddWorkSymbol()
+            {
+                foreach(var info in runtimeInfoList)
+                {
+                    if(info.Used && info.WorkDictionary != null)
+                    {
+                        foreach(var pair in info.WorkDictionary)
+                        {
+                            var symbolName = pair.Key;
+                            var dataSize = pair.Value;
+
+                            if(dataSize == 1)
+                            {
+                                // BYTE変数
+                                symbolTableManager.AddSymbol(symbolName, TypeInfo.ByteTypeInfo, true );
+                            } else if(dataSize == 2)
+                            {
+                                // WORD変数
+                                symbolTableManager.AddSymbol(symbolName, TypeInfo.WordTypeInfo, true );
+                            } else {
+                                // 配列変数
+                                var arrayTypeInfo = new TypeInfo(TypeInfoClass.Array, dataSize, TypeDataSize.Byte, TypeInfo.ByteTypeInfo);
+                                var symbol = symbolTableManager.AddSymbol(symbolName, arrayTypeInfo, true );
+                                symbol.Size = dataSize;
+                            }
+                        }
                     }
                 }
             }

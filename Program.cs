@@ -112,6 +112,15 @@ namespace SLANGCompiler
 
             parser.SetupEnvironment(envName);
 
+            // ライブラリが指定されていたら読み込む
+            if(opt.LibraryNames != null)
+            {
+                foreach(var lib in opt.LibraryNames)
+                {
+                    parser.LoadRuntime($"lib{lib}.yml");
+                }
+            }
+
             foreach(var fileName in opt.Files)
             {
                 if(!File.Exists(fileName))

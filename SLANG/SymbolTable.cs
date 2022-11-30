@@ -42,7 +42,8 @@ namespace SLANGCompiler.SLANG
             {
                 if(UseOriginalSymbol)
                 {
-                    return "_" + LabelHeader+"_"+normalizeName;
+                    // UseOriginalSymbolがtrueの場合はLabelHeaderは使われないので注意
+                    return normalizeName;
                 } else {
                     return "_" + LabelHeader+"_SYM"+Id;
                 }

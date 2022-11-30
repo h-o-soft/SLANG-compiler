@@ -27,7 +27,7 @@ SLANGINIT:
 
     LD IY,__IYWORK
 
-    CALL __MAIN
+    CALL MAIN
     OR A
 
     RRET:
