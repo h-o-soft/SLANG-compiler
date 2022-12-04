@@ -18,7 +18,8 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public List<SymbolTable> SymbolTableList => symbolTableList;
 
-        private TypeInfo funcTypeInfo;
+        private TypeInfo funcWordTypeInfo;
+        private TypeInfo funcFloatTypeInfo;
 
         private IErrorReporter errorReporter;
 
@@ -40,13 +41,14 @@ namespace SLANGCompiler.SLANG
         public void Initialize()
         {
             symbolTableList.Clear();
-            funcTypeInfo = TypeInfo.CreateTypeInfo(TypeInfoClass.Function, TypeInfo.WordTypeInfo.Clone(), 2, TypeDataSize.Word);
+            funcWordTypeInfo = TypeInfo.CreateTypeInfo(TypeInfoClass.Function, TypeInfo.WordTypeInfo.Clone(), 2, TypeDataSize.Word);
+            funcFloatTypeInfo = TypeInfo.CreateTypeInfo(TypeInfoClass.Function, TypeInfo.FloatTypeInfo.Clone(), 3, TypeDataSize.Float);
         }
 
         /// <summary>
         /// 関数を追加する
         /// </summary>
-        public void AddFunction(FunctionType functionType, string name, string insideName, int paramCount, ConstInfo Address = null, bool? useOriginalSymbol = null, bool isRuntime = false)
+        public void AddFunction(FunctionType functionType, string name, string insideName, int paramCount, ConstInfo Address = null, bool? useOriginalSymbol = null, bool isRuntime = false, OperatorType operatorType = OperatorType.Word)
         {
             if(useOriginalSymbol == null)
             {
@@ -58,7 +60,7 @@ namespace SLANGCompiler.SLANG
                 InsideName = insideName,
                 FunctionType = functionType,
                 SymbolClass = SymbolClass.Global,
-                TypeInfo = funcTypeInfo,
+                TypeInfo = operatorType == OperatorType.Float ? funcFloatTypeInfo : funcWordTypeInfo,
                 Size = paramCount,
                 Address = Address,
                 UseOriginalSymbol = (bool)useOriginalSymbol,

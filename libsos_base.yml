@@ -25,6 +25,8 @@ SLANGINIT:
     ; SP=$0000
     DB 0,0,0
 
+    <<CALLINITIALIZER>>
+
     LD IY,__IYWORK
 
     CALL MAIN

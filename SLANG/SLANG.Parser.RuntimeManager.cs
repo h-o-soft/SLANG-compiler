@@ -23,6 +23,8 @@ namespace SLANGCompiler.SLANG
             public int paramCount = 0;
             public string address = null;
             public Dictionary<string, int> works = null;
+            public  OperatorType resultType = OperatorType.Word;
+            public string initializeCode = null;
         }
 
         /// <summary>
@@ -37,16 +39,18 @@ namespace SLANGCompiler.SLANG
                 public string InsideName { get; private set; }
                 public bool Used { get; private set; }
                 public string Code { get; set; }
+                public string InitializeCode { get; set; }
                 public string[] InsideCalls { get; private set; }
 
                 public Dictionary<string, int> WorkDictionary { get; private set; }
 
-                public RuntimeInfo(string name, string insideName, bool used, string code, string[] insideCalls, Dictionary<string, int> workDictionary)
+                public RuntimeInfo(string name, string insideName, bool used, string code, string initializeCode, string[] insideCalls, Dictionary<string, int> workDictionary)
                 {
                     Name = name;
                     InsideName = insideName;
                     Used = used;
                     Code = code;
+                    InitializeCode = initializeCode;
                     InsideCalls = insideCalls;
                     WorkDictionary = workDictionary;
                 }
@@ -103,8 +107,9 @@ namespace SLANGCompiler.SLANG
             {
                 var calls = runtimeCode.calls;
                 var code = runtimeCode.code;
+                var initializeCode = runtimeCode.initializeCode;
 
-                var info = new RuntimeInfo(label, runtimeCode.insideName, false, null, runtimeCode.calls, runtimeCode.works);
+                var info = new RuntimeInfo(label, runtimeCode.insideName, false, null, null, runtimeCode.calls, runtimeCode.works);
 
                 var sb = new StringBuilder();
                 var codes = code.Split("\n");
@@ -119,6 +124,23 @@ namespace SLANGCompiler.SLANG
                     sb.Append("\n");
                 }
                 info.Code = sb.ToString();
+
+                if(initializeCode != null)
+                {
+                    sb.Clear();
+                    codes = initializeCode.Split("\n");
+                    foreach(var str in codes)
+                    {
+                        // ラベル以外を字下げする
+                        if(!(str.Length > 0 && (str[0] == '.' || str.IndexOf(":") > 0)))
+                        {
+                            sb.Append(" ");
+                        }
+                        sb.Append(str);
+                        sb.Append("\n");
+                    }
+                    info.InitializeCode = sb.ToString();
+                }
 
                 runtimeInfoList.Add(info);
 
@@ -161,7 +183,7 @@ namespace SLANGCompiler.SLANG
                 }
 
                 // シンボルテーブル側に反映させておく
-                symbolTableManager.AddFunction(runtimeCode.functionType, label, info.InsideName, runtimeCode.paramCount, addressInfo, true, true);
+                symbolTableManager.AddFunction(runtimeCode.functionType, label, info.InsideName, runtimeCode.paramCount, addressInfo, true, true, runtimeCode.resultType);
             }
 
             /// <summary>
@@ -210,6 +232,7 @@ namespace SLANGCompiler.SLANG
                 return null;
             }
 
+
             /// <summary>
             /// StreamWriterに対してランタイムコードを出力する
             /// </summary>
@@ -233,8 +256,35 @@ namespace SLANGCompiler.SLANG
                             writer.Write(info.Code);
                         }
                         writer.WriteLine("");
+
+                        if(info.InitializeCode != null)
+                        {
+                            writer.Write($"{name}_INITIALIZE:\n");
+                            writer.Write(info.InitializeCode);
+                        }
                     }
                 }
+            }
+
+            /// <summary>
+            /// ランタイム初期化コードを呼び出す
+            /// </summary>
+            public void GenerateInitializeCode(StreamWriter writer)
+            {
+                writer.WriteLine("RUNTIME_INIT:");
+                foreach(var info in runtimeInfoList)
+                {
+                    if(info.Used && info.InitializeCode != null)
+                    {
+                        var name = info.InsideName;
+                        if(string.IsNullOrEmpty(name))
+                        {
+                            name = info.Name;
+                        }
+                        writer.WriteLine($" CALL {name}_INITIALIZE");
+                    }
+                }
+                writer.WriteLine("RET");
             }
 
             public void AddWorkSymbol()

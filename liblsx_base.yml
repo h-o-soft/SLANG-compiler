@@ -13,6 +13,8 @@ SLANGINIT:
     LD (HL),A
     LDIR
 
+    <<CALLINITIALIZER>>
+
     LD IY,__IYWORK
 
     CALL MAIN

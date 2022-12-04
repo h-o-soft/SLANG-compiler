@@ -953,7 +953,14 @@ namespace SLANGCompiler.SLANG
                     }
                 }
 
-                genFloatCall("f24mul", left, right);
+                // X*X は最適化する
+                if(left.IsVariable() && right.IsVariable() && left.Symbol == right.Symbol)
+                {
+                    genexp(left);
+                    genRuntimeCall("f24sqr");
+                } else {
+                    genFloatCall("f24mul", left, right);
+                }
             } else if(right.IsConst() && isUnsigned)
             {
                 if(!right.IsIntValueConst())
@@ -1496,12 +1503,18 @@ namespace SLANGCompiler.SLANG
             }
         }
 
+        private static readonly string InitializerCallCode = "<<CALLINITIALIZER>>";
         // 指定ランタイムのコードを直接埋め込む
         private void genRuntimeInline(string runtimeName)
         {
             var code = runtimeManager.GetRuntimeCode(runtimeName);
+
             if(code != null)
             {
+                if(code.Contains(InitializerCallCode))
+                {
+                    code = code.Replace(InitializerCallCode,"CALL RUNTIME_INIT");
+                }
                 gencode(code);
             }
         }

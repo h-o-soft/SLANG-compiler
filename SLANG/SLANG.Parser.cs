@@ -332,6 +332,9 @@ namespace SLANGCompiler.SLANG
             // ランタイムを出力する
             runtimeManager.Generate(outputStreamWriter);
 
+            // ランタイムの初期化コードを出力する
+            runtimeManager.GenerateInitializeCode(outputStreamWriter);
+
             // 文字列データの出力
             stringDataManager.GenerateCode(outputStreamWriter);
 

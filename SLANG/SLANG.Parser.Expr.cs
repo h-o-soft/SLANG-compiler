@@ -432,7 +432,19 @@ namespace SLANGCompiler.SLANG
                 return null;
             }
 
-            Expr x = makeNode2(Opcode.Func, OperatorType.Word, TypeInfo.WordTypeInfo, func, paramList);
+            // 戻り値はWORDまたはFLOATである
+            OperatorType resultType;
+            TypeInfo resultTypeInfo;
+            if(funcSymbol.IsRuntime && funcSymbol.TypeInfo.DataSize == TypeDataSize.Float)
+            {
+                resultType = OperatorType.Float;
+                resultTypeInfo = TypeInfo.FloatTypeInfo;
+            } else {
+                resultType = OperatorType.Word;
+                resultTypeInfo = TypeInfo.WordTypeInfo;
+            }
+
+            Expr x = makeNode2(Opcode.Func, resultType, resultTypeInfo, func, paramList);
 
             // 関数の戻り値は常にWORDとする
             if(typeInfo.IsByteTypeInfo())
@@ -505,6 +517,10 @@ namespace SLANGCompiler.SLANG
                         {
                             if(a.ConstValue.ConstInfoType == ConstInfoType.FloatValue)
                             {
+                                return a;
+                            } else if(a.IsIntValueConst())
+                            {
+                                a.ConstValue = new ConstInfo((float)a.ConstValue.Value);
                                 return a;
                             } else {
                                 return makeNode1(Opcode.WtoF, OperatorType.Float, TypeInfo.FloatTypeInfo, a);
