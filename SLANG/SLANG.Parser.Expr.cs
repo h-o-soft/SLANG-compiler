@@ -515,7 +515,7 @@ namespace SLANGCompiler.SLANG
                             return makeNode1(Opcode.WtoF, OperatorType.Float, TypeInfo.WordTypeInfo, a);
                         case OperatorType.Constant:
                         {
-                            if(a.ConstValue.ConstInfoType == ConstInfoType.FloatValue)
+                            if(a.IsFloatValueConst())
                             {
                                 return a;
                             } else if(a.IsIntValueConst())

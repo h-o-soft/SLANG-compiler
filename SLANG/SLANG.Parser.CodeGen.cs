@@ -1399,7 +1399,7 @@ namespace SLANGCompiler.SLANG
             if(expr != null)
             {
                 genexp(expr);
-                genRuntimeCall("f24toi16");
+                genRuntimeCall("FTOI");
             }
         }
 

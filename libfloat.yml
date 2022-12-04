@@ -655,8 +655,9 @@ u16tof24:
     ld a,b
     ret
 
-f24toi16:
+FTOI:
   code: |
+    f24toi16:
     ;AHL to a 16-bit signed integer
     ;NaN ==> 0
     ;+inf ==> 32767

@@ -211,7 +211,7 @@ namespace SLANGCompiler.SLANG
             var right = rightExpr.OpType;
 
             // 特例としてFloat定数はFloat型としてやる(不気味。というか、Constantは必要ないのでは……)
-            if(left == OperatorType.Constant)
+            if(left == OperatorType.Constant && leftExpr.Opcode == Opcode.Const)
             {
                 if(leftExpr.ConstValue.ConstInfoType == ConstInfoType.FloatValue)
                 {
