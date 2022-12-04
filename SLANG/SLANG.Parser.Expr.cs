@@ -366,6 +366,7 @@ namespace SLANGCompiler.SLANG
             {"SPC$",  "PSPC" },
             {"CR$",   "PCR" },
             {"TAB$",  "PTAB" },
+            {"FL$", "PFLOAT"}
         };
 
         // 文字列関数呼び出し式を作る
@@ -410,7 +411,12 @@ namespace SLANGCompiler.SLANG
                 }
                 if(param.TypeInfo.IsNumeric())
                 {
-                    p.Expr = coerce(param, OperatorType.Word);
+                    if(param.OpType == OperatorType.Float)
+                    {
+                        p.Expr = coerce(param, OperatorType.Float);
+                    } else {
+                        p.Expr = coerce(param, OperatorType.Word);
+                    }
                 }
                 paramCount++;
             }
@@ -788,7 +794,12 @@ namespace SLANGCompiler.SLANG
             {
                 return logNot(enBool(expr));
             }
-            return makeNode1(opcode, OperatorType.Word, expr.TypeInfo, coerce(expr, OperatorType.Word));
+            var opType = expr.OpType;
+            if(opType == OperatorType.Byte)
+            {
+                opType = OperatorType.Word;
+            }
+            return makeNode1(opcode, opType, expr.TypeInfo, coerce(expr, opType));
         }
 
         // 論理NOT式を作る
@@ -902,12 +913,12 @@ namespace SLANGCompiler.SLANG
             OperatorType opType = adjust(left, right);
 
             // BYTE加算は対応していないのでWORDにする
-            if(opType == OperatorType.Byte)
+            if(opType == OperatorType.Byte || opType == OperatorType.Constant)
             {
                 opType = OperatorType.Word;
             }
 
-            // このタイミングでWord or Floatのはずだが、念のためエラーを出してやる
+            // このタイミングでWord or Float or Constantのはずだが、念のためエラーを出してやる
             if(opType != OperatorType.Word && opType != OperatorType.Float)
             {
                 Error($"could not add type : {opType}");

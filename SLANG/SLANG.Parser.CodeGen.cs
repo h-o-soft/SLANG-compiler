@@ -682,6 +682,9 @@ namespace SLANGCompiler.SLANG
                 {
                     var val = expr.ConstValue.Value * -1;
                     gencode($" LD HL,{val}\n");
+                } else if(constExpr.IsFloatValueConst())
+                {
+                    genld(Register.HL, expr, TypeDataSize.Float);
                 } else {
                     var constStr = GetConstStr(constExpr);
                     gencode($" LD HL,-{constStr}\n");
@@ -689,7 +692,13 @@ namespace SLANGCompiler.SLANG
                 return;
             }
             genexp(expr.Left);
-            genRuntimeCall("NEGHL");
+            if(expr.OpType == OperatorType.Float)
+            {
+                genRuntimeCall("f24neg");
+
+            } else {
+                genRuntimeCall("NEGHL");
+            }
         }
 
         // 論理NOT式を出力する
@@ -1846,6 +1855,12 @@ namespace SLANGCompiler.SLANG
                 Register.DE,
                 Register.BC,
             };
+            Register[] paramHighRegs = new Register[]
+            {
+                Register.A,
+                Register.C,
+                Register.Invalid
+            };
 
             // パラメータが逆順に入っているので逆にする
             var exprList = new List<Expr>();
@@ -1874,7 +1889,15 @@ namespace SLANGCompiler.SLANG
                     if(!param.CanLoadDirect())
                     {
                         genexp(param);
-                        gencode(" PUSH HL\n");
+                        // パラメータが1つの場合はPUSHせずにそのまま渡す
+                        if(exprList.Count > 1)
+                        {
+                            gencode(" PUSH HL\n");
+                            if(param.IsFloat())
+                            {
+                                gencode(" PUSH AF\n");
+                            }
+                        }
                         pushIdx++;
                     }
                 }
@@ -1885,22 +1908,45 @@ namespace SLANGCompiler.SLANG
                 {
                     if(param.CanLoadDirect())
                     {
-                        genld(paramRegs[idx], param);
+                        if(param.OpType == OperatorType.Float || (param.OpType == OperatorType.Constant && param.IsFloatValueConst()))
+                        {
+                            genld(paramRegs[idx], param, TypeDataSize.Float);
+                        } else {
+                            genld(paramRegs[idx], param);
+                        }
                     }
                     idx++;
                 }
 
                 // 3. 1でPUSHしたものを正しいレジスタで拾う
-                for(idx = exprList.Count - 1; idx >= 0; idx-- )
+                if(exprList.Count > 1)
                 {
-                    var param = exprList[idx];
-                    if(!param.CanLoadDirect())
+                    for(idx = exprList.Count - 1; idx >= 0; idx-- )
                     {
-                        gencode($" POP {paramRegs[idx].GetCode()}\n");
+                        var param = exprList[idx];
+                        if(!param.CanLoadDirect())
+                        {
+                            if(param.IsFloat())
+                            {
+                                if(paramHighRegs[idx] != Register.A)
+                                {
+                                    gencode(" EX AF,AF'\n");
+                                }
+                                gencode(" POP AF\n");
+                                if(paramHighRegs[idx] != Register.A)
+                                {
+                                    var highReg = paramHighRegs[idx].GetCode();
+                                    gencode($" LD {highReg},A\n");
+                                    gencode(" EX AF,AF'\n");
+                                }
+                            }
+                            gencode($" POP {paramRegs[idx].GetCode()}\n");
+                        }
                     }
                 }
             } else {
                 // 引数の数が4つ以上の場合は全て順にスタックに詰む
+                // ※FLOAT未対応
                 foreach(var param in exprList)
                 {
                     genexp(param);

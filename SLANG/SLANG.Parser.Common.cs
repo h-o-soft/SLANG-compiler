@@ -16,6 +16,10 @@ namespace SLANGCompiler.SLANG
         HL,
         DE,
         BC,
+        A,
+        C,
+
+        Invalid
     }
     public static partial class RegisterExtend {
             private static readonly string[] registerString = new string[]
@@ -23,6 +27,9 @@ namespace SLANGCompiler.SLANG
                 "HL",
                 "DE",
                 "BC",
+                "A",
+                "C",
+                "(Invalid)"
             };
             /// <summary>
             /// レジスタを示すenum値をZ80ニーモニックとして返す

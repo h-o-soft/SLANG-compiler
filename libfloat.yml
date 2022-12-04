@@ -1,0 +1,1401 @@
+
+mul16:
+  code: |
+    ;This was made by Runer112
+    ;Tested by jacobly
+    ;BC*DE --> DEHL
+    ; ~544.887cc as calculated in jacobly's test
+    ;min: 214cc  (DE = 1)
+    ;max: 667cc
+    ;avg: 544.4507883cc   however, deferring to jacobly's result as mine may have math issues ?
+    ;177 bytes
+    ld a,d
+    ld d,0
+    ld h,b
+    ld l,c
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit14
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit13
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit12
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit11
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit10
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit9
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit8
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit7
+    ld a,e
+    and %11111110
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit6
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit5
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit4
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit3
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit2
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit1
+    add a,a
+    jr c,Mul_BC_DE_DEHL_Bit0
+    rr e
+    ret c
+    ld h,d
+    ld l,e
+    ret
+
+    Mul_BC_DE_DEHL_Bit14:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit13
+    add hl,bc
+    adc a,d
+    Mul_BC_DE_DEHL_Bit13:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit12
+    add hl,bc
+    adc a,d
+    Mul_BC_DE_DEHL_Bit12:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit11
+    add hl,bc
+    adc a,d
+    Mul_BC_DE_DEHL_Bit11:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit10
+    add hl,bc
+    adc a,d
+    Mul_BC_DE_DEHL_Bit10:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit9
+    add hl,bc
+    adc a,d
+    Mul_BC_DE_DEHL_Bit9:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit8
+    add hl,bc
+    adc a,d
+    Mul_BC_DE_DEHL_Bit8:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit7
+    add hl,bc
+    adc a,d
+    Mul_BC_DE_DEHL_Bit7:
+    ld d,a
+    ld a,e
+    and %11111110
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit6
+    add hl,bc
+    adc a,0
+    Mul_BC_DE_DEHL_Bit6:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit5
+    add hl,bc
+    adc a,0
+    Mul_BC_DE_DEHL_Bit5:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit4
+    add hl,bc
+    adc a,0
+    Mul_BC_DE_DEHL_Bit4:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit3
+    add hl,bc
+    adc a,0
+    Mul_BC_DE_DEHL_Bit3:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit2
+    add hl,bc
+    adc a,0
+    Mul_BC_DE_DEHL_Bit2:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit1
+    add hl,bc
+    adc a,0
+    Mul_BC_DE_DEHL_Bit1:
+    add hl,hl
+    adc a,a
+    jr nc,Mul_BC_DE_DEHL_Bit0
+    add hl,bc
+    adc a,0
+    Mul_BC_DE_DEHL_Bit0:
+    add hl,hl
+    adc a,a
+    jr c,Mul_BC_DE_DEHL_FunkyCarry
+    rr e
+    ld e,a
+    ret nc
+    add hl,bc
+    ret nc
+    inc e
+    ret nz
+    inc d
+    ret
+
+    Mul_BC_DE_DEHL_FunkyCarry:
+    inc d
+    rr e
+    ld e,a
+    ret nc
+    add hl,bc
+    ret nc
+    inc e
+    ret
+
+f24sub:
+  calls:
+    - f24add
+  code: |
+    ;AHL - CDE ==> AHL
+    ;Destroys BC,DE
+    ;
+    ld b,a
+    ld a,c
+    xor $80
+    ld c,a
+    ld a,b
+    ; jp f24add
+
+f24add:
+  code: |
+    ;AHL + CDE ==> AHL
+    ;Destroys BC,DE
+    ;
+    ;save A
+    ld b,a
+
+    ;check for special values
+    and $7F
+    #if exists return_CDE
+    jp z,return_CDE
+    #else
+    jr nz,f24add1
+    return_CDE:
+    ld a,c
+    ex de,hl
+    ret
+    f24add1:
+    #endif
+    inc a
+    jp m,f24add_op1_inf_nan
+
+    ld a,c
+    ;check for special values
+    and $7F
+    jp z,return_exp_b
+
+    inc a
+    jp m,return_CDE
+
+
+    ld a,b
+    xor c
+    jp m,f24add_subtract
+    ;we need to add
+
+    call f24add_reorder
+    jr z,f24add_add_same_exp
+    ret nc
+    push bc
+    call rshift_1DE
+    sla b
+    adc hl,de
+    ;if carry is reset, then we are all good :)
+    pop de
+    ld a,d
+    ret nc
+    ;otherwise, we need to increment the sign and see if it overflows to inf
+    and $7F
+    cp $7E
+    ld a,d
+    jr z,f24_return_inf
+    inc a
+
+    ;we also need to shift a 0 down into the HL
+    srl h
+    rr l
+    ret nc
+    inc hl
+    ret
+
+    f24add_add_same_exp:
+    ld a,b
+    and $7F
+    cp $7E
+    ld a,b
+    jr z,f24_return_inf
+    inc a
+    add hl,de
+    rr h
+    rr l
+    ret nc
+    inc l
+    ret nz
+    inc h
+    ret nz
+    inc a
+    ret
+
+    f24_return_inf:
+    or %01111111
+    ld hl,0
+    ret
+
+
+    f24add_subtract:
+    call f24add_reorder
+    jr z,f24add_subtract_same_exp
+    ret nc
+    push bc
+    call rshift_1DE
+    sub c
+    ld c,a
+    ld a,0
+    sbc a,b
+    ld b,a
+    sbc hl,de
+    ;if carry is not set, then we are all good :)
+    pop de
+    ld a,d
+    ret nc
+
+    ;otherwise, the implicit bit is set to 0, so we need to renormalize
+    normalize_D_HLBC:
+    ;D is the sign+exponent
+    ;HLBC is the significand
+    ;returns AHLBC
+    ;make sure HLBC is not 0
+    ld a,h
+    or l
+    or b
+    or c
+    ret z
+
+    ld a,d
+    normalize_D_HLBC_nonzero:
+    ;save the sign
+    add a,a
+    push af
+    rrca
+
+    .f24add3
+    dec a
+    jr z,.f24add2
+    sla c
+    rl b
+    adc hl,hl
+    jp nc,.f24add3
+    ;now round
+    sla c
+    ld bc,0
+    adc hl,bc
+    ;if carry is set, then the implicit bit is 2, and the rest of the exponent is 0
+    ;so we can just increment A and keep HL as 0
+    adc a,b
+    add a,a
+    .f24add2
+    ld d,a
+    pop af
+    ld a,d
+    rra
+    ret
+
+    f24add_subtract_same_exp:
+    ;subtract the significands
+    ld a,b
+    ;  or a
+    sbc hl,de
+
+    ;if zero, then the result is zero, but we'll keep the same sign
+    jr nz,$+5
+    and %10000000
+    ret
+
+    ;if the carry flag is set, then we need to change the sign of the output
+    ;and negate the significand. if reset, then we still need to normalize and whatnot
+    ld bc,0
+    jr nc,normalize_D_HLBC_nonzero
+    xor $80
+    ld d,a
+    xor a
+    sub l
+    ld l,a
+    sbc a,a
+    sub h
+    ld h,a
+    ld a,d
+    jr normalize_D_HLBC_nonzero
+
+    f24add_reorder:
+    xor c
+    rlc c
+    rla
+    ;Want to rearrange so that A-C>=0
+    sub c
+    ret z
+    jr nc,.f24add4
+    neg
+    ;A is the difference in exponents
+    rrc c
+    ld b,c
+    ex de,hl
+    .f24add4
+    ;A is how many bits to shift DE right
+    ;B is the sign+exponent of the result
+    or a
+    rra
+    cp 18
+    ret c
+    return_exp_b:
+    ld a,b
+    ret
+
+    f24add_op1_inf_nan:
+    ld a,h
+    or l
+    jr nz,return_exp_b
+    ;so op1 is +inf or -inf
+    ;If op2 is finite, then just return op1
+    or c
+    jr z,return_exp_b
+    inc a
+    add a,a
+    jr nz,return_exp_b
+
+    ;if op2 is NaN, return NaN
+    ld a,d
+    or e
+    ld a,c
+    jr nz,.f24add5
+
+    ;so |op1| and |op2| are inf
+    ;if they have the same sign, fine, else return NaN
+    cp b
+    ret z
+    .f24add5
+    dec hl
+    ret
+
+    rshift_1DE:
+    ld bc,0
+    scf
+    .f24add6
+    rr d
+    rr e
+    rr b
+    rr c
+    dec a
+    jr nz,.f24add6
+    ret
+
+f24mul:
+  calls:
+    - mul16
+  code: |
+    ;AHL * CDE ==> AHL
+    ;Destroys BC,DE
+    ;
+
+    ;put the output sign in the top bit of A
+    ld b,a
+    ld a,c
+    and $80
+    xor b
+
+    ;check for special values
+    ;NaN*x ==> NaN
+    ;0*fin ==> 0
+    ;0*inf ==> NaN
+    ;inf*fin ==> inf
+    ;inf*inf ==> inf
+
+    ;save A
+    ld b,a
+    and $7F
+    jr z,f24mul_op1_0
+    inc a
+    jp m,f24mul_op1_inf_nan
+
+    ;so the first value is finite
+    ld a,c
+    and $7F
+    ld c,a
+    ret z
+    inc a
+    #if exists return_CDE
+    jp m,return_CDE
+    #else
+    jp p,f24mul_1
+    return_CDE:
+    ld a,c
+    ex de,hl
+    ret
+    f24mul_1:
+    #endif
+
+    ;upper bit of B is the output sign
+    ;first approximation of the exponent is
+    ; (B&7F) + (C&7F) - 63
+    ld a,b
+    and $7F
+    add a,c
+    sub 63
+    jr nc,$+4
+    xor a     ;underflowed, so return 0
+    ret
+
+    cp $7F
+    jr c,f24mul_2
+    f24mul_return_inf:
+    ld a,b
+    or %01111111
+    ld hl,0   ;overflow so return inf
+    ret
+    f24mul_2:
+
+    xor b
+    and $7F
+    xor b
+    f24mul_significand:
+    ;save the exponent
+    push af
+
+    ;now compute (1.HL * 1.DE)
+    ; = (1+.HL)(1+.DE)
+    ; = 1+.HL+.DE+.HL*.DE
+    ld b,h
+    ld c,l
+    push hl
+    push de
+    call mul16
+    ;result is .DEHL
+    ;we can discard HL, but first round
+    xor a
+    sla h
+    ex de,hl
+    pop bc
+    adc hl,bc
+    adc a,0
+    pop bc
+    add hl,bc
+    adc a,0
+    rra
+    ;now 1+A.HL is the significand
+    pop bc    ;B is the exponent
+    ld a,b
+    ret z
+    ccf
+    rr h
+    rr l
+    inc a
+    inc a
+    add a,a
+    jr z,f24mul_return_inf
+    rra
+    dec a
+    ret
+
+    f24mul_op1_0:
+    ld a,c
+    and $7F
+    ret z
+    inc a
+    jp m,f24mul_return_NaN
+    xor a
+    ret
+
+    f24mul_op1_inf_nan:
+    ld a,h
+    or l
+    ld a,b
+    ret nz    ;NaN
+
+    ;inf*0 is NaN
+    ld a,c
+    and $7F
+    jr nz,f24mul_3
+    f24mul_return_NaN:
+    dec a   ;inf*0
+    ld h,a  ;=
+    ld l,a  ;NaN
+    ret
+    f24mul_3:
+    inc a
+    jp m,f24mul_4
+    ld a,b    ;returning inf
+    ret
+    f24mul_4:
+
+    ;op1 is inf
+    ;op2 is is either NaN or inf
+    ; inf*NaN ==> NaN
+    ; inf*inf ==> inf
+    ;so just return op2's significand
+    ld a,c
+    ex de,hl
+    ret
+
+f24mul2:
+  code: |
+    ;AHL * 2.0 ==> AHL
+    ;Destroys B
+    ;
+    ld b,a
+    ;check for special values
+    and $7F
+    jr nz,$+4
+    ld a,b
+    ret
+    inc a
+    ld a,b
+    ret m
+    inc a
+    ret
+
+f24mul3:
+  code: |
+    ;AHL*3 ==> AHL
+    ;0*3 ==> 0
+    ld c,a
+    add a,a
+    ld a,c
+    ret z
+
+    ;inf*3 ==> inf, NaN*3 ==> NaN
+    ld c,a
+    and $7F
+    inc a
+    ld a,c
+    ret m
+
+    inc c
+    ld a,c
+    add a,a
+    add a,2
+    jr nz,$+6
+    ld hl,0
+    ret
+
+    ld d,h
+    ld e,l
+    scf
+    rr h
+    rr l
+    add hl,de
+    ld a,c
+    ret nc
+    srl h
+    rr l
+    inc a
+    ret
+
+i16tof24:
+  calls:
+    - u16tof24
+  code: |
+    ;Inputs:
+    ;   HL holds a 16-bit signed integer, (-32768 to 32767)
+    ;Outputs:
+    ;   Converts to an f24 float in AHL
+    ;   returns z flag set if zero, nz otherwise :)
+
+    bit 7,h
+    jr z,i16tof24_pos
+    xor a
+    sub l
+    ld l,a
+    sbc a,a
+    sub h
+    ld h,a
+    ld b,$BF+16
+    db $11     ;start of `ld de,**`, eats the next two bytes
+
+u16tof24:
+  code: |
+    i16tof24_pos:
+    ld b,$3F+16    ;Initial exponent and sign
+
+    ;Check if HL is 0, if so return AHL == 0x000000
+    ld a,h
+    or l
+    ret z
+
+    ; HL is non-zero
+    ; shift HL left until there is an overflow (the implicit bit)
+    ; meanwhile, decrement B, the exponent each iteration
+    dec b
+    add hl,hl
+    jr nc,$-2
+    ld a,b
+    ret
+
+f24toi16:
+  code: |
+    ;AHL to a 16-bit signed integer
+    ;NaN ==> 0
+    ;+inf ==> 32767
+    ;-inf ==> -32768
+    
+    ;save the sign of the output
+    ld c,a
+    
+    ;Check if the input is 0
+    add a,a
+    jr z,f24toi16_return_0
+    
+    ;check if inf or NaN
+    cp $FE
+    jr nz,f24toi161
+    ld a,h
+    or l
+    jr nz,f24toi16_return_0
+    f24toi16_return_inf:
+    sla c
+    ld hl,32767
+    ret nc
+    inc hl
+    ret
+    f24toi161:
+    
+    ;now if exponent is less than 0, just return 0
+    cp 63*2
+    jr nc,f24toi162
+    f24toi16_return_0:
+    ld hl,0
+    ret
+    f24toi162:
+    
+    ;if the exponent is greater than 14, return +- "inf"
+    rra
+    sub 63
+    cp 15
+    jr nc,f24toi16_return_inf
+    
+    ;all is good!
+    ;A is the exponent
+    ;1+A is the number of bits to read
+    or a
+    ld b,a
+    ld d,0
+    ld a,1
+    jr z,.f24toi163
+    
+    add hl,hl
+    rla
+    rl d
+    djnz $-4
+    .f24toi163
+    sla c
+    ld e,a
+    ex de,hl
+    ret nc
+    xor a
+    sub l
+    ld l,a
+    sbc a,a
+    sub h
+    ld h,a
+    ret
+
+f24cmp:
+  calls:
+    - f24sub
+  code: |
+    ;returns the flags for float AHL minus float CDE
+    ;   AHL >= CDE, nc
+    ;   AHL < CDE,  c
+    ;   AHL == CDE, z (and nc)
+    ;
+    ;Note:
+    ;   This allows some wiggle room in the bottom two bits. For example, if the two
+    ;   exponents are the same and the two significands differ by at most 3, they are
+    ;   considered equal.
+    ;
+    ;Note:
+    ;   NaN is a special case. This routines returns that NaN<x for all x.
+    ;   This gives the weird property NaN<NaN, and when sorting, NaN will be the
+    ;   smallest element.
+    ;
+
+    ;check for inf and NaN
+    ld b,a
+    and $7F
+    inc a
+    jp m,f24cmp_special
+    ld a,b
+
+    ;save the old exponent
+    push af
+    call f24sub
+
+    ;restore the old exponent
+    pop bc
+
+    ; if 0, return equal
+    xor 80h
+    ret z
+    xor 80h
+    ret z
+
+    ;if the difference was only in the bottom two bits, we'll call it good
+    ;check if (B&7F)-(A&7F) >= 15
+    ;check if (B&7F) > 14 + (A&7F)
+    ld c,a    ;new exponent, need to save the sign for later comparison
+    res 7,b
+    and $7F
+    add a,14
+    sub b
+    jr nc,$+4
+    xor a
+    ret
+
+    ;otherwise, not equal, so let's return the sign in c and nz
+    ld a,c
+    return_nz_sign_a:
+    or $7F
+    add a,a
+    ret
+
+    f24cmp_special:
+    ld a,h
+    or l
+    ccf
+    ret nz
+
+    ;so the first op is inf
+
+    ;if second of is finite, return the sign of B in carry and nz
+
+    ld a,c
+    and $7F
+    inc a
+    ld a,b
+    jp p,return_nz_sign_a
+
+    ;second op is either NaN or inf
+    ld a,d
+    or e
+    ret nz
+
+    ; op1 op2 result
+    ; 7F  7F  z, nc
+    ; 7F  FF  nz,nc
+    ; FF  7F  nz,c
+    ; FF  FF  z, nc
+    ld a,c
+    cp b
+    ret
+
+f24neg:
+  code: |
+    ;-AHL ==> AHL
+
+    ;-(+0) ==> +0
+    or a
+    ret z
+
+    ;otherwise, negate
+    xor 80h
+    ret
+
+
+PFLOAT:
+  calls:
+    - f24toa
+    - PMSX
+  code: |
+    LD DE,FSTRBUFF
+    CALL f24toa
+    JP PMSX
+  works:
+    FSTRBUFF: 12
+
+f24toa:
+  calls:
+    - f24mul
+    - formatstr
+    - f24pow10_LUT
+    - f24_common_str
+  code: |
+    char_NEG EQU '-'
+    char_DEC EQU '.'
+
+    ;converts a 24-bit float to a string
+    ;Inputs:
+    ;   AHL is the float to convert
+    ;   DE points to where to write the string
+    ;Output:
+    ;   HL pointing to the string
+    ;Destroys:
+    ;   A,DE,BC
+    ;Notes:
+    ;   Uses up to 12 bytes to store the string
+
+    ld b,a  ; save the exponent
+
+    ; check if the input is 0
+    add a,a
+    jr nz,f24toa_1
+    ex de,hl
+    jr nc,$+5
+    ld (hl),char_NEG
+    inc hl
+    ld (hl),'0'
+    inc hl
+    ld (hl),0
+    dec hl
+    ret nc
+    dec hl
+    ret
+    f24toa_1:
+
+    ;check if the input is inf or NaN
+    push de
+    cp $FE
+    jr nz,f24toa_finite
+    ld a,h
+    or l
+    ld hl,s_NaN
+    jr nz,f24toa_2
+    ld hl,s_NEGinf
+    bit 7,b
+    jr nz,f24toa_2
+    inc hl
+    f24toa_2:
+    ldi
+    ldi
+    ldi
+    ldi
+    ld a,(hl)
+    ld (de),a
+    pop hl
+    ret
+    f24toa_finite:
+
+    ;BHL is the float and it is not a special number
+    ;save the exponent
+
+    ;write a negative sign if needed
+    ld a,b
+    add a,a
+    jr nc,f24toa_3
+    ex de,hl
+    ld (hl),char_NEG
+    inc hl
+    ex de,hl
+    f24toa_3:
+
+    ;save the string pointer
+    push de
+
+    ;save the significand
+    push hl
+
+    ;Get an estimate of the power of 10
+    ;multiply A/2 by 77
+
+    ld l,a
+    ld h,0
+    rrca
+    ld e,a
+    ld d,h
+
+    add hl,hl ;4
+    add hl,hl ;8
+    add hl,de ;9
+    add hl,hl ;18
+    add hl,de ;19
+    add hl,hl ;38
+    add hl,hl ;76
+    add hl,de ;77
+
+    ;now HL is approximately (exp+63)*log10(2)*256
+
+    ;first, save H, the power-of-10 guess
+    ;also restore the significand
+    ld e,h
+    ex (sp),hl
+
+    ;now multiply by the appropriate power-of-10 to get our input in the [1,10]-ish
+    ;range. Unlike the higher-precision floats, it is actually smaller to store the
+    ;whole table. This will also be slightly more accurate and also faster.
+    push hl
+    ld hl,f24pow10_LUT
+    add hl,de
+    sla e
+    add hl,de
+    ld e,(hl)
+    inc hl
+    ld d,(hl)
+    inc hl
+    ld c,(hl)
+    ld a,b
+    and $7F
+    pop hl
+    call f24mul
+
+    cp 63
+    jr nc,f24toa_4
+    ;decrement the power of 10 and multiply by 10
+    pop de
+    dec d
+    push de
+    ld c,$42
+    ld de,$4000
+    call f24mul
+    f24toa_4:
+
+    ;now AHL is a float on [1,20]
+    ;let's convert it to an 8.16 unsigned fixed-point number
+    sub 63
+    ld b,a
+    ld a,1
+    jr z,f24toa_5
+    add hl,hl
+    rla
+    djnz $-2
+    f24toa_5:
+
+    ;for rounding porpoises, add 3 to A:HL
+    ld bc,3
+    add hl,bc
+    adc a,b
+
+    pop bc    ;power-of-10 is in B
+    pop de    ;where to write the output
+
+
+    cp 10
+    jr nc,f24toa_6
+    add a,'0'
+    ld (de),a
+    inc de
+    ;get a second digit
+    push bc
+    call f24toa_sub
+    jr f24toa_write_digits
+    f24toa_6:
+    _:
+    inc b
+    ;save the power-of-10 exponent
+    push bc
+
+    ;for rounding purposes, add another 30 to HL
+    ld bc,30
+    add hl,bc
+    adc a,b
+
+    ;the first digit is either a 1 or a 2
+    ex de,hl
+    ld (hl),'1'
+    sub 20
+    jr c,$+4
+    inc (hl)
+    db $01
+    add a,10
+    inc hl
+    ex de,hl
+    add a,'0'
+    ld (de),a
+    inc de
+    f24toa_write_digits:
+    ;get the next three digits
+    call f24toa_sub
+    call f24toa_sub
+    call f24toa_sub
+    xor a
+    ld (de),a
+
+    ; need to determine what to do with the power-of-10 exponent
+    pop af
+
+    pop hl  ; pointer to the string
+    push hl
+    sub 19
+    ld e,a
+    add a,a
+    sbc a,a
+    ld d,a
+    call formatstr
+    pop hl
+    ret
+    ;
+    f24toa_sub:
+    ;now need to multiply 0.HL by 10 and add '0'
+    xor a
+    ld b,h
+    ld c,l
+    add hl,hl
+    rla
+
+    add hl,hl
+    rla
+
+    add hl,bc
+    adc a,'0'/2
+
+    add hl,hl
+    rla
+
+    ld (de),a
+    inc de
+    ret
+
+formatstr:
+  code: |
+    ; This routine for taking a base-10 exponent and a string of digits and (without
+    ; a decimal) and inserting a decimal, any leading zeros, stripping trailing
+    ; zeros, and appending an exponent if needed.
+
+    ; Define the absolute maximum number of digits in the result string.
+    ; If FORMAT_LEN is bigger than this value, then it will be reduced.
+    MAX_FORMAT_LEN EQU 7
+
+    ; This is the max number of digits in the output.
+    ; If EXTERNAL_FORMAT_LEN is used and it is 0, then this will be used.
+    FORMAT_LEN EQU 5
+
+    ; Define the largest negative exponent to use engineering format
+    ; If EXTERNAL_FORMAT_MIN_ENGINEERING is used and is 0 or larger than FORMAT_LEN,
+    ; then this will be used.
+    FORMAT_MIN_ENGINEERING EQU -3
+    ; causes exponent of -5 to be enginierring
+
+    ; For formatting, we need to define these three characters
+    ; "Enginieering e" for values like "1.23456e10"
+    TOK_ENG EQU 'e'
+
+    ; Negative sign
+    TOK_NEG  EQU '-'
+
+    ; Decimal point
+    TOK_DECIMAL EQU '.'
+
+    ;Inputs:
+    ;   HL points to the null-terminated string of digits
+    ;   DE is the signed exponent.
+    ;Outputs:
+    ;   The string has leading and trailing zeros stripped, a decimal is placed
+    ;   (if needed), and an exponent field is appended (if needed).
+    ;Destroys:
+    ;   HL, DE, BC, AF
+    ;Notes:
+    ;   This routine operates in-place. It assumes that there is enough space
+    ;   allocated for the string. At most MAX_FORMAT_LEN+10 bytes is needed,
+    ;   assuming the exponent can be up to 5 digits long.
+    ;
+    ; Skip over the negative sign, if any
+    ld a,(hl)
+    cp TOK_NEG
+    jr nz,$+3
+    inc hl
+    push de ; save the exponent
+    push hl
+
+    ;Strip leading zeros
+    ld d,h
+    ld e,l
+    ld a,'0'
+    cp (hl)                           ;These two lines can be commented-out to save three
+    jr nz,formatstr_no_leading_zeros  ;bytes at the expense of redundant processing.
+    formatstr_strip_leading_zeros:
+    cpi
+    jr z,formatstr_strip_leading_zeros
+    dec hl
+
+    ; HL points to the first non-'0' digit
+    ; DE points to the first digit
+    ; Copy bytes from HL to DE until 0x00 is reached at HL or FORMAT_LEN digits are copied
+    ld a,FORMAT_LEN
+    ld c,a
+
+    xor a
+    ld b,a
+    formatstr_copy_digits:
+    cp (hl)
+    ldi
+    jp po,formatstr_1
+    jr nz,formatstr_copy_digits
+    formatstr_1:
+    dec hl
+    ld (hl),0
+
+    formatstr_no_leading_zeros:
+    ; there are no more leading zeros
+    ; Truncate the number of digits if necessary based on FORMAT_LEN
+
+    call formatstr_remove_trailing_zeros
+    pop hl  ; points to the first digit
+    pop de  ; exponent
+
+    ; Make sure the first digit isn't 0x00
+    ld a,(hl)
+    or a
+    jr nz,formatstr_2
+    ld (hl),'0'
+    inc hl
+    ld (hl),a
+    ret
+    formatstr_2:
+
+    call formatstr_check_eng
+    jr c,formatstr_eng
+    inc de
+    bit 7,d
+    jr nz,formatstr_neg_exp
+    ; Otherwise, we need to insert a decimal after DE digits (D is 0, though)
+    ld b,d
+    ld c,e
+    xor a
+    cp e
+    jr z,formatstr_insert_decimal
+    cpir
+    ; If we have reached a 0x00, we may need to pad with zeros
+    jr z,formatstr_pad_right
+    ; otherwise, let's insert the decimal
+    formatstr_insert_decimal:
+    ld a,(hl)
+    or a
+    ret z
+    ld a,TOK_DECIMAL
+    formatstr_insert_decimal_loop:
+    ld c,(hl) ; back up digit
+    ld (hl),a
+    inc hl
+    ld a,c
+    or a
+    jr nz,formatstr_insert_decimal_loop
+    ld (hl),a
+    ret
+
+    formatstr_neg_exp:
+    ; Need to pad -DE 0s to the left
+    xor a
+    ld c,a
+    cpir
+    ld b,a
+    sub c
+    ld c,a
+    ;HL-1 is where to start reading bytes
+    ;HL-DE is where to start writing bytes
+    xor a
+    ld d,a
+    sub e     ; A is the number of 0s to write
+    ld e,a
+    ex de,hl
+    add hl,de
+    ex de,hl
+    dec hl
+    ; DE points to where to write the last byte
+    ; HL points to where to read it from
+    ; BC is the number of bytes to copy (it will be non-zero)
+    ; A is the number of zeros to insert
+    lddr
+    ;now from DE backwards, write A '0's
+    ex de,hl
+    ld b,a
+    ld (hl),'0'
+    dec hl
+    djnz $-3
+    ; finally, write a '.'
+    ld (hl),TOK_DECIMAL
+    ret
+
+    formatstr_pad_right:
+    ; append BC+1 0s
+    dec hl
+    inc bc
+    formatstr_3:
+    ld (hl),'0'
+    cpi
+    jp pe,formatstr_3
+    ld (hl),0
+    ret
+
+    formatstr_eng:
+    ; need to insert a decimal after the first digit
+    inc hl
+    call formatstr_insert_decimal
+    ld (hl),TOK_ENG
+    inc hl
+    bit 7,d
+    jr z,formatstr_exp_to_str
+    ld (hl),TOK_NEG
+    inc hl
+    xor a
+    sub e
+    ld e,a
+    sbc a,a
+    sub d
+    ld d,a
+    formatstr_exp_to_str:
+    ex de,hl
+    ld a,'0'-1
+    ld bc,-10000
+    formatstr_4:
+    inc a
+    add hl,bc
+    jr c,formatstr_4
+    cp '0'
+    jr z,$+4
+    ld (de),a
+    inc de
+
+    ld a,'9'+1
+    ld bc,1000
+    formatstr_5:
+    dec a
+    add hl,bc
+    jr nc,formatstr_5
+    cp '0'
+    jr z,$+4
+    ld (de),a
+    inc de
+
+    ld a,'0'-1
+    ld bc,-100
+    formatstr_6:
+    inc a
+    add hl,bc
+    jr c,formatstr_6
+    cp '0'
+    jr z,$+4
+    ld (de),a
+    inc de
+
+    ld b,10
+    ld a,l
+    formatstr_7:
+    add a,10
+    dec b
+    jr nc,formatstr_7
+    ex de,hl
+    jr z,formatstr_eng_last_digit
+    set 4,b
+    set 5,b
+    ld (hl),b
+    inc hl
+    formatstr_eng_last_digit:
+    add a,'0'
+    ld (hl),a
+    inc hl
+    ld (hl),0
+    ret
+
+    formatstr_remove_trailing_zeros:
+    ; first, seek the end of the string
+    xor a
+    ld c,a
+    ld b,a
+    cpir
+    dec hl
+    ld a,'0'
+    formatstr_8:
+    dec hl
+    cp (hl)
+    jr z,formatstr_8
+    inc hl
+    ld (hl),0
+    ret
+
+    formatstr_check_eng:
+    ; Return carry flag set if engineering format is required, else nc
+    ;
+    ; If the exponent is greater than FORMAT_MAX_ENGINEERING, then use enginieering
+    ; notation. Note that FORMAT_MAX_ENGINEERING < 256, so check that D = -1 or 0
+    ld a,d
+    inc a
+    jr z,formatstr_check_eng_neg
+    add a,254
+    ret c   ;the exponent is too big in magnitude, engineering format is required.
+    ; The exponent is positive and less than 256
+
+    ld a,FORMAT_LEN
+    cp e
+    ret
+
+    formatstr_check_eng_neg:
+    ;The exponent is negative and greater than or equal to -256
+
+    ld a,FORMAT_MIN_ENGINEERING
+    cp e
+    ccf
+    ret
+
+
+f24pow10_LUT:
+  code: |
+    db $8E,$15,$7E  ;1e19
+    db $17,$BC,$7A  ;1e18
+    db $45,$63,$77  ;1e17
+    db $38,$1C,$74  ;1e16
+    db $BF,$C6,$70  ;1e15
+    db $CC,$6B,$6D  ;1e14
+    db $0A,$23,$6A  ;1e13
+    db $A9,$D1,$66  ;1e12
+    db $87,$74,$63  ;1e11
+    db $06,$2A,$60  ;1e10
+    db $D6,$DC,$5C  ;1e9
+    db $78,$7D,$59  ;1e8
+    db $2D,$31,$56  ;1e7
+    db $48,$E8,$52  ;1e6
+    db $A0,$86,$4F  ;1e5
+    db $80,$38,$4C  ;1e4
+    db $00,$F4,$48  ;1e3
+    db $00,$90,$45  ;1e2
+    f24const_10:
+    db $00,$40,$42  ;1e1
+    db $00,$00,$3F  ;1e0
+    db $9A,$99,$3B  ;1e-1
+    db $AE,$47,$38  ;1e-2
+    db $25,$06,$35  ;1e-3
+    db $6E,$A3,$31  ;1e-4
+    db $8B,$4F,$2E  ;1e-5
+    db $6F,$0C,$2B  ;1e-6
+    db $7F,$AD,$27  ;1e-7
+    db $99,$57,$24  ;1e-8
+    db $E1,$12,$21  ;1e-9
+    db $CE,$B7,$1D  ;1e-10
+    db $D8,$5F,$1A  ;1e-11
+    db $7A,$19,$17  ;1e-12
+    db $5C,$C2,$13  ;1e-13
+    db $4A,$68,$10  ;1e-14
+    db $3B,$20,$0D  ;1e-15
+    db $2B,$CD,$09  ;1e-16
+    db $EF,$70,$06  ;1e-17
+    db $26,$27,$03  ;1e-18
+
+
+f24_common_str:
+  code: |
+    s_neginf:
+    str_neginf:
+    db char_NEG
+    s_inf:
+    str_inf:
+    db "inf",0
+    s_NaN:
+    str_NaN:
+    db "NaN",0
+    str_Zero:
+    db "0", 0

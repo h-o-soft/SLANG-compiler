@@ -316,6 +316,15 @@ namespace SLANGCompiler.SLANG
             return Opcode == Opcode.Const && ConstValue.ConstInfoType == ConstInfoType.FloatValue;
         }
 
+        public bool IsFloat()
+        {
+            if(OpType == OperatorType.Float)
+            {
+                return true;
+            }
+            return Opcode == Opcode.Const && ConstValue.ConstInfoType == ConstInfoType.FloatValue;
+        }
+
         /// <summary>
         /// CONST値を文字列で返す
         /// </summary>
@@ -350,7 +359,7 @@ namespace SLANGCompiler.SLANG
             }
 
             // キャストでは(他の)レジスタは変化しないので、キャストの下を対象としてチェックする
-            if(Opcode == Opcode.WtoB || Opcode == Opcode.BtoW)
+            if(Opcode == Opcode.WtoB || Opcode == Opcode.BtoW || Opcode == Opcode.FtoW || Opcode == Opcode.WtoF)
             {
                 checkTarget = Left;
             }

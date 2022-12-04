@@ -77,7 +77,8 @@ CHRD  [Cc][Hh][Rr]\$
 SPCD  [Ss][Pp][Cc]\$
 CRD   [Cc][Rr]\$
 TABD  [Tt][Aa][Bb]\$
-STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}|{CRD}|{TABD}
+FLD   [Ff][Ll]\$
+STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}|{CRD}|{TABD}|{FLD}
 
 %{
     StringBuilder lexStrBuffer = null;
