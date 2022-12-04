@@ -95,7 +95,7 @@ INPUT:
     - ADECI
   code: |
     LD BC,0
-    LD (___CARRY),BC
+    LD (_CARRY),BC
     LD HL,sKBFAD
     LD DE,0
     CALL LINPUT
@@ -136,7 +136,7 @@ INPUT:
     RET
     .input4
     LD BC,1
-    LD (___CARRY),BC
+    LD (_CARRY),BC
     LD HL,0
     RET
 
