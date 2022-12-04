@@ -498,14 +498,14 @@ CALL:
 GETREG:
   code: |
     PUSH HL
-    LD (___IY), IY
-    LD (___IX), IX
-    LD (___HL), HL
-    LD (___DE), DE
-    LD (___BC), BC
+    LD (_IY), IY
+    LD (_IX), IX
+    LD (_HL), HL
+    LD (_DE), DE
+    LD (_BC), BC
     PUSH AF
     POP HL
-    LD (___AF), HL
+    LD (_AF), HL
     LD HL, 0000
     JR NC, .getreg1
     INC HL
