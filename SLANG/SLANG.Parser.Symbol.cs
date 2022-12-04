@@ -71,6 +71,16 @@ namespace SLANGCompiler.SLANG
             };
             symbolTableManager.Add(memw);
 
+            var memf = new SymbolTable()
+            {
+                Name = "MEMF",
+                SymbolClass = SymbolClass.Global,
+                TypeInfo = TypeInfo.MemoryFloat,
+                Address = new ConstInfo(0),
+                Size = 65536
+            };
+            symbolTableManager.Add(memf);
+
             symbolTableManager.AddSymbol("^BC", TypeInfo.WordTypeInfo, true);
             symbolTableManager.AddSymbol("^DE", TypeInfo.WordTypeInfo, true);
             symbolTableManager.AddSymbol("^HL", TypeInfo.WordTypeInfo, true);
@@ -156,7 +166,7 @@ namespace SLANGCompiler.SLANG
                             {
                                 address = tree.Address;
                             }
-                            int dataSize = (firstTypeInfo.DataSize == TypeDataSize.Byte) ? 1 : 2;
+                            int dataSize = firstTypeInfo.DataSize.GetDataSize();
                             if(arrayTree != null)
                             {
                                 dataSize *= arraySize;
@@ -176,8 +186,14 @@ namespace SLANGCompiler.SLANG
                                 if(baseTypeInfo.DataSize == TypeDataSize.Byte)
                                 {
                                     typeInfo = TypeInfo.IndirectByteTypeInfo.Clone();
-                                } else{
+                                } else if(baseTypeInfo.DataSize == TypeDataSize.Word)
+                                {
                                     typeInfo = TypeInfo.IndirectWordTypeInfo.Clone();
+                                } else if(baseTypeInfo.DataSize == TypeDataSize.Float)
+                                {
+                                    typeInfo = TypeInfo.IndirectFloatTypeInfo.Clone();
+                                } else {
+                                    bug("unknown type");
                                 }
                             }
                             s = new SymbolTable()

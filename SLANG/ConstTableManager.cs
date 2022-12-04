@@ -15,7 +15,9 @@ namespace SLANGCompiler.SLANG
     public enum ConstInfoType
     {
         /// <summary>数値型</summary>
-        Value,
+        IntValue,
+        /// <summary>浮動小数型</summary>
+        FloatValue,
         /// <summary>CODEアドレス参照型</summary>
         Code,
         String,
@@ -30,6 +32,7 @@ namespace SLANGCompiler.SLANG
         public ConstInfoType ConstInfoType { get; set; }
         /// <summary>CONST値(値)</summary>
         public int Value { get; set; }
+        public float FloatValue { get; set; }
         /// <summary>CONST値(CODEを参照する場合のシンボル名)</summary>
         public string SymbolString { get; set; }
 
@@ -38,8 +41,17 @@ namespace SLANGCompiler.SLANG
         /// <summary>値を持つCONST値のコンストラクタ</summary>
         public ConstInfo(int value)
         {
-            this.ConstInfoType = ConstInfoType.Value;
-            this.Value = value;
+            this.ConstInfoType = ConstInfoType.IntValue;
+            this.FloatValue = this.Value = value;
+            this.SymbolString = null;
+        }
+
+        /// <summary>FLOAT値を持つCONST値のコンストラクタ</summary>
+        public ConstInfo(float value)
+        {
+            this.ConstInfoType = ConstInfoType.FloatValue;
+            this.FloatValue = value;
+            this.Value = (int)value;
             this.SymbolString = null;
         }
 
@@ -54,10 +66,14 @@ namespace SLANGCompiler.SLANG
         /// <summary>CONST値の複製</summary>
         public ConstInfo Clone()
         {
-            if(ConstInfoType == ConstInfoType.Value)
+            if(ConstInfoType == ConstInfoType.IntValue)
             {
                 return new ConstInfo(Value);
+            } else if(ConstInfoType == ConstInfoType.FloatValue)
+            {
+                return new ConstInfo(FloatValue);
             } else {
+                // code or string
                 return new ConstInfo(SymbolString, ConstInfoType == ConstInfoType.Code);
             }
         }

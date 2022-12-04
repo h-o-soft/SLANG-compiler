@@ -16,7 +16,7 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public Tree DefineConst(Tree symbolTree, Expr value)
         {
-            if(value.IsValueConst())
+            if(value.IsIntValueConst())
             {
                 // 普通の数値
                 constTableManager.Add(symbolTree.IdentifierName, value.Value);

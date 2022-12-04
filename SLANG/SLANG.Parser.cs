@@ -72,7 +72,7 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public void SetOrg(Expr expr)
         {
-            if(!expr.IsValueConst())
+            if(!expr.IsIntValueConst())
             {
                 Error("ORG must be const.");
                 return;
@@ -128,6 +128,10 @@ namespace SLANGCompiler.SLANG
             {
                 return 2;
             }
+            if(typeInfo.Parent == null && typeInfo.IsFloatTypeInfo())
+            {
+                return 3;
+            }
             switch(typeInfo.InfoClass)
             {
                 case TypeInfoClass.Pointer:
@@ -179,6 +183,53 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         private OperatorType adjust(OperatorType left, OperatorType right)
         {
+            if(left == OperatorType.Float || right == OperatorType.Float)
+            {
+                return OperatorType.Float;
+            }
+            if(left == OperatorType.Word || right == OperatorType.Word)
+            {
+                return OperatorType.Word;
+            }
+            if(left == OperatorType.Byte || right == OperatorType.Byte)
+            {
+                return OperatorType.Byte;
+            }
+            if(left == OperatorType.Bool || right == OperatorType.Bool)
+            {
+                return OperatorType.Bool;
+            }
+            return OperatorType.Constant;
+        }
+
+        /// <summary>
+        /// 2つの型情報を元に型情報を作る(BYTEとWORDの計算時結果をWORDにする、といった処理)
+        /// </summary>
+        private OperatorType adjust(Expr leftExpr, Expr rightExpr)
+        {
+            var left = leftExpr.OpType;
+            var right = rightExpr.OpType;
+
+            // 特例としてFloat定数はFloat型としてやる(不気味。というか、Constantは必要ないのでは……)
+            if(left == OperatorType.Constant)
+            {
+                if(leftExpr.ConstValue.ConstInfoType == ConstInfoType.FloatValue)
+                {
+                    left = OperatorType.Float;
+                }
+            }
+            if(right == OperatorType.Constant)
+            {
+                if(rightExpr.ConstValue.ConstInfoType == ConstInfoType.FloatValue)
+                {
+                    right = OperatorType.Float;
+                }
+            }
+
+            if(left == OperatorType.Float || right == OperatorType.Float)
+            {
+                return OperatorType.Float;
+            }
             if(left == OperatorType.Word || right == OperatorType.Word)
             {
                 return OperatorType.Word;
@@ -207,7 +258,7 @@ namespace SLANGCompiler.SLANG
             bool iftrue = false;
             if(expr.IsConst())
             {
-                if(!expr.IsValueConst())
+                if(!expr.IsIntValueConst())
                 {
                     Error("#IF must be value const parameter.");
                 }

@@ -124,6 +124,12 @@ namespace SLANGCompiler.SLANG
         WtoB,
         /// <summary>BYTEからWORDへのキャスト</summary>
         BtoW,
+        /// <summary>WORDからFLOATへのキャスト</summary>
+        WtoF,
+        /// <summary>BYTEからFLOATへのキャスト</summary>
+        BtoF,
+        /// <summary>FLAOTからWORDへのキャスト</summary>
+        FtoW,
         /// <summary>カンマ</summary>
         Comma,
         /// <summary>CASE文の範囲指定</summary>
@@ -148,7 +154,9 @@ namespace SLANGCompiler.SLANG
         /// <summary>ポインタ型</summary>
         Pointer,
         /// <summary>定数</summary>
-        Constant
+        Constant,
+        /// <summary>FLOAT型</summary>
+        Float
     }
 
     public static partial class OperatorTypeExtend {
@@ -163,6 +171,8 @@ namespace SLANGCompiler.SLANG
                     return TypeInfo.ByteTypeInfo;
                 case OperatorType.Word:
                     return TypeInfo.WordTypeInfo;
+                case OperatorType.Float:
+                    return TypeInfo.FloatTypeInfo;
                 case OperatorType.Constant:
                     return TypeInfo.WordTypeInfo;
             }
@@ -261,11 +271,49 @@ namespace SLANGCompiler.SLANG
         }
 
         /// <summary>
-        /// CONST値でなおかつ数値を直接取得出来る場合true
+        /// CONST値でなおかつ数値を直接取得出来る場合true。なおかつキャストを挟んでいてもtrueになる。
         /// </summary>
         public bool IsValueConst()
         {
-            return Opcode == Opcode.Const && ConstValue.ConstInfoType == ConstInfoType.Value;
+            if(IsIntValueConst() || IsFloatValueConst())
+            {
+                return true;
+            }
+            return (Opcode == Opcode.WtoF && (Left.IsIntValueConst() || Left.IsFloatValueConst()));
+        }
+
+        public float GetConstFloatValue()
+        {
+            if(IsIntValueConst())
+            {
+                return (float)ConstValue.Value;
+            }
+            if(IsFloatValueConst())
+            {
+                return (float)ConstValue.FloatValue;
+            }
+            if(Opcode == Opcode.WtoF || Opcode == Opcode.FtoW || Opcode == Opcode.BtoF)
+            {
+                return Left.GetConstFloatValue();
+            }
+            throw new Exception("could not get float const value");
+        }
+
+
+        /// <summary>
+        /// CONST値でなおかつ数値を直接取得出来る場合true
+        /// </summary>
+        public bool IsIntValueConst()
+        {
+            return Opcode == Opcode.Const && ConstValue.ConstInfoType == ConstInfoType.IntValue;
+        }
+
+        /// <summary>
+        /// CONST値でなおかつFLOAT値を直接取得出来る場合true
+        /// </summary>
+        public bool IsFloatValueConst()
+        {
+            return Opcode == Opcode.Const && ConstValue.ConstInfoType == ConstInfoType.FloatValue;
         }
 
         /// <summary>
@@ -320,7 +368,7 @@ namespace SLANGCompiler.SLANG
                 {
                     // 配列はGlobalの場合は直接代入可、Localの場合は不可
                     return symbol.SymbolClass == SymbolClass.Global;
-                } else if(symbolType.IsWordTypeInfo() || symbolType.IsByteTypeInfo()){
+                } else if(symbolType.IsWordTypeInfo() || symbolType.IsByteTypeInfo() || symbolType.IsFloatTypeInfo()){
                     return true;
                 } else if(symbol.SymbolClass == SymbolClass.Param || symbol.SymbolClass == SymbolClass.Local)
                 {

@@ -154,7 +154,7 @@ namespace SLANGCompiler.SLANG
                             {
                                 address = tree.Address;
                             }
-                            int dataSize = (firstTypeInfo.DataSize == TypeDataSize.Byte) ? 1 : 2;
+                            int dataSize = firstTypeInfo.DataSize.GetDataSize();
                             SymbolTable s = new SymbolTable()
                             {
                                 Name = tree.IdentifierName,
@@ -233,6 +233,10 @@ namespace SLANGCompiler.SLANG
                 if(p.TypeInfo.IsArray())
                 {
                     offset += p.Size;
+                } else if(p.TypeInfo.GetDataSize() == TypeDataSize.Float)
+                {
+                    // FLOATは3バイト必要
+                    offset++;
                 }
                 offset += 2;
             }

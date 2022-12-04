@@ -120,6 +120,62 @@ namespace SLANGCompiler.SLANG
             return 0;
         }
 
+        // 演算子により左右の式を1つにまとめた定数を得る(float版)
+        private float fold2(Opcode opcode, float leftValue, float rightValue)
+        {
+            switch(opcode)
+            {
+                //case Opcode.Plus: return leftValue + rightValue;
+                //case Opcode.Minus: return leftValue - rightValue;
+                case Opcode.Add: return leftValue + rightValue;
+                case Opcode.Sub: return leftValue - rightValue;
+                case Opcode.Mul:
+                case Opcode.SMul:
+                    return leftValue * rightValue;
+                case Opcode.Div:
+                    return leftValue / rightValue;
+                case Opcode.SDiv:
+                    return (short)leftValue / (short)rightValue;
+                case Opcode.Mod:
+                    return leftValue % rightValue;
+                case Opcode.SMod:
+                    return (short)leftValue % (short)rightValue;
+                case Opcode.Shl:
+                    return (int)leftValue << (int)rightValue;
+                case Opcode.SShl:
+                    return (short)leftValue << (short)rightValue;
+                case Opcode.Shr:
+                    return (int)leftValue >> (int)rightValue;
+                case Opcode.SShr:
+                    return (short)leftValue >> (short)rightValue;
+                case Opcode.And:
+                    return (int)leftValue & (int)rightValue;
+                case Opcode.Or:
+                    return (int)leftValue | (int)rightValue;
+                case Opcode.Eq: return leftValue == rightValue ? 1 : 0;
+                case Opcode.Neq: return leftValue != rightValue ? 1 : 0;
+
+                case Opcode.Gt:
+                    return leftValue > rightValue ? 1 : 0;
+                case Opcode.SGt:
+                    return (short)leftValue > (short)rightValue ? 1 : 0;
+                case Opcode.Ge:
+                    return leftValue >= rightValue ? 1 : 0;
+                case Opcode.SGe:
+                    return (short)leftValue >= (short)rightValue ? 1 : 0;
+                case Opcode.Lt:
+                    return leftValue < rightValue ? 1 : 0;
+                case Opcode.SLt:
+                    return (short)leftValue < (short)rightValue ? 1 : 0;
+                case Opcode.Le:
+                    return leftValue <= rightValue ? 1 : 0;
+                case Opcode.SLe:
+                    return (short)leftValue <= (short)rightValue ? 1 : 0;
+            }
+            bug("could not fold2 float op : " + opcode);
+            return 0;
+        }
+
         // 演算子により式の定数を演算して返す
         private int fold1(Opcode opcode, int value)
         {
@@ -133,6 +189,25 @@ namespace SLANGCompiler.SLANG
                     return value == 0 ? 1 : 0;
                 case Opcode.Cpl:
                     return ~value;
+                default:
+                    bug("fold1");
+                    break;
+            }
+            return value;
+        }
+
+        // 演算子により式の定数を演算して返す
+        private float fold1(Opcode opcode, float value)
+        {
+            switch(opcode)
+            {
+                case Opcode.Plus:
+                    return value;
+                case Opcode.Minus:
+                    return -value;    
+                case Opcode.Not:
+                    return value == 0 ? 1 : 0;
+                case Opcode.Cpl:
                 default:
                     bug("fold1");
                     break;
@@ -172,6 +247,12 @@ namespace SLANGCompiler.SLANG
         public Expr expConst(ConstInfo c, TypeDataSize dataSize = TypeDataSize.Word)
         {
             TypeInfo typeInfo = dataSize == TypeDataSize.Word ? TypeInfo.WordTypeInfo : TypeInfo.ByteTypeInfo;
+
+            if(c.ConstInfoType == ConstInfoType.FloatValue)
+            {
+                typeInfo = TypeInfo.FloatTypeInfo;
+            }
+
             Expr result = makeNode1( Opcode.Const, OperatorType.Constant, typeInfo, null );
             result.ConstValue = c.Clone();
             // TODO 本来は不必要
@@ -406,6 +487,27 @@ namespace SLANGCompiler.SLANG
             from = a.OpType;
             switch(toType)
             {
+                case OperatorType.Float:
+                {
+                    switch(from)
+                    {
+                        case OperatorType.Float:
+                            return a;
+                        case OperatorType.Word:
+                            return makeNode1(Opcode.WtoF, OperatorType.Float, TypeInfo.WordTypeInfo, a);
+                        case OperatorType.Constant:
+                        {
+                            if(a.ConstValue.ConstInfoType == ConstInfoType.FloatValue)
+                            {
+                                return a;
+                            } else {
+                                return makeNode1(Opcode.WtoF, OperatorType.Float, TypeInfo.FloatTypeInfo, a);
+                            }
+                        }
+                    }
+                    Error($"not supported(float) {from} to {toType}");
+                    return a;
+                }
                 case OperatorType.Byte:
                 {
                     switch(from)
@@ -432,6 +534,74 @@ namespace SLANGCompiler.SLANG
                         case OperatorType.Constant:
                             a.TypeInfo = TypeInfo.WordTypeInfo;
                             return a;
+                        case OperatorType.Float:
+                        {
+                            switch(a.Opcode)
+                            {
+                                case Opcode.Adr:
+                                case Opcode.Indir:
+                                case Opcode.Const:
+                                case Opcode.Str:
+                                case Opcode.Assign:
+                                case Opcode.PreInc:
+                                case Opcode.PreDec:
+                                case Opcode.PostInc:
+                                case Opcode.PostDec:
+                                case Opcode.WtoB:
+                                case Opcode.BtoW:
+                                case Opcode.High:
+                                case Opcode.Low:
+                                    return makeNode1(Opcode.FtoW, OperatorType.Word, TypeInfo.WordTypeInfo, a);
+                                case Opcode.Add:
+                                case Opcode.Sub:
+                                case Opcode.Mod:
+                                case Opcode.Div:
+                                case Opcode.Mul:
+                                case Opcode.Shr:
+                                case Opcode.Shl:
+                                case Opcode.Gt:
+                                case Opcode.Ge:
+                                case Opcode.Lt:
+                                case Opcode.Le:
+                                case Opcode.Eq:
+                                case Opcode.Neq:
+                                case Opcode.And:
+                                case Opcode.Xor:
+                                case Opcode.Or:
+                                case Opcode.Land:
+                                case Opcode.Lor:
+                                    a.Left  = coerce(a.Left, OperatorType.Float);
+                                    a.Right = coerce(a.Right, OperatorType.Float);
+                                    a.OpType = OperatorType.Float;
+                                    a.TypeInfo = TypeInfo.FloatTypeInfo;
+                                    return a;
+                                case Opcode.Plus:
+                                case Opcode.Minus:
+                                case Opcode.Bnot:
+                                    a.Left  = coerce(a.Left, OperatorType.Float);
+                                    a.OpType = OperatorType.Float;
+                                    a.TypeInfo = TypeInfo.FloatTypeInfo;
+                                    return a;
+                                case Opcode.Cond:
+                                    a.Right  = coerce(a.Right, OperatorType.Float);
+                                    a.Third = coerce(a.Third, OperatorType.Float);
+                                    a.OpType = OperatorType.Float;
+                                    a.TypeInfo = TypeInfo.FloatTypeInfo;
+                                    return a;
+                                case Opcode.PortAccess:
+                                    return a;
+                                case Opcode.DeBool:
+                                    return a;
+                                default:
+                                    bug("coerce2 : " + a.Opcode);
+                                    if(a.Left != null)
+                                    {
+                                        bug($"  left float op={a.Left.Opcode}" );
+                                    }
+                                    break;
+                            }
+                            break;
+                        }
                         case OperatorType.Word:
                         case OperatorType.Pointer:
                             return a;
@@ -604,9 +774,14 @@ namespace SLANGCompiler.SLANG
                 Error($"{opcode} type mismatch");
                 return null;
             }
-            if(expr.IsValueConst())
+            if(expr.IsIntValueConst())
             {
                 expr.ConstValue = new ConstInfo(fold1(opcode, expr.ConstValue.Value));
+                return expr;
+            }
+            if(expr.IsFloatValueConst())
+            {
+                expr.ConstValue = new ConstInfo(fold1(opcode, expr.ConstValue.FloatValue));
                 return expr;
             }
             if(opcode == Opcode.Not)
@@ -687,7 +862,7 @@ namespace SLANGCompiler.SLANG
                 return null;
             }
             // 事前最適化
-            if(expr.IsValueConst())
+            if(expr.IsIntValueConst())
             {
                 int value;
                 if(opcode == Opcode.Low)
@@ -712,13 +887,31 @@ namespace SLANGCompiler.SLANG
             TypeInfo ltype = left.TypeInfo;
             TypeInfo rtype = right.TypeInfo;
             // 加減算をまとめる
-            if(left.IsValueConst() && right.IsValueConst())
+            if(left.IsIntValueConst() && right.IsIntValueConst())
             {
                 left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.Value, right.ConstValue.Value));
                 return left;
+            } else if((left.IsFloatValueConst() || left.IsFloatValueConst()) && (right.IsIntValueConst() || right.IsFloatValueConst()))
+            {
+                left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.FloatValue, right.ConstValue.FloatValue));
+                return left;
             }
-            // 強制的にWORD同士の演算にする
-            var opType = OperatorType.Word;
+
+
+            // var opType = OperatorType.Word;
+            OperatorType opType = adjust(left, right);
+
+            // BYTE加算は対応していないのでWORDにする
+            if(opType == OperatorType.Byte)
+            {
+                opType = OperatorType.Word;
+            }
+
+            // このタイミングでWord or Floatのはずだが、念のためエラーを出してやる
+            if(opType != OperatorType.Word && opType != OperatorType.Float)
+            {
+                Error($"could not add type : {opType}");
+            }
             return makeNode2(opcode, opType, opType.ToType(), coerce(left, opType), coerce(right, opType) );
         }
 
@@ -732,7 +925,7 @@ namespace SLANGCompiler.SLANG
             TypeInfo ltype = left.TypeInfo;
             TypeInfo rtype = right.TypeInfo;
             // 定数はまとめる
-            if(left.IsValueConst() && right.IsValueConst())
+            if(left.IsIntValueConst() && right.IsIntValueConst())
             {
                 left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.Value, right.ConstValue.Value));
                 return left;
@@ -755,7 +948,7 @@ namespace SLANGCompiler.SLANG
                 return null;
             }
             // 乗除算をまとめる
-            if(left.IsValueConst() && right.IsValueConst())
+            if(left.IsIntValueConst() && right.IsIntValueConst())
             {
                 left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.Value, right.ConstValue.Value));
                 return left;
@@ -783,12 +976,16 @@ namespace SLANGCompiler.SLANG
                 return null;
             }
             // 乗除算をまとめる
-            if(left.IsValueConst() && right.IsValueConst())
+            if(left.IsIntValueConst() && right.IsIntValueConst())
             {
                 left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.Value, right.ConstValue.Value));
                 return left;
+            } else if((left.IsFloatValueConst() || left.IsFloatValueConst()) && (right.IsIntValueConst() || right.IsFloatValueConst()))
+            {
+                left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.FloatValue, right.ConstValue.FloatValue));
+                return left;
             }
-            var opType = adjust(left.OpType, right.OpType);
+            var opType = adjust(left, right);
 
             // BoolのANDまたはORの場合はLAnd、LOrに差し替えて戻す
             if(left.OpType == OperatorType.Bool && right.OpType == OperatorType.Bool && (opcode == Opcode.And || opcode == Opcode.Or))
@@ -800,10 +997,13 @@ namespace SLANGCompiler.SLANG
             {
                 opType = OperatorType.Byte;
             }
-            // この計算についてはWORD専用の関数を呼ぶため、WORDに拡張しないと駄目
+            // この計算についてはBYTE未対応なのでBYTEの場合は拡張してやる
             if(opcode == Opcode.Mul || opcode == Opcode.Div || opcode == Opcode.Mod)
             {
-                opType = OperatorType.Word;
+                if(opType == OperatorType.Byte)
+                {
+                    opType = OperatorType.Word;
+                }
             }
             return makeNode2(opcode, opType, opType.ToType(), coerce(left, opType), coerce(right, opType) );
         }
@@ -816,7 +1016,7 @@ namespace SLANGCompiler.SLANG
             {
                 return null;
             }
-            if(left.IsValueConst() && right.IsValueConst())
+            if(left.IsIntValueConst() && right.IsIntValueConst())
             {
                 left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.Value, right.ConstValue.Value));
                 return left;
@@ -892,7 +1092,15 @@ namespace SLANGCompiler.SLANG
                     break;
             }
 
-            var opType =  OperatorType.Word;
+            var opType2 = adjust(left, right);
+            OperatorType opType;
+            // Floatの時のみ特例で上書きする(従来と動きを変えないための不気味な対応)
+            if(opType2 == OperatorType.Float)
+            {
+                opType = OperatorType.Float;
+            } else {
+                opType = OperatorType.Word;
+            }
             var p = makeNode2(Opcode.Bool, OperatorType.Bool, TypeInfo.WordTypeInfo.Clone(), coerce(left, opType), coerce(right, opType));
             p.ComparisonOp = boolOp;
             return p;

@@ -211,15 +211,11 @@ namespace SLANGCompiler.SLANG
                     outputStreamWriter.WriteLine($"{labelName} EQU (__WORK__ + {workOffset})");
                 }
 
-                var isByte = symbol.TypeInfo.GetDataSize() == TypeDataSize.Byte;
-                isByte = isByte && !symbol.TypeInfo.IsIndirect();
-                string dataDefine = isByte ? "db" : "dw";
-
                 if(symbol.TypeInfo.IsArray())
                 {
                     workOffset += symbol.Size;
                 } else {
-                    workOffset += isByte ? 1 : 2;
+                    workOffset += symbol.TypeInfo.GetDataSize().GetDataSize();
                 }
             }
 
@@ -279,6 +275,9 @@ namespace SLANGCompiler.SLANG
                 var labelName = symbol.LabelName;
                 codeRepository.AddCode($"{labelName}:\n");
 
+                var dataSize = symbol.Size;
+
+                var isFloat = symbol.TypeInfo.GetDataSize() == TypeDataSize.Float;
                 var isByte = symbol.TypeInfo.GetDataSize() == TypeDataSize.Byte;
                 isByte = isByte && !symbol.TypeInfo.IsIndirect();
                 string dataDefine = isByte ? "DB" : "DW";
@@ -304,9 +303,22 @@ namespace SLANGCompiler.SLANG
                 } else {
                     if(symbol.InitialValueList == null)
                     {
-                        codeRepository.AddCode($" {dataDefine} 0\n");
+                        if(isFloat)
+                        {
+                            codeRepository.AddCode($" DS 3\n");
+                        } else if(isByte)
+                        {
+                            codeRepository.AddCode($" DS 1\n");
+                        } else {
+                            codeRepository.AddCode($" DS 2\n");
+                        }
                     } else {
-                        codeRepository.AddCode($" {dataDefine} {symbol.InitialValueList[0]}\n");
+                        if(isFloat)
+                        {
+                            errorReporter.Error("not support (float initial value)");
+                        } else {
+                            codeRepository.AddCode($" {dataDefine} {symbol.InitialValueList[0]}\n");
+                        }
                     }
                 }
             }
