@@ -224,9 +224,11 @@ PCHR:
     - PRT
   code: |
     LD A, H
-    CALL PRT
+    OR A
+    CALL NZ,PRT
     LD A, L
-    JR PRT
+    OR A
+    JR NZ,PRT
 
 CRDISP:
   calls:
@@ -267,14 +269,55 @@ PHEX:
     POP AF
     CALL SASC
 
+CTRL0D:
+  calls:
+    - CSR
+    - AT_VRCALC
+  code: |
+    CALL _POS
+    LD L,0
+    INC H
+
+    PUSH	BC
+    CALL AT_VRCALC
+    LD (_TXADR),HL
+    POP	BC
+
+    RET
+
+CSR:
+  code: |
+    _POS:
+    LD	HL,(_TXADR)
+    PUSH	BC
+    LD	BC,(_CRTCD+12)
+    XOR	A
+    POS1:
+    ADD	HL,BC
+    INC	A
+    JR	C,POS1
+    SBC	HL,BC
+    DEC	A
+    LD	H,A
+    POP	BC
+    AND	A
+    RET
+
 PRT:
+  calls:
+    - X1WORK
+    - CTRL0D
   param_count: 1
   code: |
+    PUSH DE
+    PUSH BC
+    PUSH HL
+
+    CP 00EH
+    JR C,PRT_CTRL
+
     ; PRINT ANK
-    PUSH	DE
     LD	E,A
-    PUSH	BC
-    PUSH	HL
     LD	BC,(_TXADR)
     LD	A,B
     OR	038H
@@ -282,14 +325,28 @@ PRT:
     DB	0EDH,071H	;OUT (C),0
     RES	3,B
     OUT	(C),E		;Text
+    LD A,B
+    AND 007H
+    LD B,A
     INC BC
     LD	(_TXADR),BC
-    POP	HL
-    POP	BC
     LD	A,E
-    POP	DE
+
+    PRT_END:
+    POP HL
+    POP BC
+    POP DE
     AND	A
     RET
+
+    PRT_CTRL:
+    CP 13
+    JP NZ,CTRL_NO13
+    CALL CTRL0D
+    JR PRT_END
+
+    CTRL_NO13:
+    JR PRT_END
 
     WORK10:
     DB  "12345",0

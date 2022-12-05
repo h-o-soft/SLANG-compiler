@@ -13,6 +13,8 @@ SLANG Compiler (Z80) 0.3.0
 
 まだ作り途中なのであちこち怪しいです。
 
+※環境構築と、簡単にビルドとエミュレータでの実行までを行える環境構築方法については [環境構築とSLANGプログラムのビルド方法](#環境構築とslangプログラムのビルド方法)を参照してください。
+
 ```
 SLANGCompiler filename [-L library-name] [-O output-path]
 
@@ -132,6 +134,110 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
   - 4個以上の場合は全てIYレジスタをポインタとして適宜渡されます(SLANGの仕様を確認してください)
 - callsに、このルーチンが呼び出すランタイムの名称を記述してください
 - codeに、コード本体を書いてください。インデントは変えないでください。
+
+# 環境構築とSLANGプログラムのビルド方法
+
+SLANG Compilerについては、コンパイラの実行ファイルと関連ファイルを好きなところに置いてパスを通せばSLANGソースをアセンブラファイルにコンパイルする事が可能です。
+
+しかし、コンパイル後、アセンブルして、エミュレーターのディスクイメージにファイルを格納し、エミュを起動して読み込む……といった、コンパイル後の手順が多いため、ビルドから実行までを省力化するためのWindows用のバッチファイル(ビルドバッチ)が提供されています。
+
+ビルドバッチについては、下記手順にて環境を整えた上で実行される想定ですので、もしビルドバッチを使いたい場合は、手順どおりに環境を構築してから利用してください
+
+## 環境構築の下準備
+
+ビルドバッチを動かすために必要な作業をおおまかに説明すると、ビルドバッチ「slbuild.bat」が置かれるビルド用フォルダを起点として、「bin」フォルダにコンパイラを配置、「tools」フォルダにツール類を配置(アセンブラなど)、「images」フォルダにエミュレータのディスクイメージを配置する、という事になります。
+
+それぞれ手順を解説します。
+
+### コンパイル環境の構築
+
+リポジトリの[リリースのページ](https://github.com/h-o-soft/SLANG-compiler/releases)、または自前でビルドいただいたバイナリファイル群を、「bin」フォルダに配置します。
+
+続けて、取得したSLANGコンパイラのリポジトリフォルダに移動してから「copyruntime.bat」を実行します。
+
+実行すると、実行したフォルダにある *.env *.yml ファイルが、ユーザーディレクトリの .config\SLANG\ 以下にコピーされます。
+
+これは、ランタイムライブラリ更新のたびに行ってください。
+
+### ツール類の配置
+
+下記のツール類を「tools」フォルダに入れます。
+
+* コンパイル用に「アセンブラ[AILZ80ASM](https://github.com/AILight/AILZ80ASM)」
+  * AILZ80ASM.exe を取得してフォルダにコピーします
+* ディスクイメージを編集するため「HuDisk」
+  *  [BouKiCHiさんのgithubのHuDiskのページ](https://github.com/BouKiCHi/HuDisk)からHuDisk.exeをダウンロードし、フォルダにコピーします
+* ディスクイメージを編集するため「NDC」
+  * https://euee.web.fc2.com/tool/tool.html
+  * 上記ページから「NDC」をダウンロードし、NDC.exeをフォルダにコピーします
+* cpmエミュレーターでCP/Mのアプリを実行したい場合は「cpm.exe」
+  * https://www.vector.co.jp/soft/win95/util/se378130.html
+  * 上記からCP/Mエミュレーターをダウンロードし、cpm.exeをフォルダにコピーします
+
+それぞれtoolsフォルダに入ればツールの設定は完了です。
+
+### エミュレーター用ディスクイメージの作成
+
+LSX-Dodgers及びS-OSのシステムディスクに、コンパイルしたSLANGの実行ファイルを書き込んで、それをエミュレータで実行させるため、最小限の起動ディスクイメージを用意します。
+
+* LSX-Dodgers用のディスクイメージの作成
+  * [LSX-Dodgersのページ](https://github.com/tablacus/LSX-Dodgers)からLSX-Dodgersのディスクイメージをダウンロードします
+  * エミュレータでそのディスクイメージを起動後、Bドライブにブランクディスクイメージ(ファイル名: LSXPROG.D88 )を入れます
+  * sys B: にて、Bドライブのディスクにシステムを転送します
+  * エミュレータを終了します
+  * [X1 DiskExplorer](https://ceeezet.syuriken.jp/)をダウンロードし、作成したディスクイメージを読み込みます
+  * SLANGコンパイラリポジトリの「env/LSX-Dodgers/AUTOEXEC.BAT」を、ディスクイメージに書き込みます
+  * X1 DiskExplorerを終了します
+  * ディスクイメージを「images」フォルダにコピーします
+* S-OS用のディスクイメージの作成
+  * [THE SENTINEL](http://www.retropc.net/ohishi/s-os/)より「X1/C/D/Cs/Ck/F/G/Twin(高速版)」の「D88イメージ」をダウンロードします
+  * X1 DiskExplorerでD88イメージを読み込みます
+  * SLANGコンパイラリポジトリの「env/S-OS/AUTOEXEC.BAT」を、ディスクイメージに書き込みます
+  * AUTOEXEC.BATを右クリックして「ファイル形式の変更」を選び、ファイル形式を「Asc」にします
+  * X1 DiskExplorerを終了します
+  * ディスクイメージを「images」フォルダにコピーします
+
+### ビルドバッチの実行
+
+ここまでの手順を行う事で、ビルドバッチの実行の準備が整いました。ビルドバッチ「slbuild.bat」を開き、下記のパスを必要に応じて修正し、ビルド用フォルダにコピーしてください。
+
+ビルド用フォルダに「bin」「tools」「images」がある場合は、「EMULATOR」の項目を書き換えるだけで良いでしょう(エミュレーターはCommon Source Code ProjectのX1エミュレータの使用を想定しています)。
+
+
+```
+SET TOOLPATH=%CURPATH%tools
+SET IMAGEPATH=%CURPATH%images
+
+SET SLANGCOMPILER=%CURPATH%bin\SLANGCompiler.exe
+SET ASM=%TOOLPATH%\AILZ80ASM.exe
+
+SET EMULATOR=D:\emu\x1\x1.exe
+
+SET NDCPATH=%TOOLPATH%\NDC.exe
+SET HUDISKPATH=%TOOLPATH%\HuDisk.exe
+SET CPMEMUPATH=%TOOLPATH%\cpm.exe
+```
+
+ビルド用フォルダに例えば「TEST.SL」というSLANGのソースファイルがある場合、
+
+```
+slbuild.bat TEST.SL
+```
+
+と、実行する事で、LSX-Dodgers環境にてビルドされ、X1エミュレータに読み込まれ、実行されます(実行後、エミュレータを終了してください)。
+
+S-OS環境で実行したい場合は、ソースファイル名の隣に環境名を書き、
+
+```
+slbuild.bat TEST.SL sos
+```
+
+と、する事で、自動的にS-OS用にビルドされ、エミュレータがS-OSのイメージを読み込み、起動、実行されます。
+
+また、特殊な環境としてCP/MエミュレータでLSX-Dodgers環境のアプリを動かしたい場合、環境名を「cpm」とする事で、CP/Mエミュレーターを使い、コマンドラインでSLANGのアプリが実行されます。
+
+都度都度自前でコンパイル、アセンブル、実行ファイルのイメージ転送、エミュ起動、読み込み、などを行ってももちろん良いですが、ビルドバッチを使う事で、かなりスムーズに開発を進める事が出来ます。必要に応じてご活用ください。
+
 
 # ライセンス
 MIT

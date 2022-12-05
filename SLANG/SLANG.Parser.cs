@@ -348,40 +348,24 @@ namespace SLANGCompiler.SLANG
             outputStreamWriter.Flush();
         }
 
-        private string GetConfigPath(string fileName)
-        {
-            if(!File.Exists(fileName))
-            {
-                var configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),".config");
-                configPath = Path.Combine(configPath,"SLANG");
-                fileName = Path.Combine(configPath, Path.GetFileName(fileName));
-                if(!File.Exists(fileName))
-                {
-                    return null;
-                }
-            }
-            return fileName;
-        }
 
         // 環境設定ファイルを元に環境設定を行う
         // * デフォルトORGの設定
         // * ランタイムライブラリの読み込み
         public void SetupEnvironment(string envName)
         {
-            string envPath;
             if(!envName.Contains("."))
             {
-                envPath = envName + ".env";
-            } else {
-                envPath = envName;
+                envName = envName + ".env";
             }
+            string envPath = SLANGCommonUtility.GetConfigPath(envName);
             var environmentManager = new EnvironmentManager(runtimeManager, this);
             environmentManager.Load(envPath);
         }
 
         public void LoadRuntime(string fileName)
         {
-            var filePath = GetConfigPath(fileName);
+            var filePath = SLANGCommonUtility.GetConfigPath(fileName);
             if(filePath == null)
             {
                 throw new FileNotFoundException($"could not found runtime file. {fileName}");
@@ -398,7 +382,7 @@ namespace SLANGCompiler.SLANG
             {
                 var fileName = "opt.yml";
                 codeOptimizer = new CodeOptimizer();
-                var filePath = GetConfigPath(fileName);
+                var filePath = SLANGCommonUtility.GetConfigPath(fileName);
                 if(filePath == null)
                 {
                     Console.Error.WriteLine("could not found optimize rule file. " + fileName);

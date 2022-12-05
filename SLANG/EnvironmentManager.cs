@@ -73,7 +73,8 @@ namespace SLANGCompiler.SLANG
                 {
                     foreach(var lib in info.libraries)
                     {
-                        runtimeManager.LoadRuntime(lib);
+                        var libPath = SLANGCommonUtility.GetConfigPath(lib);
+                        runtimeManager.LoadRuntime(libPath);
                     }
                 }
             }

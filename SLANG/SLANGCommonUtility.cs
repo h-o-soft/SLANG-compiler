@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace SLANGCompiler.SLANG
 {
     public class SLANGCommonUtility
     {
-        
         public static int Float24ToInt(int f24)
         {
             int a  = (f24 >> 16) & 0xff;
@@ -166,6 +166,21 @@ namespace SLANGCompiler.SLANG
             }
             return result.ToArray();
         }
+        public static string GetConfigPath(string fileName)
+        {
+            if(!File.Exists(fileName))
+            {
+                var configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),".config");
+                configPath = Path.Combine(configPath,"SLANG");
+                fileName = Path.Combine(configPath, Path.GetFileName(fileName));
+                if(!File.Exists(fileName))
+                {
+                    return null;
+                }
+            }
+            return fileName;
+        }
+
         public static int GetIntValue(string valueString)
         {
             int number;
