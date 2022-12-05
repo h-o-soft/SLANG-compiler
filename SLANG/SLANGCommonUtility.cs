@@ -1,9 +1,26 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 
 namespace SLANGCompiler.SLANG
 {
     public class SLANGCommonUtility
     {
+        public static string GetConfigPath(string fileName)
+        {
+            if(!File.Exists(fileName))
+            {
+                var configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),".config");
+                configPath = Path.Combine(configPath,"SLANG");
+                fileName = Path.Combine(configPath, Path.GetFileName(fileName));
+                if(!File.Exists(fileName))
+                {
+                    return null;
+                }
+            }
+            return fileName;
+        }
+        
         public static int GetValue(string valueString)
         {
             int number;
