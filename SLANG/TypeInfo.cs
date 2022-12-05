@@ -34,9 +34,29 @@ namespace SLANGCompiler.SLANG
         /// <summary>バイト(1byte)</summary>
         Byte,
         /// <summary>ワード(2bytes)</summary>
-        Word
+        Word,
+        /// <summary>浮動小数点(3bytes)</summary>
+        Float
     }
 
+    public static partial class TypeDataSizeExtend {
+            /// <summary>
+            /// TypeDataSizeの保存に必要なメモリバイト数を返す
+            /// </summary>
+            public static int GetDataSize(this TypeDataSize param)
+            {
+                switch(param)
+                {
+                    case TypeDataSize.Byte:
+                        return 1;
+                    case TypeDataSize.Word:
+                        return 2;
+                    case TypeDataSize.Float:
+                        return 3;
+                }
+                return 2;
+            }
+    }
     /// <summary>
     /// 型情報クラス
     /// </summary>
@@ -109,6 +129,14 @@ namespace SLANGCompiler.SLANG
         public bool IsWordTypeInfo()
         {
             return (InfoClass == TypeInfoClass.Normal && DataSize == TypeDataSize.Word);
+        }
+
+        /// <summary>
+        /// この型が単純変数のFloat型の場合true、そうでない場合falseを返す
+        /// </summary>
+        public bool IsFloatTypeInfo()
+        {
+            return (InfoClass == TypeInfoClass.Normal && DataSize == TypeDataSize.Float);
         }
 
         /// <summary>
@@ -252,6 +280,9 @@ namespace SLANGCompiler.SLANG
             } else if((this.InfoClass == TypeInfoClass.Normal || this.InfoClass == TypeInfoClass.Indirect) && this.DataSize == TypeDataSize.Word)
             {
                 return OperatorType.Word;
+            } else if((this.InfoClass == TypeInfoClass.Normal || this.InfoClass == TypeInfoClass.Indirect) && this.DataSize == TypeDataSize.Float)
+            {
+                return OperatorType.Float;
             } else if(this.InfoClass == TypeInfoClass.Array)
             {
                 if(this.DataSize == TypeDataSize.Byte)
@@ -300,16 +331,26 @@ namespace SLANGCompiler.SLANG
         {
             ByteTypeInfo = CreateTypeInfo(TypeInfoClass.Normal, null, 1, TypeDataSize.Byte);
             WordTypeInfo = CreateTypeInfo(TypeInfoClass.Normal, null, 2, TypeDataSize.Word);
+            FloatTypeInfo = CreateTypeInfo(TypeInfoClass.Normal, null, 3, TypeDataSize.Float);
+
             IndirectByteTypeInfo = CreateTypeInfo(TypeInfoClass.Indirect, null, 1, TypeDataSize.Byte);
             IndirectWordTypeInfo = CreateTypeInfo(TypeInfoClass.Indirect, null, 2, TypeDataSize.Word);
+            IndirectFloatTypeInfo = CreateTypeInfo(TypeInfoClass.Indirect, null, 3, TypeDataSize.Float);
+
             PtrToByte = CreateTypeInfo(TypeInfoClass.Pointer, ByteTypeInfo);
             PtrToWord = CreateTypeInfo(TypeInfoClass.Pointer, WordTypeInfo);
+            PtrToFloat = CreateTypeInfo(TypeInfoClass.Pointer, FloatTypeInfo);
+
             PtrToIndirectByte = CreateTypeInfo(TypeInfoClass.Pointer, IndirectByteTypeInfo);
             PtrToIndirectWord = CreateTypeInfo(TypeInfoClass.Pointer, IndirectWordTypeInfo);
+            PtrToIndirectFloat = CreateTypeInfo(TypeInfoClass.Pointer, IndirectFloatTypeInfo);
+
             PortByte = CreateTypeInfo(TypeInfoClass.PortArray, ByteTypeInfo.Clone(), 1, TypeDataSize.Byte);
             PortWord = CreateTypeInfo(TypeInfoClass.PortArray, WordTypeInfo.Clone(), 2, TypeDataSize.Word);
+
             MemoryByte = CreateTypeInfo(TypeInfoClass.MemoryArray, ByteTypeInfo.Clone(), 1, TypeDataSize.Byte);
             MemoryWord = CreateTypeInfo(TypeInfoClass.MemoryArray, WordTypeInfo.Clone(), 2, TypeDataSize.Word);
+            MemoryFloat = CreateTypeInfo(TypeInfoClass.MemoryArray, WordTypeInfo.Clone(), 3, TypeDataSize.Float);
 
             TempFunc = CreateTypeInfo(TypeInfoClass.TempFunc, WordTypeInfo.Clone(), 2, TypeDataSize.Word);
         }
@@ -323,6 +364,10 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public static TypeInfo WordTypeInfo { get; private set; }
         /// <summary>
+        /// 単純FLOAT型
+        /// </summary>
+        public static TypeInfo FloatTypeInfo { get; private set; }
+        /// <summary>
         /// 間接変数BYTE型
         /// </summary>
         public static TypeInfo IndirectByteTypeInfo { get; private set; }
@@ -330,6 +375,10 @@ namespace SLANGCompiler.SLANG
         /// 間接変数WORD型
         /// </summary>
         public static TypeInfo IndirectWordTypeInfo { get; private set; }
+        /// <summary>
+        /// 間接変数FLOAT型
+        /// </summary>
+        public static TypeInfo IndirectFloatTypeInfo { get; private set; }
         /// <summary>
         /// BYTEポインタ型
         /// </summary>
@@ -339,6 +388,10 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public static TypeInfo PtrToWord { get; private set; }
         /// <summary>
+        /// FLOATポインタ型
+        /// </summary>
+        public static TypeInfo PtrToFloat { get; private set; }
+        /// <summary>
         /// BYTE間接変数ポインタ型
         /// </summary>
         public static TypeInfo PtrToIndirectByte { get; private set; }
@@ -346,6 +399,10 @@ namespace SLANGCompiler.SLANG
         /// WORD間接変数ポインタ型
         /// </summary>
         public static TypeInfo PtrToIndirectWord { get; private set; }
+        /// <summary>
+        /// FLOAT間接変数ポインタ型
+        /// </summary>
+        public static TypeInfo PtrToIndirectFloat { get; private set; }
         /// <summary>
         /// I/OポートBYTE配列型
         /// </summary>
@@ -362,6 +419,10 @@ namespace SLANGCompiler.SLANG
         /// メモリWORD配列型
         /// </summary>
         public static TypeInfo MemoryWord { get; private set; }
+        /// <summary>
+        /// メモリFLOAT配列型
+        /// </summary>
+        public static TypeInfo MemoryFloat { get; private set; }
         /// <summary>
         /// 一時定義関数型
         /// </summary>

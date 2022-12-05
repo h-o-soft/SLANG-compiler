@@ -48,8 +48,17 @@ namespace SLANGCompiler.SLANG
         }
         void GetNumber()
         {
-            var number = SLANGCommonUtility.GetValue(yytext);
-            var constValue = new ConstInfo(number);
+            ConstInfo constValue = null;
+            if(yytext.Contains('.'))
+            {
+                // FLOAT値
+                var floatNumber = float.Parse(yytext);
+                constValue = new ConstInfo(floatNumber);
+            } else {
+                // INT値
+                var number = SLANGCommonUtility.GetIntValue(yytext);
+                constValue = new ConstInfo(number);
+            }
             yylval.constValue = constValue;
         }
 
@@ -58,6 +67,7 @@ namespace SLANGCompiler.SLANG
             {"VAR", Token.VAR},
             {"BYTE", Token.BYTE},
             {"WORD", Token.WORD},
+            {"FLOAT", Token.FLOAT},
             {"ARRAY", Token.ARRAY},
             {"CONST", Token.CONST},
             {"IF", Token.IF},

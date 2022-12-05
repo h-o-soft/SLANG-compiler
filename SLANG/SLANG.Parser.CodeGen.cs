@@ -289,19 +289,33 @@ namespace SLANGCompiler.SLANG
                             var varExpr = (Expr)obj[idx];
                             var symbol = varExpr.Symbol;
 
+
                             string baseAdr;
                             string offsetAdr = "";
+                            int offsetValue = varExpr.SymbolOffset;
+
+                            if(i+1 < format.Length)
+                            {
+                                var ofsChar = format[i+1];
+                                if(ofsChar >= 0x30 && ofsChar <= 0x39)
+                                {
+                                    // オフセット値として有効
+                                    offsetValue = offsetValue >= 0 ? offsetValue + (ofsChar - 0x30) : (ofsChar - 0x30);
+                                    i++;
+                                }
+                            }
+
                             if(symbol.Address != null)
                             {
                                 // 数値なので加算してやる
-                                var ofs = varExpr.SymbolOffset >= 0 ? varExpr.SymbolOffset : 0;
+                                var ofs = offsetValue;
                                 var adr = symbol.Address.GetConstStr(symbolTableManager);
                                 sb.Append($"({adr}+${ofs:X4})");
                             } else {
                                 baseAdr = $"{symbol.LabelName}";
-                                if(varExpr.SymbolOffset > 0)
+                                if(offsetValue > 0)
                                 {
-                                    offsetAdr = $"+{varExpr.SymbolOffset}";
+                                    offsetAdr = $"+{offsetValue}";
                                 }
                                 sb.Append($"({baseAdr}{offsetAdr})");
                             }
@@ -360,7 +374,7 @@ namespace SLANGCompiler.SLANG
             {
                 case Opcode.Add:
                 {
-                    genadd(left, right);
+                    genadd(left, right, expr.OpType);
                     break;
                 }
                 case Opcode.Sub:
@@ -456,7 +470,11 @@ namespace SLANGCompiler.SLANG
             Expr left = expr.Left;
             Expr right = expr.Right;
 
+            // BYTE or WORD or FLOAT
+            TypeDataSize assignType = left.TypeInfo.GetDataSize();
             bool isByte = left.TypeInfo.GetDataSize() == TypeDataSize.Byte;
+            bool isWord = left.TypeInfo.GetDataSize() == TypeDataSize.Word;
+            bool isFloat = left.TypeInfo.GetDataSize() == TypeDataSize.Float;
 
             if(left.Opcode == Opcode.PortAccess)
             {
@@ -475,18 +493,17 @@ namespace SLANGCompiler.SLANG
                 var symbol = left.Left.Symbol;
                 var typeInfo = left.Left.Symbol.TypeInfo;
 
-
                 if(symbol.SymbolClass == SymbolClass.Param || symbol.SymbolClass == SymbolClass.Local)
                 {
                     var ofs = symbol.Address.GetConstStr(symbolTableManager) + "+" + left.Left.SymbolOffset;
                     if(right.IsConst())
                     {
-                        if(right.IsValueConst())
+                        if(right.IsIntValueConst())
                         {
                             var lowVal = right.ConstValue.Value & 0xff;
                             var highVal = (right.ConstValue.Value >> 8) & 0xff;
                             gencode($" LD (IY+{ofs}),{lowVal}\n");
-                            if(!isByte)
+                            if(isWord)
                             {
                                 gencode($" LD (IY+{ofs}+1),{highVal}\n");
                             }
@@ -499,7 +516,7 @@ namespace SLANGCompiler.SLANG
                             if(constStr != null)
                             {
                                 gencode($" LD (IY+{ofs}),LOW {constStr}\n");
-                                if(!isByte)
+                                if(isWord)
                                 {
                                     gencode($" LD (IY+{ofs}+1),HIGH {constStr}\n");
                                 }
@@ -511,6 +528,10 @@ namespace SLANGCompiler.SLANG
                         if(!isByte)
                         {
                             gencode($" LD (IY+{ofs}+1),H\n");
+                        }
+                        if(isFloat)
+                        {
+                            gencode($" LD (IY+{ofs}+2),A\n");
                         }
                     }
                 } else {
@@ -531,6 +552,12 @@ namespace SLANGCompiler.SLANG
                         {
                             gencode(" EX DE,HL\n");
                         }
+                    } else if(isFloat)
+                    {
+                        // AHLを代入(うーん)
+                        genexp(right);
+                        gencode(" LD %v,HL\n", left.Left);
+                        gencode(" LD %v2,A\n", left.Left);
                     } else{
                         genexp(right);
                         gencode(" LD %v,HL\n", left.Left);
@@ -631,7 +658,7 @@ namespace SLANGCompiler.SLANG
             if(expr.Left.IsConst())
             {
                 var constExpr = expr.Left;
-                if(constExpr.IsValueConst())
+                if(constExpr.IsIntValueConst())
                 {
                     var val = ~expr.ConstValue.Value;
                     gencode($" LD HL,{val}\n");
@@ -651,10 +678,13 @@ namespace SLANGCompiler.SLANG
             if(expr.Left.IsConst())
             {
                 var constExpr = expr.Left;
-                if(constExpr.IsValueConst())
+                if(constExpr.IsIntValueConst())
                 {
                     var val = expr.ConstValue.Value * -1;
                     gencode($" LD HL,{val}\n");
+                } else if(constExpr.IsFloatValueConst())
+                {
+                    genld(Register.HL, expr, TypeDataSize.Float);
                 } else {
                     var constStr = GetConstStr(constExpr);
                     gencode($" LD HL,-{constStr}\n");
@@ -662,7 +692,13 @@ namespace SLANGCompiler.SLANG
                 return;
             }
             genexp(expr.Left);
-            genRuntimeCall("NEGHL");
+            if(expr.OpType == OperatorType.Float)
+            {
+                genRuntimeCall("f24neg");
+
+            } else {
+                genRuntimeCall("NEGHL");
+            }
         }
 
         // 論理NOT式を出力する
@@ -671,7 +707,7 @@ namespace SLANGCompiler.SLANG
             if(expr.Left.IsConst())
             {
                 var constExpr = expr.Left;
-                if(constExpr.IsValueConst())
+                if(constExpr.IsIntValueConst())
                 {
                     var val = expr.ConstValue.Value == 0 ? 1 : 0;
                     gencode($" LD HL,{val}\n");
@@ -687,7 +723,7 @@ namespace SLANGCompiler.SLANG
         }
 
         // 加算式を出力する
-        private void genadd(Expr left, Expr right)
+        private void genadd(Expr left, Expr right, OperatorType opType)
         {
             if(left.IsConst())
             {
@@ -709,7 +745,7 @@ namespace SLANGCompiler.SLANG
                     {
                         gencode($" LD DE,{right.ConstValue.SymbolString}\n");
                         gencode($" ADD HL,DE\n");
-                    } else {
+                    } else if(right.IsIntValueConst()){
                         // 4加算まではINCにしてそれ以上は普通に足してみる
                         var constVal = right.ConstValue.Value;
                         if(constVal < 4)
@@ -722,6 +758,15 @@ namespace SLANGCompiler.SLANG
                             gencode($" LD DE,{constVal}\n");
                             gencode($" ADD HL,DE\n");
                         }
+                    } else if(right.IsFloatValueConst())
+                    {
+                        // Floatの定数加算
+                        // DEの指定だが、CDE に入る
+                        genld(Register.DE, right, TypeDataSize.Float);
+                        genRuntimeCall("f24add");
+                        // AHLに計算結果が入る
+                    } else {
+                        Error("can not add.");
                     }
                 }
                 // TODO 本当に全ての演算はキャストされるのか？後でチェック。
@@ -738,6 +783,9 @@ namespace SLANGCompiler.SLANG
                 //        gencode($" ADD L,{right.Value}\n");
                 //    }
                 //}
+            } else if(opType == OperatorType.Float)
+            {
+                genFloatCall("f24add", left, right);
             } else if(right.CanLoadDirect())
             {
                 // これとここの下、Byte加算に対応していないので注意(手前で左右ともにWORDになっているはず)
@@ -759,10 +807,47 @@ namespace SLANGCompiler.SLANG
             }
         }
 
+        private void genFloatCall1(string funcStr, Expr left)
+        {
+            genexp(left);
+            genRuntimeCall(funcStr);
+        }
+
+        private void genFloatCall(string funcStr, Expr left, Expr right)
+        {
+            if(right.CanLoadDirect())
+            {
+                genexp(left);
+                genld(Register.DE, right, TypeDataSize.Float);
+                genRuntimeCall(funcStr);
+            } else if(left.CanLoadDirect())
+            {
+                genexp(right);
+                gencode(" EX DE,HL\n");
+                gencode(" LD C,A\n");
+                genld(Register.HL, left, TypeDataSize.Float);
+                genRuntimeCall(funcStr);
+            } else {
+                // 24bit保存でいいはずだが、諦める(で、いいのか？)
+                genexp(left);
+                gencode(" PUSH AF\n");
+                gencode(" PUSH HL\n");
+                genexp(right);
+                gencode(" EX DE,HL\n");
+                gencode(" LD C,A\n");
+                gencode(" POP HL\n");
+                gencode(" POP AF\n");
+                genRuntimeCall(funcStr);
+            }
+        }
+
         // 減算式を生成する
         private void gensub(Expr left, Expr right)
         {
-            if(right != null && right.IsConst())
+            if(left.OpType == OperatorType.Float || right.OpType == OperatorType.Float)
+            {
+                genFloatCall("f24sub", left, right);
+            } else if(right != null && right.IsConst())
             {
                 if(right.ConstValue.ConstInfoType == ConstInfoType.Code)
                 {
@@ -827,15 +912,58 @@ namespace SLANGCompiler.SLANG
         private void genmul(Expr left, Expr right, bool isUnsigned = true)
         {
             string callName = isUnsigned ? "MULHLDE" : "MULHLDE";       // Signedは無い？
+
             if(left.IsConst())
             {
                 var tmp = left;
                 left = right;
                 right = tmp;
             }
-            if(right.IsConst() && isUnsigned)
+            if(left.OpType == OperatorType.Float || right.OpType == OperatorType.Float)
             {
-                if(!right.IsValueConst())
+                if(right.IsValueConst())
+                {
+                    var floatValue = right.GetConstFloatValue();
+                    int mulValue = 0;
+                    if(floatValue == 2.0f)
+                    {
+                        mulValue = 2;
+                    } else if(floatValue == 3.0f)
+                    {
+                        mulValue = 3;
+                    } else if(floatValue == 4.0f)
+                    {
+                        mulValue = 4;
+                    }
+                    // 2, 3, 4倍は最適化可能
+                    if(mulValue > 0)
+                    {
+                        if(mulValue == 2)
+                        {
+                            genFloatCall1("f24mul2", left);
+                        } else if(mulValue == 3)
+                        {
+                            genFloatCall1("f24mul3", left);
+                        } else if(mulValue == 4)
+                        {
+                            genFloatCall1("f24mul2", left);
+                            genRuntimeCall("f24mul2");
+                        }
+                        return;
+                    }
+                }
+
+                // X*X は最適化する
+                if(left.IsVariable() && right.IsVariable() && left.Symbol == right.Symbol)
+                {
+                    genexp(left);
+                    genRuntimeCall("f24sqr");
+                } else {
+                    genFloatCall("f24mul", left, right);
+                }
+            } else if(right.IsConst() && isUnsigned)
+            {
+                if(!right.IsIntValueConst())
                 {
                     Error("CODE Const can not mul");
                     return;
@@ -890,7 +1018,7 @@ namespace SLANGCompiler.SLANG
         {
             if(left.IsConst() && right.IsConst())
             {
-                if(!left.IsValueConst() || !right.IsValueConst())
+                if(!left.IsIntValueConst() || !right.IsIntValueConst())
                 {
                     Error("CODE Const can not shift");
                     return;
@@ -1028,20 +1156,37 @@ namespace SLANGCompiler.SLANG
             Expr left = expr.Left;
             Expr right = expr.Right;
             OperatorType opType = left.OpType;
+            var isFloatCompare = adjust(left, right) == OperatorType.Float;
+
 
             if(DebugEnabled)
             {
                 Console.WriteLine("gencompare:" + opType);
             }
-            ComparisonOp boolOp = expr.ComparisonOp;;
-            if(expr.ComparisonOp == ComparisonOp.SGt || expr.ComparisonOp == ComparisonOp.SLe)
+            ComparisonOp boolOp = expr.ComparisonOp;
+            if(isFloatCompare)
+            {
+                // Floatの比較は強制的に符号ありになる(内部的には符号なしOpに差し替える)
+                switch(boolOp)
+                {
+                    case ComparisonOp.SGt:
+                        boolOp = ComparisonOp.Gt;
+                        break;
+                    case ComparisonOp.SLe:
+                        boolOp = ComparisonOp.Le;
+                        break;
+                }
+            }
+
+
+            if(boolOp == ComparisonOp.SGt || boolOp == ComparisonOp.SLe)
             {
                 string[] boolCalls = new string[]
                 {
                     "OPSGTHLDE",
                     "OPSLEHLDE"
                 };
-                var callName = boolCalls[expr.ComparisonOp == ComparisonOp.SGt ? 0 : 1];
+                var callName = boolCalls[boolOp == ComparisonOp.SGt ? 0 : 1];
                 if(right.CanLoadDirect())
                 {
                     genexp(left);
@@ -1061,16 +1206,22 @@ namespace SLANGCompiler.SLANG
                 gencondjump(opType, ComparisonOp.Neq, trueLabelNum, falseLabelNum);
             } else {
                 // 右が0でEQ or NEQの場合はいちいちSBCしないで0かどうかのみ調べる
-                if(right.IsValueConst() && right.ConstValue.Value == 0 && (expr.ComparisonOp == ComparisonOp.Eq || expr.ComparisonOp == ComparisonOp.Neq))
+                if(right.IsIntValueConst() && right.ConstValue.Value == 0 && (boolOp == ComparisonOp.Eq || boolOp == ComparisonOp.Neq))
                 {
                     genexp(left);
                     gencode(" LD A,H\n");
+                    gencode(" OR L\n");
+                } else if(right.IsFloatValueConst() && right.ConstValue.FloatValue == 0f && (boolOp == ComparisonOp.Eq || boolOp == ComparisonOp.Neq))
+                {
+                    genexp(left);
+                    // A or H or L
+                    gencode(" OR H\n");
                     gencode(" OR L\n");
                 } else {
                     // この場合は逆条件にしないといけない？
                     if(trueLabelNum == 0)
                     {
-                        switch(expr.ComparisonOp)
+                        switch(boolOp)
                         {
                             case ComparisonOp.Gt:
                             {
@@ -1091,19 +1242,24 @@ namespace SLANGCompiler.SLANG
                         }
                     }
 
-                    if(right.CanLoadDirect())
+                    if(isFloatCompare)
                     {
-                        genexp(left);
-                        genld(Register.DE, right);
-                        gencode(" OR A\n");
-                        gencode(" SBC HL,DE\n");
+                        genFloatCall("f24cmp",left, right);
                     } else {
-                        genexp(right);
-                        gencode(" PUSH HL\n");
-                        genexp(left);
-                        gencode(" POP DE\n");
-                        gencode(" OR A\n");
-                        gencode(" SBC HL,DE\n");
+                        if(right.CanLoadDirect())
+                        {
+                            genexp(left);
+                            genld(Register.DE, right);
+                            gencode(" OR A\n");
+                            gencode(" SBC HL,DE\n");
+                        } else {
+                            genexp(right);
+                            gencode(" PUSH HL\n");
+                            genexp(left);
+                            gencode(" POP DE\n");
+                            gencode(" OR A\n");
+                            gencode(" SBC HL,DE\n");
+                        }
                     }
                 }
                 gencondjump(opType, boolOp, trueLabelNum, falseLabelNum);
@@ -1226,6 +1382,26 @@ namespace SLANGCompiler.SLANG
                 genexp(expr);
             }
         }
+        
+        // WORDをFLOATにキャスト
+        private void genwtof(Expr expr)
+        {
+            if(expr != null)
+            {
+                genexp(expr);
+                genRuntimeCall("i16tof24");
+            }
+        }
+
+        // FLOATをWORDにキャスト
+        private void genftow(Expr expr)
+        {
+            if(expr != null)
+            {
+                genexp(expr);
+                genRuntimeCall("FTOI");
+            }
+        }
 
         // 比較ジャンプを生成する
         private void genbool(Expr expr, int trueLabelNum, int falseLabelNum)
@@ -1316,6 +1492,7 @@ namespace SLANGCompiler.SLANG
             if(runtimeSymbol == null)
             {
                 Error($"can not found runtime call {runtimeName}");
+                return;
             }
             if(runtimeSymbol.Address != null)
             {
@@ -1326,12 +1503,18 @@ namespace SLANGCompiler.SLANG
             }
         }
 
+        private static readonly string InitializerCallCode = "<<CALLINITIALIZER>>";
         // 指定ランタイムのコードを直接埋め込む
         private void genRuntimeInline(string runtimeName)
         {
             var code = runtimeManager.GetRuntimeCode(runtimeName);
+
             if(code != null)
             {
+                if(code.Contains(InitializerCallCode))
+                {
+                    code = code.Replace(InitializerCallCode,"CALL RUNTIME_INIT");
+                }
                 gencode(code);
             }
         }
@@ -1344,7 +1527,10 @@ namespace SLANGCompiler.SLANG
             {
                 callName = "S" + callName;
             }
-            if(right != null && right.IsConst() && isUnsigned)
+            if(left.OpType == OperatorType.Float || right.OpType == OperatorType.Float)
+            {
+                genFloatCall(isDiv ? "f24div" : "f24mod", left, right);
+            } else if(right != null && right.IsConst() && isUnsigned)
             {
                 // HL / DEまたはHL % DEで、HLに返す
                 genexp(left);
@@ -1381,9 +1567,15 @@ namespace SLANGCompiler.SLANG
                     if(symbol.TypeInfo.GetDataSize()== TypeDataSize.Byte)
                     {
                         gencode($" LD L,(IY+{ofs})\n");
-                    } else {
+                    } else if(typeInfo.GetDataSize() == TypeDataSize.Word)
+                    {
                         gencode($" LD L,(IY+{ofs})\n");
                         gencode($" LD H,(IY+{ofs+1})\n");
+                    } else if(typeInfo.GetDataSize() == TypeDataSize.Float)
+                    {
+                        gencode($" LD L,(IY+{ofs})\n");
+                        gencode($" LD H,(IY+{ofs+1})\n");
+                        gencode($" LD A,(IY+{ofs+2})\n");
                     }
                 } else {
                     var isIndirect = symbol.TypeInfo.IsIndirectType();
@@ -1391,8 +1583,13 @@ namespace SLANGCompiler.SLANG
                     {
                         gencode(" LD HL,%a\n", expr.Left);
                         gencode(" LD L,(HL)\n");
-                    } else {
+                    } else if(typeInfo.GetDataSize() == TypeDataSize.Word)
+                    {
                         gencode(" LD HL,%v\n", expr.Left);
+                    } else if(typeInfo.GetDataSize() == TypeDataSize.Float)
+                    {
+                        gencode(" LD HL,%v\n", expr.Left);
+                        gencode(" LD A,%v2\n", expr.Left);
                     }
                 }
             } else if(expr.Left.Opcode == Opcode.Indir && expr.Left.Left.Opcode == Opcode.Adr)
@@ -1671,6 +1868,12 @@ namespace SLANGCompiler.SLANG
                 Register.DE,
                 Register.BC,
             };
+            Register[] paramHighRegs = new Register[]
+            {
+                Register.A,
+                Register.C,
+                Register.Invalid
+            };
 
             // パラメータが逆順に入っているので逆にする
             var exprList = new List<Expr>();
@@ -1699,7 +1902,15 @@ namespace SLANGCompiler.SLANG
                     if(!param.CanLoadDirect())
                     {
                         genexp(param);
-                        gencode(" PUSH HL\n");
+                        // パラメータが1つの場合はPUSHせずにそのまま渡す
+                        if(exprList.Count > 1)
+                        {
+                            gencode(" PUSH HL\n");
+                            if(param.IsFloat())
+                            {
+                                gencode(" PUSH AF\n");
+                            }
+                        }
                         pushIdx++;
                     }
                 }
@@ -1710,22 +1921,45 @@ namespace SLANGCompiler.SLANG
                 {
                     if(param.CanLoadDirect())
                     {
-                        genld(paramRegs[idx], param);
+                        if(param.OpType == OperatorType.Float || (param.OpType == OperatorType.Constant && param.IsFloatValueConst()))
+                        {
+                            genld(paramRegs[idx], param, TypeDataSize.Float);
+                        } else {
+                            genld(paramRegs[idx], param);
+                        }
                     }
                     idx++;
                 }
 
                 // 3. 1でPUSHしたものを正しいレジスタで拾う
-                for(idx = exprList.Count - 1; idx >= 0; idx-- )
+                if(exprList.Count > 1)
                 {
-                    var param = exprList[idx];
-                    if(!param.CanLoadDirect())
+                    for(idx = exprList.Count - 1; idx >= 0; idx-- )
                     {
-                        gencode($" POP {paramRegs[idx].GetCode()}\n");
+                        var param = exprList[idx];
+                        if(!param.CanLoadDirect())
+                        {
+                            if(param.IsFloat())
+                            {
+                                if(paramHighRegs[idx] != Register.A)
+                                {
+                                    gencode(" EX AF,AF'\n");
+                                }
+                                gencode(" POP AF\n");
+                                if(paramHighRegs[idx] != Register.A)
+                                {
+                                    var highReg = paramHighRegs[idx].GetCode();
+                                    gencode($" LD {highReg},A\n");
+                                    gencode(" EX AF,AF'\n");
+                                }
+                            }
+                            gencode($" POP {paramRegs[idx].GetCode()}\n");
+                        }
                     }
                 }
             } else {
                 // 引数の数が4つ以上の場合は全て順にスタックに詰む
+                // ※FLOAT未対応
                 foreach(var param in exprList)
                 {
                     genexp(param);
@@ -1773,7 +2007,7 @@ namespace SLANGCompiler.SLANG
             // HLに現在のFOR変数の値が入っているのでそれを使うと良い
             if(forExpr.IsConst())
             {
-                if(!forExpr.IsValueConst())
+                if(!forExpr.IsIntValueConst())
                 {
                     Error("for expr is not value const");
                     return;
@@ -1857,8 +2091,14 @@ namespace SLANGCompiler.SLANG
                     } else if(expr.ConstValue.ConstInfoType == ConstInfoType.String)
                     {
                         gencode($" LD HL,{expr.ConstValue.SymbolString}\n");
-                    } else {
+                    } else if(expr.ConstValue.ConstInfoType == ConstInfoType.IntValue){
                         gencode($" LD HL,{expr.ConstValue.Value}\n");
+                    } else if(expr.ConstValue.ConstInfoType == ConstInfoType.FloatValue){
+                        // 浮動小数点値を24bit floatに変換する
+                        var f24Val = SLANGCommonUtility.ValueToFloat24(expr.ConstValue.FloatValue);
+                        gencode($"; float : {expr.ConstValue.FloatValue}\n");
+                        gencode($" LD HL,${f24Val & 0xffff:X2}\n");
+                        gencode($" LD A,${(f24Val >> 16) & 0xff:X1}\n");
                     }
                     break;
                 }
@@ -1875,7 +2115,7 @@ namespace SLANGCompiler.SLANG
                 }
                 case Opcode.Add:
                 {
-                    genadd(left, right);
+                    genadd(left, right, expr.OpType);
                     break;
                 }
                 case Opcode.Sub:
@@ -1999,6 +2239,16 @@ namespace SLANGCompiler.SLANG
                     genwtob(expr.Left);
                     break;
                 }
+                case Opcode.WtoF:
+                {
+                    genwtof(expr.Left);
+                    break;
+                }
+                case Opcode.FtoW:
+                {
+                    genftow(expr.Left);
+                    break;
+                }
                 case Opcode.PostInc:
                 case Opcode.PostDec:
                 case Opcode.PreInc:
@@ -2042,6 +2292,12 @@ namespace SLANGCompiler.SLANG
             var targetReg = register.GetCode();
             var regLow    = targetReg.Substring(1, 1);
             var regHigh   = targetReg.Substring(0, 1);
+            string higherReg = "A";
+            if(register == Register.DE)
+            {
+                higherReg = "C";
+            }
+
 
             var targetExpr = expr;
             // BtoW または WtoB の場合は leftがcanLoadDirectであれば代入してからBtoW、WtoBの処理をする
@@ -2053,7 +2309,7 @@ namespace SLANGCompiler.SLANG
             // DE or HLにexprを代入する
             if(targetExpr.IsConst())
             {
-                if(targetExpr.IsValueConst())
+                if(targetExpr.IsIntValueConst())
                 {
                     var val = targetExpr.ConstValue.Value;
                     switch(dataSize)
@@ -2063,6 +2319,26 @@ namespace SLANGCompiler.SLANG
                             break;
                         default:
                             gencode($" LD {targetReg},{val}\n");
+                            break;
+                    }
+                } else if(targetExpr.IsFloatValueConst())
+                {
+                    var val = (int)targetExpr.ConstValue.FloatValue;
+                    var f24Val = SLANGCommonUtility.ValueToFloat24(targetExpr.ConstValue.FloatValue);
+
+                    // BYTE、WORDに入れる場合はここで小数部を削除してから代入してやる
+                    switch(dataSize)
+                    {
+                        case TypeDataSize.Byte:
+                            gencode($" LD {regLow},{val & 0xff}\n");
+                            break;
+                        case TypeDataSize.Word:
+                            gencode($" LD {targetReg},{val}\n");
+                            break;
+                        default:
+                            // float value
+                            gencode($" LD {targetReg},${f24Val & 0xffff:X2}\n");
+                            gencode($" LD {higherReg},${(f24Val >> 16) & 0xff:X}\n");
                             break;
                     }
                 } else {
@@ -2109,6 +2385,18 @@ namespace SLANGCompiler.SLANG
                     {
                         gencode($" LD A,%v\n", targetExpr.Left);
                         gencode($" LD {regLow},A\n");
+                    } else if(targetExpr.Left.Symbol.TypeInfo.IsFloatTypeInfo())
+                    {
+                        gencode($" LD {targetReg},%v\n", targetExpr.Left);
+                        if(higherReg == "A")
+                        {
+                            gencode($" LD {higherReg},%v2\n", targetExpr.Left);
+                        } else {
+                            gencode(" EX AF,AF'\n");
+                            gencode($" LD A,%v2\n", targetExpr.Left);
+                            gencode($" LD {higherReg},A\n");
+                            gencode(" EX AF,AF'\n");
+                        }
                     } else {
                         gencode($" LD {targetReg},%v\n", targetExpr.Left);
                     }
@@ -2223,13 +2511,13 @@ namespace SLANGCompiler.SLANG
 
             if(right.IsConst())
             {
-                if(!right.IsValueConst())
+                if(!right.IsIntValueConst())
                 {
                     Error("const scaled error");
                     return;
                 }
                 // 二次元配列の添字が両方とも定数の場合は混ぜられる
-                if(left.Opcode == Opcode.ScaleAdd && left.Right.IsValueConst())
+                if(left.Opcode == Opcode.ScaleAdd && left.Right.IsIntValueConst())
                 {
                     int rightScale = computeSize(left.Left.TypeInfo.Parent) * left.Right.ConstValue.Value;
                     genld(Register.HL, left.Left, TypeDataSize.Word);

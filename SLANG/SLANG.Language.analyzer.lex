@@ -20,10 +20,11 @@ Eol             (\r\n?|\n)
 dotchr          [^\r\n]
 NotWh           [^ \t\r\n]
 Space           [ \t]
-Number          ([0-9]+|$[0-9a-fA-F]+|[0-9a-fA-F]+[Hh]|[01]+[Bb])|0x[0-9a-fA-F]+
+Number          ([0-9]+|[0-9]+\.[0-9]+|$[0-9a-fA-F]+|[0-9a-fA-F]+[Hh]|[01]+[Bb])|0x[0-9a-fA-F]+
 IdentSymbol     [_@\^]
 Identifier      ({IdentSymbol}|[a-zA-Z\u3041-\u3096\u30A1-\u30FA々〇〻\u3400-\u9FFF\uF900-\uFAFF\uD840-\uD87F\uDC00-\uDFFF])({IdentSymbol}|[0-9a-zA-Z\u3041-\u3096\u30A1-\u30FA々〇〻\u3400-\u9FFF\uF900-\uFAFF\uD840-\uD87F\uDC00-\uDFFF])*
 
+FLOAT   \%\%
 
 PREIF   #[Ii][Ff]
 PREELSE #[Ee][Ll][Ss][Ee]
@@ -76,7 +77,8 @@ CHRD  [Cc][Hh][Rr]\$
 SPCD  [Ss][Pp][Cc]\$
 CRD   [Cc][Rr]\$
 TABD  [Tt][Aa][Bb]\$
-STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}|{CRD}|{TABD}
+FLD   [Ff][Ll]\$
+STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}|{CRD}|{TABD}|{FLD}
 
 %{
     StringBuilder lexStrBuffer = null;
@@ -176,6 +178,7 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
 
 {STRFUNC}       { yylval.symbol = yytext; return (int)Token.STRFUNC; }
 {EXC}           { yylval.symbol = "!"; return (int)Token.EXC; }
+{FLOAT}         { return (int)Token.FLOAT; }
 
 {Eol}           { LocationNextLine(); nextBraceIsArray = false;
                 genSourceComment(buffer.GetString(prevTokEPos,tokEPos));

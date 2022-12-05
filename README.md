@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.3.0
+SLANG Compiler (Z80) 0.5.0
 
 # 概要
 
@@ -18,7 +18,7 @@ SLANG Compiler (Z80) 0.3.0
 ```
 SLANGCompiler filename [-L library-name] [-O output-path]
 
-SLANG Compiler 0.3.0
+SLANG Compiler 0.5.0
 Copyright (c) 2022 OGINO Hiroshi / H.O SOFT
 
   -E, --env               Environment name.
@@ -26,6 +26,7 @@ Copyright (c) 2022 OGINO Hiroshi / H.O SOFT
   -O, --output            Output file path.
   --use-symbol            Use original symbol name.
   --case-sensitive        Set symbols to be case-sensitive.
+  --source-comment        Include source code as comments.
   --help                  Display this help screen.
   --version               Display version information.
 ```
@@ -41,6 +42,8 @@ Copyright (c) 2022 OGINO Hiroshi / H.O SOFT
 --use-symbol をつけると、変数名、関数名について、ソースコードで利用した名前をそのまま使ってアセンブラソースが出力されます。つけない場合は、「SYM(数字)」という名前に置き換えられますので、アセンブラがラベルとして識別出来ない変数名、関数名を使っている場合は、--use-symbolをつけないようにしてください。
 
 --case-sensitiveをつけると、識別子について大文字小文字が区別されます。つけない場合は区別されません。
+
+--source-commentをつけるとアセンブラソースにSLANGのソースがコメントとして追加されます。
 
 # 環境について
 
@@ -243,6 +246,40 @@ slbuild.bat TEST.SL sos
 MIT
 
 # 更新履歴
+- Version 0.5.0
+  - FLOAT型を試験的に追加(SLANG非互換)
+    - VAR定義時に「VAR FLOAT X;」「VAR %%X;」のようにFLOATまたは%%をつけるとFLOAT型になります
+    - 1.0 のようにピリオドを含む数値はFLOAT型になります
+    - 特定以外の使い方をするとおかしな動きをすると思います
+    - 通常グローバル変数としての利用のみ確認しています
+    - 24bit FLOAT型となっており、表現出来る値は-32768～32767です
+    - 四則演算の他、下記関数があります(ほぼ未チェック)
+    - FABS(X)
+    - FACOSH(X)
+    - FACOS(X)
+    - FASINH(X)
+    - FASIN(X)
+    - FATANH(X)
+    - FATAN(X)
+    - FCOSH(X)
+    - FCOS(X)
+    - FLOG10(X)
+    - FLOG2(X)
+    - FLOGY(X)
+    - FLOG(X)
+    - FPOW10(X)
+    - FPOW2(X)
+    - FPOW(X)
+    - FRAND()
+    - FSINH(X)
+    - FSIN(X)
+    - FSQRT(X)
+    - FTANH(X)
+    - FTAN(X)
+  - ランタイムを個々に読むのではなく環境ファイルを読むように変更(-Eオプションの追加)
+  - ライブラリにworks指定を追加(データ領域をワーク部(RAM領域)に移せるように)
+  - ランタイムをコピーするバッチファイルcopyruntime.batを追加
+  - ビルド用バッチファイルslbuild.batを追加
 - Version 0.3.0
   - S-OS環境で文字入力によりワークが壊れる問題を修正 
   - ファイル入出力ライブラリの追加(FOPEN、FCLOSE、FGETC、FPUTC、FREAD、FWRITE)

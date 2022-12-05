@@ -18,7 +18,8 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public List<SymbolTable> SymbolTableList => symbolTableList;
 
-        private TypeInfo funcTypeInfo;
+        private TypeInfo funcWordTypeInfo;
+        private TypeInfo funcFloatTypeInfo;
 
         private IErrorReporter errorReporter;
 
@@ -40,13 +41,14 @@ namespace SLANGCompiler.SLANG
         public void Initialize()
         {
             symbolTableList.Clear();
-            funcTypeInfo = TypeInfo.CreateTypeInfo(TypeInfoClass.Function, TypeInfo.WordTypeInfo.Clone(), 2, TypeDataSize.Word);
+            funcWordTypeInfo = TypeInfo.CreateTypeInfo(TypeInfoClass.Function, TypeInfo.WordTypeInfo.Clone(), 2, TypeDataSize.Word);
+            funcFloatTypeInfo = TypeInfo.CreateTypeInfo(TypeInfoClass.Function, TypeInfo.FloatTypeInfo.Clone(), 3, TypeDataSize.Float);
         }
 
         /// <summary>
         /// 関数を追加する
         /// </summary>
-        public void AddFunction(FunctionType functionType, string name, string insideName, int paramCount, ConstInfo Address = null, bool? useOriginalSymbol = null, bool isRuntime = false)
+        public void AddFunction(FunctionType functionType, string name, string insideName, int paramCount, ConstInfo Address = null, bool? useOriginalSymbol = null, bool isRuntime = false, OperatorType operatorType = OperatorType.Word)
         {
             if(useOriginalSymbol == null)
             {
@@ -58,7 +60,7 @@ namespace SLANGCompiler.SLANG
                 InsideName = insideName,
                 FunctionType = functionType,
                 SymbolClass = SymbolClass.Global,
-                TypeInfo = funcTypeInfo,
+                TypeInfo = operatorType == OperatorType.Float ? funcFloatTypeInfo : funcWordTypeInfo,
                 Size = paramCount,
                 Address = Address,
                 UseOriginalSymbol = (bool)useOriginalSymbol,
@@ -211,15 +213,11 @@ namespace SLANGCompiler.SLANG
                     outputStreamWriter.WriteLine($"{labelName} EQU (__WORK__ + {workOffset})");
                 }
 
-                var isByte = symbol.TypeInfo.GetDataSize() == TypeDataSize.Byte;
-                isByte = isByte && !symbol.TypeInfo.IsIndirect();
-                string dataDefine = isByte ? "db" : "dw";
-
                 if(symbol.TypeInfo.IsArray())
                 {
                     workOffset += symbol.Size;
                 } else {
-                    workOffset += isByte ? 1 : 2;
+                    workOffset += symbol.TypeInfo.GetDataSize().GetDataSize();
                 }
             }
 
@@ -279,6 +277,9 @@ namespace SLANGCompiler.SLANG
                 var labelName = symbol.LabelName;
                 codeRepository.AddCode($"{labelName}:\n");
 
+                var dataSize = symbol.Size;
+
+                var isFloat = symbol.TypeInfo.GetDataSize() == TypeDataSize.Float;
                 var isByte = symbol.TypeInfo.GetDataSize() == TypeDataSize.Byte;
                 isByte = isByte && !symbol.TypeInfo.IsIndirect();
                 string dataDefine = isByte ? "DB" : "DW";
@@ -304,9 +305,22 @@ namespace SLANGCompiler.SLANG
                 } else {
                     if(symbol.InitialValueList == null)
                     {
-                        codeRepository.AddCode($" {dataDefine} 0\n");
+                        if(isFloat)
+                        {
+                            codeRepository.AddCode($" DS 3\n");
+                        } else if(isByte)
+                        {
+                            codeRepository.AddCode($" DS 1\n");
+                        } else {
+                            codeRepository.AddCode($" DS 2\n");
+                        }
                     } else {
-                        codeRepository.AddCode($" {dataDefine} {symbol.InitialValueList[0]}\n");
+                        if(isFloat)
+                        {
+                            errorReporter.Error("not support (float initial value)");
+                        } else {
+                            codeRepository.AddCode($" {dataDefine} {symbol.InitialValueList[0]}\n");
+                        }
                     }
                 }
             }

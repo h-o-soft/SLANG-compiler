@@ -146,7 +146,7 @@ namespace SLANGCompiler.SLANG
 
         public bool IsMemoryArray()
         {
-             return Address != null && Address.ConstInfoType == ConstInfoType.Value && Address.Value == 0;
+             return Address != null && Address.ConstInfoType == ConstInfoType.IntValue && Address.Value == 0;
         }
 
         public SymbolTable AddAliasName(string name)

@@ -139,7 +139,7 @@ namespace SLANGCompiler.SLANG
             } else if(expr.IsConst())
             {
                 // 単独一致
-                if(expr.IsValueConst())
+                if(expr.IsIntValueConst())
                 {
                     gencode($" LD HL,{expr.ConstValue.Value}\n");
                 } else {

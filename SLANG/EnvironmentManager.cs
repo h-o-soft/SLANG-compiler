@@ -64,7 +64,7 @@ namespace SLANGCompiler.SLANG
                 // デフォルトのORGを設定
                 if(!string.IsNullOrEmpty(info.defaultOrg))
                 {
-                    var orgNum = SLANGCommonUtility.GetValue(info.defaultOrg);
+                    var orgNum = SLANGCommonUtility.GetIntValue(info.defaultOrg);
                     orgSetter.SetOrg(orgNum);
                 }
 

@@ -419,7 +419,9 @@ FWRITE:
 
 FWORK:
   code: |
-    LSXFCBS: DS 37*8
-    LSXFCB: DW 0
-    LSXFMODE: DW 0
+    ;
+  works:
+    LSXFCBS: 296
+    LSXFCB: 2 
+    LSXFMODE: 2
 
