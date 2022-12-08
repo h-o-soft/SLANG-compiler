@@ -72,7 +72,7 @@ namespace SLANGCompiler.SLANG
                 }
 
                 // デフォルトのWORKを設定
-                if(!string.IsNullOrEmpty(info.defaultOrg))
+                if(!string.IsNullOrEmpty(info.defaultWork))
                 {
                     var workNum = SLANGCommonUtility.GetIntValue(info.defaultWork);
                     workSetter.SetWork(workNum);
