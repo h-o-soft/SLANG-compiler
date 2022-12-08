@@ -12,7 +12,7 @@ namespace SLANGCompiler.SLANG
     /// <summary>
     /// SLANGパーサクラス
     /// </summary>
-    internal partial class SLANGParser: ILabelCreator, IErrorReporter, IORGSetter
+    internal partial class SLANGParser: ILabelCreator, IErrorReporter, IORGSetter, IWORKSetter
     {
         private static readonly bool DebugEnabled = false;
 
@@ -98,7 +98,15 @@ namespace SLANGCompiler.SLANG
                 Error("WORK must be const.");
                 return;
             }
-            workAddressValue = expr.Value;
+            SetWork(expr.Value);
+        }
+
+        /// <summary>
+        /// WORKアドレスを設定する
+        /// </summary>
+        public void SetWork(int workValue)
+        {
+            workAddressValue = workValue;
         }
 
         /// <summary>
@@ -359,7 +367,7 @@ namespace SLANGCompiler.SLANG
                 envName = envName + ".env";
             }
             string envPath = SLANGCommonUtility.GetConfigPath(envName);
-            var environmentManager = new EnvironmentManager(runtimeManager, this);
+            var environmentManager = new EnvironmentManager(runtimeManager, this, this);
             environmentManager.Load(envPath);
         }
 
