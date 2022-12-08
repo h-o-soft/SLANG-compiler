@@ -17,6 +17,7 @@ namespace SLANGCompiler.SLANG
         public class EnvironmentInfo
         {
             public string defaultOrg = null;
+            public string defaultWork = null;
             public string[] libraries = null;
         }
 
@@ -29,11 +30,13 @@ namespace SLANGCompiler.SLANG
 
             private RuntimeManager runtimeManager;
             private IORGSetter orgSetter;
+            private IWORKSetter workSetter;
 
-            public EnvironmentManager(RuntimeManager runtimeManager, IORGSetter orgSetter)
+            public EnvironmentManager(RuntimeManager runtimeManager, IORGSetter orgSetter, IWORKSetter workSetter)
             {
                 this.runtimeManager = runtimeManager;
                 this.orgSetter = orgSetter;
+                this.workSetter = workSetter;
             }
 
             /// <summary>
@@ -66,6 +69,13 @@ namespace SLANGCompiler.SLANG
                 {
                     var orgNum = SLANGCommonUtility.GetIntValue(info.defaultOrg);
                     orgSetter.SetOrg(orgNum);
+                }
+
+                // デフォルトのWORKを設定
+                if(!string.IsNullOrEmpty(info.defaultOrg))
+                {
+                    var workNum = SLANGCommonUtility.GetIntValue(info.defaultWork);
+                    workSetter.SetWork(workNum);
                 }
 
                 // ランタイムを読み込み

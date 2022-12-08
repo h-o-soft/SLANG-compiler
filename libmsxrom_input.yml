@@ -1,0 +1,10 @@
+
+
+STICK:
+  calls:
+    - MSXCALLS
+  code: |
+    CALL GTSTCK 
+    LD L,A
+    LD H,0
+    RET
