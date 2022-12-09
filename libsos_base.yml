@@ -2,6 +2,7 @@
 SLANGINIT:
   calls:
     - RRET
+    - SOSCALLS
   code: |
     EXX
     POP HL
@@ -13,6 +14,9 @@ SLANGINIT:
     PUSH IX
     PUSH IY
     LD (RSP-2),SP
+
+    LD A,(sWIDTH)
+    LD (AT_WIDTH),A
 
     ; WORK ZERO CLEAR
     XOR A
@@ -78,6 +82,8 @@ SOSCALLS:
     sTPCHK  EQU 2863H
 
     sWIDTH  EQU 1F5CH
+  works:
+    AT_WIDTH: 1
 
 BEEP:
   code: |
