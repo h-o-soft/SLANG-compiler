@@ -3,42 +3,12 @@
 MAGBASE:
     calls:
         - MAGLOAD
-        - LSXCALLS
-    initialize_code: |
-        LD	A,(000BH)
-        LD	(SMC01+2),A
-        LD	(SMC02+2),A
-        LD	(SMC03+2),A
-        LD	(SMC04+2),A
-        LD	(SMC05+2),A
-        LD	(SMC06+2),A
-        LD	(SMC07+2),A
-        LD	(SMC08+2),A
-        LD	(SMC09+2),A
-        LD	(SMC10+2),A
-        LD	(SMC11+2),A
-        LD	(SMC12+2),A
-        LD	(SMC13+2),A
-        LD	(SMC14+2),A
-        LD	(SMC15+2),A
-        LD	(SMC16+2),A
-        LD	(SMC17+2),A
-        LD	(SMC18+2),A
-        LD	(SMC19+2),A
-        RET
-
     code: |
         ;
         ;	MAG  by Gaku
         ;
         THOLD	EQU	11
-        ; MAG_WIDTH	EQU	40
-        ;
-        OSFLG	EQU	$0003
-        SYSTEM	EQU	$0005
-        JP_HL	EQU	$000F
-        BIOS	EQU	$0018
-        DTA	EQU	$0080
+        MAG_FP1 EQU 0
 
         FLAGBF	EQU	((__WORKEND__ + 255) & 0xFF00)
         LINEBF	EQU	FLAGBF+256
@@ -81,8 +51,6 @@ GRDISP:
         ; ; $13xxに0(描画優先度設定)→とりあえず触らない
         ; INC	B
         ; DB	$ED,$71
-
-        ; $1FD0は触らないでおく
         RET
 
         GR_NODISP:
@@ -96,8 +64,6 @@ GRDISP:
         DB	$ED,$71
         INC	B
         DB	$ED,$71
-
-        ; $1FD0は触らないでおく
         RET
 
 
@@ -105,15 +71,21 @@ GRCLS:
     calls:
         - MAGBASE
     code: |
-        SMC16:	LD	A,($ECBF)
+        ;SMC16:	LD	A,($ECBF)
+        LD A,(MAGWK1FD0)
+        LD A,0
         RES	4,A
         CALL	CLS0
-        SMC17:	LD	A,($ECBF)
+        ;SMC17:	LD	A,($ECBF)
+        LD A,(MAGWK1FD0)
+        LD A,0
         SET	4,A
         CLS0:
         LD	BC,$1FD0
         OUT	(C),A
-        SMC18:	LD	($ECBF),A
+        ;SMC18:	LD	($ECBF),A
+        LD (MAGWK1FD0),A
+        LD A,0
         XOR	A
         LD	C,A
         LD	HL,$4003
@@ -135,6 +107,11 @@ MAGLOAD:
         - X1WORK
         - GRCLS
         - MULHLDE
+        - FOPEN
+        - FGETC
+        - FREAD
+        - FSEEK
+        - FCLOSE
     code: |
         ; HL = FILENAME, DE = X, BC = Y
 
@@ -188,64 +165,20 @@ MAGLOAD:
 
         EX HL,DE
 
-        LD HL,FCB1
-        LD C,$29  ; _PPATH
-        CALL BDOS
+        PUSH DE
+        LD HL,MAG_FP1
+        ; DE = FILENAME
+        LD BC,4
+        CALL FOPEN
+        OR	A
+        JP	NZ,END
+        POP DE
 
         LD	(MAG_SPBK),SP
 
-        ; LD	SP,(SYSTEM+1)
-        ; LD	HL,FCB1+1
-        ; ファイル名直接指定のみに対応
-        ; LD	A,(HL)
-        ; CP	$20
-        ; JR	NZ,MAGLOAD_ALL2
-        ; LD	B,8
-        ; MAGLOAD_ALL1:
-        ; LD	(HL),"?"
-        ; INC	HL
-        ; DJNZ	MAGLOAD_ALL1
-        ; MAGLOAD_ALL2:
-        ; ;拡張子 MAG
-        ; LD	A,(FCB1+9)
-        ; CP	$20
-        ; JR	NZ,MAGLOAD_EXT1
-        ; LD	HL,"A"*256+"M"
-        ; LD	(FCB1+9),HL
-        ; LD	A,"G"
-        ; LD	(FCB1+11),A
-        ; MAGLOAD_EXT1:
-        ; LD	DE,DTA+1
-
         MAG_LOAD:
-        LD	DE,MAGLOAD_FILE
-        LD	C,$1A
-        CALL	SYSTEM
-
-        LD	DE,FCB1
-        LD	C,$11
-        CALL	SYSTEM
-        OR	A
-        JP	NZ,END
-
         ; CALL	MAGLOAD_GRAPH1
         MAGLOAD_WILD:
-        LD	DE,MAGLOAD_FILE
-        LD	C,$0F
-        CALL	SYSTEM
-        OR	A
-        JP	NZ,END
-
-        LD	HL,0
-        LD	(MAGLOAD_FILE+33),HL
-        LD	(MAGLOAD_FILE+35),HL
-        INC	L
-        LD	(MAGLOAD_FILE+14),HL
-
-        LD	DE,DTBUF
-        LD	C,$1A
-        CALL	SYSTEM
-
         LD	HL,FLAGBF
         LD	DE,FLAGBF+1
         LD	BC,16*512+256+4096-1
@@ -265,6 +198,9 @@ MAGLOAD:
         MAG_STARTPOS: LD	BC,0
         EXX
 
+        LD HL,0
+        LD (MAGOFS_F1),HL
+
         LD	HL,HEADBF
         LD	BC,8
         CALL	READ
@@ -273,15 +209,6 @@ MAGLOAD:
         LD	B,8
         CALL	CPSTR
         JP	NZ,NEXT
-
-        ; LD	E,$0C
-        ; LD	C,2
-        ; CALL	SYSTEM
-
-        ; 画面クリアするかどうか(しない)
-        ; CLSSW:	LD	A,$00
-        ; OR	A
-        ; CALL	NZ,CLS
 
         LD	BC,$1800
         LD	A,12
@@ -296,23 +223,13 @@ MAGLOAD:
         LD	HL,8
         COMMENT:
         INC	HL
-        CALL	FGETC
+        CALL	MAG_FGETC
         CP	$1A
         JR	Z,HEADER
-        ; LD	E,A
-        ; LD	C,2
-        ; CALL	SYSTEM
         JR	COMMENT
         HEADER:
         LD	(ADDHD+1),HL
-        ; LD	E,$0D
-        ; LD	C,2
-        ; CALL	SYSTEM
-        ; LD	E,$0A
-        ; LD	C,2
-        ; CALL	SYSTEM
-
-        CALL	FGETC
+        CALL	MAG_FGETC
         OR	A
         JP	NZ,NEXT
         LD	HL,HEADBF
@@ -345,18 +262,14 @@ MAGLOAD:
         POP	HL
         CALL	READ		;フラグA
         			;フラグB
-        LD	HL,MAGLOAD_FILE
-        LD	DE,MAGLOAD_FILE2
-        LD	BC,37
-        LDIR
 
         LD	A,(HEADBF+26)
         LD	HL,(HEADBF+24)
         ADDHD:	LD	DE,0
         ADD	HL,DE
         ADC	A,0
-        LD	(MAGLOAD_FILE2+33),HL
-        LD	(MAGLOAD_FILE2+35),A
+
+        LD (MAGOFS_F2),HL
 
         LD	HL,(HEADBF+8)
         LD	BC,(HEADBF+4)
@@ -387,10 +300,11 @@ MAGLOAD:
         LD	HL,KUWANO
         LD	DE,KUWANO
 
-        SMC01:	LD	A,($ECBF)
+        ;SMC01: LD	A,($ECBF)
+        LD A,(MAGWK1FD0)
         RRCA
         JR	NC,LOW
-        			;High Reso
+                ;High Reso
         LD	A,(HEADBF+3)	;スクリーンモード
         LD	B,0
         AND	6
@@ -409,10 +323,13 @@ MAGLOAD:
         LD	HL,RGB
         HIGH3:
         LD	B,A
-        SMC02:	LD	A,($ECBF)
+        ;SMC02:	LD	A,($ECBF)
+        LD A,(MAGWK1FD0)
+        LD A,0
         AND	$FD
         OR	B
-        SMC03:	LD	($ECBF),A
+        ;SMC03:	LD	($ECBF),A
+        LD (MAGWK1FD0),A
         LD	BC,$1FD0
         OUT	(C),A
 
@@ -505,9 +422,13 @@ MAGLOAD:
         PUSH	BC
         PUSH	BC
         EXX
-        SMC04:	LD	A,($ECBF)
+
+        ;SMC04:	LD	A,($ECBF)
+        LD A,(MAGWK1FD0)
+        LD A,0
         AND	$EF
-        SMC05:	LD	($ECBF),A
+        ;SMC05:	LD	($ECBF),A
+        LD (MAGWK1FD0),A
         LD	BC,$1FD0
         OUT	(C),A
 
@@ -521,9 +442,12 @@ MAGLOAD:
         EX	(SP),HL
         MODE1:	CALL	KUWANO
 
-        SMC06:	LD	A,($ECBF)
+        ;SMC06:	LD	A,($ECBF)
+        LD A,(MAGWK1FD0)
+        LD A,0
         OR	$10
-        SMC07:	LD	($ECBF),A
+        ;SMC07:	LD	($ECBF),A
+        LD (MAGWK1FD0),A
         LD	BC,$1FD0
         OUT	(C),A
 
@@ -594,36 +518,20 @@ MAGLOAD:
         XOR	A
         OR	A
         EX	AF,AF'
-        ; LD	SP,(SYSTEM+1)
-
-        ; LD	DE,MAGLOAD_FILE
-        ; LD	C,$1A
-        ; CALL	SYSTEM
-
-        ; LD	C,$12
-        ; CALL	SYSTEM
-        ; OR	A
-        ; EX	AF,AF'
-        ; CALL	NZ,WAIT1
-        ; CALL	WAIT2
-        ; EX	AF,AF'
-        ; JP	Z,MAGLOAD_WILD
-
-        ; ?????
-        POP HL
 
         END:
-        CALL	MOTOFF
-        ; CALL	GRAPH0
+        LD HL,MAG_FP1
+        CALL FCLOSE
+
+        ; 突如ENDに飛んでくる事があるので強引にSPを戻して戻ってやる
+        LD	HL,(MAG_SPBK)
+        LD SP,HL
 
         LD L,0
         LD H,L
-        ; LD	HL,(MAG_SPBK)
-        ; LD SP,HL
         RET
 
         WAIT1:
-        CALL	MOTOFF
         LD	BC,$1800
         LD	A,6
         OUT	(C),A
@@ -631,28 +539,8 @@ MAGLOAD:
         LD	A,25
         OUT	(C),A
 
-        CALL	WAIT2
-        WAIT3:
-        LD	E,$FF
-        LD	C,6
-        CALL	SYSTEM
-        OR	A
-        JR	Z,WAIT3
-        CP	3
-        JR	Z,END
         RET
 
-        WAIT2:
-        LD	E,$FF
-        LD	C,6
-        CALL	SYSTEM
-        OR	A
-        JR	NZ,WAIT2
-
-        SMC08:	LD	A,($EC92)
-        OR	A
-        JR	NZ,WAIT2
-        RET
 
         RGB:
         ; LD	C,MAG_WIDTH
@@ -1001,7 +889,7 @@ MAGLOAD:
         XOR	A
         JR	FLAGA4
         FLAGA3:
-        CALL	FGETC
+        CALL	MAG_FGETC
         FLAGA4:
         XOR	(HL)
         LD	(HL),A
@@ -1090,64 +978,73 @@ MAGLOAD:
         PUSH	HL
         ADD	HL,BC
         JP	C,END
-        LD	DE,(SYSTEM+1)
-        DEC	D
-        SBC	HL,DE
-        JP	NC,NEXT
+
+        ; メモリオーバーチェックはしない
+        ; LD	DE,(SYSTEM+1)
+        ; DEC	D
+        ; SBC	HL,DE
+        ; JP	NC,NEXT
+
         POP	HL
         READ1:
         LD	A,B
         OR	C
         RET	Z
-        CALL	FGETC
+        CALL	MAG_FGETC
         LD	(HL),A
         INC	HL
         DEC	BC
         JR	READ1
 
-        FGETC:
+        MAG_FGETC:
         EXX
         LD	A,H
         CP	DTBUFE/$100
-        JR	NC,FGETC2
-        FGETC1:
+        JR	NC,MAG_FGETC2
+        MAG_FGETC1:
         LD	A,(HL)
         INC	HL
         EXX
         RET
-        FGETC2:
+        MAG_FGETC2:
         PUSH	BC
         PUSH	DE
-        LD	DE,DTBUF
-        LD	C,$1A
-        CALL	SYSTEM
-        LD	DE,MAGLOAD_FILE
-        LD	HL,BUFSIZ
-        LD	C,$27
-        CALL	SYSTEM
-        ADD	A,$FE
-        JP	C,NEXT
 
-        SMC09:	LD	A,($EC88)
-        PUSH	IX
-        SMC10:	CALL	$ECDC
-        LD	A,(IX+$12)
-        POP	IX
-        AND	$7F
-        CP	7
-        JR	NZ,FGETC3
-        SMC11:	LD	A,($EC84)
-        OR	$80
-        LD	BC,$FFC
-        OUT	(C),A
-        FGETC3:
-        LD	A,H
-        OR	L
-        JP	Z,WAIT
+        PUSH IX
+        PUSH IY
+
+        LD HL,(MAGOFS_F1)
+        EX DE,HL
+        LD HL,MAG_FP1
+        LD BC,0  ; HEAD
+        CALL FSEEK
+
+        LD HL,MAG_FP1
+        LD DE,DTBUF
+        LD BC,BUFSIZ
+        CALL FREAD
+
+        POP IY
+        POP IX
+
+        ; OUT OF FILE
+        CP $11
+        JP Z,FGETCOK
+
+        OR A
+        JP NZ,NEXT
+
+        FGETCOK:
+
+        LD HL,(MAGOFS_F1)
+        LD DE,BUFSIZ
+        ADD HL,DE
+        LD (MAGOFS_F1),HL
+
         LD	HL,DTBUF
         POP	DE
         POP	BC
-        JR	FGETC1
+        JR	MAG_FGETC1
 
         FGETP:
         EXX
@@ -1162,43 +1059,42 @@ MAGLOAD:
         FGETP2:
         PUSH	BC
         PUSH	HL
-        LD	DE,PDBUF
-        LD	C,$1A
-        CALL	SYSTEM
-        LD	DE,MAGLOAD_FILE2
-        LD	HL,PDSIZE
-        LD	C,$27
-        CALL	SYSTEM
-        ADD	A,$FE
-        JP	C,NEXT
 
-        SMC12:	LD	A,($EC88)
-        PUSH	IX
-        SMC13:	CALL	$ECDC
-        LD	A,(IX+$12)
-        POP	IX
-        AND	$7F
-        CP	7
-        JR	NZ,FGETP3
-        SMC14:	LD	A,($EC84)
-        OR	$80
-        LD	BC,$FFC
-        OUT	(C),A
-        FGETP3:
-        LD	A,H
-        OR	L
-        JP	Z,WAIT
+        PUSH IX
+        PUSH IY
+
+        LD HL,(MAGOFS_F2)
+        EX DE,HL
+        LD HL,MAG_FP1
+        LD BC,0  ; HEAD
+        CALL FSEEK
+
+        LD HL,MAG_FP1
+        LD DE,PDBUF
+        LD BC,PDSIZE
+        CALL FREAD
+
+        POP IY
+        POP IX
+
+        ; OUT OF FILE
+        CP $11
+        JP Z,FGETPOK
+
+        OR A
+        JP NZ,NEXT
+
+        FGETPOK:
+
+        LD HL,(MAGOFS_F2)
+        LD DE,PDSIZE
+        ADD HL,DE
+        LD (MAGOFS_F2),HL
+
         LD	DE,PDBUF
         POP	HL
         POP	BC
         JR	FGETP1
-
-        MOTOFF:
-        SMC15:	LD	A,($EC84)
-        AND	$7F
-        LD	BC,$FFC
-        OUT	(C),A
-        RET
 
         CPSTR:
         LD	A,(DE)
@@ -1207,63 +1103,6 @@ MAGLOAD:
         INC	HL
         RET	NZ
         DJNZ	CPSTR
-        RET
-
-
-        SWITCH:
-        LD	A,(DE)
-        CP	$20
-        RET	C
-        INC	DE
-        CP	"/"
-        JR	NZ,SWITCH
-        LD	A,(DE)
-        INC	DE
-        CAP:
-        CP	"a"
-        RET	C
-        CP	"z"+1
-        RET	NC
-        SUB	$20
-        RET
-
-        GRAPH0:
-        LD	B,$10
-        DB	$ED,$71
-        INC	B
-        DB	$ED,$71
-        INC	B
-        DB	$ED,$71
-        INC	B
-        DB	$ED,$71
-        LD	A,(BIOS)
-        INC	A
-        RET	Z
-        GR1:
-        CALL	G1FD0
-        OR	$80
-        JR	GR3
-        MAGLOAD_GRAPH1:
-        LD	BC,$1FB0
-        DB	$ED,$71
-        LD	BC,$10AA
-        OUT	(C),C
-        LD	BC,$11CC
-        OUT	(C),C
-        LD	BC,$12F0
-        OUT	(C),C
-        INC	B
-        DB	$ED,$71
-        CALL	G1FD0
-        AND	$77
-        GR3:
-        LD	(HL),A
-        LD	BC,$1FD0
-        OUT	(C),A
-        RET
-        G1FD0:
-        SMC19:	LD	HL,$ECBF
-        LD	A,(HL)
         RET
 
         MAGLOAD_TABLE:
@@ -1284,10 +1123,13 @@ MAGLOAD:
         DB	2*2,8*2		;14
         DB	0  ,0		;15
 
-        MAGLOAD_FILE:
-        DS	37
-        MAGLOAD_FILE2:
-        DS	37
+        MAGWK1FD0:
+        DB $00
+
+        MAGOFS_F1:
+            DW 0
+        MAGOFS_F2:
+            DW 0
 
         MAGLOAD_GREEN:	DB	0
         MAGLOAD_RED:	DB	0
