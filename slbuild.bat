@@ -48,6 +48,7 @@ IF %COPYRUNTIME% gtr 0 (
 	mkdir %homedrive%%homepath%\.config\SLANG\
 	copy %RUNTIMEPATH%\*.env %homedrive%%homepath%\.config\SLANG\
 	copy %RUNTIMEPATH%\*.yml %homedrive%%homepath%\.config\SLANG\
+	xcopy /E extlib %homedrive%%homepath%\.config\SLANG\
 )
 
 cd %PROGDIR%
