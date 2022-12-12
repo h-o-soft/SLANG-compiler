@@ -308,6 +308,17 @@ namespace SLANGCompiler.SLANG
             };
             symbolTableManager.Add(workArray, true);
 
+            // WORKENDをメモリ末尾に移動する
+            symbolTableManager.Remove("WORKEND");
+            var workEndArray = new SymbolTable()
+            {
+                Name = "WORKEND",
+                SymbolClass = SymbolClass.Global,
+                TypeInfo = new TypeInfo(TypeInfoClass.Array, 0, TypeDataSize.Byte, TypeInfo.ByteTypeInfo),
+                Size = 0
+            };
+            symbolTableManager.Add(workEndArray, true);
+
             // WORK指定がされていて、それがORGのアドレスより前の場合は先にWORKの宣言を出力する(念のため)
             if(workAddressValue >=0 && workAddressValue < orgValue)
             {
