@@ -46,8 +46,10 @@ SET CPMEMUPATH=%TOOLPATH%\cpm.exe
 
 IF %COPYRUNTIME% gtr 0 (
 	mkdir %homedrive%%homepath%\.config\SLANG\
+	mkdir %homedrive%%homepath%\.config\SLANG\extlib
 	copy %RUNTIMEPATH%\*.env %homedrive%%homepath%\.config\SLANG\
 	copy %RUNTIMEPATH%\*.yml %homedrive%%homepath%\.config\SLANG\
+	xcopy /E /Y extlib %homedrive%%homepath%\.config\SLANG\extlib
 )
 
 cd %PROGDIR%

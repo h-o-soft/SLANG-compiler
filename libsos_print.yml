@@ -5,6 +5,7 @@ WIDTH:
     - SOSCALLS
   code: |
     LD A,L
+    LD (AT_WIDTH),A
     CALL sWIDCH
     RET
 

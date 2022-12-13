@@ -92,6 +92,15 @@ namespace SLANGCompiler.SLANG
             symbolTableManager.AddSymbol("^ZERO", TypeInfo.WordTypeInfo, true);
             symbolTableManager.AddSymbol("^SP", TypeInfo.WordTypeInfo, true);
 
+            // 仮定義のワーク末尾シンボル。コード生成時に削除され、ワークの末尾に移動する。
+            var workEndArray = new SymbolTable()
+            {
+                Name = "WORKEND",
+                SymbolClass = SymbolClass.Global,
+                TypeInfo = new TypeInfo(TypeInfoClass.Array, 0, TypeDataSize.Byte, TypeInfo.ByteTypeInfo),
+                Size = 0
+            };
+            symbolTableManager.Add(workEndArray, true);
         }
 
         /// <summary>

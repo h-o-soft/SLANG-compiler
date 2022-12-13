@@ -25,6 +25,8 @@ namespace SLANGCompiler.SLANG
             public Dictionary<string, int> works = null;
             public  OperatorType resultType = OperatorType.Word;
             public string initializeCode = null;
+            public string libName = null;
+            public string extlib = null;
         }
 
         /// <summary>
@@ -44,7 +46,9 @@ namespace SLANGCompiler.SLANG
 
                 public Dictionary<string, int> WorkDictionary { get; private set; }
 
-                public RuntimeInfo(string name, string insideName, bool used, string code, string initializeCode, string[] insideCalls, Dictionary<string, int> workDictionary)
+                public string NamespaceName { get; set; }
+
+                public RuntimeInfo(string name, string insideName, bool used, string code, string initializeCode, string[] insideCalls, Dictionary<string, int> workDictionary, string namespaceName)
                 {
                     Name = name;
                     InsideName = insideName;
@@ -53,6 +57,7 @@ namespace SLANGCompiler.SLANG
                     InitializeCode = initializeCode;
                     InsideCalls = insideCalls;
                     WorkDictionary = workDictionary;
+                    NamespaceName = namespaceName;
                 }
 
                 public void Use()
@@ -72,6 +77,12 @@ namespace SLANGCompiler.SLANG
             // SymbolTableManagerと連携して処理する
             private SymbolTableManager symbolTableManager;
 
+            private string runtimePath;
+
+            private static readonly string InitialNamespace = "NAME_SPACE_DEFAULT";
+            private string currentNamespace = InitialNamespace;
+            private Stack<string> namespaceStack = new Stack<string>();
+
 
             public RuntimeManager(SymbolTableManager symbolTableManager)
             {
@@ -87,6 +98,9 @@ namespace SLANGCompiler.SLANG
                 {
                     throw new FileNotFoundException($"could not found runtime file. {fileName}");
                 }
+                // ランタイムのパスを保存
+                runtimePath = System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(fileName));
+
                 StreamReader sr = new StreamReader(fileName, Encoding.GetEncoding("UTF-8"));
                 var deserializer = new DeserializerBuilder()
                     .WithNamingConvention(UnderscoredNamingConvention.Instance)
@@ -100,6 +114,41 @@ namespace SLANGCompiler.SLANG
                 }
             }
 
+            private string LoadExtLib(string libPath, string labelName)
+            {
+                var libraryPath = Path.Combine(runtimePath, "extlib", libPath);
+                StringBuilder codeStr = new StringBuilder();
+                if(File.Exists(libraryPath))
+                {
+                    var stream = new FileStream(libraryPath, FileMode.Open);
+                    var charsetDetectedResult = UtfUnknown.CharsetDetector.DetectFromStream(stream);
+                    stream.Position = 0;
+                    stream.Close();
+                    
+                    bool found = false;
+                    foreach (string line in System.IO.File.ReadLines(libraryPath, charsetDetectedResult.Detected.Encoding))
+                    {
+                        if(found && line.Trim().ToUpper().StartsWith("#ENDLIB"))
+                        {
+                            break;
+                        }
+                        if(found)
+                        {
+                            codeStr.Append(line + "\n");
+                        }
+                        if(line.Trim().ToUpper().StartsWith("#LIB"))
+                        {
+                            var checkLibName = line.Trim().Split(' ')[1];
+                            if(checkLibName == labelName)
+                            {
+                                found = true;
+                            }
+                        }
+                    }  
+                }
+                return codeStr.ToString();
+            }
+
             /// <summary>
             ///  ランタイムを追加する
             /// </summary>
@@ -107,9 +156,19 @@ namespace SLANGCompiler.SLANG
             {
                 var calls = runtimeCode.calls;
                 var code = runtimeCode.code;
+                var libName = runtimeCode.libName;
+                var extlib = runtimeCode.extlib;
                 var initializeCode = runtimeCode.initializeCode;
 
-                var info = new RuntimeInfo(label, runtimeCode.insideName, false, null, null, runtimeCode.calls, runtimeCode.works);
+                var info = new RuntimeInfo(label, runtimeCode.insideName, false, null, null, runtimeCode.calls, runtimeCode.works, libName);
+
+                if(string.IsNullOrEmpty(code) && !string.IsNullOrEmpty(extlib))
+                {
+                    // codeにextlibの中から特定コードを読み込む
+                    var libPath    = extlib.Split(':')[0];
+                    var labelName  = extlib.Split(':')[1];
+                    code = LoadExtLib(libPath, labelName);
+                }
 
                 var sb = new StringBuilder();
                 var codes = code.Split("\n");
@@ -183,7 +242,18 @@ namespace SLANGCompiler.SLANG
                 }
 
                 // シンボルテーブル側に反映させておく
-                symbolTableManager.AddFunction(runtimeCode.functionType, label, info.InsideName, runtimeCode.paramCount, addressInfo, true, true, runtimeCode.resultType);
+                string runtimeName = "";
+                if(!string.IsNullOrEmpty(info.NamespaceName))
+                {
+                    runtimeName = info.NamespaceName + ".";
+                }
+                if(!string.IsNullOrEmpty(info.InsideName))
+                {
+                    runtimeName += info.InsideName;
+                } else {
+                    runtimeName += label;
+                }
+                symbolTableManager.AddFunction(runtimeCode.functionType, label, runtimeName, runtimeCode.paramCount, addressInfo, true, true, runtimeCode.resultType);
             }
 
             /// <summary>
@@ -232,6 +302,35 @@ namespace SLANGCompiler.SLANG
                 return null;
             }
 
+            private void PushNamespace(string currentName)
+            {
+                namespaceStack.Push(currentName);
+            }
+
+            private string PopNamespace()
+            {
+                return namespaceStack.Pop();
+            }
+
+            private void ChangeNamespace(string namespaceName, StreamWriter writer)
+            {
+                var runtimeNamespace = namespaceName;
+                if(string.IsNullOrEmpty(runtimeNamespace))
+                {
+                    runtimeNamespace = InitialNamespace;
+                }
+
+                if(runtimeNamespace != currentNamespace)
+                {
+                    //PushNamespace(currentNamespace);
+                    currentNamespace = runtimeNamespace;
+                    if(string.IsNullOrEmpty(currentNamespace))
+                    {
+                        currentNamespace = InitialNamespace;
+                    }
+                    writer.Write($"[{currentNamespace}]\n");
+                }
+            }
 
             /// <summary>
             /// StreamWriterに対してランタイムコードを出力する
@@ -247,6 +346,8 @@ namespace SLANGCompiler.SLANG
                         {
                             name = info.Name;
                         }
+
+                        ChangeNamespace(info.NamespaceName, writer);
                         writer.Write($"{name}:\n");
                         if(info.Name == "CALL")
                         {
@@ -264,6 +365,8 @@ namespace SLANGCompiler.SLANG
                         }
                     }
                 }
+                // 最後は初期Namespaceに戻す
+                ChangeNamespace(InitialNamespace, writer);
             }
 
             /// <summary>

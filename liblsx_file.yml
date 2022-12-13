@@ -93,6 +93,7 @@ FSEEK:
     - LSXCALLS
     - FWORK
     - LSXFILE
+    - NEGHL
   code: |
     ; HL=fnum DE=offset BC=mode(0=head, 1=current, 2=tail)
     CALL LSXFCHECKNUM

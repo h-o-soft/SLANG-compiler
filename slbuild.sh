@@ -73,6 +73,7 @@ if [ $COPYRUNTIME -gt 0 ]; then
   mkdir ~/.config/SLANG/
   cp $RUNTIMEPATH/*.env ~/.config/SLANG/
   cp $RUNTIMEPATH/*.yml ~/.config/SLANG/
+  cp -R extlib ~/.config/SLANG/
 fi
 
 cd $PROGDIR
