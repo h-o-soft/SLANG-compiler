@@ -64,7 +64,7 @@ namespace SLANGCompiler.SLANG
         }
 
         // 式を文字列に戻すが、現状、アドレスに対する単純な加算にしか対応していない
-        private string createExprString(Expr expr)
+        private string createExprString(Expr expr, bool isDecl = false)
         {
             StringBuilder sb = new StringBuilder();
             switch(expr.Opcode)
@@ -99,10 +99,16 @@ namespace SLANGCompiler.SLANG
                 case Opcode.Adr:
                 {
                     var sym = expr.Symbol;
+                    
                     if(sym.IsRuntime)
                     {
                         runtimeManager.Use(sym.Name);
                         sb.Append(sym.RuntimeName);
+                    } else if(isDecl)
+                    {
+                        sb.Append(sym.RuntimeName);
+                        // その上でシンボルテーブルから外す(強引)
+                        symbolTableManager.Remove(sym.Name);
                     } else {
                         sb.Append(sym.LabelName);
                     }
@@ -271,7 +277,12 @@ namespace SLANGCompiler.SLANG
                             {
                                 var ofs = symbolOffset >= 0 ? symbolOffset : 0;
                                 var adr = symbol.Address.GetConstStr(symbolTableManager);
-                                sb.Append($"{adr}+${ofs:X4}");
+                                if(ofs != 0)
+                                {
+                                    sb.Append($"{adr}+${ofs:X4}");
+                                } else {
+                                    sb.Append($"{adr}");
+                                }
                             } else {
                                 var baseName = symbol.LabelName;
                                 if(symbolOffset != 0)
@@ -310,7 +321,12 @@ namespace SLANGCompiler.SLANG
                                 // 数値なので加算してやる
                                 var ofs = offsetValue;
                                 var adr = symbol.Address.GetConstStr(symbolTableManager);
-                                sb.Append($"({adr}+${ofs:X4})");
+                                if(ofs != 0)
+                                {
+                                    sb.Append($"({adr}+${ofs:X4})");
+                                } else {
+                                    sb.Append($"({adr})");
+                                }
                             } else {
                                 baseAdr = $"{symbol.LabelName}";
                                 if(offsetValue > 0)
