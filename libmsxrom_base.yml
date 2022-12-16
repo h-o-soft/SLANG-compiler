@@ -13,6 +13,7 @@ MSXCALLS:
 SLANGINIT:
   calls:
     - MSXWORK
+    - MSXCALLS
   code: |
     ; MSX 32k ROM
 

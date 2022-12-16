@@ -1,0 +1,82 @@
+
+
+PSG_BASE:
+  lib_name: PSGLIB
+  extlib: psgdriver.asm:PSG_COMMON
+  code: |
+    RDVRM:        EQU $004A	; BIOS RDVRM
+    WRTVRM:       EQU $004D	; BIOS WRTVRM
+    FILVRM:       EQU	$0056	; BIOS VRAM指定領域同一データ転送
+    LDIRVM:       EQU	$005C	; BIOS VRAMブロック転送
+    CHGMOD:       EQU $005F   ; BIOS スクリーンモード変更
+    GICINI:	      EQU $0090	; PSGの初期化アドレス
+    WRTPSG:	      EQU $0093   ; PSGレジスタへのデータ書込アドレス
+    ERAFNC:       EQU $00CC   ; BIOS ファンクションキー非表示
+    GTSTCK:       EQU $00D5   ; BIOS ジョイスティックの状態取得
+    GTTRIG:       EQU $00D8   ; BIOS トリガボタンの状態取得
+    SNSMAT:       EQU $0141   ; BIOS キーマトリクススキャン
+    KILBUF:       EQU $0156   ; BIOS キーバッファクリア
+    LINL32:       EQU $F3AF   ; WIDTH値
+    CLIKSW:       EQU $F3DB   ; キークリックスイッチ(0:OFF,0以外:ON)
+    REG0SAV:      EQU $F3DF   ; VDPコントロールレジスタ0
+    REG1SAV:      EQU $F3E0   ; VDPコントロールレジスタ1
+    FORCLR:       EQU $F3E9   ; 前景色
+    BAKCLR:       EQU $F3EA   ; 背景色
+    BDRCLR:       EQU $F3EB   ; 周辺色
+    INTCNT:       EQU $FCA2   ; システムで1/60秒でインクリメントするワークエリア
+    H_TIMI:       EQU $FD9F   ; 垂直帰線割り込みフック
+
+PSG_INIT:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psgdriver.asm:PSG_INIT
+
+PSG_PLAY:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psgdriver.asm:PSG_PLAY
+
+PSG_SFX:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psgdriver.asm:PSG_SFX
+
+PSG_STOP:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psgdriver.asm:PSG_STOP
+
+PSG_PAUSE:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psgdriver.asm:PSG_PAUSE
+
+PSG_RESUME:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psgdriver.asm:PSG_RESUME
+
+PSG_PROC:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psgdriver.asm:PSG_PROC
+  works:
+    SOUNDDRV_H_TIMI_BACKUP: 5
+    SOUNDDRV_STATE: 1
+    SOUNDDRV_WK_MIXING_TONE: 1
+    SOUNDDRV_WK_MIXING_NOISE: 1
+    SOUNDDRV_BGMWK: 48
+    SOUNDDRV_DUMMYWK: 16
+    SOUNDDRV_SFXWK: 48
+
+VSYNC:
+  code: |
+    ; VSYNC(MSX) / not implemented
+    RET
