@@ -404,15 +404,15 @@ namespace SLANGCompiler.SLANG
                             if(dataSize == 1)
                             {
                                 // BYTE変数
-                                symbolTableManager.AddSymbol(symbolName, TypeInfo.ByteTypeInfo, true );
+                                symbolTableManager.AddSymbol(symbolName, TypeInfo.ByteTypeInfo, true, info.NamespaceName);
                             } else if(dataSize == 2)
                             {
                                 // WORD変数
-                                symbolTableManager.AddSymbol(symbolName, TypeInfo.WordTypeInfo, true );
+                                symbolTableManager.AddSymbol(symbolName, TypeInfo.WordTypeInfo, true, info.NamespaceName );
                             } else {
                                 // 配列変数
                                 var arrayTypeInfo = new TypeInfo(TypeInfoClass.Array, dataSize, TypeDataSize.Byte, TypeInfo.ByteTypeInfo);
-                                var symbol = symbolTableManager.AddSymbol(symbolName, arrayTypeInfo, true );
+                                var symbol = symbolTableManager.AddSymbol(symbolName, arrayTypeInfo, true, info.NamespaceName );
                                 symbol.Size = dataSize;
                             }
                         }
