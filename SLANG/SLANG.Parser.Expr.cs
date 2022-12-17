@@ -917,10 +917,12 @@ namespace SLANGCompiler.SLANG
             if(left.IsIntValueConst() && right.IsIntValueConst())
             {
                 left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.Value, right.ConstValue.Value));
+                left.Value = left.ConstValue.Value;
                 return left;
             } else if((left.IsFloatValueConst() || left.IsFloatValueConst()) && (right.IsIntValueConst() || right.IsFloatValueConst()))
             {
                 left.ConstValue = new ConstInfo(fold2(opcode, left.ConstValue.FloatValue, right.ConstValue.FloatValue));
+                left.Value = (int)left.ConstValue.FloatValue;
                 return left;
             }
 
