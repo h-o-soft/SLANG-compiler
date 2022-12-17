@@ -9,6 +9,15 @@ function Launch() {
   exit 0
 }
 
+function LaunchMSX() {
+  cd $CURPATH
+
+  $MSXEMULATOR -cart $PROG.BIN
+
+  echo DONE!
+  exit 0
+}
+
 function Error() {
   echo ERROR!
   cd $CURPATH
@@ -62,8 +71,10 @@ SLANGCOMPILER="mono ${CURPATH}bin/SLANGCompiler.dll"
 ASM=$TOOLPATH/AILZ80ASM
 
 EMUPATH=`readlink -f ~/emulator/x1/x1.exe`
+MSXEMUPATH=`readlink -f /Applications/openMSX.app/Contents/MacOS/openmsx`
 
 EMULATOR="wine $EMUPATH"
+MSXEMULATOR="$MSXEMUPATH"
 
 NDCPATH=$TOOLPATH/ndc
 HUDISKPATH="mono $TOOLPATH/HuDisk.exe"
@@ -110,6 +121,9 @@ elif [ $TARGETENV == "sos" ]; then
   $HUDISKPATH -a $IMAGEPATH/$PROGIMAGE PROG.BIN -r $LOADADR -g $RUNADR
 
   Launch
+elif [ $TARGETENV == "msxrom" ]; then
+  echo MSX ROM
+  LaunchMSX
 else
   echo NOT SUPPORTED $TARGETENV
 fi
