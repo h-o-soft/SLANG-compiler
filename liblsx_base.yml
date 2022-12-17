@@ -1,6 +1,7 @@
 SLANGINIT:
   calls:
     - sWORK
+    - LSXCALLS
   code: |
     LD HL,($0001)
     LD (WBOOTBK),HL

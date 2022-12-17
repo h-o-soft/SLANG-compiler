@@ -159,6 +159,7 @@ namespace SLANGCompiler.SLANG
                 var libName = runtimeCode.libName;
                 var extlib = runtimeCode.extlib;
                 var initializeCode = runtimeCode.initializeCode;
+                bool noindent = false;
 
                 var info = new RuntimeInfo(label, runtimeCode.insideName, false, null, null, runtimeCode.calls, runtimeCode.works, libName);
 
@@ -168,6 +169,7 @@ namespace SLANGCompiler.SLANG
                     var libPath    = extlib.Split(':')[0];
                     var labelName  = extlib.Split(':')[1];
                     code = LoadExtLib(libPath, labelName);
+                    noindent = true;
                 }
 
                 var sb = new StringBuilder();
@@ -175,7 +177,7 @@ namespace SLANGCompiler.SLANG
                 foreach(var str in codes)
                 {
                     // ラベル以外を字下げする
-                    if(!(str.Length > 0 && (str[0] == '.' || str.IndexOf(":") > 0)))
+                    if(!noindent && (!(str.Length > 0 && (str[0] == '.' || str.IndexOf(":") > 0))))
                     {
                         sb.Append(" ");
                     }

@@ -876,3 +876,18 @@ SOUNDDRV_TONETBL:
 
 
 #ENDLIB
+
+#LIB PSG_END
+    DI
+
+    CALL PSG_STOP
+
+    ; ■H.TIMIを戻す
+    LD HL,SOUNDDRV_H_TIMI_BACKUP
+    LD DE,H_TIMI
+    LD BC,5
+    LDIR
+
+    EI
+    RET
+#ENDLIB

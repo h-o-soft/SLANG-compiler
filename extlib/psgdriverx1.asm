@@ -55,17 +55,70 @@ SOUNDDRV_INIT:
 
 	CALL GICINI		                ; GICINI	PSGの初期化
 
-;    ; ■H.TIMIバックアップ
-;    LD HL,H_TIMI                    ; 転送元
-;    LD DE,SOUNDDRV_H_TIMI_BACKUP    ; 転送先
-;    LD BC,5                         ; 転送バイト数
-;    LDIR
-;
-;    ; ■H.TIMI書き換え
-;    LD A,$C3                        ; JP
-;    LD HL,SOUNDDRV_EXEC             ; サウンドドライバのアドレス
-;    LD (H_TIMI+0),A
-;    LD (H_TIMI+1),HL
+    DI
+
+#IF NAME_SPACE_DEFAULT.OS_TYPE == 0
+    ; LSX-Dodgers
+    _CTC  EQU   F08Ch
+    CTC3  EQU   F0C6h
+
+    LD BC,(_CTC)
+    LD A,C
+    OR B
+    JP Z,NOCTC
+#ELIF NAME_SPACE_DEFAULT.OS_TYPE == 1
+    ; S-OS
+
+    CTC3 EQU $005E
+
+    ; CTCの存在を確認し、_CTCに代入(無ければ0)
+    LD	BC,0
+    LD	(_CTC),BC
+    LD	BC,00A04H
+    CALL	CHKCTC
+    LD	BC,00704H
+    CALL	CHKCTC
+    LD	BC,01FA8H
+    CALL	CHKCTC
+    LD	BC,01FA0H
+    CALL	CHKCTC
+
+    LD BC,(_CTC)
+    LD A,C
+    OR B
+    JP Z,NOCTC
+
+    ; 割り込みベクトル設定
+    DEC C
+    DEC C
+    ; Channel 0
+    LD A,58H    ; ここでいいのか？
+    OUT (C),A
+#ENDIF
+
+    ; BCにはCTCのチャンネル2のアクセス先が入っている
+    ; 該当のCTCを設定
+    LD      BC,(_CTC)
+    INC C   ; Channel 3
+    LD      A,$A7       ; Reset, 256分割
+    OUT     (C),A
+    LD      A,0         ; これでだいたい61Hzくらい？(大雑把) 
+    OUT     (C),A
+
+    ; CTC3の割り込みアドレス設定
+    LD      HL,(CTC3)
+    LD      (CTC3BACKUP),HL
+    LD      HL,SOUNDDRV_EXEC
+    LD      (CTC3),HL
+
+    JR CTCCHECKEND
+NOCTC:
+
+    LD HL,PSG_PROC
+    XOR A
+    LD (HL),A   ; NOP
+
+CTCCHECKEND:
 
     ; ■音を出す設定
 	LD A,7			                ; PSGレジスタ番号=7(チャンネル設定)
@@ -102,6 +155,39 @@ SOUNDDRV_INIT_2:
 
     RET
 
+#IF NAME_SPACE_DEFAULT.OS_TYPE == 1
+; S-OS
+
+CHKCTC:
+	PUSH	BC
+	LD	DE,04703H
+INICTC1:
+	INC	C
+	OUT	(C),D
+	DB	0EDH,071H	;OUT (C),0	Z80未定義命令
+	DEC	E
+	JR	NZ,INICTC1
+	POP	BC
+
+	LD	DE,007FAH
+	OUT	(C),D
+	OUT	(C),E
+	IN	A,(C)
+	CP	E
+	RET	NZ
+	OUT	(C),D
+	OUT	(C),D
+	IN	A,(C)
+	CP	D
+	RET	NZ
+	INC	C
+	INC	C
+	LD	(_CTC),BC
+	RET
+
+_CTC:
+    DW 0
+#ENDIF
 
 ; ----------------------------------------------------------------------------------------------------
 ; ワークエリア初期化処理
@@ -149,6 +235,24 @@ SOUNDDRV_INITWK_L1:
     RET
 #ENDLIB
 
+#LIB PSG_END
+    CALL PSG_STOP
+
+    ; CTC3を止める
+    LD      HL,(_CTC)
+    INC L
+    LD      C,L
+    LD      B,H
+    LD      A,3
+    OUT     (C),A
+
+    ; CTC3の割り込みアドレスを戻す
+    LD      HL,(CTC3BACKUP)
+    LD      (CTC3),HL
+
+    RET
+
+#ENDLIB
 
 #LIB PSG_PLAY
 ; ====================================================================================================
@@ -392,10 +496,18 @@ SOUNDDRV_RESUME_EXIT:
 
 
 #LIB PSG_PROC
+    RET
 ; ====================================================================================================
 ; DRIVER EXECUTE
 ; ====================================================================================================
 SOUNDDRV_EXEC:
+    PUSH AF
+    PUSH HL
+    PUSH DE
+    PUSH BC
+    PUSH IX
+    PUSH IY
+
     ; ■サウンドドライバのステータス判定
     LD A,(SOUNDDRV_STATE)           ; A <- サウンドドライバの状態
     OR A
@@ -422,7 +534,15 @@ SOUNDDRV_EXEC_L1:
     CALL SOUNDDRV_SETPSG_MIXING     ; ミキシング(PSGレジスタ7)設定処理
 
 SOUNDDRV_EXIT:
-    RET
+    POP IY
+    POP IX
+    POP BC
+    POP DE
+    POP HL
+    POP AF
+    EI
+    RETI
+;    RET
 ;    JP SOUNDDRV_H_TIMI_BACKUP
 #ENDLIB
 

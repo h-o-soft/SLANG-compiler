@@ -2,10 +2,13 @@
 PSG_BASE:
   lib_name: PSGLIB
   extlib: psgdriverx1.asm:PSG_COMMON
+  works:
+    CTC3BACKUP: 2
 
 PSG_INIT:
   calls:
     - PSG_BASE
+    - PSG_PROC
   lib_name: PSGLIB
   extlib: psgdriverx1.asm:PSG_INIT
 
@@ -44,6 +47,13 @@ PSG_PROC:
     - PSG_BASE
   lib_name: PSGLIB
   extlib: psgdriverx1.asm:PSG_PROC
+
+PSG_END:
+  calls:
+    - PSG_BASE
+    - PSG_STOP
+  lib_name: PSGLIB
+  extlib: psgdriverx1.asm:PSG_END
 
 VSYNC:
   code: |

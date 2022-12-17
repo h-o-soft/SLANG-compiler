@@ -10,6 +10,14 @@ namespace SLANGCompiler.SLANG
         // 初期化コードの生成
         private void genInitCode()
         {
+            // ENV TYPEを書く
+            var envType = environmentManager.EnvironmentType;
+            gencode($"ENV_TYPE EQU {envType} \n");
+
+            // OS TYPEを書く
+            var osType = environmentManager.OSType;
+            gencode($"OS_TYPE EQU {osType}\n");
+
             // 初期化処理(指定ランタイムを埋め込む)
             genRuntimeInline("SLANGINIT");
         }

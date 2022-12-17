@@ -76,6 +76,13 @@ PSG_PROC:
     SOUNDDRV_DUMMYWK: 16
     SOUNDDRV_SFXWK: 48
 
+PSG_END:
+  calls:
+    - PSG_BASE
+    - PSG_STOP
+  lib_name: PSGLIB
+  extlib: psgdriver.asm:PSG_END
+
 VSYNC:
   code: |
     ; VSYNC(MSX) / not implemented

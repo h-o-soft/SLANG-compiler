@@ -16,6 +16,8 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public class EnvironmentInfo
         {
+            public int osType = 0;
+            public int envType = 0;
             public string defaultOrg = null;
             public string defaultWork = null;
             public string[] libraries = null;
@@ -26,11 +28,12 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public class EnvironmentManager
         {
-
-
             private RuntimeManager runtimeManager;
             private IORGSetter orgSetter;
             private IWORKSetter workSetter;
+
+            public int OSType { get; private set; }
+            public int EnvironmentType { get; private set; }
 
             public EnvironmentManager(RuntimeManager runtimeManager, IORGSetter orgSetter, IWORKSetter workSetter)
             {
@@ -77,6 +80,21 @@ namespace SLANGCompiler.SLANG
                     var workNum = SLANGCommonUtility.GetIntValue(info.defaultWork);
                     workSetter.SetWork(workNum);
                 }
+
+                // 環境の種別を設定(ENV_TYPEとして定義される)
+                // 0 = LSX-Dodgers
+                // 1 = X1(LSX-Dodgers)
+                // 2 = S-OS
+                // 3 = MSX-DOS2
+                // 4 = MSX ROM
+                this.EnvironmentType = info.envType;
+
+                // OSの種別を設定(OS_TYPEとして定義される)
+                // 0 = LSX-Dodgers
+                // 1 = S-OS
+                // 2 = MSX-DOS2
+                // 3 = MSX ROM
+                this.OSType = info.osType;
 
                 // ランタイムを読み込み
                 if(info.libraries != null)
