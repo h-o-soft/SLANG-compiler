@@ -251,7 +251,7 @@ namespace SLANGCompiler.SLANG
                 {
                     throw new System.Exception("配列宣言の添字が定数ではありません");
                 }
-                p.ArraySize = size.Value;
+                p.ArraySize = size.ConstValue.Value;
             }
             return p;
         }
