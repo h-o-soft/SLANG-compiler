@@ -149,7 +149,7 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// 型情報と共にシンボルを追加する
         /// </summary>
-        public SymbolTable AddSymbol(string name, TypeInfo typeInfo, bool? useOriginalSymbol)
+        public SymbolTable AddSymbol(string name, TypeInfo typeInfo, bool? useOriginalSymbol, string namespaceName = null)
         {
             if(useOriginalSymbol == null)
             {
@@ -160,7 +160,8 @@ namespace SLANGCompiler.SLANG
                 Name = name,
                 TypeInfo = typeInfo,
                 Address = null,
-                UseOriginalSymbol = (bool)useOriginalSymbol
+                UseOriginalSymbol = (bool)useOriginalSymbol,
+                NamespaceName = namespaceName
             };
             symbolTableList.Add(table);
             table.Id = symbolTableList.IndexOf(table);
@@ -177,12 +178,30 @@ namespace SLANGCompiler.SLANG
             }
         }
 
+        private readonly static string DefaultNamespaceName = "NAME_SPACE_DEFAULT";
+
         // 初期値なしのシンボルテーブルコードを生成する(EQUにより定義される)
         private int generateCodeWorks(StreamWriter outputStreamWriter, string workLabel, int workOffset)
         {
+            string currentNamespace = DefaultNamespaceName;
+            bool isNotDefaultNamespace = false;
             // Global Classの変数のコードを出力する
             foreach(var symbol in symbolTableList)
             {
+                var namespaceName = "";
+                if(string.IsNullOrEmpty(symbol.NamespaceName))
+                {
+                    namespaceName = DefaultNamespaceName;
+                } else {
+                    namespaceName = symbol.NamespaceName;
+                }
+                if(currentNamespace != namespaceName)
+                {
+                    outputStreamWriter.Write($"[{namespaceName}]\n");
+                    currentNamespace = namespaceName;
+                    isNotDefaultNamespace = currentNamespace != DefaultNamespaceName;
+                }
+
                 if(symbol.SymbolClass != SymbolClass.Global)
                 {
                     continue;
@@ -210,7 +229,8 @@ namespace SLANGCompiler.SLANG
                 {
                     outputStreamWriter.WriteLine($"{labelName} EQU (_AF + 1)");
                 } else {
-                    outputStreamWriter.WriteLine($"{labelName} EQU (__WORK__ + {workOffset})");
+                    var prefix = isNotDefaultNamespace?DefaultNamespaceName+".":"";
+                    outputStreamWriter.WriteLine($"{labelName} EQU ({prefix}__WORK__ + {workOffset})");
                 }
 
                 if(symbol.TypeInfo.IsArray())
@@ -219,6 +239,11 @@ namespace SLANGCompiler.SLANG
                 } else {
                     workOffset += symbol.TypeInfo.GetDataSize().GetDataSize();
                 }
+            }
+
+            if(currentNamespace != DefaultNamespaceName)
+            {
+                    outputStreamWriter.Write($"[{DefaultNamespaceName}]\n");
             }
 
             return workOffset;

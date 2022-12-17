@@ -144,6 +144,11 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public bool IsRuntime;
 
+        /// <summary>
+        /// ネームスペース名称
+        /// </summary>
+        public string NamespaceName;
+
         public bool IsMemoryArray()
         {
              return Address != null && Address.ConstInfoType == ConstInfoType.IntValue && Address.Value == 0;

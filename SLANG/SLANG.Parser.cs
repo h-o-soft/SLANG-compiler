@@ -33,6 +33,11 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         RuntimeManager runtimeManager;
 
+        /// <summary>
+        /// 環境管理マネージャ
+        /// </summary>
+        EnvironmentManager environmentManager;
+
         CodeOptimizer codeOptimizer;
 
         bool isSourceComment;
@@ -378,7 +383,7 @@ namespace SLANGCompiler.SLANG
                 envName = envName + ".env";
             }
             string envPath = SLANGCommonUtility.GetConfigPath(envName);
-            var environmentManager = new EnvironmentManager(runtimeManager, this, this);
+            environmentManager = new EnvironmentManager(runtimeManager, this, this);
             environmentManager.Load(envPath);
         }
 
