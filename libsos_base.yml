@@ -31,6 +31,8 @@ SLANGINIT:
 
     <<CALLINITIALIZER>>
 
+    CALL SEARCHCTC
+
     LD IY,__IYWORK
 
     CALL MAIN
@@ -46,6 +48,74 @@ SLANGINIT:
     POP BC
     JP $0000
     RETADR:
+
+    ; CTC CHECK
+    SEARCHCTC:
+    LD	BC,0
+    LD	(_CTC),BC
+    LD	BC,00A04H
+    CALL	CHKCTC
+    LD	BC,00704H
+    CALL	CHKCTC
+    LD	BC,01FA8H
+    CALL	CHKCTC
+    LD	BC,01FA0H
+    CALL	CHKCTC
+
+    ; #VER
+    ; Hレジスタ
+    ; 機種別情報を元に割り込みベクタアドレスを決める
+    ; 20H	Ｘ１ →0058H
+    ; 21H	Ｘ１ｔｕｒｂｏ → F830H (IはF8のはずなのでいじらない……)
+    ; 22H	Ｘ１（筑紫版） →0058H
+    CALL 1FF7H
+    LD A,H
+    AND 0F0H
+    CP 20H
+    JR NZ,SETCTCADREND
+    LD A,H
+    CP 21H
+    JR Z,CTCX1TURBO
+
+    ; normal X1 S-OS or 筑紫版
+    LD HL,0058H
+    LD (_CTCVEC),HL
+    JR SETCTCADREND
+
+    CTCX1TURBO:
+    ; X1turbo
+    LD HL,F830H
+    LD (_CTCVEC),HL
+    SETCTCADREND:
+
+    RET
+
+    CHKCTC:
+    PUSH	BC
+    LD	DE,04703H
+    INICTC1:
+    INC	C
+    OUT	(C),D
+    DB	0EDH,071H	;OUT (C),0	Z80未定義命令
+    DEC	E
+    JR	NZ,INICTC1
+    POP	BC
+
+    LD	DE,007FAH
+    OUT	(C),D
+    OUT	(C),E
+    IN	A,(C)
+    CP	E
+    RET	NZ
+    OUT	(C),D
+    OUT	(C),D
+    IN	A,(C)
+    CP	D
+    RET	NZ
+    INC	C
+    INC	C
+    LD	(_CTC),BC
+    RET
 
 STOP:
   param_count: 0
@@ -84,6 +154,8 @@ SOSCALLS:
     sWIDTH  EQU 1F5CH
   works:
     AT_WIDTH: 1
+    _CTC: 2
+    _CTCVEC: 2
 
 BEEP:
   code: |

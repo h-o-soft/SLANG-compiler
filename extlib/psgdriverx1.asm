@@ -57,10 +57,10 @@ SOUNDDRV_INIT:
 
     DI
 
+    _CTCVEC EQU NAME_SPACE_DEFAULT._CTCVEC
 #IF NAME_SPACE_DEFAULT.OS_TYPE == 0
     ; LSX-Dodgers
     _CTC  EQU   F08Ch
-    CTC3  EQU   F0C6h
 
     LD BC,(_CTC)
     LD A,C
@@ -68,20 +68,7 @@ SOUNDDRV_INIT:
     JP Z,NOCTC
 #ELIF NAME_SPACE_DEFAULT.OS_TYPE == 1
     ; S-OS
-
-    CTC3 EQU $005E
-
-    ; CTCの存在を確認し、_CTCに代入(無ければ0)
-    LD	BC,0
-    LD	(_CTC),BC
-    LD	BC,00A04H
-    CALL	CHKCTC
-    LD	BC,00704H
-    CALL	CHKCTC
-    LD	BC,01FA8H
-    CALL	CHKCTC
-    LD	BC,01FA0H
-    CALL	CHKCTC
+    _CTC  EQU   NAME_SPACE_DEFAULT._CTC
 
     LD BC,(_CTC)
     LD A,C
@@ -91,25 +78,37 @@ SOUNDDRV_INIT:
     ; 割り込みベクトル設定
     DEC C
     DEC C
-    ; Channel 0
-    LD A,58H    ; ここでいいのか？
+    LD A,(_CTCVEC)
     OUT (C),A
 #ENDIF
 
     ; BCにはCTCのチャンネル2のアクセス先が入っている
     ; 該当のCTCを設定
     LD      BC,(_CTC)
-    INC C   ; Channel 3
+    DEC C   ; Channel 1
+    ;INC C  ; Channel 3
     LD      A,$A7       ; Reset, 256分割
     OUT     (C),A
     LD      A,0         ; これでだいたい61Hzくらい？(大雑把) 
     OUT     (C),A
 
-    ; CTC3の割り込みアドレス設定
-    LD      HL,(CTC3)
-    LD      (CTC3BACKUP),HL
-    LD      HL,SOUNDDRV_EXEC
-    LD      (CTC3),HL
+    ; CTC1の割り込みアドレス設定
+    LD      HL,(_CTCVEC)    ; ここにはChannel 0のアドレス(が入ってるアドレス)が入る
+    INC L
+    INC L   ; Channel 1のアドレスにする
+    ; INC L
+    ; INC L
+    ; INC L
+    ; INC L ; CHannel 3にする場合はコメントを外す
+    LD      C,(HL)
+    INC HL
+    LD      B,(HL)
+    LD      (CTC3BACKUP),BC
+    LD      BC,SOUNDDRV_EXEC
+    DEC HL
+    LD      (HL),C
+    INC HL
+    LD      (HL),B
 
     JR CTCCHECKEND
 NOCTC:
@@ -145,6 +144,8 @@ SOUNDDRV_INIT_2:
     INC HL
     DJNZ SOUNDDRV_INIT_2
 
+
+INITEND:
     POP IY
     POP IX
     POP HL
@@ -154,40 +155,6 @@ SOUNDDRV_INIT_2:
     EI
 
     RET
-
-#IF NAME_SPACE_DEFAULT.OS_TYPE == 1
-; S-OS
-
-CHKCTC:
-	PUSH	BC
-	LD	DE,04703H
-INICTC1:
-	INC	C
-	OUT	(C),D
-	DB	0EDH,071H	;OUT (C),0	Z80未定義命令
-	DEC	E
-	JR	NZ,INICTC1
-	POP	BC
-
-	LD	DE,007FAH
-	OUT	(C),D
-	OUT	(C),E
-	IN	A,(C)
-	CP	E
-	RET	NZ
-	OUT	(C),D
-	OUT	(C),D
-	IN	A,(C)
-	CP	D
-	RET	NZ
-	INC	C
-	INC	C
-	LD	(_CTC),BC
-	RET
-
-_CTC:
-    DW 0
-#ENDIF
 
 ; ----------------------------------------------------------------------------------------------------
 ; ワークエリア初期化処理

@@ -16,6 +16,9 @@ SLANGINIT:
 
     <<CALLINITIALIZER>>
 
+    LD HL,F0C0H
+    LD (_CTCVEC),HL
+
     LD IY,__IYWORK
 
     CALL MAIN
@@ -816,4 +819,5 @@ sWORK:
     sSUBBF: 256
     sSPBK: 2
     WBOOTBK: 2
+    _CTCVEC: 2
 
