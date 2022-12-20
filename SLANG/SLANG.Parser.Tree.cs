@@ -25,6 +25,13 @@ namespace SLANGCompiler.SLANG
                 // ランタイムにある場合は利用フラグを立てる
                 runtimeManager.Use(value.Symbol.Name);
                 constTableManager.AddCode(symbolTree.IdentifierName, value.Symbol.Name);
+            } else if(value.Opcode == Opcode.Adr && value.TypeInfo.Parent != null && value.TypeInfo.Parent.InfoClass == TypeInfoClass.TempFunc)
+            {
+                // この場合はラベルの別名定義と思われるのでランタイム名を文字列として設定する
+                // (同時に、TempFuncではありえないので、シンボルテーブルから外す)
+                symbolTableManager.Remove(value.Symbol.Name);
+                var str = value.Symbol.RuntimeName;
+                constTableManager.AddString(symbolTree.IdentifierName, str);
             } else {
                 // この場合は文字列定数として扱う
                 var str = createExprString(value);
