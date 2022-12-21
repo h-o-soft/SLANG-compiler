@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.6.0
+SLANG Compiler (Z80) 0.7.0
 
 # 概要
 
@@ -149,6 +149,10 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
 * libm8a.yml
   * M8A形式の画像表示ライブラリ
   * 実体は extlib/m8a.asmになります
+* libx1_psg.yml
+  * PSG音楽/効果音再生ライブラリ
+  * [PSGSoundDriver for MSX](https://github.com/aburi6800/msx-PSGSoundDriver)のX1カスタマイズ版です。開発者のあぶり6800さん、ありがとうございます！
+  * LSX-Dodgers / S-OS両対応になっています
 
 ## MSX-DOS2関連ライブラリ
 * libmsx2_file.yml
@@ -159,7 +163,9 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
   * MSX ROM環境用の文字表示処理が含まれるライブラリ。検証甘め。
 * libmsxrom_input.yml
   * MSX ROM環境用の入力関連処理が含まれるライブラリ。ただしINPUTやINKEYは現在なく、STICK()関数のみが入っています。
-
+* libmsx_psg.yml
+  * PSG音楽/効果音再生ライブラリ
+  * あぶり6800さんの[PSGSoundDriver for MSX](https://github.com/aburi6800/msx-PSGSoundDriver)を、ほぼそのまま組み込んでいます
 
 ## 環境ファイル及びランタイムのパスについて
 各環境ファイル(*.env)及び、runtime.yml と lib*.yml、ライブラリソース実体の含まれるextlibフォルダは、カレントパス、あるいはユーザーフォルダの .config/SLANG/ フォルダの下から読まれます。環境により、適宜配置してください。
@@ -289,6 +295,22 @@ slbuild.bat TEST.SL sos
 MIT
 
 # 更新履歴
+- Version 0.7.0
+  - PSG再生ライブラリを追加(X1/MSX ROM)
+    - PSG_INIT() 初期化
+    - PSG_PLAY(ADDRESS) 再生
+    - PSG_PROC() 1/60ごとに呼び出す再生処理(CTCのあるX1及びMSXでは呼び出す必要はない)
+    - PSG_END() 終了
+    - PSG_STOP() 再生停止
+    - PSG_PAUSE() 一時停止
+    - PSG_RESUME() 再生再開
+  - 外部シンボルを格納アドレス指定及びCONSTにて指定可能に
+    - ARRAY EXTARR[]:EXTERNALLABEL; とすると、アセンブラコードのラベル「EXTERNALLABEL」をEXTARRという配列変数としてアクセス可能になります
+    - CONST EXTDAT = EXTERNALLABEL; とする事でも、EXTDATをラベル「EXTERNALLABEL」として扱えます
+    - #ASM〜#ENDASMでアセンブラコードを囲んで、その中で定義したラベルなどを指定する想定です
+  -  配列サイズが定数の計算により設定されていた場合不正になる問題を修正 
+  - ビルドバッチ/スクリプトについてMSX ROM環境に対応(openMSXを使用)
+  - コンパイラの実行ファイルを単一ファイルに変更(publish.shの追加)
 - Version 0.6.0
   - Mac用のビルドスクリプト slbuild.sh を追加(copyruntime.shも追加)
   - MAG画像読み込みライブラリを追加(Gakuさんありがとうございます！)
