@@ -205,17 +205,22 @@ SOUNDDRV_INITWK_L1:
 #LIB PSG_END
     CALL PSG_STOP
 
-    ; CTC3を止める
+    ; CTC1を止める
     LD      HL,(_CTC)
-    INC L
+    DEC L
     LD      C,L
     LD      B,H
     LD      A,3
     OUT     (C),A
 
-    ; CTC3の割り込みアドレスを戻す
-    LD      HL,(CTC3BACKUP)
-    LD      (CTC3),HL
+    ; CTCの割り込みアドレスを戻す
+    LD      HL,(_CTCVEC)    ; ここにはChannel 0のアドレス(が入ってるアドレス)が入る
+    INC L
+    INC L   ; Channel 1のアドレスにする
+    LD      DE,(CTC3BACKUP)
+    LD      (HL),E
+    INC HL
+    LD      (HL),D
 
     RET
 
