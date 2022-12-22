@@ -115,7 +115,7 @@ SOUNDDRV_INIT:
     ; 割り込み先アドレスが格納されている場合はturboである
     LD DE,(NAME_SPACE_DEFAULT._ISRADR)
     LD A,E
-    OR E
+    OR D
     JR NZ,PSG_TURBO
 
     ; 非turboなので普通にやる
