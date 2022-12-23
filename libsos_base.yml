@@ -62,6 +62,12 @@ SLANGINIT:
     LD	BC,01FA0H
     CALL	CHKCTC
 
+    ; CTCが無い場合はCTC関連の初期化はしない
+    LD BC,(_CTC)
+    LD A,C
+    OR B
+    JP Z,SETCTCADREND
+
     ; #VER
     ; Hレジスタ
     ; 機種別情報を元に割り込みベクタアドレスを決める
@@ -80,15 +86,73 @@ SLANGINIT:
     ; normal X1 S-OS or 筑紫版
     LD HL,0058H
     LD (_CTCVEC),HL
+
+    ; ここが0だとS-OS turbo以外であるという事(0000H-7FFFHが常にメインRAMの想定で良いはず)
+    LD HL,0
+    LD (_ISRADR),HL
+
     JR SETCTCADREND
 
     CTCX1TURBO:
     ; X1turbo
     LD HL,F830H
     LD (_CTCVEC),HL
-    SETCTCADREND:
 
+    ; turbo用パッチ
+    LD A,010H
+    LD ($F850),A
+
+    ; MEMAXにturbo用の割り込み処理を転送してやる
+    LD HL,(sMEMAX)
+    LD BC,ISR_ENTRY_END - ISR_ENTRY
+    OR A
+    SBC HL,BC
+    PUSH HL
+    DEC HL
+    ; 割り込み処理ぶんMEMAXを減らす
+    LD (sMEMAX),HL
+    INC HL
+    EX DE,HL
+    LD HL,ISR_ENTRY
+    LD BC,ISR_ENTRY_END - ISR_ENTRY
+    LDIR
+
+    ; アドレスを書きかえてやる
+    POP HL
+    PUSH HL
+    ; 先頭アドレスを保存
+    LD (_ISRADR),HL
+    OR A
+    LD BC,7
+    ADD HL,BC ; 新しいISR_SAFEのアドレス
+    EX DE,HL
+    POP HL
+    ; HL = 転送したISR_ENTRYの先頭(割り込み先)
+    INC HL
+    INC HL
+    LD (HL),E  ; LD HL,ISR_SAFEのISR_SAFEのところを正しいアドレスにしてやる
+    INC HL
+    LD (HL),D
+    LD BC,9
+    ADD HL,BC
+    ; HL = JP 0の、0の位置
+    LD (_ISRHANDLER),HL ; _ISRHANDLERに入ったアドレスに割り込み先アドレスを書くとイイ
+
+    SETCTCADREND:
     RET
+
+    ; 割り込みの一時ハンドラ
+    ISR_ENTRY:
+    PUSH HL
+    ISR_SAFE_ADDR:
+    LD HL,ISR_SAFE
+    JP 0xf847
+    ISR_SAFE:
+    LD A,1Eh
+    OUT (0x00),A
+    ISR_HANDLER_ADDR:
+    JP 0    ; 割り込み処理の飛び先(0000H-FFFFHどこでもいい)
+    ISR_ENTRY_END:
 
     CHKCTC:
     PUSH	BC
@@ -140,6 +204,7 @@ SOSCALLS:
     sHLHEX  EQU 1FB2H
     sKBFAD  EQU 1F76H
 
+    sMEMAX  EQU 1F6AH
     sFILE   EQU 1FA3H
     sDSK    EQU 1F5DH
     sFATPOS EQU 1F5EH
@@ -156,6 +221,8 @@ SOSCALLS:
     AT_WIDTH: 1
     _CTC: 2
     _CTCVEC: 2
+    _ISRADR: 2
+    _ISRHANDLER: 2
 
 BEEP:
   code: |

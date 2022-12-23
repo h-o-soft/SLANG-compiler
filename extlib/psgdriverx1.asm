@@ -53,7 +53,16 @@ SOUNDDRV_INIT:
     PUSH IX
     PUSH IY
 
+
+    PUSH HL
 	CALL GICINI		                ; GICINI	PSGの初期化
+    POP HL
+
+    ; L = MODE
+    ;   0 = NON INTERRUPT 1 = USE CTC
+    LD A,L
+    OR A
+    JP Z,NOCTC
 
     DI
 
@@ -104,11 +113,48 @@ SOUNDDRV_INIT:
     INC HL
     LD      B,(HL)
     LD      (CTC3BACKUP),BC
-    LD      BC,SOUNDDRV_EXEC
     DEC HL
+
+#IF NAME_SPACE_DEFAULT.OS_TYPE == 0
+    LD      BC,SOUNDDRV_EXEC
     LD      (HL),C
     INC HL
     LD      (HL),B
+#ELIF NAME_SPACE_DEFAULT.OS_TYPE == 1
+    ; 割り込み先アドレスが格納されている場合はturboである
+    LD DE,(NAME_SPACE_DEFAULT._ISRADR)
+    LD A,E
+    OR D
+    JR NZ,PSG_TURBO
+
+    ; 非turboなので普通にやる
+    LD      BC,SOUNDDRV_EXEC
+    LD      (HL),C
+    INC HL
+    LD      (HL),B
+
+    JR CTCCHECKEND
+
+PSG_TURBO:
+    ; S-OS turboである
+    ;   0000 - 7FFFがBIOS ROMである可能性があるので一度8000H-FFFFHに一時ハンドラを置き、
+    ;   そこから本来のアドレスに飛んでやる(飛んだ先からはRETで返る必要がある)
+    ; ただし必ず8000H以降のアドレスにサウンドドライバがある場合は、
+    ; ↑の通常の処理で良い(その方が速いはずなので臨機応変に対応の事……)
+    LD (HL),E
+    INC HL
+    LD (HL),D
+
+    ; 汎用割り込み処理のジャンプ先にSOUNDDRV_EXECのアドレスを入れてやる
+    LD DE,SOUNDDRV_EXEC
+    LD HL,(NAME_SPACE_DEFAULT._ISRHANDLER)
+    LD (HL),E
+    INC HL
+    LD (HL),D
+
+    LD A,$C9        ; RETIをRETに書き換える
+    LD (SOUNDDRV_EXEC_END),A
+#ENDIF
 
     JR CTCCHECKEND
 NOCTC:
@@ -473,6 +519,7 @@ SOUNDDRV_RESUME_EXIT:
 ; DRIVER EXECUTE
 ; ====================================================================================================
 SOUNDDRV_EXEC:
+    DI
     PUSH AF
     PUSH HL
     PUSH DE
@@ -512,9 +559,12 @@ SOUNDDRV_EXIT:
     POP DE
     POP HL
     POP AF
+
     EI
+SOUNDDRV_EXEC_END:
+    ; RETになる可能性がある(S-OS turbo版)
     RETI
-;    RET
+
 ;    JP SOUNDDRV_H_TIMI_BACKUP
 #ENDLIB
 

@@ -1,0 +1,54 @@
+
+VSYNC_CHECK:
+  code: |
+    LD A,1AH
+    IN A,(01H)
+
+    LD HL,LASTVSYNCFLAG
+    XOR (HL)
+    RET P
+    XOR (HL)
+    LD (HL),A
+    RET M
+    ; LD HL,VSYNCCOUNTER
+    INC HL
+    INC (HL)
+
+    JP !VSYNC_PROC
+  works:
+    LASTVSYNCFLAG: 1
+    VSYNCCOUNTER: 1
+
+VSYNC:
+  calls:
+    - VSYNC_CHECK
+  code: |
+    ; HL = WAIT COUNT
+    VSYNC_LOOP:
+    LD A,(VSYNCCOUNTER)
+    CP L
+    JP NC,VSYNC_OVER
+    PUSH HL
+    CALL VSYNC_CHECK
+    POP HL
+    JP VSYNC_LOOP
+
+    VSYNC_OVER:
+    XOR A
+    LD (VSYNCCOUNTER),A
+
+    RET
+
+VSYNC1:
+  code: |
+    ; VSYNC
+    LD BC,$1a01
+    .LP1
+    DB $ED,$70  ; IN F,(C)
+    JP P,.LP1
+    DI
+    .LP2
+    DB $ED,$70
+    JP M,.LP2
+    EI
+    RET
