@@ -53,7 +53,16 @@ SOUNDDRV_INIT:
     PUSH IX
     PUSH IY
 
+
+    PUSH HL
 	CALL GICINI		                ; GICINI	PSGの初期化
+    POP HL
+
+    ; L = MODE
+    ;   0 = NON INTERRUPT 1 = USE CTC
+    LD A,L
+    OR A
+    JP Z,NOCTC
 
     DI
 
