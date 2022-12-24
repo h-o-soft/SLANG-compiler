@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.7.1
+SLANG Compiler (Z80) 0.7.2
 
 # 概要
 
@@ -319,6 +319,8 @@ slbuild.bat TEST.SL sos
 MIT
 
 # 更新履歴
+- Version 0.7.2
+  - コンパイラの更新ミスがあったのを急遽修正(速度を一定に保つ処理(自前割り込みの呼び出し)が正しく動きませんでした)
 - Version 0.7.1
   - X1turbo版S-OSにおいてPSG再生が出来ない問題を修正しました
   - PSG再生のテンポを割り込みを持たないX1においても一定に保てるよう対応しました(「X1におけるゲームループの処理」参照)
