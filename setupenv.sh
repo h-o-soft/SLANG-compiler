@@ -69,8 +69,8 @@ FILENAME=${DLPATH##*/}
 curl $DLPATH -fsLO
 tar zxvf $FILENAME
 rm $FILENAME
-rm ndcmsg.txt
 mv ndc $TOOLPATH
+mv ndcmsg.txt $TOOLPATH
 
 # HuDISKをダウンロード
 # curl https://github.com/BouKiCHi/HuDisk/raw/master/HuDisk.exe -OL
@@ -96,6 +96,7 @@ if [ $? -ne 0 ]; then
   Error
 fi
 unzip -xo $FILENAME
+chmod +x AILZ80ASM
 cp AILZ80ASM $TOOLPATH
 rm AILZ80ASM
 rm $FILENAME

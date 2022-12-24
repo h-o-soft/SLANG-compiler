@@ -7,8 +7,10 @@ createRelease() {
   cp ../../*.env .
   cp ../../*.yml .
   cp -r ../../extlib .
+  cp -r ../../examples .
   cp ../../slbuild.$2 .
   cp ../../copyruntime.$2 .
+  cp ../../setupenv.$2 .
   zip -r SLANG-compiler-$3-$1.zip * -x '*/.DS_Store'
   mv SLANG-compiler-$3-$1.zip ../../
   cd ../..
