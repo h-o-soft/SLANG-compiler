@@ -356,7 +356,33 @@ namespace SLANGCompiler.SLANG
                             // ランタイム関数「CALL」については最適化のため差し替えを行う(無駄なレジスタ代入を避ける)
                             genCall(writer);
                         } else {
-                            writer.Write(info.Code);
+                            foreach(var codeLine in info.Code.Split('\n'))
+                            {
+                               if(codeLine.Contains("!"))
+                                {
+                                    if(codeLine.ToUpper().Contains("CALL") || codeLine.ToUpper().Contains("JP"))
+                                    {
+                                        var callCodes = codeLine.Trim().Split(new char[]{' ','\t'});
+                                        if(callCodes.Length > 1)
+                                        {
+                                            // シンボル名に差し替える
+                                            var symbolName = callCodes[1].Replace("!","");
+                                            var symbol = symbolTableManager.SearchSymbol(symbolName);
+                                            if(symbol != null)
+                                            {
+                                                writer.WriteLine($" {callCodes[0]} " + symbol.LabelName);
+                                            } else {
+                                                // エラーにしたいが、まあアセンブラでエラー出るからいいか
+                                                writer.WriteLine(codeLine);
+                                            }
+                                        }
+                                    } else {
+                                        writer.WriteLine(codeLine);
+                                    }
+                                } else {
+                                    writer.WriteLine(codeLine);
+                                }
+                            }
                         }
                         writer.WriteLine("");
 
