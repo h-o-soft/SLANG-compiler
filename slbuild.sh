@@ -67,7 +67,7 @@ RUNADR=3000
 TOOLPATH=${CURPATH}tools
 IMAGEPATH=${CURPATH}images
 
-SLANGCOMPILER="mono ${CURPATH}bin/SLANGCompiler.dll"
+SLANGCOMPILER="${CURPATH}bin/SLANGCompiler"
 ASM=$TOOLPATH/AILZ80ASM
 
 EMUPATH=`readlink -f ~/emulator/x1/x1.exe`
