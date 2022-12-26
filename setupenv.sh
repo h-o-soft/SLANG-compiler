@@ -1,7 +1,13 @@
 #!/bin/sh
 
-TARGETENV="mac"
-# TARGETENV="linux"
+if [ $# -eq 0 ]; then
+  echo SLANG-compiler setup batch v.1.0
+  echo  setupenv.sh envname[mac / linux]
+  exit 1
+fi
+
+# mac or linux
+TARGETENV=$1
 
 function Error()
 {

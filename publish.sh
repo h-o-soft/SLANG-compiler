@@ -8,6 +8,8 @@ createRelease() {
   cp ../../*.yml .
   cp -r ../../extlib .
   cp -r ../../examples .
+  cp -r ../../env .
+  cp -r ../../images .
   cp ../../slbuild.$2 .
   cp ../../copyruntime.$2 .
   cp ../../setupenv.$2 .
