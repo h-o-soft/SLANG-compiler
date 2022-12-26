@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# emulator path
+EMUPATH=`readlink -f ~/emulator/x1/x1.exe`
+EMUPATH=`readlink -f ~/Emus/X1/x1.exe`
+MSXEMUPATH=`readlink -f /Applications/openMSX.app/Contents/MacOS/openmsx`
+
 function Launch() {
   cd $CURPATH
 
@@ -19,7 +24,7 @@ function LaunchMSX() {
 }
 
 function Error() {
-  echo ERROR!
+  echo ERROR! $1
   cd $CURPATH
   exit 1
 }
@@ -29,6 +34,15 @@ if [ $# -eq 0 ]; then
   echo  slbuild.bat SLANGSource.SL
   exit 1
 fi
+
+if [ -z $EMUPATH ]; then
+  Error "emulator not found"
+fi
+
+# where $MSXEMUPATH
+# if [ $? -ne 0 ]; then
+#   EmuError
+# fi
 
 # program info
 CURPATH=$(cd $(dirname $0);pwd)/
@@ -70,8 +84,6 @@ IMAGEPATH=${CURPATH}images
 SLANGCOMPILER="${CURPATH}bin/SLANGCompiler"
 ASM=$TOOLPATH/AILZ80ASM
 
-EMUPATH=`readlink -f ~/emulator/x1/x1.exe`
-MSXEMUPATH=`readlink -f /Applications/openMSX.app/Contents/MacOS/openmsx`
 
 EMULATOR="wine $EMUPATH"
 MSXEMULATOR="$MSXEMUPATH"
@@ -91,12 +103,12 @@ cd $PROGDIR
 
 $SLANGCOMPILER ${PROG}.${PROGEXT} -E $TARGETENV $ADDLIB
 if [ $? -ne 0 ]; then
-  Error
+  Error ""
 fi
 
 $ASM $PROG.ASM -sym -lst -bin -f
 if [ $? -ne 0 ]; then
-  Error
+  Error ""
 fi
 
 if [ $CHECKCPM -gt 0 ]; then
