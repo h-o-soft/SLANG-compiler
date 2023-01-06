@@ -598,24 +598,13 @@ namespace SLANGCompiler.SLANG
                                 case Opcode.Or:
                                 case Opcode.Land:
                                 case Opcode.Lor:
-                                    a.Left  = coerce(a.Left, OperatorType.Float);
-                                    a.Right = coerce(a.Right, OperatorType.Float);
-                                    a.OpType = OperatorType.Float;
-                                    a.TypeInfo = TypeInfo.FloatTypeInfo;
-                                    return a;
+                                    return makeNode1(Opcode.FtoW, OperatorType.Word, TypeInfo.WordTypeInfo, a);
                                 case Opcode.Plus:
                                 case Opcode.Minus:
                                 case Opcode.Bnot:
-                                    a.Left  = coerce(a.Left, OperatorType.Float);
-                                    a.OpType = OperatorType.Float;
-                                    a.TypeInfo = TypeInfo.FloatTypeInfo;
-                                    return a;
+                                    return makeNode1(Opcode.FtoW, OperatorType.Word, TypeInfo.WordTypeInfo, a);
                                 case Opcode.Cond:
-                                    a.Right  = coerce(a.Right, OperatorType.Float);
-                                    a.Third = coerce(a.Third, OperatorType.Float);
-                                    a.OpType = OperatorType.Float;
-                                    a.TypeInfo = TypeInfo.FloatTypeInfo;
-                                    return a;
+                                    return makeNode1(Opcode.FtoW, OperatorType.Word, TypeInfo.WordTypeInfo, a);
                                 case Opcode.PortAccess:
                                     return a;
                                 case Opcode.DeBool:
