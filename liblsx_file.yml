@@ -128,8 +128,7 @@ FSEEK:
 
     LD A,(HL)
     INC HL
-    SCF
-    SBC A,C
+    SUB C
     LD (DE),A
     INC DE
 
