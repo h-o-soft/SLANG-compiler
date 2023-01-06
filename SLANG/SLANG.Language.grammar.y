@@ -312,14 +312,14 @@ for_head
               int label;
 
               $$.Label = label = genNewLabel(); genNewLabel(); genNewLabel();
-              $$.Expr = expIdent($2);
+              $$.Expr = expIdent($2, true);
               $$.CheckExpr = $6;
               $$.Op = $5;
 
               pushLabels();
               breakLabel = label + 2;
               contLabel  = label + 1;
-              genexp(expAssign(expIdent($2), $4));
+              genexp(expAssign(expIdent($2, true), $4));
               genlabel(label);
               resetHeap();
        }

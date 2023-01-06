@@ -262,7 +262,7 @@ namespace SLANGCompiler.SLANG
         }
 
         // 識別子式を作る(存在しない場合は一時定義関数として定義する)
-        public Expr expIdent(string name)
+        public Expr expIdent(string name, bool notFoundError = false)
         {
 
             SymbolTable table;
@@ -278,6 +278,12 @@ namespace SLANGCompiler.SLANG
             Expr e;
             if(table == null)
             {
+                // 存在しない場合はエラーとする
+                if(notFoundError)
+                {
+                    Error($"variable {name} is not defined.");
+                    return null;
+                }
                 // 宣言されていない識別子は一時的にConstの0値として設定しておく(ConstValueのSymbolStringに識別子名を入れておく(暫定))
                 // 一時定義関数として自動定義してやり、定義時に差し替える。定義されなかった場合はエラーとなる。
                 if(isConstMode)
