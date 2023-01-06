@@ -2095,9 +2095,9 @@ FCOS:
     f24cos:
     ;cos(AHL) ==> AHL
 
-    ;cos(0) == 0
+    ;cos(0) == 0 bug
     add a,a
-    ret z
+    ;ret z
 
     ;cos(inf)==cos(NaN)==NaN
     rrca

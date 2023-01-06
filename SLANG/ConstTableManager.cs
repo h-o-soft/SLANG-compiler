@@ -129,6 +129,14 @@ namespace SLANGCompiler.SLANG
         }
 
         /// <summary>
+        /// CONST定義されたシンボルと値(float)を追加する
+        /// </summary>
+        public void Add(string name, float value)
+        {
+            constTableDictionary[name] = new ConstInfo(value);
+        }
+
+        /// <summary>
         /// CONST定義されたシンボルと値を追加する
         /// </summary>
         public void AddCode(string name, string codeName)

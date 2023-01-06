@@ -20,6 +20,10 @@ namespace SLANGCompiler.SLANG
             {
                 // 普通の数値
                 constTableManager.Add(symbolTree.IdentifierName, value.Value);
+            } else if(value.IsFloatValueConst())
+            {
+                // 普通の数値(Float)
+                constTableManager.Add(symbolTree.IdentifierName, value.GetConstFloatValue());
             } else if(value.Opcode == Opcode.Adr && value.Symbol.FunctionType == FunctionType.Machine){
                 // シンボル(関数ラベル)
                 // ランタイムにある場合は利用フラグを立てる
