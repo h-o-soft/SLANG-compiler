@@ -2,7 +2,6 @@
 
 # emulator path
 EMUPATH=`readlink -f ~/emulator/x1/x1.exe`
-EMUPATH=`readlink -f ~/Emus/X1/x1.exe`
 MSXEMUPATH=`readlink -f /Applications/openMSX.app/Contents/MacOS/openmsx`
 
 function Launch() {
