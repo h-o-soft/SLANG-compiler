@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.7.2
+SLANG Compiler (Z80) 0.7.3
 
 # 概要
 
@@ -319,6 +319,10 @@ slbuild.bat TEST.SL sos
 MIT
 
 # 更新履歴
+- Version 0.7.3
+  - FLOAT→WORDの自動キャストが正常に動かない場合があったのを修正
+  - CONSTでFLOAT値を定義出来るよう対応
+  - LSX-DodgersのFSEEK関数でファイル末尾への移動が正しくされない問題を修正
 - Version 0.7.2
   - コンパイラの更新ミスがあったのを急遽修正(速度を一定に保つ処理(自前割り込みの呼び出し)が正しく動きませんでした)
 - Version 0.7.1
