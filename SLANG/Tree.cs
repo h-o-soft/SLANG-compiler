@@ -272,6 +272,8 @@ namespace SLANGCompiler.SLANG
         {
             if(address != null)
             {
+                // 特殊仕様。シンボル内の ^ は .に変換する(これによりAILZ80ASMのnamespaceに対応する)
+                address = address.Replace("^",".");
                 this.Address = new ConstInfo(address, false);
             }
             if(initialValue != null)
