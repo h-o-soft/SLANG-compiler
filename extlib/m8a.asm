@@ -154,6 +154,20 @@ DRAW_BG:
 ;------------------------------------------------------------------------------
 ;;;;	LD	HL, BUFAD
 
+PALETON:
+	LD	BC, $10AA
+	OUT	(C), C
+	LD	BC, $11CC
+	OUT	(C), C
+	LD	BC, $12F0
+	OUT	(C), C
+	INC	B
+	DB	$ED, $71	; OUT (C),0
+
+	LD	A,0
+	LD	BC,$1FD0
+	OUT	(C),A
+
 	LD	A, (HL)		; ïùÅiâ°ï˚å¸åJÇËï‘ÇµêîÅj
 	INC	HL
 	LD	(REWRITE00+1), A
