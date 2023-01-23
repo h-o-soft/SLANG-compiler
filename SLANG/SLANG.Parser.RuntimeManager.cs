@@ -27,6 +27,7 @@ namespace SLANGCompiler.SLANG
             public string initializeCode = null;
             public string libName = null;
             public string extlib = null;
+            public int align = 0;
         }
 
         /// <summary>
@@ -44,11 +45,13 @@ namespace SLANGCompiler.SLANG
                 public string InitializeCode { get; set; }
                 public string[] InsideCalls { get; private set; }
 
+                public int AlignValue { get; private set; }
+
                 public Dictionary<string, int> WorkDictionary { get; private set; }
 
                 public string NamespaceName { get; set; }
 
-                public RuntimeInfo(string name, string insideName, bool used, string code, string initializeCode, string[] insideCalls, Dictionary<string, int> workDictionary, string namespaceName)
+                public RuntimeInfo(string name, string insideName, bool used, string code, string initializeCode, string[] insideCalls, Dictionary<string, int> workDictionary, string namespaceName, int alignValue)
                 {
                     Name = name;
                     InsideName = insideName;
@@ -58,6 +61,7 @@ namespace SLANGCompiler.SLANG
                     InsideCalls = insideCalls;
                     WorkDictionary = workDictionary;
                     NamespaceName = namespaceName;
+                    AlignValue = alignValue;
                 }
 
                 public void Use()
@@ -158,10 +162,11 @@ namespace SLANGCompiler.SLANG
                 var code = runtimeCode.code;
                 var libName = runtimeCode.libName;
                 var extlib = runtimeCode.extlib;
+                var alignValue = runtimeCode.align;
                 var initializeCode = runtimeCode.initializeCode;
                 bool noindent = false;
 
-                var info = new RuntimeInfo(label, runtimeCode.insideName, false, null, null, runtimeCode.calls, runtimeCode.works, libName);
+                var info = new RuntimeInfo(label, runtimeCode.insideName, false, null, null, runtimeCode.calls, runtimeCode.works, libName, alignValue);
 
                 if(string.IsNullOrEmpty(code) && !string.IsNullOrEmpty(extlib))
                 {
@@ -350,6 +355,10 @@ namespace SLANGCompiler.SLANG
                         }
 
                         ChangeNamespace(info.NamespaceName, writer);
+                        if(info.AlignValue != 0)
+                        {
+                            writer.Write($"ALIGN {info.AlignValue}\n");
+                        }
                         writer.Write($"{name}:\n");
                         if(info.Name == "CALL")
                         {
