@@ -430,9 +430,9 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
                 LocationInit();
                 currentFileName = fName;
             }
-            catch
+            catch(Exception e)
             {
-                Console.Error.WriteLine("#include, could not open file \"{0}\"", fName);
+                throw new FileNotFoundException("#include, could not open file \"" + fName + "\"");
             }
     }
 

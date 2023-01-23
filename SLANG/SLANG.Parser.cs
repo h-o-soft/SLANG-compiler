@@ -528,8 +528,8 @@ namespace SLANGCompiler.SLANG
                 Console.WriteLine($"{ErrorCount} error(s)");
             } catch(Exception e)
             {
-                SystemError(e.ToString());
-                //Console.Error.WriteLine($"fatal error : " + e.ToString());
+                // SystemError(e.ToString());
+                Console.Error.WriteLine("fatal error: " + e.Message);
             }
         }
     }
