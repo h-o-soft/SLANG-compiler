@@ -413,27 +413,45 @@ RND:
   calls:
     - MULHLDE
     - MODHLDE
+  initialize_code: |
+    LD HL,$E933
+    LD (RND_SEED2),HL
+    LD A,R
+    LD L,A
+    LD (RND_SEED1),A
+    XOR H
+    LD (RND_SEED1+1),A
+    RET
   code: |
     PUSH HL
-    LD HL,(wRND)
-    LD DE,$0383
-    CALL MULHLDE
-    LD A,L
-    LD L,H
-    LD A,R
-    ADD A,H
-    LD H,A
-    LD (wRND),HL
+    LD HL,(RND_SEED1)
+    LD B,H
+    LD C,L
+    ADD HL,HL
+    ADD HL,HL
+    INC L
+    ADD HL,BC
+    LD (RND_SEED1),HL
+    LD HL,(RND_SEED2)
+    ADD HL,HL
+    SBC A,A
+    AND %00101101
+    XOR L
+    LD L,A
+    LD (RND_SEED2),HL
+    ADD HL,BC
     POP DE
     LD A,D
     OR E
-    JR NZ,.rnd1
+    JR NZ,.RND1
     EX DE,HL
     RET
-    .rnd1
+    .RND1
     JP MODHLDE
-    wRND:
-    DW $E933
+    RET
+  works:
+    RND_SEED1: 2
+    RND_SEED2: 2
 
 VTOS:
   function_type: Machine
