@@ -978,7 +978,7 @@ namespace SLANGCompiler.SLANG
                 }
 
                 // X*X は最適化する
-                if(left.IsVariable() && right.IsVariable() && left.Symbol == right.Symbol)
+                if(left.IsVariable() && right.IsVariable() && left.Left.Symbol == right.Left.Symbol)
                 {
                     genexp(left);
                     genRuntimeCall("f24sqr");
