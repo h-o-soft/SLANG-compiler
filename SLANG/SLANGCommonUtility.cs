@@ -6,6 +6,8 @@ namespace SLANGCompiler.SLANG
 {
     public class SLANGCommonUtility
     {
+        private static string currentSourcePath;
+
         public static int Float24ToInt(int f24)
         {
             int a  = (f24 >> 16) & 0xff;
@@ -166,6 +168,32 @@ namespace SLANGCompiler.SLANG
             }
             return result.ToArray();
         }
+
+        public static void SetCurrentSourcePath(string fileName)
+        {
+            currentSourcePath = fileName;
+        }
+
+        public static string GetSourcePath(string fileName)
+        {
+            // その場所にあればそのまま返す
+            if(File.Exists(fileName))
+            {
+                return fileName;
+            }
+
+            // ソースを開いたパスを探す
+            var basePath = Path.GetDirectoryName(currentSourcePath);
+            var searchPath = Path.Combine(basePath, fileName);
+            if(File.Exists(searchPath))
+            {
+                return searchPath;
+            }
+
+            // Configパスを探す
+            return GetConfigPath(fileName);
+        }
+
         public static string GetConfigPath(string fileName)
         {
             if(!File.Exists(fileName))

@@ -500,6 +500,9 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         public void Parse(string fileName)
         {
+
+            SLANGCommonUtility.SetCurrentSourcePath(fileName);
+
             Console.WriteLine($"; source file {fileName} opened\n");
             try
             {

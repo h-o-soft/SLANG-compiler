@@ -101,6 +101,8 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
     }
 
     Stack<LocationInfo> locationStack = new Stack<LocationInfo>();
+    Stack<bool> skipStack = new Stack<bool>();
+    int preIfSkipCount = 0;
     
     private class ContextInfo
     {
@@ -196,11 +198,17 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
 
 /* #IF #ELSE #ENDIF */
 {PREIF}[ \t]+{dotchr}*       {
+    if(preIfSkipCount != 0)
+    {
+        // 来ないはず
+        preIfSkipCount++;
+    } else {
         if(CheckConst(yytext)){
             BEGIN(INITIAL);
         } else {
             BEGIN(PREIFSKIP);
         };
+    }
         }
 
 {PREEND}                    { BEGIN(SKIPEOL); }
@@ -208,11 +216,21 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
 
 <PREIFSKIP>[^\n]            {}
 <PREIFSKIP>\n               { LocationNextLine(); }
+<PREIFSKIP>{PREIF}          { preIfSkipCount++; }
 <PREIFSKIP>{PREELSE}        BEGIN(SKIPEOL);
 <PREIFSKIP>{PREEND}         BEGIN(SKIPEOL);
 
 <SKIPEOL>[^\n]      {}
-<SKIPEOL>\n         { BEGIN(INITIAL); LocationNextLine(); }
+<SKIPEOL>\n         {
+    if(preIfSkipCount == 0)
+    {
+        BEGIN(INITIAL);
+    } else {
+        BEGIN(PREIFSKIP);
+        preIfSkipCount--;
+    }
+    LocationNextLine();
+   }
 
 /* #ASM */
 {ASM}{Space}*{Eol}  {
@@ -400,7 +418,9 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
                   fName = fName.Trim('"');
                 }
                 BufferContext savedCtx = MkBuffCtx();
-                var stream = new FileStream(fName, FileMode.Open);
+
+                var filePath = SLANGCommonUtility.GetSourcePath(fName);
+                var stream = new FileStream(filePath, FileMode.Open);
                 var charsetDetectedResult = UtfUnknown.CharsetDetector.DetectFromStream(stream);
                 stream.Position = 0;
                 SetSource(stream, CodePageHandling.GetCodePage(charsetDetectedResult.Detected.EncodingName));
