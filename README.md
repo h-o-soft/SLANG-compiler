@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.7.3
+SLANG Compiler (Z80) 0.8.0
 
 # 概要
 
@@ -18,7 +18,7 @@ SLANG Compiler (Z80) 0.7.3
 ```
 SLANGCompiler filename [-L library-name] [-O output-path]
 
-SLANG Compiler 0.6.0
+SLANG Compiler 0.8.0
 Copyright (c) 2022 OGINO Hiroshi / H.O SOFT
 
   -E, --env               Environment name.
@@ -140,6 +140,13 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
   * M8A形式の画像表示ライブラリ
   * 実体は extlib/m8a.asmになります
 
+## 汎用ライブラリ
+* libcompress.yml
+  * 圧縮データの解凍ライブラリ。lze、LZEe、LZEee f5、ZX0に対応しています。
+* libsoroban.yml
+  * 実数演算ライブラリSOROBAN
+  * SOROBAN.LIB経由で利用します
+
 ## X1関連ライブラリ
 * libx1_base.yml
   * X1固有のライブラリ
@@ -157,6 +164,9 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
   * PSG音楽/効果音再生ライブラリ
   * [PSGSoundDriver for MSX](https://github.com/aburi6800/msx-PSGSoundDriver)のX1カスタマイズ版です。開発者のあぶり6800さん、ありがとうございます！
   * LSX-Dodgers / S-OS両対応になっています
+* libx1_magic.yml
+  * グラフィックパッケージMAGICのライブラリです
+  * ^IX にMAGICのコマンドを保存したアドレスを代入後に CALLMAGIC() という関数を呼ぶ事で処理が行われます
 
 ## MSX-DOS2関連ライブラリ
 * libmsx2_file.yml
@@ -319,6 +329,31 @@ slbuild.bat TEST.SL sos
 MIT
 
 # 更新履歴
+- Version 0.8.0
+  - MAGICライブラリ追加
+    - ^IXにコマンドのアドレスを入れてCALLMAGIC()を呼ぶとMAGICの処理を行います
+    - CALLMAGIC()の呼び出しが1つでもあるとMAGIC本体がアセンブラソースに含まれます
+  - SOROBANライブラリ追加
+    - SOROBAN.LIBを#INCLUDEで読み込んで使ってください
+    - 読み込みを行うとSOROBAN本体がアセンブラソースに含まれます
+  - GRAPH.LIB、GRAPHF.LIB追加
+    - V2.1のSLANGクロスコンパイラ対応版の通常のGRAPH.LIBと、V2.1のSOROBAN依存部分をFLOAT型に差し替えたGRAPHF.LIBが入っているので、お好きな方を#INCLUDEしてお使いください
+    - また、直接8色の指定をしたい方のために、例えば @LINEC(X1,Y1,X2,Y2,COL) のように0～7の色を指定出来る関数を追加しています(CONST値_COLORに1を入れてください)
+      - _COLORを2にすると、@LINEなど従来の関数をソースから除外します(@LINEC等の色指定可能な関数だけが残ります)。用途により使い分けてください
+  - 圧縮データの展開ライブラリを追加
+    - LZE_DECODE(FROM,TO) ※ lze
+    - LZEE_DECODE(FROM,TO) ※ LZEe
+    - LZEEE_DECODE(FROM,TO) ※ LZEee f5
+    - ZX0_DECODE(FROM,TO)
+    - 的な感じです(雑)
+  - RND()の乱数ロジックを変更
+  - M8A画像が実機で表示されない問題を修正
+  - ライブラリ(YAML)にALIGNを指定出来るよう対応
+  - #IF内に#IFがあった場合不正に処理が行われてしまう問題を修正
+  - ソースコードの読み込みフォルダを変更(ソースパス→カレント→configのパス→config内のextlibパス)
+  - 変数定義時のアドレス指定内の「^」の左をAILZ80ASMのネームスペースとして扱うよう対応
+    - VAR WORD _ZAHYO[255][2]:MAGIC^OBJ_BUF; といった感じです
+  - FLOAT同士の掛け算の最適化に失敗する事がある問題を修正
 - Version 0.7.3
   - FLOAT→WORDの自動キャストが正常に動かない場合があったのを修正
   - CONSTでFLOAT値を定義出来るよう対応
