@@ -1,0 +1,11 @@
+
+MAGICBASE:
+    lib_name: MAGIC
+    extlib: MAGICX1.ASM:MAGICLIB
+
+CALLMAGIC:
+    calls:
+      - MAGICBASE
+      - CALL
+    lib_name: MAGIC
+    extlib: MAGICX1.ASM:CALLMAGIC
