@@ -1,0 +1,34 @@
+
+SOROBAN:
+  calls:
+    - SOROBANWORK
+  lib_name: SOROBANLIB
+  extlib: SOROBAN.ASM:SOROBANLIB
+
+SOROBANWORK:
+  lib_name: SOROBANLIB
+  code: |
+    ;
+  works:
+    SORO_FUGOU1: 1
+    SORO_SHISU1: 1
+    SORO_KARISU1: 8
+    SORO_FUGOU2: 1
+    SORO_SHISU2: 1
+    SORO_KARISU2: 8
+    SORO_VAR_X: 8
+    SORO_VAR_XX: 8
+    SORO_VAR_Y: 8
+    SORO_JOUSU: 8
+    SORO_SHOU: 8
+    SORO_MOD_X: 8
+    SORO_ADDDEC_X: 8
+    SORO_FRAC_X: 8
+    SORO_CINT_X: 8
+    SORO_CNT: 1
+    SORO_STF_HL: 2
+    SORO_TENSHISUU: 1
+    SORO_TAN_X: 8
+    SORO_POW_FUGO: 1
+    SORO_LOG_SHISU: 1
+

@@ -1,0 +1,184 @@
+/***************************************
+
+  SLANG ﾖｳ ﾌﾄﾞｳ ｼｮｳｽｳﾃﾝ ｴﾝｻﾞﾝ ﾗｲﾌﾞﾗﾘ
+
+        SOROBAN.LIB
+
+***************************************/
+//
+CONST
+//
+//SOROBAN ﾉ ID ﾊﾞﾝｺﾞｳ ﾊ 1
+//
+  @@@=SOROBAN,
+  // @@@=$9F00,
+//
+//
+  @SNG=5-1,@DBL=8-1,
+//
+//
+  @@TEMP=[0,0,0,0,0,0,0,0],
+//
+//(A,X)
+//
+  @@BGN2=[
+    $EB,         (* EX   DE,HL     *)
+    $CD,%@@@+$02,(* CALL #MOVE     *)
+    $EB,         (* EX   DE,HL     *)
+    $C9          (* RET            *)
+  ],
+//
+//(A,X,Y)
+//
+  @@BGN3=[
+    $E5,         (* PUSH HL        *)
+    $21,%@@TEMP, (* LD   HL,@@TEMP *)
+    $CD,%@@BGN2, (* CALL @@BGN2    *)
+    $50,$59,     (* LD   DE,BC     *)
+    $C1,         (* POP  BC        *)
+    $C9          (* RET            *)
+  ],
+//
+  @@END3=[
+    $50,$59,     (* LD   DE,BC     *)
+    $CD,%@@@+$02,(* CALL #MOVE     *)
+    $EB,         (* EX   DE,HL     *)
+    $C9          (* RET            *)
+  ];
+//
+//
+MACHINE
+  @SINGLE(),@DOUBLE(),
+//
+  @CVFTU(1),@CVFTI(1),@CVFTS(1),
+//
+  @MOVE(2) :@@BGN2,
+  @SWAP(2) :@@@+$05,
+  @CVUTF(2):@@@+$11,
+  @CVITF(2):@@@+$14,
+//
+  @CMP(2),
+  @NEG(2),
+  @INT(2),@FIX(2),@FRAC(2),@CINT(2),
+  @SQR(2),
+  @SIN(2),@COS(2),@TAN(2),@ATN(2),
+  @EXP(2),@LOG(2),
+  @PAI(2),@RAD(2),@ABS(2),@SGN(2),
+//
+  @CVSTF(2),@CVDBL(2),@CVSNG(2),
+//
+  @ADD(3),@SUB(3),
+  @MUL(3),@DIV(3),@IDIV(3),
+  @MOD(3),@POW(3);
+//
+//  ﾋｷｽｳ ﾅｼ
+//
+@SINGLE()[CODE($3E,$05,$32,%@@@+$00);]
+@DOUBLE()[CODE($3E,$08,$32,%@@@+$00);]
+//
+//  ﾋｷｽｳ 1 ｺ
+//
+//  ｾｲｽｳﾁ ｦ ｶｴｽ
+//
+//  ﾚｲ) UNS=@CVFTU(float); (* ﾑﾌｺﾞｳ   *)
+//      INT=@CVFTI(float); (* ﾌｺﾞｳ ﾂｷ *)
+//
+@CVFTU(1)[CODE($CD,%@@@+$1A,$EB);]
+@CVFTI(1)[CODE($CD,%@@@+$1D,$EB);]
+//
+//  @CVFTS(float)
+//
+//  ﾚｲ) PRINT( MSX$( @CVFTS(x) ) );
+//
+@CVFTS(1)
+  ARRAY BUFF[34];
+[
+  CODE(
+    $11,%BUFF,   (* LD   DE,BUFF *)
+    $CD,%@@@+$17,(* CALL #CVFTS  *)
+    $EB          (* EX   DE,HL   *)
+  );
+]
+//
+//  ﾋｷｽｳ 2 ｺ (X,Y)
+//
+//    -1,0,1 ﾉ ｲｽﾞﾚｶ ｦ ｶｴｽ
+//
+@CMP(2)
+[
+ CODE(
+    $CD,%@@@+$32,(* CALL #CMP        *)
+    $6F,         (* LD   L,A         *)
+    $38,$01,$AF, (* IF NC THEN XOR A *)
+    $67          (* LD   H,A         *)
+  );
+]
+//
+//  ﾋｷｽｳ 2 ｺ (A,X)
+//
+//    A = func( X )
+//
+@NEG(2) [CODE($CD,%@@BGN2,$CD,%@@@+$35);]
+@INT(2) [CODE($CD,%@@BGN2,$CD,%@@@+$38);]
+@FIX(2) [CODE($CD,%@@BGN2,$CD,%@@@+$3B);]
+@FRAC(2)[CODE($CD,%@@BGN2,$CD,%@@@+$3E);]
+@CINT(2)[CODE($CD,%@@BGN2,$CD,%@@@+$41);]
+@SQR(2) [CODE($CD,%@@BGN2,$CD,%@@@+$44);]
+@SIN(2) [CODE($CD,%@@BGN2,$CD,%@@@+$47);]
+@COS(2) [CODE($CD,%@@BGN2,$CD,%@@@+$4A);]
+@TAN(2) [CODE($CD,%@@BGN2,$CD,%@@@+$4D);]
+@ATN(2) [CODE($CD,%@@BGN2,$CD,%@@@+$50);]
+@EXP(2) [CODE($CD,%@@BGN2,$CD,%@@@+$53);]
+@LOG(2) [CODE($CD,%@@BGN2,$CD,%@@@+$56);]
+@PAI(2) [CODE($CD,%@@BGN2,$CD,%@@@+$5C);]
+@RAD(2) [CODE($CD,%@@BGN2,$CD,%@@@+$5F);]
+@ABS(2) [CODE($CD,%@@BGN2,$CD,%@@@+$62);]
+@SGN(2) [CODE($CD,%@@BGN2,$CD,%@@@+$65);]
+//
+//  @CVSTF(float,string)
+//
+@CVSTF(2)[CODE($CD,%@@@+$0E,$EB);]
+//
+//  @CVDBL(double,single)
+//
+@CVDBL(2)
+[
+  CODE(
+    $CD,%@@BGN2, (* CALL @@BGN2    *)
+    $CD,%@@@+$08 (* CALL #CVDBL    *)
+  );
+]
+//
+//  @CVSNG(single,double)
+//
+@CVSNG(2)
+[
+  CODE(
+    $E5,         (* PUSH HL        *)
+    $E5,         (* PUSH HL        *)
+    $EB,         (* EX   DE,HL     *)
+    $11,%@@TEMP, (* LD   DE,@@TEMP *)
+    $01,$08,$00, (* LD   BC,8      *)
+    $ED,$B0,     (* LDIR           *)
+    $21,%@@TEMP, (* LD   HL,@@TEMP *)
+    $CD,%@@@+$0B,(* CALL #CVSNG    *)
+    $D1,         (* POP  DE        *)
+    $06,$05,     (* LD   C,5       *)
+    $ED,$B0,     (* LDIR           *)
+    $E1          (* POP  HL        *)
+  );
+]
+//
+//  ﾋｷｽｳ 3 ｺ (A,X,Y)
+//
+//    A =  X ? Y
+//
+@ADD(3) [CODE($CD,%@@BGN3,$CD,%@@@+$20,$CD,%@@END3);]
+@SUB(3) [CODE($CD,%@@BGN3,$CD,%@@@+$23,$CD,%@@END3);]
+@MUL(3) [CODE($CD,%@@BGN3,$CD,%@@@+$26,$CD,%@@END3);]
+@DIV(3) [CODE($CD,%@@BGN3,$CD,%@@@+$29,$CD,%@@END3);]
+@IDIV(3)[CODE($CD,%@@BGN3,$CD,%@@@+$2C,$CD,%@@END3);]
+@MOD(3) [CODE($CD,%@@BGN3,$CD,%@@@+$2F,$CD,%@@END3);]
+@POW(3) [CODE($CD,%@@BGN3,$CD,%@@@+$59,$CD,%@@END3);]
+
+/////////////////////////////////////////////////////
