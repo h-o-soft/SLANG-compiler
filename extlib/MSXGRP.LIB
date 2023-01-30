@@ -1,0 +1,161 @@
+
+CONST MODE_0 = 0x6C, MODE_1 = 0x6F, MODE_2 = 0x72, MODE_3 = 0x75;
+CONST SETGRP = 0x7E;
+CONST MODE2_ATTR = 0x2000;
+
+CONST SPRITE_DEFAULT = 0, SPRITE_SCALED = 1, SPRITE_LARGE = 2;
+
+CONST VRAM_START=0x1800, VRAM_NONE=0x20, VRAM_WIDTH=32, VRAM_HEIGHT=24;
+
+// スプライト管理関連
+CONST SPMAN_PAT_UNUSED=0xff, SPMAN_MAX_SPRITES=32, SPMAN_MAX_PATTERNS=64;
+CONST SPR_HIDE = { 208, 0, 0, 0 };
+VAR SPR_POINT;
+VAR SP_LAST_SPRITE, SP_LAST_FIXED_SPRITE, SP_IDX;
+ARRAY BYTE SP_FIXED[SPMAN_MAX_SPRITES*4];
+ARRAY BYTE SP_BUFFER[SPMAN_MAX_SPRITES * 2 * 4];
+ARRAY BYTE SP_PAT_MAP[SPMAN_MAX_PATTERNS];
+ARRAY BYTE SP_LAST_PAT;
+
+MSX_GRPINIT()
+{
+    // MODE_1(BIOS / INIT32 : SCREEN 1、32x24)に切り替えてから
+    MSX_CALLBIOS(MODE_1);
+    // VDPのみをGRAPHIC1モード（SCREEN 2）にする
+    MSX_CALLBIOS(SETGRP);
+
+    // F920Hの中の0x1BBFからデフォルトフォントを拾って定義する
+    MSX_VWRITE(MEMW[0xF920], 0x0800, 0x800);
+    MSX_VWRITE(MEMW[0xF920], 0x1000, 0x800);
+
+    // カラーテーブルの前景色を15(白)、背景色を0(黒)にする
+    MSX_VFILL(MODE2_ATTR, 0xF0, 0x17FF);
+}
+
+SET_CLICK(FLG)
+{
+    MEM[$f3db] = FLG;
+}
+
+
+SET_SPRITE_MODE(MODE)
+VAR M;
+{
+    M = GET_VDP_REG(1);
+    SET_VDP_REG(1, (M AND 0xFC) OR MODE);
+}
+
+SET_SPRITE_16(HANDLE, DATA)
+{
+    MSX_VWRITE_DIRECT(DATA, 0x3800 + (HANDLE << 5), 32);
+}
+
+
+////////////////////////////////////////////////////
+// スプライトマネージャ (フルアセンブラで書き直した方が良さそう)
+
+// スプライトマネージャ初期化
+SPMAN_INIT()
+{
+    SP_LAST_PAT = 0;
+    MEMSET(SP_PAT_MAP, SPMAN_PAT_UNUSED, SPMAN_MAX_PATTERNS);
+    SPMAN_SPRITE_FLUSH();
+    SPMAN_HIDE_ALL_SPRITES();
+}
+
+// スプライト状態初期化(非表示)
+SPMAN_SPRITE_FLUSH()
+{
+    SP_LAST_FIXED_SPRITE = 0;
+    SP_LAST_SPRITE = 0;
+}
+
+// 16x16スプライトの定義
+SPMAN_ALLOC_PAT(TP, DATA, LEN, FLIP)
+VAR I;
+{
+
+    IF (SP_PAT_MAP[TP] == SPMAN_PAT_UNUSED)
+    {
+        SP_PAT_MAP[TP] = SP_LAST_PAT;
+        LEN--;
+        FOR I = 0 TO LEN
+        {
+            IF (FLIP)
+            {
+                // 左右反転のパターン定義
+                SET_SPRITE_16HFLIP(SP_LAST_PAT, DATA);
+            } ELSE {
+                SET_SPRITE_16(SP_LAST_PAT, DATA);
+            }
+
+            DATA += 32;
+            SP_LAST_PAT++;
+        }
+    }
+
+    RETURN SP_PAT_MAP[TP] * 4;
+}
+
+// 固定(優先度の高い)スプライトの描画予約
+SPMAN_ALLOC_FIXED_SPRITE(SPADR)
+{
+    MEMCPY(&SP_FIXED[SP_LAST_FIXED_SPRITE << 2], SPADR, 4);
+    SP_LAST_FIXED_SPRITE++;
+}
+
+// 通常スプライトの描画予約
+SPMAN_ALLOC_SPRITE(SPADR)
+{
+    MEMCPY(&SP_BUFFER[SP_LAST_SPRITE << 2], SPADR, 4);
+    SP_LAST_SPRITE++;
+}
+
+// 描画予約スプライトの描画
+SPMAN_UPDATE()
+VAR ADDCNT;
+{
+    SPR_POINT = 0x1B00;
+
+    IF (SP_LAST_SPRITE != 0)
+    {
+        MEMCPY(&SP_BUFFER[SP_LAST_SPRITE << 2], SP_BUFFER, SP_LAST_SPRITE * 4);
+
+        ADDCNT = SP_LAST_SPRITE + SP_LAST_FIXED_SPRITE;
+        IF (ADDCNT > 4)
+            SP_IDX = SP_IDX + 2 - (ADDCNT AND 1); // OR (SP_LAST_FIXED_SPRITE AND 1);
+
+        IF (SP_IDX >= SP_LAST_SPRITE)
+            SP_IDX = SP_IDX - SP_LAST_SPRITE;
+    }
+    ELSE
+        SP_IDX = 0;
+
+    MEMCPY(&SP_BUFFER[(SP_IDX + SP_LAST_SPRITE) << 2], SPR_HIDE, 4);
+
+#ASM
+    HALT
+#END
+
+    IF (SP_LAST_FIXED_SPRITE != 0)
+    {
+        MSX_VWRITE_DIRECT(SP_FIXED, SPR_POINT, SP_LAST_FIXED_SPRITE * 4);
+        SPR_POINT = SPR_POINT + SP_LAST_FIXED_SPRITE * 4;
+    }
+    MSX_VWRITE_DIRECT(&SP_BUFFER[SP_IDX << 2], SPR_POINT, 4 + SP_LAST_SPRITE * 4);
+
+    SPMAN_SPRITE_FLUSH();
+}
+
+// 全スプライトを非表示
+SPMAN_HIDE_ALL_SPRITES()
+{
+    MSX_VWRITE(SPR_HIDE, 0x1B00, 4);
+}
+
+// VSYNCにて指定フレーム待つ
+WAIT_VSYNC(CNT)
+{
+    WHILE(MEMW[0xFC9E] < CNT){}
+    MEMW[0xFC9E] = 0;
+}
