@@ -1,0 +1,110 @@
+
+
+MSXGRPBASE:
+  calls:
+    - MSXGRPSYS
+    - MSXGRPWORK
+  lib_name: MSXLIB
+  code: |
+    CONSOLE_COLUMNS equ 32
+    CONSOLE_ROWS equ 24
+    CALSLT EQU $001C
+    WRTVRM EQU $004D
+    SETWRT EQU $0053
+    FILVRM equ $0056
+    LDIRVM equ $005C
+    INIGRP equ $0072
+    INIMLT equ $0075
+    CHGCLR equ $0062
+    INIT32 equ $006F
+    INITXT EQU $006C
+    WRTVDP EQU $0047
+
+    BDRCLR equ $F3EB
+    FORCLR equ $F3E9
+    BAKCLR equ $F3EA
+
+    RG0SAV EQU $F3DF
+    RG1SAV EQU $F3E0
+    RG2SAV EQU $F3E1
+    RG3SAV EQU $F3E2
+    RG4SAV EQU $F3E3
+    RG5SAV EQU $F3E4
+    RG6SAV EQU $F3E5
+    RG7SAV EQU $F3E6
+
+    VDP_DATA EQU $98
+    VDP_DATAIN EQU $98
+    VDP_CMD EQU $99
+    VDP_STATUS EQU $99
+
+MSX_CALLBIOS:
+  lib_name: MSXLIB
+  extlib: MSX.ASM:MSXCALLBIOS
+
+MSXGRPSYS:
+  lib_name: MSXLIB
+  extlib: MSX.ASM:MSXGRPBASE
+
+MSX_SET_COLOR:
+  calls:
+    - MSXGRPBASE
+    - MSXGRPWORK
+    - MSXGRPSYS
+  lib_name: MSXLIB
+  extlib: MSX.ASM:MSXSETCOLOR
+
+MSX_VWRITE:
+  calls:
+    - MSXGRPBASE
+    - MSXGRPWORK
+    - MSXGRPSYS
+  lib_name: MSXLIB
+  extlib: MSX.ASM:MSX_VWRITE
+
+MSX_VWRITE_DIRECT:
+  calls:
+    - MSXGRPBASE
+    - MSXGRPWORK
+    - MSXGRPSYS
+  lib_name: MSXLIB
+  extlib: MSX.ASM:MSX_VWRITE_DIRECT
+
+MSX_VFILL:
+  calls:
+    - MSXGRPBASE
+    - MSXGRPWORK
+    - MSXGRPSYS
+  lib_name: MSXLIB
+  extlib: MSX.ASM:MSX_VFILL
+
+GET_VDP_REG:
+  calls:
+    - MSXGRPBASE
+    - MSXGRPWORK
+    - MSXGRPSYS
+  lib_name: MSXLIB
+  extlib: MSX.ASM:GET_VDP_REG
+
+SET_VDP_REG:
+  calls:
+    - MSXGRPBASE
+    - MSXGRPWORK
+    - MSXGRPSYS
+  lib_name: MSXLIB
+  extlib: MSX.ASM:SET_VDP_REG
+
+SET_SPRITE_16HFLIP:
+  calls:
+    - MSXGRPBASE
+    - MSXGRPWORK
+    - MSXGRPSYS
+  lib_name: MSXLIB
+  extlib: MSX.ASM:SET_SPRITE_16HFLIP
+
+MSXGRPWORK:
+  lib_name: MSXLIB
+  code: |
+    ;
+  works:
+    VDP_ATTR: 1
