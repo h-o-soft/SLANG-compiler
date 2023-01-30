@@ -149,6 +149,10 @@ namespace SLANGCompiler.SLANG
                             }
                         }
                     }  
+                    if(!found)
+                    {
+                        throw new Exception($"could not found library label: {labelName}");
+                    }
                 }
                 return codeStr.ToString();
             }

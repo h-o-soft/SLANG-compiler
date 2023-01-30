@@ -870,7 +870,7 @@ namespace SLANGCompiler.SLANG
 
             if(expr.Opcode != Opcode.Indir)
             {
-                Error("&: l-value required : " + expr.Opcode + ":" + expr.Left.TypeInfo);
+                Error("&: l-value required : " + expr.Opcode + ":" + expr.Left?.TypeInfo);
                 return null;
             }
             return expr.Left;

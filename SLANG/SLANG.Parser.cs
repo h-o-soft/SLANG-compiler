@@ -233,7 +233,11 @@ namespace SLANGCompiler.SLANG
             }
             if(right == OperatorType.Constant)
             {
-                if(rightExpr.ConstValue.ConstInfoType == ConstInfoType.FloatValue)
+                if(rightExpr.Opcode == Opcode.Cond)
+                {
+                    // 三項演算子の場合は左の型を得る
+                    right = rightExpr.Left.OpType;
+                } else if(rightExpr.ConstValue.ConstInfoType == ConstInfoType.FloatValue)
                 {
                     right = OperatorType.Float;
                 }
@@ -529,7 +533,8 @@ namespace SLANGCompiler.SLANG
             } catch(Exception e)
             {
                 // SystemError(e.ToString());
-                Console.Error.WriteLine("fatal error: " + e.Message);
+                SystemError(e.ToString());
+                //Console.Error.WriteLine("fatal error: " + e.Message);
             }
         }
     }
