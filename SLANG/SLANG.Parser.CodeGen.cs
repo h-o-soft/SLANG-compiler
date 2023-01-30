@@ -439,6 +439,8 @@ namespace SLANGCompiler.SLANG
 
             // Byteへの代入である
             bool isByte = left.TypeInfo.GetDataSize() == TypeDataSize.Byte;
+            bool isWord = left.TypeInfo.GetDataSize() == TypeDataSize.Word;
+            bool isFloat = left.TypeInfo.GetDataSize() == TypeDataSize.Float;
 
             if(left.IsVariable())
             {
@@ -460,12 +462,27 @@ namespace SLANGCompiler.SLANG
                         gencode(" EX DE,HL\n");
                     }
                 } else {
-                    if(isByte)
+                    var symbol = left.Left.Symbol;
+                    if(symbol.SymbolClass == SymbolClass.Param || symbol.SymbolClass == SymbolClass.Local)
                     {
-                        gencode(" LD A,L\n");
-                        gencode(" LD %v,A\n", left.Left);
-                    } else{
-                        gencode(" LD %v,HL\n", left.Left);
+                        var ofs = symbol.Address.GetConstStr(symbolTableManager) + "+" + left.Left.SymbolOffset;
+                        gencode($" LD (IY+{ofs}),L\n");
+                        if(!isByte)
+                        {
+                            gencode($" LD (IY+{ofs}+1),H\n");
+                        }
+                        if(isFloat)
+                        {
+                            gencode($" LD (IY+{ofs}+2),A\n");
+                        }
+                    } else {
+                        if(isByte)
+                        {
+                            gencode(" LD A,L\n");
+                            gencode(" LD %v,A\n", left.Left);
+                        } else{
+                            gencode(" LD %v,HL\n", left.Left);
+                        }
                     }
                 }
             } else {
@@ -493,6 +510,7 @@ namespace SLANGCompiler.SLANG
         {
             Expr left = expr.Left;
             Expr right = expr.Right;
+
 
             // BYTE or WORD or FLOAT
             TypeDataSize assignType = left.TypeInfo.GetDataSize();

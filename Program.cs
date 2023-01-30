@@ -110,7 +110,14 @@ namespace SLANGCompiler
                 envName = "lsx";
             }
 
-            parser.SetupEnvironment(envName);
+            try
+            {
+                parser.SetupEnvironment(envName);
+            } catch(Exception e)
+            {
+                Console.Error.WriteLine($"system error: " + e.Message);
+                Environment.Exit(1);
+            }
 
             // ライブラリが指定されていたら読み込む
             if(opt.LibraryNames != null)
