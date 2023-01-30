@@ -83,8 +83,8 @@ namespace SLANGCompiler.SLANG
                 StringBuilder sb = new StringBuilder();
                 foreach(var ch in str)
                 {
-                    // 表示出来ない文字はバイナリとして出力する
-                    if((int)ch < 0x20)
+                    // 表示出来ない文字はバイナリとして出力する(大雑把)
+                    if((int)ch < 0x20 || ((int)ch >= 0x80 && (int)ch <= 0xff))
                     {
                         // 文字列の途中の場合は閉じる
                         if(insideString)
