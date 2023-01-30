@@ -549,3 +549,30 @@ SASC:
     RET	NC
     ADD	A,'A'-$3A
     RET
+
+MEMCPY:
+  code: |
+    ; hl = dst, de = source, bc = size
+    ex de,hl
+    ldir
+    ret
+
+MEMSET:
+  code: |
+    ; hl = addr, de = value, bc = count
+    push bc
+    push de
+
+    ld e,l
+    ld d,h
+    inc de
+
+    ; value to (addr)
+    pop bc
+    ld (hl),c
+
+    ; pop count
+    pop bc
+
+    ldir
+    ret
