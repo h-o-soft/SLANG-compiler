@@ -52,7 +52,7 @@ msxbios:
 #LIB MSX_VWRITE_DIRECT
 	; hl = source, de = dest, bc = count
 	push ix
-	ex hl,de
+	ex de,hl
 
 	ld	ix,SETWRT
 	call	msxbios
