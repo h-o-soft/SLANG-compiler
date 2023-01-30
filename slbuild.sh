@@ -16,7 +16,7 @@ function Launch() {
 function LaunchMSX() {
   cd $CURPATH
 
-  $MSXEMULATOR -cart $PROG.BIN
+  $MSXEMULATOR -cart $PROGDIR/$PROG.BIN
 
   echo DONE!
   exit 0
