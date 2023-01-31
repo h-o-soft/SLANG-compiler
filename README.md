@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.8.0
+SLANG Compiler (Z80) 0.8.1
 
 # 概要
 
@@ -18,7 +18,7 @@ SLANG Compiler (Z80) 0.8.0
 ```
 SLANGCompiler filename [-L library-name] [-O output-path]
 
-SLANG Compiler 0.8.0
+SLANG Compiler 0.8.1
 Copyright (c) 2022 OGINO Hiroshi / H.O SOFT
 
   -E, --env               Environment name.
@@ -329,6 +329,15 @@ slbuild.bat TEST.SL sos
 MIT
 
 # 更新履歴
+- Version 0.8.1
+  - MSX ROM用関数をいくつか追加
+    - BIOS呼び出し、初期化、PCG定義、スプライト定義、VRAM書き込み、スプライト表示など
+    - STICK2関数を追加
+    - ※サンプル MSXROM.SL を参照してください
+  - 標準関数にMEMCPYとMEMSETを追加
+  - 関数パラメータの関数内での代入が不正な代入になる問題を修正
+  - 文字列0x80から0xffまでをバイナリ値として扱うよう変更
+  - MSX ROM環境でSOROBANが使えるよう対応
 - Version 0.8.0
   - MAGICライブラリ追加
     - ^IXにコマンドのアドレスを入れてCALLMAGIC()を呼ぶとMAGICの処理を行います
