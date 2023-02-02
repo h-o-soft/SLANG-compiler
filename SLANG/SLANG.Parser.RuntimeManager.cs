@@ -27,6 +27,7 @@ namespace SLANGCompiler.SLANG
             public string initializeCode = null;
             public string libName = null;
             public string extlib = null;
+            public string[] include = null;
             public int align = 0;
         }
 
@@ -118,6 +119,22 @@ namespace SLANGCompiler.SLANG
                 }
             }
 
+            private string LoadIncludeLib(string libPath)
+            {
+                var libraryPath = Path.Combine(runtimePath, "extlib", libPath);
+
+                if(File.Exists(libraryPath))
+                {
+                    var stream = new FileStream(libraryPath, FileMode.Open);
+                    var charsetDetectedResult = UtfUnknown.CharsetDetector.DetectFromStream(stream);
+                    stream.Position = 0;
+                    stream.Close();
+                    return System.IO.File.ReadAllText(libraryPath, charsetDetectedResult.Detected.Encoding);
+                } else {
+                    throw new Exception($"could not found library {libPath}");
+                }
+            }
+
             private string LoadExtLib(string libPath, string labelName)
             {
                 var libraryPath = Path.Combine(runtimePath, "extlib", libPath);
@@ -166,6 +183,7 @@ namespace SLANGCompiler.SLANG
                 var code = runtimeCode.code;
                 var libName = runtimeCode.libName;
                 var extlib = runtimeCode.extlib;
+                var include = runtimeCode.include;
                 var alignValue = runtimeCode.align;
                 var initializeCode = runtimeCode.initializeCode;
                 bool noindent = false;
@@ -178,6 +196,19 @@ namespace SLANGCompiler.SLANG
                     var libPath    = extlib.Split(':')[0];
                     var labelName  = extlib.Split(':')[1];
                     code = LoadExtLib(libPath, labelName);
+                    noindent = true;
+                }
+
+                if(string.IsNullOrEmpty(code) && include != null && include.Length > 0)
+                {
+                    // codeにincludeに指定されたファイルを読む
+                    StringBuilder isb = new StringBuilder();
+                    foreach(var fname in include)
+                    {
+                        isb.Append(LoadIncludeLib(fname));
+                        isb.Append("\n");
+                    }
+                    code = isb.ToString();
                     noindent = true;
                 }
 
@@ -380,10 +411,16 @@ namespace SLANGCompiler.SLANG
                                         {
                                             // シンボル名に差し替える
                                             var symbolName = callCodes[1].Replace("!","");
+                                            // ピリオドがあったらnamespaceとして扱う
                                             var symbol = symbolTableManager.SearchSymbol(symbolName);
                                             if(symbol != null)
                                             {
-                                                writer.WriteLine($" {callCodes[0]} " + symbol.LabelName);
+                                                if(string.IsNullOrEmpty(symbol.NamespaceName))
+                                                {
+                                                    writer.WriteLine($" {callCodes[0]} NAME_SPACE_DEFAULT." + symbol.LabelName);
+                                                } else {
+                                                    writer.WriteLine($" {callCodes[0]} " + symbol.NamespaceName + "." + symbol.LabelName);
+                                                }
                                             } else {
                                                 // エラーにしたいが、まあアセンブラでエラー出るからいいか
                                                 writer.WriteLine(codeLine);
