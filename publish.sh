@@ -13,6 +13,8 @@ createRelease() {
   cp ../../slbuild.$2 .
   cp ../../copyruntime.$2 .
   cp ../../setupenv.$2 .
+  cp ../../README.md .
+  cp ../../LICENSE .
   zip -r SLANG-compiler-$3-$1.zip * -x '*/.DS_Store'
   mv SLANG-compiler-$3-$1.zip ../../
   cd ../..

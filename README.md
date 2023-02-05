@@ -329,6 +329,12 @@ slbuild.bat TEST.SL sos
 MIT
 
 # 更新履歴
+- Version 0.8.2
+  - X1 SGLライブラリを追加
+    - x1turbo.agency さんの X1 SGLライブラリをSLANGから使えるようにして組み込みました
+    - これでX1でも夢のスプライト(風)描画が可能になります！(メモリ食うので色々頑張りが必要です)
+    - 詳細はサンプル examples/X1SGL.SL を参照してください
+  - ライブラリとして複数ファイルを読み込めるよう対応(libx1_sgl.yml 参照)
 - Version 0.8.1
   - MSX ROM用関数をいくつか追加
     - BIOS呼び出し、初期化、PCG定義、スプライト定義、VRAM書き込み、スプライト表示など
