@@ -4,17 +4,17 @@ MAGBASE:
     calls:
         - MAGLOAD
     lib_name: MAGLIB
-    extlib: MAG.ASM:MAGBASE
+    extlib: mag/MAG.ASM:MAGBASE
 
 GRDISP:
     lib_name: MAGLIB
-    extlib: MAG.ASM:GRDISP
+    extlib: mag/MAG.ASM:GRDISP
 
 GRCLS:
     calls:
         - MAGBASE
     lib_name: MAGLIB
-    extlib: MAG.ASM:GRCLS
+    extlib: mag/MAG.ASM:GRCLS
 
 MAGLOAD:
     calls:
@@ -28,7 +28,7 @@ MAGLOAD:
         - FSEEK
         - FCLOSE
     lib_name: MAGLIB
-    extlib: MAG.ASM:MAGLOAD
+    extlib: mag/MAG.ASM:MAGLOAD
     works:
         MAGLOAD_WORK: 2
 

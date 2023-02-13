@@ -2,7 +2,7 @@
 
 PSG_BASE:
   lib_name: PSGLIB
-  extlib: psgdriver.asm:PSG_COMMON
+  extlib: psg/psgdriver.asm:PSG_COMMON
   code: |
     RDVRM:        EQU $004A	; BIOS RDVRM
     WRTVRM:       EQU $004D	; BIOS WRTVRM
@@ -30,43 +30,43 @@ PSG_INIT:
   calls:
     - PSG_BASE
   lib_name: PSGLIB
-  extlib: psgdriver.asm:PSG_INIT
+  extlib: psg/psgdriver.asm:PSG_INIT
 
 PSG_PLAY:
   calls:
     - PSG_BASE
   lib_name: PSGLIB
-  extlib: psgdriver.asm:PSG_PLAY
+  extlib: psg/psgdriver.asm:PSG_PLAY
 
 PSG_SFX:
   calls:
     - PSG_BASE
   lib_name: PSGLIB
-  extlib: psgdriver.asm:PSG_SFX
+  extlib: psg/psgdriver.asm:PSG_SFX
 
 PSG_STOP:
   calls:
     - PSG_BASE
   lib_name: PSGLIB
-  extlib: psgdriver.asm:PSG_STOP
+  extlib: psg/psgdriver.asm:PSG_STOP
 
 PSG_PAUSE:
   calls:
     - PSG_BASE
   lib_name: PSGLIB
-  extlib: psgdriver.asm:PSG_PAUSE
+  extlib: psg/psgdriver.asm:PSG_PAUSE
 
 PSG_RESUME:
   calls:
     - PSG_BASE
   lib_name: PSGLIB
-  extlib: psgdriver.asm:PSG_RESUME
+  extlib: psg/psgdriver.asm:PSG_RESUME
 
 PSG_PROC:
   calls:
     - PSG_BASE
   lib_name: PSGLIB
-  extlib: psgdriver.asm:PSG_PROC
+  extlib: psg/psgdriver.asm:PSG_PROC
   works:
     SOUNDDRV_H_TIMI_BACKUP: 5
     SOUNDDRV_STATE: 1
@@ -81,7 +81,7 @@ PSG_END:
     - PSG_BASE
     - PSG_STOP
   lib_name: PSGLIB
-  extlib: psgdriver.asm:PSG_END
+  extlib: psg/psgdriver.asm:PSG_END
 
 VSYNC:
   code: |

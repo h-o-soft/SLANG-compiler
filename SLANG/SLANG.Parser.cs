@@ -382,22 +382,14 @@ namespace SLANGCompiler.SLANG
         // * ランタイムライブラリの読み込み
         public void SetupEnvironment(string envName)
         {
-            if(!envName.Contains("."))
-            {
-                envName = envName + ".env";
-            }
-            string envPath = SLANGCommonUtility.GetConfigPath(envName);
+            var envPath = SLANGPathManager.Instance.GetEnvironmentPath(envName);
             environmentManager = new EnvironmentManager(runtimeManager, this, this);
             environmentManager.Load(envPath);
         }
 
         public void LoadRuntime(string fileName)
         {
-            var filePath = SLANGCommonUtility.GetConfigPath(fileName);
-            if(filePath == null)
-            {
-                throw new FileNotFoundException($"could not found runtime file. {fileName}");
-            }
+            var filePath = SLANGPathManager.Instance.GetLibraryDefinePath(fileName);
             runtimeManager.LoadRuntime(filePath);
         }
 
@@ -410,7 +402,7 @@ namespace SLANGCompiler.SLANG
             {
                 var fileName = "opt.yml";
                 codeOptimizer = new CodeOptimizer();
-                var filePath = SLANGCommonUtility.GetConfigPath(fileName);
+                var filePath = SLANGPathManager.Instance.GetLibraryDefinePath(fileName);
                 if(filePath == null)
                 {
                     Console.Error.WriteLine("could not found optimize rule file. " + fileName);

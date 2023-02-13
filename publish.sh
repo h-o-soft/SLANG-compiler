@@ -4,9 +4,8 @@ createRelease() {
   cd publish/$1
   mkdir bin
   mv SLANGCompiler* bin
-  cp ../../*.env .
-  cp ../../*.yml .
-  cp -r ../../extlib .
+  cp -r ../../include .
+  cp -r ../../lib .
   cp -r ../../examples .
   cp -r ../../env .
   cp -r ../../images .
