@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using CommandLine;
 using CommandLine.Text;
 using System.Globalization;
-
+using SLANGCompiler.SLANG;
 namespace SLANGCompiler
 {
     public class Program
@@ -89,6 +89,45 @@ namespace SLANGCompiler
             return 1;
         }
 
+        static void InitializePathManager()
+        {
+            // SLANGPathManagerの初期化
+            SLANGPathManager.Instance.Initialize();
+
+            // INCLUDE / LIBRARY関連の設定
+            // 環境変数「SLANG_INCLUDE」を登録
+            var includePath = Environment.GetEnvironmentVariable("SLANG_INCLUDE");
+            if(includePath != null)
+            {
+                SLANGPathManager.Instance.AddIncludePath(includePath);
+            }
+
+            // 環境変数「SLANG_LIBRARY」を登録
+            var libPath = Environment.GetEnvironmentVariable("SLANG_LIBRARY");
+            if(libPath != null)
+            {
+                SLANGPathManager.Instance.AddLibraryPath(libPath);
+            }
+
+            // .config/SLANG 配下の include と pathもパスに加える(旧仕様対策)
+            var configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),".config");
+            configPath = Path.Combine(configPath,"SLANG");
+
+            var additionalPaths = new string[]{
+                ".",
+                configPath
+            };
+
+            // カレントパスと、.config/SLANG以下のincludeとlibをそれぞれに登録
+            foreach(var path in additionalPaths)
+            {
+                var currentIncludePath = Path.Combine(path, "include");
+                var currentLibPath = Path.Combine(path, "lib");
+                SLANGPathManager.Instance.AddIncludePath(currentIncludePath);
+                SLANGPathManager.Instance.AddLibraryPath(currentLibPath);
+            }
+        }
+
         static int Run(Options opt)
         {
             //if(opt.DispVersion)
@@ -96,6 +135,9 @@ namespace SLANGCompiler
             //    Console.WriteLine($"  Build Date: {LoadBuildDateTime(typeof(Program).Assembly)}");
             //    Environment.Exit(0);
             //}
+
+            InitializePathManager();
+
             var parser = new SLANG.SLANGParser();
 
             // ソースファイルで指定した変数名、関数名をそのまま使うか、使わないか
