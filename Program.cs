@@ -16,8 +16,12 @@ namespace SLANGCompiler
         {
             [Option('E', "env", Required = false, HelpText = "Environment name.")]
             public string EnvironmentName { get; set; }
-            [Option('L', "lib", Required = false, HelpText = "Library name(s). ( lib*.yml )")]
+            [Option('l', "lib", Required = false, HelpText = "Library name(s). ( lib*.yml )")]
             public IEnumerable<string> LibraryNames { get; set; }
+            [Option('I', "include", Required = false, HelpText = "Include path(s).")]
+            public IEnumerable<string> IncludePaths { get; set; }
+            [Option('L', "library", Required = false, HelpText = "Library path(s).")]
+            public IEnumerable<string> LibraryPaths { get; set; }
 
             [Option('O', "output", Required = false, HelpText = "Output file path.")]
             public string OutputPath { get; set; }
@@ -152,23 +156,43 @@ namespace SLANGCompiler
                 envName = "lsx";
             }
 
+            // Includeパスが指定されていたら読み込む
+            if(opt.IncludePaths != null)
+            {
+                foreach(var path in opt.IncludePaths)
+                {
+                    SLANGPathManager.Instance.AddIncludePath(path);
+                }
+            }
+
+            // ライブラリパスが指定されていたら読み込む
+            if(opt.LibraryPaths != null)
+            {
+                foreach(var path in opt.LibraryPaths)
+                {
+                    SLANGPathManager.Instance.AddLibraryPath(path);
+                }
+            }
+
             try
             {
                 parser.SetupEnvironment(envName);
+
+                // ライブラリが指定されていたら読み込む
+                if(opt.LibraryNames != null)
+                {
+                    foreach(var lib in opt.LibraryNames)
+                    {
+                        parser.LoadRuntime($"lib{lib}.yml");
+                    }
+                }
+
             } catch(Exception e)
             {
                 Console.Error.WriteLine($"system error: " + e.Message);
                 Environment.Exit(1);
             }
 
-            // ライブラリが指定されていたら読み込む
-            if(opt.LibraryNames != null)
-            {
-                foreach(var lib in opt.LibraryNames)
-                {
-                    parser.LoadRuntime($"lib{lib}.yml");
-                }
-            }
 
             foreach(var fileName in opt.Files)
             {

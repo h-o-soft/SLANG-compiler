@@ -525,7 +525,7 @@ namespace SLANGCompiler.SLANG
             } catch(Exception e)
             {
                 // SystemError(e.ToString());
-                SystemError(e.ToString());
+                SystemError(e.Message);
                 //Console.Error.WriteLine("fatal error: " + e.Message);
             }
         }
