@@ -121,7 +121,7 @@ namespace SLANGCompiler.SLANG
 
             private string LoadIncludeLib(string libPath)
             {
-                var libraryPath = Path.Combine(runtimePath, "extlib", libPath);
+                var libraryPath = SLANGPathManager.Instance.GetLibrarySourcePath(libPath);
 
                 if(File.Exists(libraryPath))
                 {
@@ -137,7 +137,7 @@ namespace SLANGCompiler.SLANG
 
             private string LoadExtLib(string libPath, string labelName)
             {
-                var libraryPath = Path.Combine(runtimePath, "extlib", libPath);
+                var libraryPath = SLANGPathManager.Instance.GetLibrarySourcePath(libPath);
                 StringBuilder codeStr = new StringBuilder();
                 if(File.Exists(libraryPath))
                 {
@@ -170,6 +170,8 @@ namespace SLANGCompiler.SLANG
                     {
                         throw new Exception($"could not found library label: {labelName}");
                     }
+                } else {
+                        throw new Exception($"could not found library : {libPath}");
                 }
                 return codeStr.ToString();
             }

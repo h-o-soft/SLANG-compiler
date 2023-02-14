@@ -197,26 +197,21 @@ namespace SLANGCompiler.SLANG
         public static string GetConfigPath(string fileName)
         {
             // そのまま開けるか
+            string filePath = fileName;
             if(!File.Exists(fileName))
             {
-                // 開けない場合は .config/SLANG を見る
-                var configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),".config");
-                configPath = Path.Combine(configPath,"SLANG");
-                fileName = Path.Combine(configPath, Path.GetFileName(fileName));
-                if(!File.Exists(fileName))
+                // 開けない場合はlibパスを見る
+                try
                 {
-                    // それでも無い場合は .config/SLANG/extlib を見る
-                    configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),".config");
-                    configPath = Path.Combine(configPath,"SLANG");
-                    configPath = Path.Combine(configPath,"extlib");
-                    fileName = Path.Combine(configPath, Path.GetFileName(fileName));
-                    if(!File.Exists(fileName))
-                    {
-                        return null;
-                    }
+                    filePath = SLANGPathManager.Instance.GetLibrarySourcePath(fileName);
+                } catch(FileNotFoundException)
+                {
+                    // それでも無い場合はincludeパスを見る
+                    filePath = SLANGPathManager.Instance.GetIncludeSourcePath(fileName);
                 }
+                // それでも無い場合は例外をそのまま流す
             }
-            return fileName;
+            return filePath;
         }
 
         public static int GetIntValue(string valueString)

@@ -7,7 +7,7 @@ using System.Collections.Generic;
 using CommandLine;
 using CommandLine.Text;
 using System.Globalization;
-
+using SLANGCompiler.SLANG;
 namespace SLANGCompiler
 {
     public class Program
@@ -16,8 +16,12 @@ namespace SLANGCompiler
         {
             [Option('E', "env", Required = false, HelpText = "Environment name.")]
             public string EnvironmentName { get; set; }
-            [Option('L', "lib", Required = false, HelpText = "Library name(s). ( lib*.yml )")]
+            [Option('l', "lib", Required = false, HelpText = "Library name(s). ( lib*.yml )")]
             public IEnumerable<string> LibraryNames { get; set; }
+            [Option('I', "include", Required = false, HelpText = "Include path(s).")]
+            public IEnumerable<string> IncludePaths { get; set; }
+            [Option('L', "library", Required = false, HelpText = "Library path(s).")]
+            public IEnumerable<string> LibraryPaths { get; set; }
 
             [Option('O', "output", Required = false, HelpText = "Output file path.")]
             public string OutputPath { get; set; }
@@ -89,6 +93,45 @@ namespace SLANGCompiler
             return 1;
         }
 
+        static void InitializePathManager()
+        {
+            // SLANGPathManagerの初期化
+            SLANGPathManager.Instance.Initialize();
+
+            // INCLUDE / LIBRARY関連の設定
+            // 環境変数「SLANG_INCLUDE」を登録
+            var includePath = Environment.GetEnvironmentVariable("SLANG_INCLUDE");
+            if(includePath != null)
+            {
+                SLANGPathManager.Instance.AddIncludePath(includePath);
+            }
+
+            // 環境変数「SLANG_LIBRARY」を登録
+            var libPath = Environment.GetEnvironmentVariable("SLANG_LIBRARY");
+            if(libPath != null)
+            {
+                SLANGPathManager.Instance.AddLibraryPath(libPath);
+            }
+
+            // .config/SLANG 配下の include と pathもパスに加える(旧仕様対策)
+            var configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),".config");
+            configPath = Path.Combine(configPath,"SLANG");
+
+            var additionalPaths = new string[]{
+                ".",
+                configPath
+            };
+
+            // カレントパスと、.config/SLANG以下のincludeとlibをそれぞれに登録
+            foreach(var path in additionalPaths)
+            {
+                var currentIncludePath = Path.Combine(path, "include");
+                var currentLibPath = Path.Combine(path, "lib");
+                SLANGPathManager.Instance.AddIncludePath(currentIncludePath);
+                SLANGPathManager.Instance.AddLibraryPath(currentLibPath);
+            }
+        }
+
         static int Run(Options opt)
         {
             //if(opt.DispVersion)
@@ -96,6 +139,9 @@ namespace SLANGCompiler
             //    Console.WriteLine($"  Build Date: {LoadBuildDateTime(typeof(Program).Assembly)}");
             //    Environment.Exit(0);
             //}
+
+            InitializePathManager();
+
             var parser = new SLANG.SLANGParser();
 
             // ソースファイルで指定した変数名、関数名をそのまま使うか、使わないか
@@ -110,23 +156,43 @@ namespace SLANGCompiler
                 envName = "lsx";
             }
 
+            // Includeパスが指定されていたら読み込む
+            if(opt.IncludePaths != null)
+            {
+                foreach(var path in opt.IncludePaths)
+                {
+                    SLANGPathManager.Instance.AddIncludePath(path);
+                }
+            }
+
+            // ライブラリパスが指定されていたら読み込む
+            if(opt.LibraryPaths != null)
+            {
+                foreach(var path in opt.LibraryPaths)
+                {
+                    SLANGPathManager.Instance.AddLibraryPath(path);
+                }
+            }
+
             try
             {
                 parser.SetupEnvironment(envName);
+
+                // ライブラリが指定されていたら読み込む
+                if(opt.LibraryNames != null)
+                {
+                    foreach(var lib in opt.LibraryNames)
+                    {
+                        parser.LoadRuntime($"lib{lib}.yml");
+                    }
+                }
+
             } catch(Exception e)
             {
                 Console.Error.WriteLine($"system error: " + e.Message);
                 Environment.Exit(1);
             }
 
-            // ライブラリが指定されていたら読み込む
-            if(opt.LibraryNames != null)
-            {
-                foreach(var lib in opt.LibraryNames)
-                {
-                    parser.LoadRuntime($"lib{lib}.yml");
-                }
-            }
 
             foreach(var fileName in opt.Files)
             {

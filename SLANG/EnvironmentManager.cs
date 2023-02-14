@@ -101,7 +101,7 @@ namespace SLANGCompiler.SLANG
                 {
                     foreach(var lib in info.libraries)
                     {
-                        var libPath = SLANGCommonUtility.GetConfigPath(lib);
+                        var libPath = SLANGPathManager.Instance.GetLibraryDefinePath(lib);
                         runtimeManager.LoadRuntime(libPath);
                     }
                 }

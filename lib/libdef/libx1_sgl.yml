@@ -1,0 +1,117 @@
+
+
+X1SGLINCLUDE:
+  lib_name: x1sgl
+  include:
+    - sgl/macro_define.asm
+    - sgl/value_define.asm
+    - sgl/render_util.asm
+    - sgl/text_render.asm
+    - sgl/mem_util.asm
+    - sgl/chara_manager.asm
+    - sgl/chara_data_manager.asm
+    - sgl/bitline.asm
+    - sgl/crtc.asm
+    - sgl/chara_render.asm
+    - sgl/clear_buff.asm
+    - sgl/render.asm
+    - sgl/render_r.asm
+    - sgl/render_g.asm
+    - sgl/render_brg16.asm
+    - sgl/render_br16.asm
+    - sgl/render_br.asm
+    - sgl/render_b16.asm
+    - sgl/clear_16.asm
+    - sgl/data_work.asm
+
+X1SGLBASE:
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGLBASE
+  works:
+    SGLSPRDISPBUF: 32
+
+SGL_INIT:
+  calls:
+    - X1SGLINCLUDE
+    - X1SGLBASE
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGL_INIT
+
+SGL_DEFPAT:
+  calls:
+    - X1SGLINCLUDE
+    - X1SGLBASE
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGL_DEFPAT
+
+SGL_SPRCREATE:
+  calls:
+    - X1SGLINCLUDE
+    - X1SGLBASE
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGL_SPRCREATE
+
+SGL_SPRDESTROY:
+  calls:
+    - X1SGLINCLUDE
+    - X1SGLBASE
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGL_SPRDESTROY
+
+SGL_SPRSET:
+  calls:
+    - X1SGLINCLUDE
+    - X1SGLBASE
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGL_SPRSET
+
+SGL_SPRPAT:
+  calls:
+    - X1SGLINCLUDE
+    - X1SGLBASE
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGL_SPRPAT
+
+SGL_SPRMOVE:
+  calls:
+    - X1SGLINCLUDE
+    - X1SGLBASE
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGL_SPRMOVE
+
+SGL_SPRDISP:
+  calls:
+    - X1SGLINCLUDE
+    - X1SGLBASE
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGL_SPRDISP
+
+SGL_FPSMODE:
+  calls:
+    - X1SGLINCLUDE
+    - X1SGLBASE
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGL_FPSMODE
+
+SGL_VSYNC:
+  calls:
+    - X1SGLINCLUDE
+    - X1SGLBASE
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGL_VSYNC
+
+SGL_PRINT:
+  calls:
+    - X1SGLINCLUDE
+    - X1SGLBASE
+    - AT_VRCALC
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGL_PRINT
+
+SGL_PRINT2:
+  calls:
+    - X1SGLINCLUDE
+    - X1SGLBASE
+    - AT_VRCALC
+  lib_name: x1sgl
+  extlib: sgl/x1sgl.asm:SGL_PRINT2
