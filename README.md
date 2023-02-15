@@ -18,11 +18,13 @@ SLANG Compiler (Z80) 0.8.1
 ```
 SLANGCompiler filename [-L library-name] [-O output-path]
 
-SLANG Compiler 0.8.1
-Copyright (c) 2022 OGINO Hiroshi / H.O SOFT
+SLANG Compiler 0.8.3
+Copyright (c) 2022-2023 OGINO Hiroshi / H.O SOFT
 
   -E, --env               Environment name.
-  -L, --lib               Library name(s). ( lib*.yml )
+  -l, --lib               Library name(s). ( lib*.yml )
+  -I, --include           Include path(s).
+  -L, --library           Library path(s).
   -O, --output            Output file path.
   --use-symbol            Use original symbol name.
   --case-sensitive        Set symbols to be case-sensitive.
@@ -37,7 +39,11 @@ Copyright (c) 2022 OGINO Hiroshi / H.O SOFT
 
 -E オプションに続けて、環境名を設定する事で、各種環境用のORG値が設定され、対応するライブラリが読み込まれます。現在、環境は「lsx」「sos」「x1」「msx2」があり、デフォルト環境名は「lsx」になります。
 
--L オプションに続けて、ランタイムライブラリの名前を付与する事で、指定のライブラリを読み込む事が出来ます( -L x1 とする事で、 libx1.yml というライブラリを読み込みます)。ただし、こちらは-Eオプションでの環境名設定でおおむね行われますので、個別ライブラリを読み込ませたい時のみ指定するようにしてください。
+-l オプションに続けて、ランタイムライブラリの名前を付与する事で、指定のライブラリを読み込む事が出来ます( -l x1 とする事で、 libx1.yml というライブラリを読み込みます)。ただし、こちらは-Eオプションでの環境名設定でおおむね行われますので、個別ライブラリを読み込ませたい時のみ指定するようにしてください。
+
+-I オプションに続けてインクルードフォルダを指定する事で、SLANGソース内で読み込みを行うSLANGソースファイルのフォルダを追加出来ます。
+
+-L オプションに続けてライブラリフォルダを指定する事で、ライブラリ定義ファイル(.yml)及び、ライブラリソースのあるライブラリフォルダを追加出来ます。
 
 --use-symbol をつけると、変数名、関数名について、ソースコードで利用した名前をそのまま使ってアセンブラソースが出力されます。つけない場合は、「SYM(数字)」という名前に置き換えられますので、アセンブラがラベルとして識別出来ない変数名、関数名を使っている場合は、--use-symbolをつけないようにしてください。
 
@@ -329,6 +335,18 @@ slbuild.bat TEST.SL sos
 MIT
 
 # 更新履歴
+- Version 0.8.3
+  - インクルード／ライブラリフォルダを整理
+    - 環境ファイル(.env)をライブラリフォルダ内のenvフォルダに移動
+    - ライブラリ定義ファイル(.yml)をライブラリフォルダ内のlibdefフォルダに移動
+    - extlib内のアセンブラソースをライブラリフォルダに移動
+    - extlib内のSLANGソースをインクルードフォルダに移動
+    - 環境変数SLANG_INCLUDEにインクルードフォルダを設定可能に
+    - 環境変数SLANG_LIBRARYにライブラリフォルダを設定可能に
+    - コマンドラインオプション-Iでインクルードフォルダを追加設定可能に
+    - コマンドラインオプション-Lでライブラリフォルダを追加設定可能に(これまでの追加ライブラリを指定するコマンドラインオプションは小文字の -l に変更されたので注意してください)
+    - インクルード／ライブラリの検索を「環境変数→カレントのincludeまたはlibフォルダ→.config/SLANG内のincludeまたはlibフォルダ→コマンドライン指定されたフォルダ」の順で都度検索するよう対応
+  - syntaxフォルダにVisual Studio Code用のSLANGシンタックスハイライトを行う拡張機能(.vsix)を追加
 - Version 0.8.2
   - X1 SGLライブラリを追加
     - x1turbo.agency さんの X1 SGLライブラリをSLANGから使えるようにして組み込みました
