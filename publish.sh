@@ -9,6 +9,7 @@ createRelease() {
   cp -r ../../examples .
   cp -r ../../env .
   cp -r ../../images .
+  cp -r ../../syntax .
   cp ../../slbuild.$2 .
   cp ../../copyruntime.$2 .
   cp ../../setupenv.$2 .
