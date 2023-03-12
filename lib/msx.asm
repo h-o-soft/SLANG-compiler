@@ -154,5 +154,7 @@ flip_and_copy:
 	and $66
 	xor c
 
-	jp WRTVRM
+	ld ix,WRTVRM
+	jp MSXLIB.msxbios
+	;jp WRTVRM
 #ENDLIB

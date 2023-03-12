@@ -38,6 +38,8 @@ namespace SLANGCompiler.SLANG
 
         public bool CaseSensitive { get; set; }
 
+        public bool IsAsm { get; set; }
+
         /// <summary>値を持つCONST値のコンストラクタ</summary>
         public ConstInfo(int value)
         {
@@ -153,6 +155,14 @@ namespace SLANGCompiler.SLANG
         }
 
         /// <summary>
+        /// 指定したCONST値をアセンブラにおいてEQU定義の対象とする
+        /// </summary>
+        public void SetAsm(string name, bool isAsm)
+        {
+            constTableDictionary[name].IsAsm = isAsm;
+        }
+
+        /// <summary>
         /// CONST定義された値が存在すればvalueに返し、戻り値がtrueになる。存在しない場合はfalseになる。
         /// </summary>
         public bool TryGetValue(string name, out ConstInfo info)
@@ -175,6 +185,21 @@ namespace SLANGCompiler.SLANG
             }
             info = null;
             return false;
+        }
+
+        /// <summary>
+        /// ASM設定されたCONST値をEQUとして出力する
+        /// </summary>
+        public void Generate(StreamWriter writer)
+        {
+            foreach(var pair in constTableDictionary)
+            {
+                var constVal = pair.Value;
+                if(constVal.IsAsm)
+                {
+                    writer.WriteLine($"{pair.Key} EQU {constVal.GetConstStr(null)}");
+                }
+            }
         }
 
         /// <summary>

@@ -29,7 +29,7 @@
 %token <constValue>  CONSTANT
 %token <str>         STRING PLAIN
 %token <symbol> EXC
-%token               VAR BYTE WORD FLOAT ARRAY CONST PER
+%token               VAR BYTE WORD FLOAT ARRAY CONST PER ASM
 %token IF THEN ELSE ELIF ENDIF
 %token WHILE DO WEND REPEAT UNTIL CASE OTHERS OF LOOP
 %token FOR TO DOWNTO NEXT
@@ -470,6 +470,7 @@ const_list
 const
        : IDENTIFIER OP_EQ expr { $$ = DefineConst(Tree.CreateDeclIdentifier(DeclNode.Id, $1), $3); }
        | IDENTIFIER OP_EQ begin code_expr_list end { $$ = DefineConst(Tree.CreateDeclIdentifier(DeclNode.Id, $1), $4); }
+       | ASM IDENTIFIER OP_EQ expr { $$ = DefineConst(Tree.CreateDeclIdentifier(DeclNode.Id, $2), $4, true); }
        | IDENTIFIER error { Error("CONST required initial value"); }
        ;
 
@@ -495,6 +496,11 @@ declarator
        | float_spec declarator2 OP_EQ begin code_expr_list end { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Float, $2.SetInitialValueCode($5)); }
        | float_spec declarator2 { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Float, $2); }
        | float_spec declarator2 OP_EQ expr { $$ = Tree.CreateIdentifierTypeTree(TypeDataSize.Float, $2.UpdateIdentifier(null, $4)); }
+       ;
+
+// CONST宣言にASMをつけるとアセンブラのEQUとして定義される
+asm_spec
+       : ASM
        ;
 
 // 宣言のWORDは省略可能
