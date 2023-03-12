@@ -328,6 +328,9 @@ namespace SLANGCompiler.SLANG
             };
             symbolTableManager.Add(workEndArray, true);
 
+            // CONST値のうちASM指定がされているものをEQUとして出力する
+            constTableManager.Generate(outputStreamWriter);
+
             // WORK指定がされていて、それがORGのアドレスより前の場合は先にWORKの宣言を出力する(念のため)
             if(workAddressValue >=0 && workAddressValue < orgValue)
             {
@@ -366,6 +369,8 @@ namespace SLANGCompiler.SLANG
             // 文字列データの出力
             stringDataManager.GenerateCode(outputStreamWriter);
 
+            // プログラムの最後のラベルを出力する
+            outputStreamWriter.WriteLine("SLANG_PROG_END:");
 
             // ORGよりWORKの位置が後の場合のWORKの出力
             if(workAddressValue <0 || workAddressValue > orgValue)

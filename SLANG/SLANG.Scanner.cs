@@ -110,6 +110,7 @@ namespace SLANGCompiler.SLANG
             {"OTHERS", Token.OTHERS},
             {"OF", Token.OF},
             {"LOOP", Token.LOOP},
+            {"ASM", Token.ASM},
         };
 
         Token GetIdentifier()

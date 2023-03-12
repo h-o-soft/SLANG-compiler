@@ -14,7 +14,7 @@ namespace SLANGCompiler.SLANG
         ///   <para>CONST定義1つを処理し、ツリーをつなげる</para>
         ///   <para>一行の中で定義したものを同一行で使う事があるため、宣言時に1つずつ定義している。</para>
         /// </summary>
-        public Tree DefineConst(Tree symbolTree, Expr value)
+        public Tree DefineConst(Tree symbolTree, Expr value, bool isAsm = false)
         {
             if(value.IsIntValueConst())
             {
@@ -40,6 +40,10 @@ namespace SLANGCompiler.SLANG
                 // この場合は文字列定数として扱う
                 var str = createExprString(value);
                 constTableManager.AddString(symbolTree.IdentifierName, str);
+            }
+            if(isAsm)
+            {
+                constTableManager.SetAsm(symbolTree.IdentifierName, true);
             }
             return Tree.CreateTree1(DeclNode.Dummy);
         }
