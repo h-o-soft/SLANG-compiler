@@ -122,6 +122,16 @@ rm SWXCV110.zip
 # curl https://github.com/tablacus/LSX-Dodgers/releases/download/1.55/ldsys155.zip -OL
 # unzip ldsys155.zip
 
+# 似非DOS for MSXをダウンロード
+curl https://github.com/tablacus/dosformsx/releases/download/0.16/dosformsx_016.zip -OL
+unzip -xo dosformsx_016.zip
+# AUTOEXEC.BATを追加
+$TOOLPATH/ndc P dosformsx.dsk 0 ../env/LSX-Dodgers/AUTOEXEC.BAT
+cp dosformsx.dsk ../images/
+rm dosformsx.dsk
+rm dos2formsx.dsk
+rm dosformsx_016.zip
+
 cd ..
 rm -rf temp
 
