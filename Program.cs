@@ -213,7 +213,8 @@ namespace SLANGCompiler
             string outputPath;
             if(string.IsNullOrEmpty(opt.OutputPath))
             {
-                outputPath = Path.GetFileNameWithoutExtension(opt.Files.ElementAt(0)) + ".ASM";
+                var origPath = opt.Files.ElementAt(0);
+                outputPath = Path.Combine(Path.GetDirectoryName(origPath), Path.GetFileNameWithoutExtension(origPath) + ".ASM");
             } else {
                 outputPath = opt.OutputPath;
             }
