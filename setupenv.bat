@@ -78,6 +78,16 @@ REM どうしたものか……
 REM curl https://github.com/tablacus/LSX-Dodgers/releases/download/1.55/ldsys155.zip -OL
 REM unzip ldsys155.zip
 
+REM 似非DOS for MSXをダウンロード
+curl https://github.com/tablacus/dosformsx/releases/download/0.16/dosformsx_016.zip -OL
+unzip -xo dosformsx_016.zip
+REM AUTOEXEC.BATを追加
+%TOOLPATH%NDC P dosformsx.dsk 0 ..\env\LSX-Dodgers\AUTOEXEC.BAT
+copy dosformsx.dsk ..\images\
+DEL dosformsx.dsk
+DEL dos2formsx.dsk
+DEL dosformsx_016.zip
+
 cd ..
 rmdir temp /q
 
