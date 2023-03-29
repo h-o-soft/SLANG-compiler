@@ -55,8 +55,9 @@ FOPEN:
     CALL LSXCALCFCB
     LD (LSXFCB),HL
 
-    LD C,$29  ; _PPATH
-    CALL BDOS
+    ; LD C,$29  ; _PPATH
+    ; CALL BDOS
+    CALL PPATH
 
     LD HL,(LSXFMODE)
     ; mode >= 3
@@ -70,7 +71,9 @@ FOPEN:
     LD C,$0F  ; _FOPEN
     .fopen3
     LD DE,(LSXFCB)
+    PUSH IY
     CALL BDOS
+    POP IY
 
     ; SET RANDOM RECORD to 0(4bytes)
     LD HL,(LSXFCB)
@@ -86,6 +89,151 @@ FOPEN:
 
     LD L,A
     LD H,0
+    RET
+
+    PPATH:
+    CALL	MGETDV	;文字列からデバイス名を取り出します
+    SUB	'A'-1
+    LD	(HL),A
+    INC	HL
+
+    CALL	CLRWFG
+    LD	B,8	;プライマリ名
+    FNML11:
+    CALL	GTFLTR
+    LD	(HL),A
+    INC	HL
+    DJNZ	FNML11
+    CALL	SKPPRD
+    CALL	CLRWFG
+    LD	B,3	;拡張子
+    FNML12:
+    CALL	GTFLTR
+    LD	(HL),A
+    INC	HL
+    DJNZ	FNML12
+    CALL	SKPPRD
+
+    XOR	A	;ＣＹ←０
+    RET
+
+    MGETDV:
+    CALL	SPSKIP	;文字列の空白を読み飛ばします
+    LD	A,(DE)
+    OR	A
+    JR	Z,MGTDV1	;文字列の終わりに達していました
+    INC	DE
+    LD	A,(DE)
+    DEC	DE
+    CP	':'
+    JR	NZ,MGTDV1	;デバイスが指定されていません
+
+    ;	デバイスが指定されています
+    LD	A,(DE)
+    CALL	TOUPR
+    INC	DE
+    INC	DE
+    OR	A	;ＣＹ←０
+    RET
+
+    ;	デバイスが指定されていません
+    MGTDV1:
+    ; カレントドライブ(0)
+    LD  A,'A'-1
+    SCF		;ＣＹ←１
+    RET
+
+    SPSLP:	INC	DE
+
+    SPSKIP:
+    LD	A,(DE)
+    CP	' '
+    JR	Z,SPSLP
+    CP	09H	;ＴＡＢ
+    JR	Z,SPSLP
+
+    RET
+
+    TOUPR:
+    CP	'a'
+    RET	C
+    CP	'z'+1
+    RET	NC
+    SUB	20H
+    RET
+
+    CLRWFG:
+    XOR	A
+    LD	(WASFLG),A
+    RET
+
+    WASFLG:	DS	1	;＝FFHで「*」フェイズ中
+    GFLLP:	INC	DE
+
+    GTFLTR:
+    ;	「*」フェイズかチェックします
+    LD	A,(WASFLG)
+    OR	A
+    JR	NZ,GFLWLD
+    
+    LD	A,(DE)	;Ａｃｃ←１文字
+
+    ;	区切りに達したか調べます
+    OR	A	;ＮＵＬ
+    JR	Z,GFLESC
+    CP	0DH	;ＲＥＴ
+    JR	Z,GFLESC
+    CP	':'
+    JR	Z,GFLESC
+    CP	'.'
+    JR	Z,GFLESC
+
+    ;	コントロール･コードとスペースをスキップします
+    LD	A,(DE)
+    CP	7FH	;ＤＥＬ
+    JR	Z,GFLLP
+    CP	21H	;00H～20H
+    JR	C,GFLLP
+
+    ;	「*」かチェックします
+    CP	'*'
+    JR	Z,GFLAST
+
+    ;	通常終了
+    INC	DE	;ＤＥのカウント･アップ
+    JP	TOUPR
+
+    ;	「*」を発見しました
+    GFLAST:	LD	A,0FFH
+    LD	(WASFLG),A
+    INC	DE
+
+    ;	「*」フェイズ
+    GFLWLD:	LD	A,'?'
+    RET
+
+    ;	ピリオドかファイル名の最後に達しました
+    GFLESC:	LD	A,' '
+    RET
+    SKPLP:	INC	DE
+
+    SKPPRD:
+    LD	A,(DE)	;Ａｃｃ←１文字
+
+    ;	区切りに達したか調べます
+    OR	A	;ＮＵＬ
+    RET	Z
+    CP	0DH	;ＲＥＴ
+    RET	Z
+    CP	':'
+    RET	Z
+
+    ;	ピリオドに達したか調べます
+    CP	'.'
+    JR	NZ,SKPLP
+
+    ;	ピリオドをスキップ
+    INC	DE
     RET
 
 FSEEK:
@@ -227,7 +375,9 @@ FGETC:
     LD HL,1     ; read record size
 
     LD C,$27    ; _RDBLK
+    PUSH IY
     CALL BDOS
+    POP IY
     CP 0
     JR NZ,.fgeterr
 
@@ -293,7 +443,9 @@ FPUTC:
     LD HL,1     ; write record size
 
     LD C,$26    ; _WRBLK
+    PUSH IY
     CALL BDOS
+    POP IY
     CP 0
     JR NZ,.fputerr
 
@@ -325,7 +477,9 @@ FCLOSE:
     CALL LSXCALCFCB
     EX DE,HL
     LD C,$10  ; _FCLOSE
+    PUSH IY
     CALL BDOS
+    POP IY
     LD L,A
     LD H,0
     RET
@@ -336,7 +490,9 @@ FREADWRITE:
     ; SET DTA (DE)
     PUSH BC
     LD  C,$1A ; _SETDTA
+    PUSH IY
     CALL  BDOS
+    POP IY
 
     ; SET RECORD SIZE(FCB+14)
     LD HL,(LSXFCB)
@@ -379,7 +535,9 @@ FREAD:
     CALL FREADWRITE
 
     LD C,$27
+    PUSH IY
     CALL BDOS
+    POP IY
     ADD A,1
     SBC A,A
     RET NC
@@ -410,7 +568,9 @@ FWRITE:
     CALL FREADWRITE
 
     LD C,$26
+    PUSH IY
     CALL BDOS
+    POP IY
 
     LD L,A
     LD H,0

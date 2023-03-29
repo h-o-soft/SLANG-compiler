@@ -87,7 +87,9 @@ FOPEN:
 
     LD DE,LSXPATH
     XOR A
+    PUSH IY
     CALL BDOS
+    POP IY
     LD C,A
     LD HL,(LSXFCB)
     LD (HL),B
@@ -123,7 +125,9 @@ FSEEK:
     LD E,A
     LD D,A
     LD C,$4A  ; _SEEK
+    PUSH IY
     CALL BDOS
+    POP IY
     LD L,A
     LD A,L
     ADD A,0FFH
@@ -154,7 +158,9 @@ FGETC:
     LD  DE,.fgetbuf
     LD  HL,1
     LD  C,$48 ; _READ
+    PUSH IY
     CALL  BDOS
+    POP IY
     CP 0
     JR NZ,.fgeterr
 
@@ -197,7 +203,9 @@ FPUTC:
     LD  DE,.fgetbuf
     LD  HL,1
     LD  C,$49 ; _WRITE
+    PUSH IY
     CALL  BDOS
+    POP IY
     CP 0
     JR NZ,.fputerr
 
@@ -230,7 +238,9 @@ FCLOSE:
     LD B,(HL)
     LD (HL),0
     LD C,$45  ; _CLOSE
+    PUSH IY
     CALL BDOS
+    POP IY
     LD L,A
     LD H,0
     RET
@@ -258,7 +268,9 @@ FREAD:
     LD B,(HL)
     POP HL
     LD C,$48 ; _READ
+    PUSH IY
     CALL BDOS
+    POP IY
     ADD A,$FF
     SBC A,A
     RET NC
@@ -287,7 +299,9 @@ FWRITE:
     LD B,(HL)
     POP HL
     LD C,$49  ; _WRITE
+    PUSH IY
     CALL BDOS
+    POP IY
 
     LD L,A
     LD H,0
