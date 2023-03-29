@@ -150,9 +150,11 @@ PRT:
     PUSH HL
     PUSH DE
     PUSH BC
+    PUSH IY
     LD E,A
     LD C,$06
     CALL $0005
+    POP IY
     POP BC
     POP DE
     POP HL
