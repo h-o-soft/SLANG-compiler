@@ -27,6 +27,9 @@ ARRAY ARI[32]={
 };
 VAR IVV=14;
 
+// BYTE型間接変数
+VAR BYTE IVALB[];
+
 (* テスト番号 *)
 VAR TNUM;
 
@@ -399,6 +402,12 @@ LABEL1:
       }
     }
 #END
+
+    // BYTE型間接変数のアドレスを設定できるか、正しくアクセスできるか
+    FOR VAL=0 TO 31 ARB[VAL] = VAL + 1;
+    IVALB = ARB;    // オリジナルS-OS版ではokだが0.8.3ではコンパイルエラー(bug:coerce1)
+    IF IVALB[3] == 4 THEN PRINT(TNUM,"OK",/) ELSE PRINT(TNUM,"NG",/);
+    TNUM++;
 
     PRINT("INPUT 'START'\n");
     GETL(AARB);

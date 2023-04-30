@@ -316,7 +316,8 @@ namespace SLANGCompiler.SLANG
                 e.Symbol = table;
                 e.SymbolOffset = 0;
                 return e;
-            } else {
+            }
+            else {
                 // 単純変数または間接変数
                 e = makeNode1(Opcode.Adr, OperatorType.Pointer, typeInfo.MakePointer(), null);
                 e.Symbol = table;
@@ -549,6 +550,9 @@ namespace SLANGCompiler.SLANG
                             return makeNode1(Opcode.WtoB, OperatorType.Byte, TypeInfo.ByteTypeInfo, a);
                         case OperatorType.Bool:
                             return deBool(a, OperatorType.Byte);
+                        case OperatorType.Pointer:
+                            bug("coerce1p");
+                            break;
                         default:
                             bug("coerce1");
                             break;
@@ -1228,8 +1232,14 @@ namespace SLANGCompiler.SLANG
                 Error($"l-value required ( {left.Opcode} )");
                 return null;
             }
-            if((ltype.IsNumeric() || ltype.IsPointer()) && (rtype.IsNumeric() || rtype.IsPointer()))
+            if (ltype.IsIndirect() && (rtype.IsNumeric() || rtype.IsPointer()))
             {
+                // 追加した＃＃＃＃＃
+                return makeNode2(Opcode.Assign, OperatorType.Word, ltype, left, coerce(right, OperatorType.Word));
+            }
+            if ((ltype.IsNumeric() || ltype.IsPointer()) && (rtype.IsNumeric() || rtype.IsPointer()))
+            {
+                // ここがが問題？間接変数への代入処理 ＃＃＃＃＃
                 return makeNode2(Opcode.Assign, ltype.ToOptype(), ltype, left, coerce(right, ltype.ToOptype()) );
             }
             Error("=: type mismatch " + ltype + "\n:" + rtype);

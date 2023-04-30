@@ -233,10 +233,14 @@ namespace SLANGCompiler.SLANG
                     outputStreamWriter.WriteLine($"{labelName} EQU ({prefix}__WORK__ + {workOffset})");
                 }
 
-                if(symbol.TypeInfo.IsArray())
+                if (symbol.TypeInfo.IsArray())
                 {
                     workOffset += symbol.Size;
-                } else {
+                } else if (symbol.TypeInfo.IsPointer() || symbol.TypeInfo.IsIndirect())     // 追加 ＃＃＃＃＃＃
+                { // 追加 ＃＃＃＃＃＃
+                    workOffset += 2;                // 間接変数の場合，型によらず2バイト必要 ＃＃＃＃＃＃
+                } // 追加 ＃＃＃＃＃＃
+                else {
                     workOffset += symbol.TypeInfo.GetDataSize().GetDataSize();
                 }
             }
