@@ -34,6 +34,9 @@ namespace SLANGCompiler
             [Option("source-comment", Required = false, HelpText = "Include source code as comments.")]
             public bool SourceComment { get; set; }
 
+            [Option("output-debug-symbol", Required = false, HelpText = "Output original symbol name for debug.")]
+            public bool OutputDebugSymbol { get; set; }
+
             [Value(0, Required = true, MetaName = "input files")]
             public IEnumerable<string> Files { get; set; }
         }
@@ -148,6 +151,7 @@ namespace SLANGCompiler
             parser.SetOriginalSymbolUse(opt.UseOriginalSymbol);
             parser.SetCaseSensitiveSymbol(opt.CaseSensitive);
             parser.SetSourceComment(opt.SourceComment);
+            parser.SetOutputDebugSymbol(opt.OutputDebugSymbol);
 
             // 環境名を設定する(設定されていない場合はLSX-Dodgers環境をデフォルトとする)
             string envName = opt.EnvironmentName;

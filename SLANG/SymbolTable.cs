@@ -50,6 +50,28 @@ namespace SLANGCompiler.SLANG
             }
         }
 
+        public string OriginalName {
+            get
+            {
+                if(!string.IsNullOrEmpty(LabelHeader))
+                {
+                    // 関数内で定義された変数
+                    return $"{LabelHeader}_{normalizeName}";
+                } else {
+                    // グローバル変数
+                    return normalizeName;
+                }
+            }
+        }
+
+        public string NormalizeOriginalName
+        {
+            get
+            {
+                return OriginalName.Replace('^', '_').Replace('@', '_');
+            }
+        }
+
         /// <summary>
         /// アセンブラソース内で使ってはいけない文字を置き換えて、利用可能な名前に変換する
         /// </summary>

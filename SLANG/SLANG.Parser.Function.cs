@@ -111,6 +111,7 @@ namespace SLANGCompiler.SLANG
             localSymbolTableManager = new SymbolTableManager(this);
             localSymbolTableManager.UseOriginalSymbol = symbolTableManager.UseOriginalSymbol;
             localSymbolTableManager.CaseSensitive = symbolTableManager.CaseSensitive;
+            localSymbolTableManager.OutputOriginalSymbol = symbolTableManager.OutputOriginalSymbol;
             funcNumber++;
 
             // 関数のパラメータがくっついているTreeを探す
@@ -212,6 +213,10 @@ namespace SLANGCompiler.SLANG
         private void genfunclabel(SymbolTable symbol)
         {
             var funcLabel = symbol.LabelName;
+            if(symbolTableManager.OutputOriginalSymbol && symbol.OriginalName != funcLabel)
+            {
+                gencode($"_{symbol.NormalizeOriginalName}_ EQU {funcLabel}\n");
+            }
             gencode($"{funcLabel}:\n");
 
             // 一応処理中ですよ、という事で標準出力にも出してみる
@@ -226,7 +231,8 @@ namespace SLANGCompiler.SLANG
             {
                 if(p.SymbolClass == SymbolClass.Global)
                 {
-                    p.LabelHeader = "F" + funcNumber;
+                    // p.LabelHeader = "F" + funcNumber;
+                    p.LabelHeader = currentFunction.NormalizeOriginalName;
                     continue;
                 }
                 p.Address = new ConstInfo(offset);
