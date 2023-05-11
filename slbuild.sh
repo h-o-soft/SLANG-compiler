@@ -22,6 +22,22 @@ function LaunchMSX() {
   exit 0
 }
 
+function LaunchMSX2() {
+  PROGIMAGE=dosformsx.dsk
+  
+  rm PROG.COM
+  mv $PROG.BIN PROG.COM
+  $NDCPATH D $IMAGEPATH/$PROGIMAGE 0 PROG.COM
+  $NDCPATH P $IMAGEPATH/$PROGIMAGE 0 PROG.COM
+  
+  cd $CURPATH
+  $MSXEMULATOR% -diska $IMAGEPATH/$PROGIMAGE
+
+  echo DONE!
+  exit 0
+}
+
+
 function Error() {
   echo ERROR! $1
   cd $CURPATH
@@ -135,6 +151,9 @@ elif [ $TARGETENV == "sos" ]; then
 elif [ $TARGETENV == "msxrom" ]; then
   echo MSX ROM
   LaunchMSX
+elif [ $TARGETENV == "msx2" ]; then
+  echo MSX2 Disk
+  LaunchMSX2
 else
   echo NOT SUPPORTED $TARGETENV
 fi
