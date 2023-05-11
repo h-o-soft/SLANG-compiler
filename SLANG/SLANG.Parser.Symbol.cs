@@ -113,6 +113,15 @@ namespace SLANGCompiler.SLANG
         }
 
         /// <summary>
+        /// シンボルテーブルについてソースコードで使われた変数名、関数名をデバッグ用に定義する( VAL という変数が _VAL_ としてシンボル定義される)
+        /// </summary>
+        public void SetOutputDebugSymbol(bool outputOriginal)
+        {
+            symbolTableManager.OutputOriginalSymbol = outputOriginal;
+            localSymbolTableManager.OutputOriginalSymbol = outputOriginal;
+        }
+
+        /// <summary>
         /// シンボルテーブルとCONSTテーブルについて大文字小文字の区別をする場合はtrue、しない場合はfalseを指定する
         /// </summary>
         public void SetCaseSensitiveSymbol(bool caseSensitive)

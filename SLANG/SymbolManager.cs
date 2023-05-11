@@ -27,12 +27,15 @@ namespace SLANGCompiler.SLANG
 
         public bool CaseSensitive { get; set; }
 
+        public bool OutputOriginalSymbol { get; set; }
+
         public SymbolTableManager(IErrorReporter errorReporter)
         {
             this.errorReporter = errorReporter;
             Initialize();
             UseOriginalSymbol = false;
             CaseSensitive = false;
+            OutputOriginalSymbol = false;
         }
 
         /// <summary>
@@ -231,6 +234,12 @@ namespace SLANGCompiler.SLANG
                 } else {
                     var prefix = isNotDefaultNamespace?DefaultNamespaceName+".":"";
                     outputStreamWriter.WriteLine($"{labelName} EQU ({prefix}__WORK__ + {workOffset})");
+
+                    if(OutputOriginalSymbol && symbol.OriginalName != labelName)
+                    {
+                        // デバッグ用シンボルとして本来の名前もEQUで設定しておく(大丈夫？)
+                        outputStreamWriter.WriteLine($"_{symbol.NormalizeOriginalName}_ EQU {labelName}");
+                    }
                 }
 
                 if(symbol.TypeInfo.IsArray())
@@ -300,7 +309,14 @@ namespace SLANGCompiler.SLANG
                 }
 
                 var labelName = symbol.LabelName;
-                codeRepository.AddCode($"{labelName}:\n");
+
+                if(OutputOriginalSymbol && symbol.OriginalName != labelName)
+                {
+                    // デバッグ用シンボルとして本来の名前もEQUで設定しておく(大丈夫？)
+                    // _(変数名)_ という名前で定義される(うーむ)
+                    codeRepository.AddCode($"_{symbol.NormalizeOriginalName}_ EQU ({labelName})\n");
+                    codeRepository.AddCode($"{labelName}:\n");
+                }
 
                 var dataSize = symbol.Size;
 
