@@ -90,9 +90,9 @@ rm HuDisk.exe
 
 # AILZ80ASMをダウンロード
 if [ $TARGETENV == "mac" ]; then
-  DLPATH=https://github.com/AILight/AILZ80ASM/releases/download/v1.0.1/AILZ80ASM.osx-x64.v1.0.1.zip
+  DLPATH=https://github.com/AILight/AILZ80ASM/releases/download/v1.0.4/AILZ80ASM.osx-x64.v1.0.4.zip
 elif [ $TARGETENV == "linux" ]; then
-  DLPATH=https://github.com/AILight/AILZ80ASM/releases/download/v1.0.1/AILZ80ASM.linux-x64.v1.0.1.zip
+  DLPATH=https://github.com/AILight/AILZ80ASM/releases/download/v1.0.4/AILZ80ASM.linux-x64.v1.0.4.zip
 else
   Error
 fi
