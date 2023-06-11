@@ -17,6 +17,14 @@ msxbios:
 	jp msxbios
 #ENDLIB
 
+#LIB MSX_SCREEN
+	ld	a,l
+	ld	hl, 005Fh	; CHGMOD
+	push	hl
+	pop	ix
+	jp msxbios
+#ENDLIB
+
 #LIB MSXSETCOLOR
 	; HL = foreground
 	; DE = background

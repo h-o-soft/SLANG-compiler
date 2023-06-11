@@ -576,3 +576,91 @@ MEMSET:
 
     ldir
     ret
+
+STRLEN:
+  code: |
+    PUSH BC
+    LD B, 0
+    .COUNT_LOOP
+    LD A, (HL)
+    OR A
+    JR Z,.END_OF_STRING
+    INC HL
+    INC B
+    JR .COUNT_LOOP
+    .END_OF_STRING
+    LD L,B
+    LD H,0
+    POP BC
+    RET
+
+IOTGET:
+  calls:
+    - STRLEN
+  code: |
+    ; HL = Device Path
+
+    MSX0IO EQU 8
+
+    LD BC,MSX0IO
+    LD A,$AC
+    OUT (C),A
+    LD A,1
+    OUT (C),A
+
+    PUSH HL
+    CALL STRLEN
+    OUT (C),L
+    POP HL
+
+    .STRLOOP
+    LD A,(HL)
+    OR A
+    JR Z,.ENDSTR
+    OUT (C),A
+    INC HL
+    JR .STRLOOP
+    .ENDSTR
+
+    LD A,$AB
+    OUT (C),A
+
+    IN L,(C)
+    IN H,(C)
+    RET
+
+IOTPUT:
+  calls:
+    - STRLEN
+  code: |
+    ; HL = Device Path
+    ; DE = Value
+
+    MSX0IO EQU 8
+
+    LD BC,MSX0IO
+    LD A,$AD
+    OUT (C),A
+    LD A,2
+    OUT (C),A
+
+    PUSH HL
+    CALL STRLEN
+    OUT (C),L
+    POP HL
+
+    .STRLOOP
+    LD A,(HL)
+    OR A
+    JR Z,.ENDSTR
+    OUT (C),A
+    INC HL
+    JR .STRLOOP
+    .ENDSTR
+
+    LD A,2
+    OUT (C),A
+
+    OUT (C),E
+    OUT (C),D
+    RET
