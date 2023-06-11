@@ -85,7 +85,9 @@ disable_y				EQU 216
 				ld			a, disable_y
 				ld			hl, vram_sprite_attribute1
 				ld			bc, (4 * 32) * 2
-				call		filvrm
+				ld			ix,FILVRM
+				call			MSXLIB.msxbios
+				;call		filvrm
 				; initialize page of sprite attribute.
 				di
 				ld			a, sprite_attribute_page

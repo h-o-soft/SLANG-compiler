@@ -75,7 +75,10 @@ vram_sprite_attribute2	EQU vram_sprite_attribute1 + 128
 				ld			a, 208
 				ld			hl, vram_sprite_attribute1
 				ld			bc, (4 * 32) * 2
-				call		filvrm
+
+				ld			ix,FILVRM
+				call			MSXLIB.msxbios
+				; call		filvrm
 				; initialize work area
 				xor			a
 				ld			(MSXSPDRV.sprite_index), a
