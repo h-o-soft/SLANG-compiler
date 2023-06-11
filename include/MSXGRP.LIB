@@ -71,6 +71,23 @@ SPMAN_SPRITE_FLUSH()
 }
 
 // 16x16スプライトの定義
+SPR_DEF(TP, DATA, LEN, FLIP)
+VAR I;
+{
+    LEN=LEN+TP-1;
+    FOR I = TP TO LEN
+    {
+        IF (FLIP)
+        {
+            // 左右反転のパターン定義
+            SET_SPRITE_16HFLIP(I, DATA);
+        } ELSE {
+            SET_SPRITE_16(I, DATA);
+        }
+        DATA += 32;
+    }
+}
+// 16x16スプライトの定義(for SPMAN)
 SPMAN_ALLOC_PAT(TP, DATA, LEN, FLIP)
 VAR I;
 {

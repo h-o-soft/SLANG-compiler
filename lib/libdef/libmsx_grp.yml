@@ -43,6 +43,10 @@ MSX_CALLBIOS:
   lib_name: MSXLIB
   extlib: MSX.ASM:MSXCALLBIOS
 
+MSX_SCREEN:
+  lib_name: MSXLIB
+  extlib: MSX.ASM:MSX_SCREEN
+
 MSXGRPSYS:
   lib_name: MSXLIB
   extlib: MSX.ASM:MSXGRPBASE
