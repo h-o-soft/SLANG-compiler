@@ -30,6 +30,7 @@ PREIF   #[Ii][Ff]
 PREELSE #[Ee][Ll][Ss][Ee]
 PREEND  #[Ee][Nn][Dd]|#[Ee][Nn][Dd][Ii][Ff]
 ASM     #[Aa][Ss][Mm]
+MODULE  #[Mm][Oo][Dd][Uu][Ll][Ee]
 
 CMTSTART	"/\*"|"(*"
 CMTEND		"*\/"|"*)"
@@ -103,6 +104,8 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
     Stack<LocationInfo> locationStack = new Stack<LocationInfo>();
     Stack<bool> skipStack = new Stack<bool>();
     int preIfSkipCount = 0;
+    public bool moduleMode = false;
+    public int moduleCount = 0;
     
     private class ContextInfo
     {
@@ -196,6 +199,15 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
 <INCL>[ \t]                  /* skip whitespace */
 <INCL>[^ \t]{dotchr}*        BEGIN(INITIAL); TryInclude(yytext);      
 
+{MODULE} {
+    // start new module
+    moduleCount++;
+    moduleMode = true;
+    // BEGIN(INITIAL);
+    // yylval.str = yytext;
+    return (int)Token.MODULE;
+}
+
 /* #IF #ELSE #ENDIF */
 {PREIF}[ \t]+{dotchr}*       {
     if(preIfSkipCount != 0)
@@ -225,6 +237,12 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
     if(preIfSkipCount == 0)
     {
         BEGIN(INITIAL);
+        if(moduleMode)
+        {
+            // end module
+            moduleMode = false;
+            return (int)Token.MODULEEND;
+        }
     } else {
         BEGIN(PREIFSKIP);
         preIfSkipCount--;
@@ -346,7 +364,9 @@ STRFUNC {FORMD}|{DECID}|{PND}|{HEX2D}|{HEX4D}|{MSGD}|{MSXD}|{STRD}|{CHRD}|{SPCD}
                     case 'D' :
                     case 'd' : lexStrBuffer.Append((char)0x1f);
                                break;
-                    default  : lexStrBuffer.Append(yytext[yyleng-1]);
+                    default  : 
+                        lexStrBuffer.Append('\\');
+                        lexStrBuffer.Append(yytext[yyleng-1]);
                     break;
                     }
                   }

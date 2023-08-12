@@ -127,6 +127,26 @@ namespace SLANGCompiler.SLANG
             offsetAddressValue = expr.Value;
         }
 
+        public void StartModule(Expr expr)
+        {
+            if(!expr.IsConst())
+            {
+                Error("MODULE must be const.");
+                return;
+            }
+            var moduleCount = ((SLANGScanner)this.Scanner).moduleCount - 1;
+            gencode($"ORG ${expr.Value:X4},${moduleCount * 0x10000:X4}\n");
+            gencode($"_MODULE_{moduleCount}_START:\n");
+            isCurrentModuleMode = true;
+        }
+
+        public void EndModule()
+        {
+            var moduleCount = ((SLANGScanner)this.Scanner).moduleCount - 1;
+            gencode($"_MODULE_{moduleCount}_END:\n");
+            isCurrentModuleMode = false;
+        }
+
         private int computeSize(TypeInfo typeInfo)
         {
             if(typeInfo == null)
@@ -518,7 +538,7 @@ namespace SLANGCompiler.SLANG
                 slangScanner.SetSourceComment(isSourceComment);
 
                 StartParse();
-                genInitCode();
+                // genInitCode();
 
                 this.Parse();
                 stream.Close();

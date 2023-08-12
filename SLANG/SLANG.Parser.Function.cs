@@ -32,6 +32,20 @@ namespace SLANGCompiler.SLANG
         /// </summary>
         private void funchead()
         {
+            // モジュールモードではない関数定義の前に初期化コードを置く(うーん……)
+            if(!isInitCodeGenerated && !isCurrentModuleMode)
+            {
+                // ここでORGを書く
+                var moduleCount = ((SLANGScanner)this.Scanner).moduleCount;
+                if(moduleCount > 0)
+                {
+                    gencode($"\n\tORG\t${orgValue:X},${moduleCount * 0x10000:X}\n");
+                } else {
+                    gencode($"\n\tORG\t${orgValue:X}\n");
+                }
+                genInitCode();
+                isInitCodeGenerated = true;
+            }
             locVarSize = computeOffset();
             gencode($"; Function : {currentFunction.Name}\n");
             genfunclabel(currentFunction);

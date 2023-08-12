@@ -1,0 +1,350 @@
+;	org	0xD000
+;=======================================================================
+; 8253 簡易サウンドドライバテストプログラム
+; Tokihiro Naito 2020/11/27
+;=======================================================================
+; Main:
+; 	; ドライバの初期化
+; 	call	SNDInitialize
+; 
+; 	; メインループ
+; .repeat	ld	hl, BGM
+; 	call	SNDMusicStart	; 音楽を鳴らす
+; .loop	call	SNDDiver	; サウンドドライバ呼び出し
+; 
+; 	; 効果音発音テスト
+; .effect	in	a, (0x01)
+; 	and	%10000000	; RETUENキーが
+; 	jr	nz, .endchk	; 押されていないなら次に
+; 	ld	hl, SE		; HL 効果音アドレス
+; 	call	SNDEffectStart	; 効果音を発生させる
+; .endchk	in	a, (0x04)	; [Q]キーが
+; 	and	%00000010	; 押されていたら
+; 	jr	z, .end		; 終了処理に
+; 	call	SNDIsPlaying	; 音楽演奏中確認
+; 	jp	nz, .loop	; 演奏中ならそのままループ
+; 	jp	.repeat		; 音楽を再演奏させる
+; 
+; 	; 終了処理
+; .end	call	SNDStop		; 発音停止
+; .qoff	in	a, (0x04)	; [Q]キーが
+; 	and	%00000010	; 押されていたら
+; 	jr	z, .qoff	; 無限ループ
+; 	jp	0x5C66		; 終了する
+
+;-----------------------------------------------------------------------
+; 音楽を鳴らす
+; HL = BGMデータアドレス
+;
+#LIB SND_PLAY
+SNDMusicStart:
+	ld	de, 0x0800	; 音長初期値 8
+	ld	c, (hl)
+	inc	hl
+	ld	b, (hl)
+	inc	hl
+	ld	(SND.CH1 + MML.ADDRESS), bc
+	ld	(SND.CH1 + MML.REPEAT), bc
+	ld	(SND.CH1 + MML.LENGTH), de
+
+	ld	c, (hl)
+	inc	hl
+	ld	b, (hl)
+	inc	hl
+	ld	(SND.CH2 + MML.ADDRESS), bc
+	ld	(SND.CH2 + MML.REPEAT), bc
+	ld	(SND.CH2 + MML.LENGTH), de
+
+	ld	a, (hl)
+	inc	hl
+	ld	h, (hl)
+	ld	l, a
+	ld	(SND.CH3 + MML.ADDRESS), hl
+	ld	(SND.CH3 + MML.REPEAT), hl
+	ld	(SND.CH3 + MML.LENGTH), de
+
+	ret
+#ENDLIB
+
+;-----------------------------------------------------------------------
+; 効果音を鳴らす
+; HL = 効果音データアドレス
+;
+#LIB SND_SEPLAY
+SNDEffectStart:
+	ld	(SND.SE + MML.ADDRESS), hl
+	ld	(SND.SE + MML.REPEAT), hl
+	ld	hl, 0x0100	; 音長初期値 1
+	ld	(SND.SE + MML.LENGTH), hl
+	ret
+#ENDLIB
+
+;-----------------------------------------------------------------------
+; 音を止める
+;
+#LIB SND_INIT
+SNDInitialize:
+SNDStop:
+	xor	a
+	out	(0x02), a	; キーオンフラグを全停止する
+	ld	ix, SND.CH1
+	call	SNDPlayer.stop
+	ld	ix, SND.CH2
+	call	SNDPlayer.stop
+	ld	ix, SND.CH3
+	call	SNDPlayer.stop
+	ld	ix, SND.SE
+	jp	SNDPlayer.stop
+#ENDLIB
+
+#LIB SND_PROC
+;-----------------------------------------------------------------------
+; サウンドドライバエントリ
+;
+SNDTimer:
+	; 全ての使用レジスタを保存して復帰する
+	push	ix
+	push	hl
+	push	bc
+	push	af
+	call	.exec
+	pop	af
+	pop	bc
+	pop	hl
+	pop	ix
+	ret
+
+	; 汎用タイマー更新
+.exec	ld	hl, SND.Counter
+	inc	(hl)
+
+	; チャンネル別更新
+	ld	ix, SND.CH1
+	call	SNDPlayer
+	ld	ix, SND.CH2
+	call	SNDPlayer
+	ld	ix, SND.CH3
+	call	SNDPlayer
+	ld	ix, SND.SE
+	call	SNDPlayer
+
+	; 発音する
+	ld	hl, (SND.CH1 + MML.FREQ)
+	ld	bc, SNDWRT.@1 * 256 + SNDCH.@1
+	call	SNDOutput
+	ld	hl, (SND.CH2 + MML.FREQ)
+	ld	bc, SNDWRT.@2 * 256 + SNDCH.@2
+	call	SNDOutput
+	ld	hl, (SND.SE + MML.FREQ)
+	ld	bc, SNDWRT.@3 * 256 + SNDCH.@3
+	ld	a, h
+	or	l
+	jr	nz, .outpt
+	ld	hl, (SND.CH3 + MML.FREQ)
+.outpt	call	SNDOutput
+	ld	a, KEYON.All
+	out	(0x02), a	; キーオンフラグを全解放する
+	ret
+#ENDLIB
+
+#LIB SND_ISPLAYING
+;-----------------------------------------------------------------------
+; 音楽が演奏されているか
+; out: HL = 0 / ZF=1 停止している
+;
+SNDIsPlaying:
+	ld	hl, (SND.CH1 + MML.ADDRESS)
+	ld	a, h
+	or	l
+	ld	hl, (SND.CH2 + MML.ADDRESS)
+	ld	a, h
+	or	l
+	ld	hl, (SND.CH3 + MML.ADDRESS)
+	ld	a, h
+	or	l
+
+	ld	l,a
+	ld	h,0
+	ret
+#ENDLIB
+
+
+#LIB SND_COMMON
+;-----------------------------------------------------------------------
+; カウンタ値を出力する
+; B  = カウンタ値設定開始ビット
+; C  = SNDCH 出力ポート
+; HL = 実際に出力するカウンタ値
+;
+SNDOutput:
+	ld	a, b
+	out	(0x0F), a
+	nop
+	out	(c), l
+	nop
+	out	(c), h
+	ret
+
+;-----------------------------------------------------------------------
+; チャンネル別更新処理（ドライバ内部呼び出し専用）
+; IX = ワーク先頭アドレス
+;
+SNDPlayer:
+	; アドレスがなければ終了
+	ld	l, (ix + MML.ADDRESS)
+	ld	h, (ix + MML.ADDRESS + 1)
+	ld	a, h
+	or	l
+	ret		z
+
+	; 発音継続確認
+	dec	(ix + MML.LENGTH)
+	jp	m, .cmd			; マイナスならMML解析に
+	ret	nz			; プラスなら今のまま継続
+	ld	(ix + MML.FREQ), a	; ゲームタイムで音を消す
+	ld	(ix + MML.FREQ + 1), a
+	ret
+
+	; MMLコマンド解析
+.cmd	ld	a, (hl)
+	inc	hl
+	cp	0x80
+	jr	z, .stop
+	jp	nc, .length
+
+	; 音階
+	ld	(ix + MML.ADDRESS), l	; MMLポインタを保存
+	ld	(ix + MML.ADDRESS + 1), h
+	add	a, a
+	ld	l, a
+	ld	h, 0
+	ld	bc, FRQTBL
+	add	hl, bc
+	ld	a, (hl)
+	ld	(ix + MML.FREQ), a
+	inc	hl
+	ld	a, (hl)
+	ld	(ix + MML.FREQ + 1), a	; 発音カウンタ値を保存
+	ld	a, (ix + MML.LENDATA)
+	ld	(ix + MML.LENGTH), a	; 音長カウンタ初期化
+	ret
+
+	; 音長
+.length	neg
+	ld	(ix + MML.LENDATA), a
+	jr	.cmd
+
+	; 終了
+.stop	xor	a
+	ld	(ix + MML.ADDRESS), a
+	ld	(ix + MML.ADDRESS + 1), a
+	ld	(ix + MML.FREQ), a
+	ld	(ix + MML.FREQ + 1), a
+	ret
+
+;-----------------------------------------------------------------------
+; 垂直帰線が裏に入ったら音を鳴らす
+;
+SNDDiver:
+	push	af
+	ld	a, (SND.BLANKFLG)
+	or	a
+	jr	nz, .chkF
+
+	; 垂直帰線が裏にいる
+	in	a, (0x40)
+	and	%00100000
+	ld	(SND.BLANKFLG), a
+	pop	af
+	ret
+
+	; 垂直帰線が表にいる
+.chkF	in	a, (0x40)
+	and	%00100000
+	ld	(SND.BLANKFLG), a
+	call	z, SNDTimer	; 裏から表に変わったので呼び出す
+	pop	af
+	ret
+
+;-----------------------------------------------------------------------
+; 発音カウンタ値テーブル
+;
+FRQTBL:
+	dw	0xEE80, 0xE11D, 0xD47B, 0xC88D, 0xBD4C, 0xB2AC
+	dw	0xA8A5, 0x9F2E, 0x963F, 0x8DD0, 0x85DA, 0x7E57
+	dw	0x7740, 0x708F, 0x6A3D, 0x6447, 0x5EA6, 0x5956
+	dw	0x5453, 0x4F97, 0x4B1F, 0x46E8, 0x42ED, 0x3F2C
+	dw	0x3BA0, 0x3847, 0x351F, 0x3223, 0x2F53, 0x2CAB
+	dw	0x2A29, 0x27CB, 0x2590, 0x2374, 0x2177, 0x1F96
+	dw	0x1DD0, 0x1C24, 0x1A8F, 0x1912, 0x17AA, 0x1656
+	dw	0x1515, 0x13E6, 0x12C8, 0x11BA, 0x10BB, 0x0FCB
+	dw	0x0EE8, 0x0E12, 0x0D48, 0x0C89, 0x0BD5, 0x0B2B
+	dw	0x0A8A, 0x09F3, 0x0964, 0x08DD, 0x085E, 0x07E5
+	dw	0x0774, 0x0709, 0x06A4, 0x0644, 0x05EA, 0x0595
+	dw	0x0545, 0x04F9, 0x04B2, 0x046F, 0x042F, 0x03F3
+
+;-----------------------------------------------------------------------
+; 音階定義
+;
+TONE:
+.C	equ	0
+.CP	equ	1
+.D	equ	2
+.DP	equ	3
+.E	equ	4
+.F	equ	5
+.FP	equ	6
+.G	equ	7
+.GP	equ	8
+.A	equ	9
+.AP	equ	10
+.B	equ	11
+
+.O1	equ	(0 * 12)
+.O2	equ	(1 * 12)
+.O3	equ	(2 * 12)
+.O4	equ	(3 * 12)
+.O5	equ	(4 * 12)
+.O6	equ	(5 * 12)
+
+;-----------------------------------------------------------------------
+; 発音制御フラグ
+;
+KEYON:	; キーオンフラグ out(0x02) に出力する
+.@1	equ	%00001000	; ch.1
+.@2	equ	%01000000	; ch.2
+.@3	equ	%10000000	; ch.3
+.All	equ	(.@1 | .@2 | .@3)
+
+SNDCH:	; チャンネル毎のカウント値設定ポート番号
+.@1	equ	%00001100	; ch.1
+.@2	equ	%00001101	; ch.2
+.@3	equ	%00001110	; ch.3
+
+SNDWRT:	; カウンタ値出力開始フラグ 下位／上位
+.@1	equ	%00110110	; ch.1
+.@2	equ	%01110110	; ch.2
+.@3	equ	%10110110	; ch.3
+
+
+;-----------------------------------------------------------------------
+; ワークエリア
+;
+MML:
+.ADDRESS	equ	0		; MMLデータアドレス
+.REPEAT		equ	2		; MMLデータ初期アドレス
+.FREQ		equ	4		; 発音周波数
+.LENGTH		equ	6		; 現在の音長カウンタ
+.LENDATA	equ	7		; 音長初期値
+.SIZE		equ	8		; チャンネルデータサイズ
+
+SND:
+.Counter	ds	1		; 汎用カウンタ
+.Repeat		ds	1		; BGMリピート再生フラグ
+.CH1		ds	MML.SIZE	; 1ch
+.CH2		ds	MML.SIZE	; 2ch
+.CH3		ds	MML.SIZE	; 3ch
+.SE		ds	MML.SIZE	; SE
+.BLANKFLG	ds	1		; 垂直帰線位置フラグ
+
+#ENDLIB

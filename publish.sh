@@ -4,6 +4,7 @@ createRelease() {
   cd publish/$1
   mkdir bin
   mv SLANGCompiler* bin
+  mv ModuleSplitter* bin
   cp -r ../../include .
   cp -r ../../lib .
   cp -r ../../examples .
@@ -41,6 +42,15 @@ cp bin/Release/net6.0/osx-x64/publish/SLANGCompiler publish/osx-x64
 cp bin/Release/net6.0/osx-arm64/publish/SLANGCompiler publish/osx-arm64
 cp bin/Release/net6.0/win-x64/publish/SLANGCompiler.exe publish/win-x64
 cp bin/Release/net6.0/linux-x64/publish/SLANGCompiler publish/linux-x64
+cd ModuleSplitter/ModuleSplitter
+dotnet publish -c Release -r osx-x64 --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=true
+dotnet publish -c Release -r osx-arm64 --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=true
+dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=true
+dotnet publish -c Release -r linux-x64 --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=true
+cp bin/Release/netcoreapp3.1/osx-x64/publish/ModuleSplitter ../../publish/osx-x64
+cp bin/Release/netcoreapp3.1/osx-arm64/publish/ModuleSplitter ../../publish/osx-arm64
+cp bin/Release/netcoreapp3.1/win-x64/publish/ModuleSplitter.exe ../../publish/win-x64
+cp bin/Release/netcoreapp3.1/linux-x64/publish/ModuleSplitter ../../publish/linux-x64
 createRelease osx-x64 sh $VERSION
 createRelease osx-arm64 sh $VERSION
 createRelease win-x64 bat $VERSION

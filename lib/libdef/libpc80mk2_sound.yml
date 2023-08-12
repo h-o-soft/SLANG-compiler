@@ -1,0 +1,88 @@
+
+SND_COMMON:
+  lib_name: PC80SND
+  extlib: pc8001/sound.z80:SND_COMMON
+
+SND_INIT:
+  calls:
+    - SND_COMMON
+  lib_name: PC80SND
+  extlib: pc8001/sound.z80:SND_INIT
+
+SND_STOP:
+  calls:
+    - SND_COMMON
+  lib_name: PC80SND
+  extlib: pc8001/sound.z80:SND_INIT
+
+SND_PLAY:
+  calls:
+    - SND_COMMON
+  lib_name: PC80SND
+  extlib: pc8001/sound.z80:SND_PLAY
+
+SND_SEPLAY:
+  calls:
+    - SND_COMMON
+  lib_name: PC80SND
+  extlib: pc8001/sound.z80:SND_SEPLAY
+
+SND_PROC:
+  calls:
+    - SND_COMMON
+  lib_name: PC80SND
+  extlib: pc8001/sound.z80:SND_PROC
+
+SND_ISPLAYING:
+  calls:
+    - SND_COMMON
+  lib_name: PC80SND
+  extlib: pc8001/sound.z80:SND_ISPLAYING
+
+
+#SND_COMMON:
+#  lib_name: PC80SND
+#  extlib: pc8001/soundv2.z80:SND_COMMON
+#
+#SND_INIT:
+#  calls:
+#    - SND_COMMON
+#  lib_name: PC80SND
+#  extlib: pc8001/soundv2.z80:SND_INIT
+#
+#SND_STOP:
+#  calls:
+#    - SND_COMMON
+#  lib_name: PC80SND
+#  extlib: pc8001/soundv2.z80:SND_INIT
+#
+#SND_PLAY:
+#  calls:
+#    - SND_COMMON
+#  lib_name: PC80SND
+#  extlib: pc8001/soundv2.z80:SND_PLAY
+#
+#SND_SEPLAY:
+#  calls:
+#    - SND_COMMON
+#  lib_name: PC80SND
+#  extlib: pc8001/soundv2.z80:SND_SEPLAY
+#
+#SND_SEPLAYHIGH:
+#  calls:
+#    - SND_COMMON
+#    - SND_SEPLAY
+#  lib_name: PC80SND
+#  extlib: pc8001/soundv2.z80:SND_SEPLAYHIGH
+#
+#SND_PROC:
+#  calls:
+#    - SND_COMMON
+#  lib_name: PC80SND
+#  extlib: pc8001/soundv2.z80:SND_PROC
+#
+#SND_ISPLAYING:
+#  calls:
+#    - SND_COMMON
+#  lib_name: PC80SND
+#  extlib: pc8001/soundv2.z80:SND_ISPLAYING
