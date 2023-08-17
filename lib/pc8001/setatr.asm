@@ -79,7 +79,7 @@ SetTextAtr:
 
 	ld			a,c							;x
 	ld			b,20
-.loop:
+.loop
 	cp			(hl)						;同じ開始位置のものがあったら差し替える
 	jr			z,.found					;先頭から検索するので、最初のアトリビュートが x=0 でない場合でも一致すれば上書きしてしまう。
 	inc			hl							;その場合、新たに設定したアトリビュートの開始位置は強制的に x=0 と解釈されてしまう。
@@ -87,7 +87,7 @@ SetTextAtr:
 	djnz		.loop
 
 	ld			b,20
-.sort:
+.sort
 	dec			hl
 	dec			hl
 	ld			a,(hl)
@@ -106,11 +106,11 @@ SetTextAtr:
 	dec			hl
 	dec			b
 
-.skip1:
+.skip1
 	inc			hl							;小さい開始位置が見つかったら、その後ろに挿入する
 	inc			hl
 	pop			af
-.sortlp:
+.sortlp
 	ld			e,(hl)						;古い値を de に保存
 	ld			(hl),c						;新しい値 ac を入れる
 	inc			hl
@@ -126,7 +126,7 @@ SetTextAtr:
 	jr			nz,.sortlp					;新しい属性を挿入した結果、最後尾の属性は追い出される
 	jr			.exit
 
-.next:
+.next
 	djnz		.sort						;最後まで検索して空だらけ or 一番最初の開始位置が a よりうしろだったら↓
 
 	pop			af
@@ -137,33 +137,33 @@ SetTextAtr:
 	inc			hl							;この場合、最後尾のアトリビュートは追い出されて無効となる
 	ld			b,1
 	jr			.sortlp
-.skip2:										;x=0 の場合はそのまま先頭のアトリビュートに上書き。押し出しはナシ。
+.skip2										;x=0 の場合はそのまま先頭のアトリビュートに上書き。押し出しはナシ。
 	ld			(hl),c
 	inc			hl
 	ld			(hl),a
 	jr			.exit
 
-.found:										;同じ開始位置のものがあったら、そこに上書きする
+.found										;同じ開始位置のものがあったら、そこに上書きする
 	pop			af							;この場合、先頭に 0 でも 80 以上でもない無効な開始位置が書き込まれていたはずなので上書きで問題ない
 	inc			hl
 	ld			(hl),a
 	jr			.exit
 
-.clear:
+.clear
 	pop			af
 	ld			b,20
-.clearlp:
+.clearlp
 	ld			(hl),$80					;全クリアは BASIC に倣って $80,$E8 とする。
 	inc			hl
 	ld			(hl),$E8
 	inc			hl
 	djnz		.clearlp
-.exit:
+.exit
 	; pop			af
 	; out			($32),a
 	ret
 
-.sub:										;b=y c=x を hl=tatr　にする
+.sub										;b=y c=x を hl=tatr　にする
 	push		bc
 	ld			a,b
 	ld			h,b

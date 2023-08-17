@@ -66,7 +66,7 @@ else ifeq ($(ENV), pc80mk2)
   # OUTPROG = $(TARGET).bin
   # $(TARGET) のファイル名の拡張子をcmtに変更してDISK_IMAGEに格納
   DISK_IMAGE = $(dir $(TARGET))PROG.cmt
-  ASM_OPT = -cmt
+  ASM_OPT = -cmt -gap 0
 else ifeq ($(ENV), cpm)
   SLANGENV=lsx
   EMU = tools/cpm.exe

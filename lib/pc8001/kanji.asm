@@ -119,7 +119,7 @@ PutKanji:
 	pop			hl
 	jp			PutKanji
 
-.crlf:
+.crlf
 	xor			a
 	ld			(KanjiX),a
 	ld			a,(KanjiY)
@@ -130,7 +130,7 @@ PutKanji:
 	ld			(KanjiY),a
 	jp			PutKanji
 
-.half:
+.half
 	ld			a,e						;1バイト目=1 の時は 1/4角とする
 	dec			a
 	jr			z,.quarter
@@ -159,7 +159,7 @@ PutKanji:
 	pop			hl
 	jp			PutKanji
 
-.quarter:								;0100-01FF 1/4角
+.quarter								;0100-01FF 1/4角
 	ld			d,2
 	ld			e,(hl)
 	inc			hl
@@ -196,7 +196,7 @@ Zenkaku:
 	ld			a,e
 	ld			de,78
 	ld			b,16*3
-.loop:
+.loop
 	out			(c),a					;$E8 下位アドレス
 	out			($EA),a					;漢字ROM読み出しサイン FR/MR 以降はウェイト含め不要
 	inc			a
@@ -251,7 +251,7 @@ Hankaku:
 	ld			a,e
 	ld			de,79
 	ld			b,8*3
-.loop:
+.loop
 	out			(c),a					;$E8 下位アドレス
 	out			($EA),a					;漢字ROM読み出しサイン FR/MR 以降はウェイト含め不要
 	inc			a
@@ -373,7 +373,7 @@ Zenkaku2E:
 	nop							;inc a で偶数
 	ld			de,78
 	ld			b,8*3
-.loop:
+.loop
 	out			(c),a					;$E8 下位アドレス
 	out			($EA),a					;漢字ROM読み出しサイン FR/MR 以降はウェイト含め不要
 	add			a,2
@@ -396,7 +396,7 @@ Hankaku2E:
 	ld			a,e
 	ld			de,80
 	ld			b,8*2
-.loop:
+.loop
 	out			(c),a					;$E8 下位アドレス
 	out			($EA),a					;漢字ROM読み出しサイン FR/MR 以降はウェイト含め不要
 	inc			a
@@ -430,7 +430,7 @@ Zenkaku2OR:
 	out			(c),d					;$E9 上位アドレスを書き込むのは初回だけで良い
 	dec			c
 	ld			b,8
-.loop:
+.loop
 	out			(c),e					;$E8 下位アドレス
 	out			($EA),a					;漢字ROM読み出しサイン FR/MR 以降はウェイト含め不要
 	inc			e
@@ -477,7 +477,7 @@ Hankaku2OR:
 	ld			c,e
 	ld			de,80
 	ld			b,8
-.loop:
+.loop
 	ld			a,c
 	out			($E8),a					;$E8 下位アドレス
 	out			($EA),a					;漢字ROM読み出しサイン FR/MR 以降はウェイト含め不要
@@ -514,7 +514,7 @@ Zenkaku3Flip:
 	dec			c
 	ld			de,78
 	ld			b,8*5
-.loop:
+.loop
 	out			(c),a					;$E8 下位アドレス
 	out			($EA),a					;漢字ROM読み出しサイン FR/MR 以降はウェイト含め不要
 	inc			a
@@ -551,7 +551,7 @@ Hankaku3Flip:
 	ld			c,e
 	ld			de,80
 	ld			b,8
-.loop:
+.loop
 	ld			a,c
 	out			($E8),a					;$E8 下位アドレス
 	out			($EA),a					;漢字ROM読み出しサイン FR/MR 以降はウェイト含め不要
@@ -593,7 +593,7 @@ JIS2ADR:
 ;	cp			$21
 ;	jr			nc,.nokanji				;2120-277F 非漢字
 
-.nokanji:
+.nokanji
 	ld			a,d
 	and			%00000111
 	ld			c,a
@@ -612,7 +612,7 @@ JIS2ADR:
 	rl			d						;00bbaaac
 	ld			c,$E9
 	ret
-.part1:
+.part1
 	ld			a,e
 	and			%01100000
 	add			a,a
@@ -630,7 +630,7 @@ JIS2ADR:
 	ld			d,a						;bbaaaaac
 	ld			c,$E9
 	ret
-.part21:
+.part21
 	ld			a,e
 	and			%01100000
 	add			a,a
@@ -650,7 +650,7 @@ JIS2ADR:
 	ld			d,a						;ccabbbbd
 	ld			c,$ED
 	ret
-.part22:
+.part22
 	ld			a,e
 	and			%01100000
 	rrca
@@ -692,7 +692,7 @@ KanjiXY2VRAM:
 	pop			hl
 	ret
 
-.table:
+.table
 	dw			$8000+80*8* 0, $8000+80*8* 1, $8000+80*8* 2, $8000+80*8* 3, $8000+80*8* 4, $8000+80*8* 5, $8000+80*8* 6, $8000+80*8* 7
 	dw			$8000+80*8* 8, $8000+80*8* 9, $8000+80*8*10, $8000+80*8*11, $8000+80*8*12, $8000+80*8*13, $8000+80*8*14, $8000+80*8*15
 	dw			$8000+80*8*16, $8000+80*8*17, $8000+80*8*18, $8000+80*8*19, $8000+80*8*20, $8000+80*8*21, $8000+80*8*22, $8000+80*8*23
@@ -707,7 +707,7 @@ SJIS2JIS:
 	cp			$A0						;第一バイト(H)が 0x9F 以下なら H-=0x71 でなければ、H-=0xB1
 	jr			nc,.skip1
 	add			a,$B1-$71
-.skip1:
+.skip1
 	sub			$B1
 
 	add			a,a
@@ -718,13 +718,13 @@ SJIS2JIS:
 	cp			$7F						;第二バイト(L)が 0x7F以上なら L--
 	jr			c,.skip2
 	dec			a
-.skip2:
+.skip2
 
 	cp			$9E						;第二バイト(L)が 0x9E 以上なら L-=0x7D,H++ でなければ L-=0x1F
 	jr			c,.skip3
 	sub			$7D-$1F
 	inc			d
-.skip3:
+.skip3
 	sub			$1F
 	ld			e,a
 	ret

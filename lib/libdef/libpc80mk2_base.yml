@@ -172,7 +172,7 @@ CMDSCREEN:
     LD A,(N80WORK.PORT31)
 
     ; AND $71
-    ; 4th ROM許可(うーん)
+    ; 4th ROM許可(いいのか？よくわからない……)
     AND $00
     SRA L
     SLA L
@@ -188,12 +188,13 @@ CMDSCREEN:
     SLA H
     OR H
 
-    SLA B
-    SLA B
-    SLA B
-    SLA B
-    SLA B
-    OR B
+    ; COLOR CODEは後で考える(ここではない)
+    ; SLA B
+    ; SLA B
+    ; SLA B
+    ; SLA B
+    ; SLA B
+    ; OR B
 
     LD C,$31
     OUT (C),A
@@ -501,4 +502,16 @@ KEYCHK:
     LD C,L
     IN L,(C)
     LD H,0
+    RET
+
+BEEP:
+  code: |
+    LD A,L
+    AND 1
+    RLA
+    RLA
+    RLA
+    RLA
+    RLA ; $20
+    OUT ($40),A
     RET
