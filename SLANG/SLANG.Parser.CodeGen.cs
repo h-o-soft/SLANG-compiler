@@ -7,6 +7,9 @@ namespace SLANGCompiler.SLANG
 {
     internal partial class SLANGParser : ICodeStatementGenerator
     {
+        private bool isCurrentModuleMode = false;
+        private bool isInitCodeGenerated = false;
+
         // 初期化コードの生成
         private void genInitCode()
         {

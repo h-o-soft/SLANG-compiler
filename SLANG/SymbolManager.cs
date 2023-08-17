@@ -315,8 +315,8 @@ namespace SLANGCompiler.SLANG
                     // デバッグ用シンボルとして本来の名前もEQUで設定しておく(大丈夫？)
                     // _(変数名)_ という名前で定義される(うーむ)
                     codeRepository.AddCode($"_{symbol.NormalizeOriginalName}_ EQU ({labelName})\n");
-                    codeRepository.AddCode($"{labelName}:\n");
                 }
+                codeRepository.AddCode($"{labelName}:\n");
 
                 var dataSize = symbol.Size;
 

@@ -1,8 +1,10 @@
-#!/bin/sh
+#!/bin/bash
 
 # emulator path
 EMUPATH=`readlink -f ~/emulator/x1/x1.exe`
 MSXEMUPATH=`readlink -f /Applications/openMSX.app/Contents/MacOS/openmsx`
+PC80mk2EMUPATH=`readlink -f ~/emulator/pc8001mkII/pc8001mk2.exe`
+echo $PC80mk2EMUPATH
 
 function Launch() {
   cd $CURPATH
@@ -31,12 +33,20 @@ function LaunchMSX2() {
   $NDCPATH P $IMAGEPATH/$PROGIMAGE 0 PROG.COM
   
   cd $CURPATH
-  $MSXEMULATOR% -diska $IMAGEPATH/$PROGIMAGE
+  $MSXEMULATOR -diska $IMAGEPATH/$PROGIMAGE
 
   echo DONE!
   exit 0
 }
 
+function LaunchPC8001mk2() {
+  $MODSPLIT $PROG.BIN --cmt
+
+  $PC80mk2EMULATOR $PROG.CMT
+
+  echo DONE!
+  exit 0
+}
 
 function Error() {
   echo ERROR! $1
@@ -50,9 +60,9 @@ if [ $# -eq 0 ]; then
   exit 1
 fi
 
-if [ -z $EMUPATH ]; then
-  Error "emulator not found"
-fi
+# if [ -z $EMUPATH ]; then
+#   Error "emulator not found"
+# fi
 
 # where $MSXEMUPATH
 # if [ $? -ne 0 ]; then
@@ -70,6 +80,7 @@ PROGEXT=${FILENAME##*.}
 
 echo SOURCE : $PROGDIR$PROG.$PROGEXT
 
+ASMOPT=
 # Target = lsx / x1 / sos / msx2
 if [ $# -eq 1 ]; then
 TARGETENV=lsx
@@ -77,6 +88,10 @@ CHECKCPM=0
 elif [ $2 == "cpm" ]; then
 TARGETENV=lsx
 CHECKCPM=1
+elif [ $2 == "pc80mk2" ]; then
+TARGETENV=$2
+ASMOPT='-cmt -gap 0'
+CHECKCPM=0
 else
 TARGETENV=$2
 CHECKCPM=0
@@ -98,10 +113,11 @@ IMAGEPATH=${CURPATH}images
 
 SLANGCOMPILER="${CURPATH}bin/SLANGCompiler"
 ASM=$TOOLPATH/AILZ80ASM
-
+MODSPLIT="${CURPATH}bin/ModuleSplitter"
 
 EMULATOR="wine $EMUPATH"
 MSXEMULATOR="$MSXEMUPATH"
+PC80mk2EMULATOR="$PC80mk2EMUPATH"
 
 NDCPATH=$TOOLPATH/ndc
 HUDISKPATH="mono $TOOLPATH/HuDisk.exe"
@@ -121,7 +137,7 @@ if [ $? -ne 0 ]; then
   Error ""
 fi
 
-$ASM $PROG.ASM -sym -lst -bin -f
+$ASM $PROG.ASM -sym -lst -bin -f $ASMOPT
 if [ $? -ne 0 ]; then
   Error ""
 fi
@@ -154,6 +170,9 @@ elif [ $TARGETENV == "msxrom" ]; then
 elif [ $TARGETENV == "msx2" ]; then
   echo MSX2 Disk
   LaunchMSX2
+elif [ $TARGETENV == "pc80mk2" ]; then
+  echo PC-8001mkII
+  LaunchPC8001mk2
 else
   echo NOT SUPPORTED $TARGETENV
 fi

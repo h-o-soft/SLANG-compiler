@@ -182,7 +182,7 @@ namespace SLANGCompiler.SLANG
 
             CodeList.Clear();
 
-           WriteCode($"\n\tORG\t${orgValue:X}\n");
+           // WriteCode($"\n\tORG\t${orgValue:X}\n");
 
            if(offsetValue >= 0)
            {

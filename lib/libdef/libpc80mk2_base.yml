@@ -1,0 +1,517 @@
+PC80CALLS:
+  code: |
+    ;-----------------------------------------------------------------------
+    ; 定数定義
+    ;
+
+    ; ROM内ルーチン
+    BIOS:
+    .FUNC_COLOR	equ	$08F7		; Function Key On/Offとカラーモノクロ指定
+    .WIDTH		equ	$093A		; CRT 画面表示文字数の設定
+    .CURSOR_OFF	equ	$0BD2		; カーソル消去
+    .MONITOR	equ	$5C66		; モニタに戻る
+    .PUTCRT1  equ $0257   ; CRTへの1バイト出力
+    .LOCATE equ $03A9     ; カーソルの移動
+
+    N80WORK:
+    .PORT31 equ  $E6C6    ; 出力ポート31H番地への出力データ
+    ; bit 7: BG Color G(attr mode)
+    ; bit 6: BG Color R(attr mode)
+    ; bit 5: BG Color B(attr mode)
+    ; bit 4: 0=640x200, 1=320x200
+    ; bit 3: Graphics Screen 1=On/0=Off
+    ; bit 2: 640x200: 0=attribute mode / 1=mono mode
+    ;        320x200: 0=4 color 0 / 1=4 color 1
+    ; bit 1: $0000-$7FFF : 0=ROM MODE / 1=RAM MODE
+    ; bit 0: 4thROM 0=enable / 1=disable
+
+    ; テキスト
+    CRTC:
+    .Digits		equ	80		; テキストの横サイズ
+    .Lines		equ	25		; テキストの行数
+    .LineSize	equ	120		; 1行のサイズ
+
+    ; 方向フラグ
+    JOY:
+    .Right		equ	%00001000
+    .Left		equ	%00000100
+    .Down		equ	%00000010
+    .Up		equ	%00000001
+
+    ; キーボード入力
+    KEYP00		equ	$00
+    KEYP01		equ	$01
+    KEYP08		equ	$08
+    KEYP09		equ	$09
+
+    ; キーマップ
+    KEY00:
+    .NUM_6		equ	%01000000
+    .NUM_4		equ	%00010000
+    .NUM_2		equ	%00000100
+
+    KEY01:
+    .NUM_8		equ	%00000001
+
+    KEY09:
+    .ESC		equ	%10000000
+    .SPACE		equ	%01000000
+    .F5		equ	%00100000
+    .F4		equ	%00010000
+    .F3		equ	%00001000
+    .F2		equ	%00000100
+    .F1		equ	%00000010
+    .STOP		equ	%00000001
+
+    ; アドレス
+    ADRS:
+    .VText		equ	$f300				; テキストVRAMアドレス
+    .VTextSize	equ	CRTC.LineSize * CRTC.Lines	; テキストサイズ
+    .VTextEnd	equ	ADRS.VText + ADRS.VTextSize	; テキストVRAM終端アドレス
+
+    ; アトリビュート
+    ATRB:
+    .Max        	equ 20      	; テキスト1行のアトリビュート最大変化数
+    .MaxByte   	equ (ATRB.Max * 2)  ; テキスト1行のアトリビュートバイト数
+
+    ; mode = 1
+    .Black      	equ %00001000   ; 黒
+    .Blue       	equ %00101000   ; 青
+    .Red        	equ %01001000   ; 赤
+    .Magenta    	equ %01101000   ; 紫
+    .Green      	equ %10001000   ; 緑
+    .Cyan       	equ %10101000   ; 水
+    .Yellow     	equ %11001000   ; 黄
+    .White      	equ %11101000   ; 白
+    .SemiGrph   	equ %00011000   ; セミグラフィック
+
+    ; mode = 0
+    .Underline  	equ %00100000   ; 下線
+    .Overline   	equ %00010000   ; 上線
+    .Reverse    	equ %00000100   ; 反転
+    .Blink      	equ %00000010   ; 点滅
+    .Secret     	equ %00000001   ; シークレット
+
+SLANGINIT:
+  calls:
+    - PC80CALLS
+    - PC80WORK
+  code: |
+    INIT:
+    ; 初期化
+    call	BIOS.CURSOR_OFF 	; カーソル消去
+    ld	bc, $0000
+    call	BIOS.FUNC_COLOR 	; ファンクションキーを消して白黒モードにする
+    ld	bc, 80 * 256 + 25
+    call	BIOS.WIDTH		; CRT 画面表示文字数の設定
+
+    ; WORK ZERO CLEAR
+    XOR A
+    LD HL,__WORK__
+    LD DE,__WORK__+1
+    LD BC,__WORKEND__-__WORK__-1
+    LD (HL),A
+    LDIR
+
+    <<CALLINITIALIZER>>
+
+    LD IY,__IYWORK
+
+    CALL MAIN
+    jp	BIOS.MONITOR
+    INFLOOP:
+    JP INFLOOP
+
+MEMMODE:
+  calls:
+    - PC80CALLS
+  code: |
+    ; HL = READ: 0=ROM / 1=RAM
+    ; DE = WRITE: 0=ROM / 1=RAM
+
+    ; backup HL
+    LD D,L
+
+    ; 31H to ROM mode
+    LD HL,N80WORK.PORT31
+    LD A,(HL)
+    ; ROM MODE
+    AND $FC
+    LD BC,$31
+    OUT (C),A
+    LD (HL),A
+
+    LD BC,$E2
+
+    ; RAMWRITE(bit4)
+    SLA E
+    SLA E
+    SLA E
+    SLA E
+    ; RAMREAD(bit0)
+    LD A,D
+    OR E
+    OUT (C),A
+
+    RET
+
+CMDSCREEN:
+  code: |
+    ; HL = GRAPHIC MODE(0=640x200 MONO、1=640x200Attribute Color、2=320x200、4 Color 1,3=320x200、4 Color 1)
+    ; DE = 0 = GRAPHIC OFF / 1 = GRAPHIC ON
+    ; BC = COLOR CODE
+
+    ; Color Code Backup
+    LD B,C
+
+    ; Graphics Mode Backup
+    LD A,L
+    AND 1
+    LD H,A
+    
+    LD A,(N80WORK.PORT31)
+
+    ; AND $71
+    ; 4th ROM許可(いいのか？よくわからない……)
+    AND $00
+    SRA L
+    SLA L
+    SLA L
+    SLA L
+    SLA L
+    OR L  ; bit 4 0=640x200, 1=320x200 を設定
+    SLA E
+    SLA E
+    SLA E
+    OR E  ; bit 3 Graphics Screen 1=On/0=Off
+    SLA H
+    SLA H
+    OR H
+
+    ; COLOR CODEは後で考える(ここではない)
+    ; SLA B
+    ; SLA B
+    ; SLA B
+    ; SLA B
+    ; SLA B
+    ; OR B
+
+    LD C,$31
+    OUT (C),A
+    LD (N80WORK.PORT31),A
+
+    RET
+
+LOADCMT:
+  code: |
+    CALL $BF3   ; CMT Read Start
+    CALL $5F3A  ; LOAD CMT Machine binary
+    RET
+
+SD_ROPEN:
+  code: |
+    JP $600f
+
+SD_FGET:
+  code: |
+    CALL $6006
+    LD L,A
+    LD H,0
+    RET
+
+SD_RREAD:
+  code: |
+    JP $6009
+
+SD_WAOPEN:
+  code: |
+    JP $6012
+
+SD_WNOPEN:
+  code: |
+    JP $601B
+
+SD_FPUT:
+  code: |
+    LD A,L
+    JP $6018
+
+SD_FWRITE:
+  code: |
+    JP $6015
+
+SD_WCLOSE:
+  code: |
+    JP $601E
+
+SETGVRAM:
+  code: |
+    ; HL = 0=Main Memory / 1=GVRAM
+    push bc
+
+    ; 0x8000～の領域をどちらにするかの選択
+    bit 0,l
+    jr z,.mainmemory
+    ld c,$5c
+    jr .setmode
+
+    .mainmemory
+    ld c,$5f
+
+    .setmode
+    out (c),a
+
+    pop bc
+    ret
+
+PC80WORK:
+  param_count: 0
+  code: |
+    ;
+  works:
+    WORKDUMMY: 2
+
+KANJILOCATE:
+    lib_name: PC80KANJI
+    extlib: pc8001/KANJI.ASM:KANJILOCATE
+
+KANJIPUT:
+    lib_name: PC80KANJI
+    extlib: pc8001/KANJI.ASM:KANJIPUT
+
+PCGDEF2:
+  calls:
+    - PCGDEF
+  code: |
+    ; (256 chr mode)
+    ; HL = chr code(0x00-0x7f) DE = address
+    EX DE,HL
+    LD A,0
+    SLA E
+    RLA ; x2
+    SLA E
+    RLA ; x4
+    SLA E
+    RLA ; x8
+    OR $04
+    LD D,A
+
+    ; for PCG8200
+    LD A,19
+    OUT (3),A
+
+    JP PCGDEF.defmain
+
+PCGDEF:
+  code: |
+    ; (128 chr mode)
+    ; HL = chr code(0x00-0x7f) DE = address
+    EX DE,HL
+    LD A,0
+    SLA E
+    RLA ; x2
+    SLA E
+    RLA ; x4
+    SLA E
+    RLA ; x8
+    LD D,A
+
+    ; for PCG8200
+    LD A,8
+    OUT (3),A
+
+    .defmain
+    ; 8bytes transfer
+    LD C,0
+
+    OUTI
+    LD A,E
+    OUT (1),A
+    LD A,D
+    OR $10
+    OUT (2),A
+    AND $EF
+    OUT (2),A
+    INC E
+
+    OUTI
+    LD A,E
+    OUT (1),A
+    LD A,D
+    OR $10
+    OUT (2),A
+    AND $EF
+    OUT (2),A
+    INC E
+
+    OUTI
+    LD A,E
+    OUT (1),A
+    LD A,D
+    OR $10
+    OUT (2),A
+    AND $EF
+    OUT (2),A
+    INC E
+
+    OUTI
+    LD A,E
+    OUT (1),A
+    LD A,D
+    OR $10
+    OUT (2),A
+    AND $EF
+    OUT (2),A
+    INC E
+
+    OUTI
+    LD A,E
+    OUT (1),A
+    LD A,D
+    OR $10
+    OUT (2),A
+    AND $EF
+    OUT (2),A
+    INC E
+
+    OUTI
+    LD A,E
+    OUT (1),A
+    LD A,D
+    OR $10
+    OUT (2),A
+    AND $EF
+    OUT (2),A
+    INC E
+
+    OUTI
+    LD A,E
+    OUT (1),A
+    LD A,D
+    OR $10
+    OUT (2),A
+    AND $EF
+    OUT (2),A
+    INC E
+
+    OUTI
+    LD A,E
+    OUT (1),A
+    LD A,D
+    OR $10
+    OUT (2),A
+    AND $EF
+    OUT (2),A
+
+    RET
+
+STICK2:
+  code: |
+    ; TENKEY INPUT
+    ; result:
+    ;   bit0 up
+    ;   bit1 right
+    ;   bit2 down
+    ;   bit3 left
+
+    ; 0～7
+    IN A,(0)
+    LD B,A
+    LD A,0
+    RRC B ; 0
+    RRC B ; 1
+    JR C,.nohit1
+    OR 0b1100
+    ; JR .endhit
+    .nohit1
+    RRC B  ; 2
+    JR C,.nohit2
+    OR 0b0100
+    ; JR .endhit
+    .nohit2
+    RRC B  ; 3
+    JR C,.nohit3
+    OR 0b0110
+    ; JR .endhit
+    .nohit3
+    RRC B  ; 4
+    JR C,.nohit4
+    OR 0b1000
+    ; JR .endhit
+    .nohit4
+    RRC B  ; 5
+    .nohit5
+    RRC B  ; 6
+    JR C,.nohit6
+    OR 0b0010
+    ; JR .endhit
+    .nohit6
+    RRC B  ; 7
+    JR C,.nohit7
+    OR 0b1001
+    ; JR .endhit
+    .nohit7
+
+    ; 8、0
+    LD C,A
+    IN A,(1)
+    LD B,A
+    LD A,C
+
+    RRC B  ; 8
+    JR C,.nohit8
+    OR 0b0001
+    ; JR .endhit
+    .nohit8
+    RRC B  ; 9
+    JR C,.endhit
+    OR 0b0011
+    .endhit
+
+    LD L,A
+    LD H,0
+    RET
+
+STRIG:
+  code : |
+    LD HL,0
+    IN A,(KEYP09)
+    AND KEY09.SPACE
+    JR NZ,.nohit
+    LD L,1
+    .nohit
+    RET
+
+VSYNC:
+  code: |
+    IN	A, (KEYP08)
+    RLCA
+    RET	NC
+    .front
+    IN	A, ($40)
+    AND	%00100000
+    JR	NZ, .front
+    .blank
+    IN	A, ($40)
+    AND	%00100000
+    JR	Z, .blank
+    RET
+
+KEYCHK:
+  code: |
+    LD C,L
+    IN L,(C)
+    LD H,0
+    RET
+
+BEEP:
+  code: |
+    LD A,L
+    AND 1
+    RLA
+    RLA
+    RLA
+    RLA
+    RLA ; $20
+    OUT ($40),A
+    RET

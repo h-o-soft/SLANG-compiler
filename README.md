@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.8.1
+SLANG Compiler (Z80) 0.9.0
 
 # 概要
 
@@ -17,8 +17,7 @@ SLANG Compiler (Z80) 0.8.1
 
 ```
 SLANGCompiler filename [-L library-name] [-O output-path]
-
-SLANG Compiler 0.8.3
+SLANG Compiler 0.9.0
 Copyright (c) 2022-2023 OGINO Hiroshi / H.O SOFT
 
   -E, --env               Environment name.
@@ -29,6 +28,7 @@ Copyright (c) 2022-2023 OGINO Hiroshi / H.O SOFT
   --use-symbol            Use original symbol name.
   --case-sensitive        Set symbols to be case-sensitive.
   --source-comment        Include source code as comments.
+  --output-debug-symbol   Output original symbol name for debug.
   --help                  Display this help screen.
   --version               Display version information.
 ```
@@ -50,6 +50,8 @@ Copyright (c) 2022-2023 OGINO Hiroshi / H.O SOFT
 --case-sensitiveをつけると、識別子について大文字小文字が区別されます。つけない場合は区別されません。
 
 --source-commentをつけるとアセンブラソースにSLANGのソースがコメントとして追加されます。
+
+--output-debug-symbolをつけるとソースコーソ内の変数名、関数名をデバッグ用に定義します( VAL という変数が _VAL_ としてシンボル定義されます)。
 
 # 環境について
 
@@ -102,6 +104,17 @@ RAM(WORK)は$C000からになります。
 現状、MSXのROMで動かすためのお試し的な環境となっていますので、こちらを参考にカスタマイズしてみてください。
 
 ※もちろんROM領域は書き込みが出来ないため、初期値を持った変数については現状ROM領域に置かれてしまうため、書き換えが出来ません。初期値についてはCONST側に記述し、変数については全て初期値無しで使う事をオススメします。
+
+
+## pc80mk2 (PC-8001mkII)
+
+PC-8001mkII用の環境です。
+
+基本的に前半の$0000～$7FFFはROMの想定で動作し、PRINT文などはBIOS部を利用して動作します。
+
+ただし、BIOS部を使っている関数を使わない場合は、動的に該当部分をRAMに切り替える事で64KBの空間を自由に使う事が出来ます。
+
+現状、PRINT文は動きますが、INPUTや、キー入力関連については未実装となります。
 
 
 # ランタイムについて
@@ -186,6 +199,15 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
 * libmsx_psg.yml
   * PSG音楽/効果音再生ライブラリ
   * あぶり6800さんの[PSGSoundDriver for MSX](https://github.com/aburi6800/msx-PSGSoundDriver)を、ほぼそのまま組み込んでいます
+
+## PC-8001mkII関連ライブラリ
+* libpc80mk2_base.yml
+  * PC-8001mkII固有のライブラリ
+  * MEMMODE()関数で$0000～$7FFFの領域の読み書きをROMに対して行うか、RAMに対して行うか指定出来ます
+  * LOADCMT()でカセットからの読み込みを行います
+  * その他SDカード読み書き用関数が用意されています(yanatakaさんの https://github.com/yanataka60/PC-8001mk2_SD こちらのハードウェアに対応しています)
+* libpc80mk2_print.yml
+  * PC-8001mkIIのBIOS部を使ったPRINT関連の処理を行うライブラリ
 
 ## X1におけるゲームループの処理
 
@@ -330,11 +352,34 @@ slbuild.bat TEST.SL sos
 
 都度都度自前でコンパイル、アセンブル、実行ファイルのイメージ転送、エミュ起動、読み込み、などを行ってももちろん良いですが、ビルドバッチを使う事で、かなりスムーズに開発を進める事が出来ます。必要に応じてご活用ください。
 
+### ビルド用Makefileの実行
+
+(試験的な実装です)
+
+make TARGET=examples/FMANDEL ENV=msx2  といった感じで、TARGETに拡張子抜きのファイル名、ENVに環境名を指定します(環境名としてlsx、x1、sos、msxrom、msx2、cpm、pc80mk2の指定が可能です)
+
+今後はバッチファイルはメンテされず、Makefileのみ更新される予定ですので、極力こちらをお使いください。
+
 
 # ライセンス
 MIT
 
 # 更新履歴
+- Version 0.9.0
+  - msxlsx環境の追加
+  - ビルド用Makefileの追加
+  - M8Aライブラリを20230325版に更新
+  - MSXのBDOSコールでIYを保存するよう対応 
+  - output-debug-symbolをつけると_(関数名/変数名)_というシンボルを定義するよう対応 
+  - ビルドバッチをMSX2のフロッピーディスク環境に対応 
+  - MSXにHRA!さんのsprite driverを追加( https://github.com/hra1129/msx_documents/tree/main/vdp/sprite_sample )
+  - PC-8001mkII環境の追加
+    - 漢字ライブラリの追加
+    - アトリビュート設定処理の追加
+    - PCG8100互換サウンドドライバの追加
+    - CMT出力機能の追加(AILZ80ASM内のコードを使わせていただきました。ありがとうございます)
+  - ModuleSplitterの追加
+    - モジュール指定をすると複数のモジュールバイナリを出力可能(同一アドレスエリアで動作するバイナリを作成し、動的に読み替えをする想定)
 - Version 0.8.3
   - インクルード／ライブラリフォルダを整理
     - 環境ファイル(.env)をライブラリフォルダ内のenvフォルダに移動

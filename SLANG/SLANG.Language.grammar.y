@@ -35,7 +35,7 @@
 %token FOR TO DOWNTO NEXT
 %token EXIT CONTINUE RETURN
 %token GOTO
-%token ORG WORK OFFSET MACHINE
+%token ORG WORK OFFSET MACHINE MODULE MODULEEND
 %token PRINT CODE
 
 %token BEGIN END
@@ -88,6 +88,8 @@ def
        | WORK nc_expr { SetWork($2); }
        | OFFSET nc_expr { SetOffset($2); }
        | PLAIN { procPlainString($1); }
+       | MODULE nc_expr { StartModule($2); }
+       | MODULEEND { EndModule(); }
        | sc
        ;
 

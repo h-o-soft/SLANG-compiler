@@ -18,8 +18,10 @@ SLANGCOMPILER = bin/SLANGcompiler
 ASM = tools/AILZ80ASM
 NDC = tools/ndc
 HUDISK = tools/HuDisk
+MODSPLIT = bin/ModuleSplitter
 
 OUTPROG = $(dir $(TARGET))PROG.bin
+ASM_OPT =
 
 # エミュレータのコマンド名とディスクイメージファイル名を環境に応じて設定
 ifeq ($(ENV), lsx)
@@ -55,6 +57,16 @@ else ifeq ($(ENV), msxlsx)
   DISK_IMAGE = images/dos2formsx.dsk
   BIN_EXT_ENV = .com
   EMUOPT = -diska
+else ifeq ($(ENV), pc80mk2)
+  EMU = C:\emu\PC8001mkII\pc8001mk2.exe
+  # EMU = ~/emu/PC8001mkII/pc8001mk2.exe
+  BIN_EXT = .cmt
+  BIN_EXT_ENV = .cmt
+  OUTPROG = $(dir $(TARGET))PROG.bin
+  # OUTPROG = $(TARGET).bin
+  # $(TARGET) のファイル名の拡張子をcmtに変更してDISK_IMAGEに格納
+  DISK_IMAGE = $(dir $(TARGET))PROG.cmt
+  ASM_OPT = -cmt -gap 0
 else ifeq ($(ENV), cpm)
   SLANGENV=lsx
   EMU = tools/cpm.exe
@@ -80,13 +92,19 @@ $(TARGET)$(ASM_EXT): $(TARGET)$(SRC_EXT)
 
 # アセンブリコードのアセンブル
 $(OUTPROG): $(TARGET)$(ASM_EXT)
-	$(ASM) $< -f -o $@ -bin -sym -lst
+	$(ASM) $< -f -o $@ -bin -sym -lst $(ASM_OPT)
 
 # ディスクイメージにバイナリファイルを格納
 ifeq ($(ENV), cpm)
 disk_image: $(OUTPROG)
 else ifeq ($(ENV), msxrom)
 disk_image: $(OUTPROG)
+else ifeq ($(ENV), pc80mk2)
+
+cmtsplit: disk_image
+	$(MODSPLIT) $(TARGET) --cmt
+
+disk_image: $(OUTPROG) cmtsplit
 else ifeq ($(ENV), sos)
 disk_image: $(IMGPROG)
 	$(HUDISK) -d $(DISK_IMAGE) PROG.bin

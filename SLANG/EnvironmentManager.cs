@@ -87,6 +87,7 @@ namespace SLANGCompiler.SLANG
                 // 2 = S-OS
                 // 3 = MSX-DOS2
                 // 4 = MSX ROM
+                // 5 = PC-8001mkII
                 this.EnvironmentType = info.envType;
 
                 // OSの種別を設定(OS_TYPEとして定義される)
@@ -94,6 +95,7 @@ namespace SLANGCompiler.SLANG
                 // 1 = S-OS
                 // 2 = MSX-DOS2
                 // 3 = MSX ROM
+                // 4 = PC-8001mkII
                 this.OSType = info.osType;
 
                 // ランタイムを読み込み

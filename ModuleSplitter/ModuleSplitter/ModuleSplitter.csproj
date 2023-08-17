@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0</TargetFramework>
+    <Copyright>Copyright (c) 2023 OGINO Hiroshi / H.O SOFT</Copyright>
+    <Company>H.O SOFT</Company>
+    <Version>0.1.0</Version>
+    <AssemblyTitle>Module Splitter</AssemblyTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommandLineParser" Version="2.9.1" />
+  </ItemGroup>
+
+</Project>
