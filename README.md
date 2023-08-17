@@ -374,6 +374,11 @@ MIT
   - ビルドバッチをMSX2のフロッピーディスク環境に対応 
   - MSXにHRA!さんのsprite driverを追加( https://github.com/hra1129/msx_documents/tree/main/vdp/sprite_sample )
   - PC-8001mkII環境の追加
+    - 漢字ライブラリの追加
+    - アトリビュート設定処理の追加
+    - PCG8100互換サウンドドライバの追加
+  - ModuleSplitterの追加
+    - モジュール指定をすると複数のモジュールバイナリを出力可能(同一アドレスエリアで動作するバイナリを作成し、動的に読み替えをする想定)
 - Version 0.8.3
   - インクルード／ライブラリフォルダを整理
     - 環境ファイル(.env)をライブラリフォルダ内のenvフォルダに移動
