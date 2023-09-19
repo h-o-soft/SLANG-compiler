@@ -1,4 +1,14 @@
 
+MSINIT:
+  calls:
+    - SETUPCTC
+  lib_name: X1MOUSE
+  extlib: x1/mouse.asm:MSINIT
+
+MSGET:
+  lib_name: X1MOUSE
+  extlib: x1/mouse.asm:MSGET
+
 PAINT1:
   lib_name: X1PAINT
   extlib: x1/gpaint.asm:PAINT
