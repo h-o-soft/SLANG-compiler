@@ -3,6 +3,7 @@
 MAGBASE:
     calls:
         - MAGLOAD
+        - X1WORK
     lib_name: MAGLIB
     extlib: mag/MAG.ASM:MAGBASE
 
