@@ -44,9 +44,17 @@ PALBF	EQU	HEADBF+32
     LD	BC,$12F0
     OUT	(C),C
 
-    ; ; $13xxに0(描画優先度設定)→とりあえず触らない
-    ; INC	B
-    ; DB	$ED,$71
+    ;; $13xxに0(描画優先度設定)→とりあえず触らない
+    ;INC	B
+    ;DB	$ED,$71
+
+    ; BANK0選択(08h寝かす)、グラフィック表示(80hが立ってると非表示、寝ていると表示。多分)
+    LD  A,(NAME_SPACE_DEFAULT._WK1FD0)
+    AND 77h
+    LD  BC,1FD0h
+    OUT (C),A
+    LD  (NAME_SPACE_DEFAULT._WK1FD0),A
+
     RET
 
 GR_NODISP:
