@@ -53,6 +53,13 @@ LINE:
     - X1WORK
   extlib: x1/gline.asm:LINEALL
 
+XLINE:
+  calls:
+    - LINECOMMON
+    - LINE
+    - X1WORK
+  extlib: x1/gline.asm:XORLINE
+
 GRPSETUP:
   calls:
     - PAINT1
