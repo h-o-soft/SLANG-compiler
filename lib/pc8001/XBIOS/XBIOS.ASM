@@ -1,0 +1,8 @@
+
+
+
+PC88    EQU     0
+COLOR_MODE  EQU 1
+
+include "XBIOSMAIN.ASM"
+

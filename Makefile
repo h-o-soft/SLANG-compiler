@@ -23,6 +23,14 @@ MODSPLIT = bin/ModuleSplitter
 OUTPROG = $(dir $(TARGET))PROG.bin
 ASM_OPT =
 
+ifeq ($(OS),Windows_NT)
+    # Windows環境の場合
+    PATHSEP=\\
+else
+    # その以外の環境（Linux, macOSなど）の場合
+    PATHSEP=/
+endif
+
 # エミュレータのコマンド名とディスクイメージファイル名を環境に応じて設定
 ifeq ($(ENV), lsx)
   EMU = C:\emu\X1\X1.exe
@@ -57,15 +65,16 @@ else ifeq ($(ENV), msxlsx)
   DISK_IMAGE = images/dos2formsx.dsk
   BIN_EXT_ENV = .com
   EMUOPT = -diska
-else ifeq ($(ENV), pc80mk2)
+else ifeq ($(findstring $(ENV),pc80mk2 pc80mk2x),$(ENV))
   EMU = C:\emu\PC8001mkII\pc8001mk2.exe
   # EMU = ~/emu/PC8001mkII/pc8001mk2.exe
   BIN_EXT = .cmt
   BIN_EXT_ENV = .cmt
-  OUTPROG = $(dir $(TARGET))PROG.bin
+  OUTPROG = $(TARGET).bin
+  OUTCMT  = $(TARGET).cmt
   # OUTPROG = $(TARGET).bin
-  # $(TARGET) のファイル名の拡張子をcmtに変更してDISK_IMAGEに格納
-  DISK_IMAGE = $(dir $(TARGET))PROG.cmt
+  DISK_IMAGE_TMP = $(dir $(TARGET))PROG.cmt
+  DISK_IMAGE = $(subst /,$(PATHSEP),$(DISK_IMAGE_TMP))
   ASM_OPT = -cmt -gap 0
 else ifeq ($(ENV), cpm)
   SLANGENV=lsx
@@ -99,12 +108,57 @@ ifeq ($(ENV), cpm)
 disk_image: $(OUTPROG)
 else ifeq ($(ENV), msxrom)
 disk_image: $(OUTPROG)
-else ifeq ($(ENV), pc80mk2)
+else ifeq ($(ENV),pc80mk2)
 
-cmtsplit: disk_image
+cmtsplit: $(OUTPROG)
 	$(MODSPLIT) $(TARGET) --cmt
+ifeq ($(OS),Windows_NT)
+	copy /B /Y $(OUTCMT) $(DISK_IMAGE)
+else
+	cp $(OUTCMT) $(DISK_IMAGE)
+endif
 
 disk_image: $(OUTPROG) cmtsplit
+
+else ifeq ($(ENV), pc80mk2x)
+
+$(DISK_IMAGE): $(OUTPROG)
+	echo $(DISK_IMAGE)
+	echo $(OUTPROG)
+	$(MODSPLIT) $(TARGET) --cmt
+
+## モジュールを使わないカセット環境の場合は下記を有効にする
+ifeq ($(OS),Windows_NT)
+	copy /B /Y $(OUTCMT)+lib\\pc8001\\XBIOS\\XBIOS.CMT TEMP.CMT
+	copy TEMP.CMT $(DISK_IMAGE)
+	del TEMP.CMT
+else
+	cat $(DISK_IMAGE) lib/pc8001/XBIOS/XBIOS.CMT > TEMP.CMT
+	cp TEMP.CMT $(DISK_IMAGE)
+	rm TEMP.CMT
+endif
+
+# モジュール対応あるいはSD環境の場合は下記を有効にしつつ必要に応じて書き換える
+## カセット環境
+#ifeq ($(OS),Windows_NT)
+#	copy /B $(TARGET)MAIN.cmt+lib\\pc8001\\XBIOS\\XBIOS.CMT+$(TARGET)M0.cmt TEMP.CMT
+#	copy TEMP.CMT $(DISK_IMAGE)
+#	del TEMP.CMT
+#else
+#	cat $(TARGET)MAIN.cmt lib/pc8001/XBIOS/XBIOS.CMT $(TARGET)M0.cmt > TEMP.CMT
+#	cp TEMP.CMT $(DISK_IMAGE)
+#	rm TEMP.CMT
+#endif
+
+## SDカード環境
+#ifeq ($(OS),Windows_NT)
+#	copy $(TARGET)*.cmt $(dir $(EMU))\\SD\\
+#else
+#	cp $(TARGET)*.cmt $(dir $(EMU))/SD/
+#endif
+
+disk_image: $(DISK_IMAGE)
+#$(OUTPROG) cmtsplit
 else ifeq ($(ENV), sos)
 disk_image: $(IMGPROG)
 	$(HUDISK) -d $(DISK_IMAGE) PROG.bin
@@ -136,9 +190,9 @@ run: disk_image
 # クリーンアップ
 clean:
 ifeq ($(OS),Windows_NT)
-	del /Q /F $(subst /,\,$(TARGET)$(ASM_EXT)) $(subst /,\,$(TARGET)$(BIN_EXT)) $(subst /,\,$(dir $(TARGET))PROG.bin) $(subst /,\,$(dir $(TARGET))PROG.com)
+	del /Q /F $(subst /,\,$(TARGET)$(ASM_EXT)) $(subst /,\,$(TARGET)$(BIN_EXT)) $(subst /,\,$(dir $(TARGET))PROG.bin) $(subst /,\,$(dir $(TARGET))PROG.com) $(subst /,\,$(dir $(TARGET))PROG.cmt)
 else
-	rm -f $(TARGET)$(ASM_EXT) $(TARGET)$(BIN_EXT) $(TARGET)$(BIN_EXT_ENV) $(subst /,\,$(dir $(TARGET))PROG.bin) $(subst /,\,$(dir $(TARGET))PROG.com)
+	rm -f $(TARGET)$(ASM_EXT) $(TARGET)$(BIN_EXT) $(TARGET)$(BIN_EXT_ENV) $(subst /,\,$(dir $(TARGET))PROG.bin) $(subst /,\,$(dir $(TARGET))PROG.com) $(subst /,\,$(dir $(TARGET))PROG.cmt)
 endif
 
 .PHONY: all run clean

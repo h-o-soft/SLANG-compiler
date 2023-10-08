@@ -45,11 +45,12 @@ namespace ModuleSplitter
                 while(!reader.EndOfStream)
                 {
                     var line = reader.ReadLine();
-                    if(line.Contains("_MODULE_"))
+                    if(line.Contains("_MODULE_") && !line.Contains("NAME_SPACE_DEFAULT"))
                     {
                         if(line.EndsWith("_START"))
                         {
-                            var moduleNumber = int.Parse(line.Split('_')[2]);
+                            var splitNames = line.Split('_');
+                            var moduleNumber = int.Parse(splitNames[splitNames.Length - 2]);
                             if(moduleNumber > moduleCount)
                             {
                                 moduleCount = moduleNumber;
