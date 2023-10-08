@@ -269,39 +269,6 @@ PHEX:
     POP AF
     CALL SASC
 
-CTRL0D:
-  calls:
-    - CSR
-    - AT_VRCALC
-  code: |
-    CALL _POS
-    LD L,0
-    INC H
-
-    PUSH	BC
-    CALL AT_VRCALC
-    LD (_TXADR),HL
-    POP	BC
-
-    RET
-
-CSR:
-  code: |
-    _POS:
-    LD	HL,(_TXADR)
-    PUSH	BC
-    LD	BC,(_CRTCD+12)
-    XOR	A
-    POS1:
-    ADD	HL,BC
-    INC	A
-    JR	C,POS1
-    SBC	HL,BC
-    DEC	A
-    LD	H,A
-    POP	BC
-    AND	A
-    RET
 
 PRT:
   calls:
@@ -351,6 +318,40 @@ PRT:
     WORK10:
     DB  "12345",0
     DS  4
+
+CTRL0D:
+  calls:
+    - CSR
+    - AT_VRCALC
+  code: |
+    CALL _POS
+    LD L,0
+    INC H
+
+    PUSH	BC
+    CALL AT_VRCALC
+    LD (_TXADR),HL
+    POP	BC
+
+    RET
+
+CSR:
+  code: |
+    _POS:
+    LD	HL,(_TXADR)
+    PUSH	BC
+    LD	BC,(_CRTCD+12)
+    XOR	A
+    POS1:
+    ADD	HL,BC
+    INC	A
+    JR	C,POS1
+    SBC	HL,BC
+    DEC	A
+    LD	H,A
+    POP	BC
+    AND	A
+    RET
 
 PSIGN:
   param_count: 1

@@ -2,6 +2,7 @@
 ;
 ;	MAG  by Gaku
 ;
+MAGWK1FD0   EQU (NAME_SPACE_DEFAULT._WK1FD0)
 THOLD	EQU	11
 MAG_FP1 EQU 0
 
@@ -43,9 +44,17 @@ PALBF	EQU	HEADBF+32
     LD	BC,$12F0
     OUT	(C),C
 
-    ; ; $13xxに0(描画優先度設定)→とりあえず触らない
-    ; INC	B
-    ; DB	$ED,$71
+    ;; $13xxに0(描画優先度設定)→とりあえず触らない
+    ;INC	B
+    ;DB	$ED,$71
+
+    ; BANK0選択(08h寝かす)、グラフィック表示(80hが立ってると非表示、寝ていると表示。多分)
+    LD  A,(NAME_SPACE_DEFAULT._WK1FD0)
+    AND 77h
+    LD  BC,1FD0h
+    OUT (C),A
+    LD  (NAME_SPACE_DEFAULT._WK1FD0),A
+
     RET
 
 GR_NODISP:
@@ -62,34 +71,20 @@ GR_NODISP:
 #ENDLIB
 
 #LIB GRCLS
-    ;SMC16:	LD	A,($ECBF)
-    LD A,(MAGWK1FD0)
-    LD A,0
-    RES	4,A
-    CALL	CLS0
-    ;SMC17:	LD	A,($ECBF)
-    LD A,(MAGWK1FD0)
-    LD A,0
-    SET	4,A
-CLS0:
-    LD	BC,$1FD0
-    OUT	(C),A
-    ;SMC18:	LD	($ECBF),A
-    LD (MAGWK1FD0),A
-    LD A,0
-    XOR	A
-    LD	C,A
-    LD	HL,$4003
+    ; 現在のVRAM BANKのみクリアする
+    XOR A
+    LD  C,A
+    LD  HL,$4003
 CLS1:
-    LD	B,H
+    LD  B,H
 CLS2:
-    DB	$ED,$71
-    INC	B
-    JR	NZ,CLS2
+    DB  $ED,$71 ; OUT   (C),0
+    INC B
+    JR  NZ,CLS2
     ;
-    ADD	A,L
-    LD	C,A
-    JR	NZ,CLS1
+    ADD A,L
+    LD  C,A
+    JR  NZ,CLS1
     RET
 #ENDLIB
 
@@ -1102,8 +1097,8 @@ MAGLOAD_TABLE:
     DB	2*2,8*2		;14
     DB	0  ,0		;15
 
-MAGWK1FD0:
-    DB $00
+;MAGWK1FD0:
+;    DB $00
 
 MAGOFS_F1:
         DW 0

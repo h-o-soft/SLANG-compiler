@@ -52,3 +52,33 @@ VSYNC1:
     JP M,.LP2
     EI
     RET
+
+SETUPCTC:
+  code: |
+    PUSH	BC
+    LD	DE,04703H
+    INICTC1:
+    INC	C
+    OUT	(C),D
+    DB	0EDH,071H	;OUT (C),0	Z80未定義命令
+    DEC	E
+    JR	NZ,INICTC1
+    POP	BC
+
+    LD	DE,007FAH
+    OUT	(C),D
+    OUT	(C),E
+    IN	A,(C)
+    CP	E
+    RET	NZ
+    OUT	(C),D
+    OUT	(C),D
+    IN	A,(C)
+    CP	D
+    RET	NZ
+    ; INC	C
+    ; INC	C
+    LD	(CTCADR),BC
+    RET
+  works:
+    CTCADR: 2

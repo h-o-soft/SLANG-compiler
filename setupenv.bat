@@ -38,8 +38,8 @@ copy HuDisk.exe %TOOLPATH%
 DEL HuDisk.exe
 
 REM AILZ80ASMをダウンロード
-SET AILZNAME=AILZ80ASM.win-x64.v1.0.4.zip
-curl https://github.com/AILight/AILZ80ASM/releases/download/v1.0.4/%AILZNAME% -OL
+SET AILZNAME=AILZ80ASM.win-x64.v1.0.7.zip
+curl https://github.com/AILight/AILZ80ASM/releases/download/v1.0.7/%AILZNAME% -OL
 IF not %errorlevel%==0 goto ERROR
 unzip -xo %AILZNAME%
 copy AILZ80ASM.exe %TOOLPATH%

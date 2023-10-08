@@ -157,12 +157,12 @@ SLANGINIT:
     CHKCTC:
     PUSH	BC
     LD	DE,04703H
-    INICTC1:
+    .INICTC1
     INC	C
     OUT	(C),D
     DB	0EDH,071H	;OUT (C),0	Z80未定義命令
     DEC	E
-    JR	NZ,INICTC1
+    JR	NZ,.INICTC1
     POP	BC
 
     LD	DE,007FAH
@@ -223,6 +223,7 @@ SOSCALLS:
     _CTCVEC: 2
     _ISRADR: 2
     _ISRHANDLER: 2
+    _WK1FD0: 1
 
 BEEP:
   code: |
