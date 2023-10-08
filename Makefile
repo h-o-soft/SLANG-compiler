@@ -133,7 +133,7 @@ ifeq ($(OS),Windows_NT)
 	copy TEMP.CMT $(DISK_IMAGE)
 	del TEMP.CMT
 else
-	cat $(DISK_IMAGE) lib/pc8001/XBIOS/XBIOS.CMT > TEMP.CMT
+	cat $(OUTCMT) lib/pc8001/XBIOS/XBIOS.CMT > TEMP.CMT
 	cp TEMP.CMT $(DISK_IMAGE)
 	rm TEMP.CMT
 endif
