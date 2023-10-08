@@ -9,6 +9,12 @@ WIDTH:
     CALL XBIOS.WIDCH
     RET
 
+TEXTMODE:
+  param_count: 2
+  code: |
+    ; ignore
+    RET
+
 PRMODE:
   param_count: 1
   calls:

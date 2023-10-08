@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.9.0
+SLANG Compiler (Z80) 0.10.0
 
 # 概要
 
@@ -17,7 +17,7 @@ SLANG Compiler (Z80) 0.9.0
 
 ```
 SLANGCompiler filename [-L library-name] [-O output-path]
-SLANG Compiler 0.9.0
+SLANG Compiler 0.10.0
 Copyright (c) 2022-2023 OGINO Hiroshi / H.O SOFT
 
   -E, --env               Environment name.
@@ -116,6 +116,19 @@ PC-8001mkII用の環境です。
 
 現状、PRINT文は動きますが、INPUTや、キー入力関連については未実装となります。
 
+## pc80mk2x (PC-8001mkIIの全メモリRAM版)
+
+PC-8001mkII用の環境ですが、「pc80mk2」環境と異なり、全てのメモリ領域がRAMになります。
+
+その関係で、本来はROM部にある文字表示処理などのBIOS機能をRAM側に持ってきています。
+
+BIOS処理については比較的汎用的に作られており、PC-8001版のOS「S-OS」をカスタマイズしたものです。
+
+そのため、pc80mk2環境では(手抜きのため)未実装のキー入力関連の処理なども問題なく動作します。
+
+内部的にXBIOS.CMTというBIOS部を多段ロードして動作させる仕組みになっています(ややこしいです)。
+
+詳細は [XBIOSのドキュメント](lib/pc8001/XBIOS/README.md)を参照してください。
 
 # ランタイムについて
 
@@ -186,6 +199,19 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
 * libx1_magic.yml
   * グラフィックパッケージMAGICのライブラリです
   * ^IX にMAGICのコマンドを保存したアドレスを代入後に CALLMAGIC() という関数を呼ぶ事で処理が行われます
+* libx1_grp.yml
+  * X1専用のグラフィックライブラリです(ついでにマウスライブラリも含まれます)
+  * グラフィック関数一覧
+    * GRPSETUP() <br/>WIDTH関数を呼んだあとに呼ぶ事でグラフィック処理を初期化
+    * LINE(X1,Y1,X2,Y2,Color(0〜7)) <br/>ライン描画
+    * PAINT(X,Y,中間色) <br/>ペイント
+    * BFILL(X1,Y1,X2,Y2,中間色) <br/>矩形を中間色で塗る
+  * 中間色は0〜7のデジタル8色を2つ組み合わせた値で「色1*16 + 色2」の値になります
+  * 例えば青く塗りたい場合は「16 + 1」で、青と白の中間色の場合は「16 + 7」です
+  * 0=黒、1=青、2=赤、3=紫、4=緑、5=水色、6=黄色、7=白
+  * マウス関数一覧
+    * MSINIT() <br/>WIDTH関数を呼んだあとに呼ぶ事でマウスを初期化
+    * MSGET(アドレス) <br/>ARRAY MSDAT[3-1] などに MSGET(MSDAT) とする事で、MSDAT[0]にX座標、MSDAT[1]にY座標、MSDAT[2]の0ビット目にボタン1、1ビット目にボタン2の押下情報が入る
 
 ## MSX-DOS2関連ライブラリ
 * libmsx2_file.yml
@@ -365,6 +391,20 @@ make TARGET=examples/FMANDEL ENV=msx2  といった感じで、TARGETに拡張�
 MIT
 
 # 更新履歴
+- Version 0.10.0
+  - pc80mk2x環境の追加
+    - PC-8001mkIIの独自BIOSを組み込んだ全RAM環境(メモリ前半もRAMになっている環境)です
+    - 関連して汎用BIOS「XBIOS」を追加
+  - X1のグラフィック関数の追加
+    - GRPSETUP() 初期化
+    - LINE(X1,Y1,X2,Y2,Color(0〜7)) ライン描画
+    - PAINT(X,Y,中間色) ペイント
+    - BFILL(X1,Y1,X2,Y2,中間色) 矩形を中間色で塗る
+  - X1にマウス関数を追加
+    - MSINIT() 初期化
+    - MSGET(MSDAT) マウス情報の取得
+  - 環境構築時に取得するAILZ80ASMのバージョンをv1.0.7に更新
+  - X1のS-OS環境でグラフィック関連関数、マウス関連関数を呼べるよう対応
 - Version 0.9.0
   - msxlsx環境の追加
   - ビルド用Makefileの追加
