@@ -1,0 +1,108 @@
+
+IOT_SET_DEVICE_PATH:
+  calls:
+    - STRLEN
+  code: |
+    ; HL = Device Path
+    LD  C, 8
+    LD  A, 0xE0
+    OUT (C), A
+    LD  A, 1
+    OUT (C), A
+    LD  A, 0x53
+    OUT (C), A
+
+    LD  A, 0xC0
+    OUT (C), A
+
+    ; 文字列長をAに取得
+    PUSH HL
+    CALL STRLEN
+    LD  A,L
+    POP HL
+
+    _iot_set_device_path_loop1:
+    LD		B, A
+    CP		64
+    JR		C, _iot_set_device_path_skip
+    SUB		A, 63
+    LD		B, 0x7F
+    _iot_set_device_path_skip:
+    OUT		(C), B
+    LD		D, A
+    LD		A, B
+    AND		0x3F
+    LD		B, A
+    _iot_set_device_path_loop2:
+    LD		A, (HL)
+    INC		HL
+    OUT		(C), A
+    DJNZ	_iot_set_device_path_loop2
+    LD		A, D
+    SUB		A, 63
+    JR		Z, _iot_set_device_path_exit
+    JR		NC, _iot_set_device_path_loop1
+    _iot_set_device_path_exit:
+    IN		A, (C)
+    RLCA									; エラーなら Cf = 1, 正常なら Cf = 0
+    LD    HL,0
+    RET		NC
+    DEC   HL
+    RET
+
+
+IOTGET_INT:
+  calls:
+    - STRLEN
+  code: |
+    ; HL = Device Path
+
+    MSX0IO EQU 8
+
+    ; 受信コマンド送信
+    LD		A, 0xE0
+    OUT		(MSX0IO), A
+    LD		A, 0x01
+    OUT		(MSX0IO), A
+    ; 整数型識別コード送信
+    LD		A, 0x01
+    OUT		(MSX0IO), A
+    ; 受信開始
+    LD		A, 0x80
+    OUT		(MSX0IO), A
+    IN		A, (MSX0IO)		; 多分長さ 2 が返ってくる
+    IN		A, (MSX0IO)
+    LD    L,A
+    IN		A, (MSX0IO)
+    LD    H,A
+    RET
+
+IOTGET_STRING:
+  code: |
+    ; HL = String Address
+    ; 受信コマンド送信
+    LD		A, 0xE0
+    OUT		(8), A
+    LD		A, 0x01
+    OUT		(8), A
+    ; 文字列型識別コード送信
+    LD		A, 0x03
+    OUT		(8), A
+    ; 受信開始
+    LD		A, 0x80
+    OUT		(8), A
+    IN		A, (8)		; 文字列長
+    OR		A
+    JR    Z,_iotget_string_zero
+
+    LD		B, A
+    _iotget_string_loop:
+    IN		A, (8)
+    LD		(HL), A
+    INC   HL
+    DJNZ	_iotget_string_loop
+
+    _iotget_string_zero:
+    XOR A
+    LD    (HL),A
+    RET
