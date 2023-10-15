@@ -17,6 +17,7 @@ createRelease() {
   cp ../../setupenv.$2 .
   cp ../../README.md .
   cp ../../LICENSE .
+  cp ../../msx0/msx0cmd.py bin
   zip -r SLANG-compiler-$3-$1.zip * -x '*/.DS_Store'
   mv SLANG-compiler-$3-$1.zip ../../
   cd ../..
