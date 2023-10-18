@@ -1,8 +1,14 @@
 
+IOT_COMMON:
+  code: |
+    MSX0IO EQU 8
+
 IOT_SET_DEVICE_PATH:
   calls:
+    - IOT_COMMON
     - STRLEN
   code: |
+    PUSH  DE
     ; HL = Device Path
     LD  C, 8
     LD  A, 0xE0
@@ -25,7 +31,7 @@ IOT_SET_DEVICE_PATH:
     LD		B, A
     CP		64
     JR		C, _iot_set_device_path_skip
-    SUB		A, 63
+    SUB		63
     LD		B, 0x7F
     _iot_set_device_path_skip:
     OUT		(C), B
@@ -39,13 +45,14 @@ IOT_SET_DEVICE_PATH:
     OUT		(C), A
     DJNZ	_iot_set_device_path_loop2
     LD		A, D
-    SUB		A, 63
+    SUB		63
     JR		Z, _iot_set_device_path_exit
     JR		NC, _iot_set_device_path_loop1
     _iot_set_device_path_exit:
     IN		A, (C)
     RLCA									; エラーなら Cf = 1, 正常なら Cf = 0
     LD    HL,0
+    POP   DE
     RET		NC
     DEC   HL
     RET
@@ -54,10 +61,12 @@ IOT_SET_DEVICE_PATH:
 IOTGET_INT:
   calls:
     - STRLEN
+    - IOT_COMMON
+    - IOT_SET_DEVICE_PATH
   code: |
     ; HL = Device Path
 
-    MSX0IO EQU 8
+    CALL IOT_SET_DEVICE_PATH
 
     ; 受信コマンド送信
     LD		A, 0xE0
@@ -77,9 +86,17 @@ IOTGET_INT:
     LD    H,A
     RET
 
-IOTGET_STRING:
+IOTGET_STR:
+  calls:
+    - IOT_COMMON
+    - IOT_SET_DEVICE_PATH
   code: |
-    ; HL = String Address
+    ; HL = Device Path
+    ; DE = String Address
+
+    CALL IOT_SET_DEVICE_PATH
+    EX  DE,HL
+
     ; 受信コマンド送信
     LD		A, 0xE0
     OUT		(8), A
@@ -105,4 +122,78 @@ IOTGET_STRING:
     _iotget_string_zero:
     XOR A
     LD    (HL),A
+    RET
+  
+IOTPUT_INT:
+  calls:
+    - IOT_COMMON
+    - IOT_SET_DEVICE_PATH
+  code: |
+    ; HL = Device Path
+    ; DE = Value
+
+    CALL  IOT_SET_DEVICE_PATH
+    JR  C,.iotend
+
+    LD  C,MSX0IO
+    LD  A,0xE0
+    OUT (C),A
+    LD  A,0x01
+    OUT (C),A
+    LD  A,0x41
+    OUT (C),A
+    LD  A,0xC0
+    OUT (C),A
+    LD  A,0x02
+    OUT (C),A
+    ; value
+    OUT (C),E
+    OUT (C),D
+
+    .iotend
+    LD    HL,0
+    RET		NC
+    DEC   HL
+    RET
+
+IOTPUT_STR:
+  calls:
+    - IOT_COMMON
+    - IOT_SET_DEVICE_PATH
+    - STRLEN
+  code: |
+    ; HL = Device Path
+    ; DE = Value
+
+    CALL  IOT_SET_DEVICE_PATH
+    JR  C,.iotend
+
+    LD  C,MSX0IO
+    LD  A,0xE0
+    OUT (C),A
+    LD  A,0x01
+    OUT (C),A
+    LD  A,0x43
+    OUT (C),A
+    LD  A,0xC0
+    OUT (C),A
+
+    EX  DE,HL
+    PUSH  HL
+    CALL  STRLEN
+    LD  B,L
+    POP HL
+    ; length
+    OUT (C),B
+
+    OTIR
+    XOR A
+    OUT (C),A
+    IN  A,(C)
+    LD  L,A
+    LD  H,0
+
+    .iotend
+    RET		NC
+    DEC   HL
     RET
