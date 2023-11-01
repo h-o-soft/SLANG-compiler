@@ -514,12 +514,17 @@ namespace SLANGCompiler.SLANG
             Expr left = expr.Left;
             Expr right = expr.Right;
 
-
+            // 変更した＃＃＃＃＃＃
+            bool isByte = expr.OpType == OperatorType.Byte;
+            bool isWord = expr.OpType == OperatorType.Word;
+            bool isFloat = expr.OpType == OperatorType.Float;
+            /*
             // BYTE or WORD or FLOAT
             TypeDataSize assignType = left.TypeInfo.GetDataSize();
             bool isByte = left.TypeInfo.GetDataSize() == TypeDataSize.Byte;
             bool isWord = left.TypeInfo.GetDataSize() == TypeDataSize.Word;
             bool isFloat = left.TypeInfo.GetDataSize() == TypeDataSize.Float;
+            */
 
             if(left.Opcode == Opcode.PortAccess)
             {
@@ -1609,7 +1614,12 @@ namespace SLANGCompiler.SLANG
                 {
                     // IYからのオフセットで得る
                     var ofs = symbol.Address.Value + expr.Left.SymbolOffset;
-                    if(symbol.TypeInfo.GetDataSize()== TypeDataSize.Byte)
+                    if (typeInfo.InfoClass == TypeInfoClass.Pointer)         // 追加(強引？) ＃＃＃＃＃＃
+                    {                                                               // 追加 ＃＃＃＃＃＃
+                        gencode($" LD L,(IY+{ofs})\n");                             // 追加 ＃＃＃＃＃＃
+                        gencode($" LD H,(IY+{ofs + 1})\n");                         // 追加 ＃＃＃＃＃＃
+                    } else                                                          // 追加 ＃＃＃＃＃＃
+                    if (symbol.TypeInfo.GetDataSize()== TypeDataSize.Byte)
                     {
                         gencode($" LD L,(IY+{ofs})\n");
                     } else if(typeInfo.GetDataSize() == TypeDataSize.Word)
