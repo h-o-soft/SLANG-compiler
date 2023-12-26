@@ -1636,7 +1636,12 @@ namespace SLANGCompiler.SLANG
                     // 間接変数の場合は強制的に間接変数内のアドレス値を入れてやる
                     if(isIndirect)
                     {
-                        gencode(" LD HL,%v\n", expr.Left);
+                        if(hasAddress)
+                        {
+                            gencode(" LD HL,%a\n", expr.Left);
+                        } else {
+                            gencode(" LD HL,%v\n", expr.Left);
+                        }
                     } else if(!isIndirect && typeInfo.GetDataSize() == TypeDataSize.Byte)
                     {
                         gencode(" LD HL,%a\n", expr.Left);
