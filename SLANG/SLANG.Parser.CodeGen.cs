@@ -1285,6 +1285,14 @@ namespace SLANGCompiler.SLANG
                                 break;
                             }
                         }
+                    } else {
+                        if(boolOp == ComparisonOp.Le)
+                        {
+                            boolOp = ComparisonOp.Gt;
+                            var tmp = left;
+                            left = right;
+                            right = tmp;
+                        }
                     }
 
                     if(isFloatCompare)
@@ -1624,7 +1632,12 @@ namespace SLANGCompiler.SLANG
                     }
                 } else {
                     var isIndirect = symbol.TypeInfo.IsIndirectType();
-                    if(!isIndirect && typeInfo.GetDataSize() == TypeDataSize.Byte)
+                    var hasAddress = symbol.Address != null;
+                    // 間接変数の場合は強制的に間接変数内のアドレス値を入れてやる
+                    if(isIndirect)
+                    {
+                        gencode(" LD HL,%v\n", expr.Left);
+                    } else if(!isIndirect && typeInfo.GetDataSize() == TypeDataSize.Byte)
                     {
                         gencode(" LD HL,%a\n", expr.Left);
                         gencode(" LD L,(HL)\n");
@@ -2570,8 +2583,12 @@ namespace SLANGCompiler.SLANG
                     gencode(" ADD HL,DE\n");
                 } else {
                     genexp(left);
-                    gencode($" LD DE,{right.ConstValue.Value * scale}\n");
-                    gencode(" ADD HL,DE\n");
+                    // 定数の0の場合は加算コードを出力しない
+                    if(right.ConstValue.Value != 0)
+                    {
+                        gencode($" LD DE,{right.ConstValue.Value * scale}\n");
+                        gencode(" ADD HL,DE\n");
+                    }
                 }
             } else if(right.IsVariable())
             {

@@ -245,6 +245,10 @@ namespace SLANGCompiler.SLANG
                 if(symbol.TypeInfo.IsArray())
                 {
                     workOffset += symbol.Size;
+                } else if(symbol.TypeInfo.IsIndirectType())
+                {
+                    // 間接変数なので格納領域は必ず2(ポインタ)
+                    workOffset += 2;
                 } else {
                     workOffset += symbol.TypeInfo.GetDataSize().GetDataSize();
                 }
