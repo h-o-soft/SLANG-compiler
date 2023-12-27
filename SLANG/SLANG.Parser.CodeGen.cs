@@ -521,6 +521,13 @@ namespace SLANGCompiler.SLANG
             bool isWord = left.TypeInfo.GetDataSize() == TypeDataSize.Word;
             bool isFloat = left.TypeInfo.GetDataSize() == TypeDataSize.Float;
 
+            // 間接変数代入の場合は強引にWORD(ポインタ)代入としてやる(駄目な気がする)
+            if(left.TypeInfo.IsIndirect())
+            {
+                isByte = false;
+                isWord = true;
+            }
+
             if(left.Opcode == Opcode.PortAccess)
             {
                 // ポートへの書き込み
@@ -1636,6 +1643,8 @@ namespace SLANGCompiler.SLANG
                     // 間接変数の場合は強制的に間接変数内のアドレス値を入れてやる
                     if(isIndirect)
                     {
+                        // 二次元間接変数について KANSETSU[2] = ADDR; といった形式(カッコが1つ)の場合はアドレスを代入してやる(大丈夫？)
+                        hasAddress |= expr.Left.TypeInfo.Parent.InfoClass == TypeInfoClass.Array;
                         if(hasAddress)
                         {
                             gencode(" LD HL,%a\n", expr.Left);
@@ -1669,7 +1678,8 @@ namespace SLANGCompiler.SLANG
                 }
             } else {
                 genexp(expr.Left);
-                if(expr.Left.TypeInfo.GetDataSize() == TypeDataSize.Byte)
+                var isLoadByte = expr.Left.TypeInfo.GetDataSize() == TypeDataSize.Byte && expr.Left.TypeInfo.InfoClass != TypeInfoClass.Pointer;
+                if(isLoadByte)
                 {
                     gencode(" LD E,(HL)\n");
                     gencode(" EX DE,HL\n");
@@ -2461,7 +2471,13 @@ namespace SLANGCompiler.SLANG
                             gencode(" EX AF,AF'\n");
                         }
                     } else {
-                        gencode($" LD {targetReg},%v\n", targetExpr.Left);
+                        if(targetExpr.TypeInfo.Parent?.InfoClass == TypeInfoClass.Indirect)
+                        {
+                            // 間接変数の場合は変数アドレスをそのまま入れる
+                            gencode($" LD {targetReg},%a\n", targetExpr.Left);
+                        } else {
+                            gencode($" LD {targetReg},%v\n", targetExpr.Left);
+                        }
                     }
                 }
             } else if(targetExpr.Opcode == Opcode.Adr)

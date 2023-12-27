@@ -755,7 +755,7 @@ namespace SLANGCompiler.SLANG
             }
 
             typeInfo = typeInfo.Parent;
-            if(typeInfo.IsArray() || typeInfo.IsIndirect())
+            if(typeInfo.IsArray()) //  || typeInfo.IsIndirect())
             {
                 p.TypeInfo = typeInfo;
                 return p;

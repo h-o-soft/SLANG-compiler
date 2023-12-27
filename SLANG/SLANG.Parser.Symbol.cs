@@ -203,6 +203,10 @@ namespace SLANGCompiler.SLANG
                             {
                                 initialValueList = null;
                                 initialValueCode = initialValueCodeTree;
+                            } else if(initialValueCodeTree != null)
+                            {
+                                // 二次元間接変数の場合はここに来る
+                                initialValueCode = initialValueCodeTree;
                             } else if(initialValueList == null)
                             {
                                 initialValueList = tree.InitialValues;
