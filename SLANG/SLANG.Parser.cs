@@ -549,7 +549,7 @@ namespace SLANGCompiler.SLANG
                 symbolTableManager.CheckTempFunc();
 
                 Console.WriteLine($"{ErrorCount} error(s)");
-                symbolTableManager.DebugDisp();
+                // symbolTableManager.DebugDisp();
             } catch(Exception e)
             {
                 // SystemError(e.ToString());

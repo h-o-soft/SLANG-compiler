@@ -1644,13 +1644,13 @@ namespace SLANGCompiler.SLANG
                     if(isIndirect)
                     {
                         // 二次元間接変数について KANSETSU[2] = ADDR; といった形式(カッコが1つ)の場合はアドレスを代入してやる(大丈夫？)
-                        hasAddress |= expr.Left.TypeInfo.Parent.InfoClass == TypeInfoClass.Array;
-                        if(hasAddress)
-                        {
-                            gencode(" LD HL,%a\n", expr.Left);
-                        } else {
+                        //hasAddress |= expr.Left.TypeInfo.Parent.InfoClass == TypeInfoClass.Array;
+                        //if(hasAddress)
+                        //{
+                        //    gencode(" LD HL,%a\n", expr.Left);
+                        //} else {
                             gencode(" LD HL,%v\n", expr.Left);
-                        }
+                        //}
                     } else if(!isIndirect && typeInfo.GetDataSize() == TypeDataSize.Byte)
                     {
                         gencode(" LD HL,%a\n", expr.Left);
@@ -1678,7 +1678,16 @@ namespace SLANGCompiler.SLANG
                 }
             } else {
                 genexp(expr.Left);
-                var isLoadByte = expr.Left.TypeInfo.GetDataSize() == TypeDataSize.Byte && expr.Left.TypeInfo.InfoClass != TypeInfoClass.Pointer;
+                bool isLoadByte;
+                // ポインタの場合はその先のデータサイズで決める
+                if(expr.Left.TypeInfo.IsPointer())
+                {
+                    isLoadByte = expr.Left.TypeInfo.Parent.GetDataSize() == TypeDataSize.Byte && expr.Left.TypeInfo.Parent.InfoClass == TypeInfoClass.Normal;
+                } else {
+                    isLoadByte = expr.Left.TypeInfo.GetDataSize() == TypeDataSize.Byte && expr.Left.TypeInfo.InfoClass != TypeInfoClass.Pointer;
+                }
+
+
                 if(isLoadByte)
                 {
                     gencode(" LD E,(HL)\n");

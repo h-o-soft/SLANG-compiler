@@ -248,7 +248,24 @@ namespace SLANGCompiler.SLANG
                         }
                         arrayTree = tree;
                         var baseType = typeInfo;
-                        var tp = new TypeInfo((isArray || arrayCount > 1) ? TypeInfoClass.Array : TypeInfoClass.Indirect, tree.ArraySize + 1, typeInfo.GetDataSize(), typeInfo);
+
+                        // 間接変数の配列の場合はDataSizeは常にWORDになる(ポインタ配列なので)
+                        TypeDataSize dataSize;
+                        if(isIndirect)
+                        {
+                            dataSize = TypeDataSize.Word;
+                        } else {
+                            dataSize = typeInfo.GetDataSize();
+                        }
+                        bool indirectCheck = false;
+                        // isArrayがfalseでtree.ArraySizeが0の場合は強制的に間接変数
+                        // Sizeが入っている場合は型としてはArrayにする
+                        if(!isArray && tree.ArraySize == 0)
+                        {
+                            indirectCheck = true;
+                        }
+                        // var tp = new TypeInfo((isArray || arrayCount > 1) ? TypeInfoClass.Array : TypeInfoClass.Indirect, tree.ArraySize + 1, dataSize, typeInfo);
+                        var tp = new TypeInfo(!indirectCheck ? TypeInfoClass.Array : TypeInfoClass.Indirect, tree.ArraySize + 1, dataSize, typeInfo);
                         typeInfo = tp;
                         arraySize *= (tree.ArraySize+1);
                         // 間接変数宣言である

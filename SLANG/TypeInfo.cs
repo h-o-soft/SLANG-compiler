@@ -109,7 +109,7 @@ namespace SLANGCompiler.SLANG
                     result += "\n";
                 }
                 isFirst = false;
-                result += $"    [{typeInfo.GetType()}] typeInfoClass:{typeInfo.InfoClass} dataSize:{this.DataSize} size:{this.Size}";
+                result += $"    [{typeInfo.GetType()}] typeInfoClass:{typeInfo.InfoClass} dataSize:{typeInfo.DataSize} size:{typeInfo.Size}";
                 typeInfo = typeInfo.Parent;
             }
             return result;
