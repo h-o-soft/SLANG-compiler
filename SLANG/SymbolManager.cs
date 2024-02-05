@@ -241,8 +241,11 @@ namespace SLANGCompiler.SLANG
                         outputStreamWriter.WriteLine($"_{symbol.NormalizeOriginalName}_ EQU {labelName}");
                     }
                 }
-
-                if(symbol.TypeInfo.IsArray())
+                if(symbol.TypeInfo.IsIndirectType())
+                {
+                    // 間接変数なので格納領域は必ず2(ポインタ)
+                    workOffset += 2;
+                } else if(symbol.TypeInfo.IsArray())
                 {
                     workOffset += symbol.Size;
                 } else {
@@ -325,7 +328,15 @@ namespace SLANGCompiler.SLANG
                 isByte = isByte && !symbol.TypeInfo.IsIndirect();
                 string dataDefine = isByte ? "DB" : "DW";
 
-                if(symbol.TypeInfo.IsArray())
+                if(symbol.TypeInfo.IsIndirectType())
+                {
+                    // 間接変数なので初期値がある場合は必ず2バイトの値のはず
+                    if(symbol.InitialValueList != null)
+                    {
+                        codeRepository.AddCode($" DW {symbol.InitialValueList[0]}\n");
+                    }
+
+                } else if(symbol.TypeInfo.IsArray())
                 {
                     var arraySize = symbol.Size;
                     var oneDataSize = (symbol.TypeInfo.GetDataSize() == TypeDataSize.Byte ? 1 : 2);

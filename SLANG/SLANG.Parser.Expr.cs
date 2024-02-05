@@ -549,8 +549,10 @@ namespace SLANGCompiler.SLANG
                             return makeNode1(Opcode.WtoB, OperatorType.Byte, TypeInfo.ByteTypeInfo, a);
                         case OperatorType.Bool:
                             return deBool(a, OperatorType.Byte);
+                        case OperatorType.Pointer:
+                            return a;
                         default:
-                            bug("coerce1");
+                            bug($"Could not cast(to Pointer from {from})");
                             break;
                     }
                     break;
@@ -698,6 +700,27 @@ namespace SLANGCompiler.SLANG
                     }
                     break;
                 }
+                case OperatorType.Pointer:
+                    // ポインタへの代入
+                    switch(from)
+                    {
+                        case OperatorType.Constant:
+                            a.TypeInfo = TypeInfo.WordTypeInfo;
+                            return a;
+                        case OperatorType.Byte:
+                            return makeNode1(Opcode.BtoW, OperatorType.Word, TypeInfo.ByteTypeInfo, a);
+                        case OperatorType.Word:
+                        case OperatorType.Pointer:
+                            return a;
+                        case OperatorType.Bool:
+                            return deBool(a, OperatorType.Word);
+                        default:
+                            dispSymbolTable();
+                            bug("coerce6 : " + a.Opcode);
+                            break;
+                    }
+                    break;
+                    
                 case OperatorType.Constant:
                     if(from != OperatorType.Constant)
                     {
@@ -732,7 +755,7 @@ namespace SLANGCompiler.SLANG
             }
 
             typeInfo = typeInfo.Parent;
-            if(typeInfo.IsArray() || typeInfo.IsIndirect())
+            if(typeInfo.IsArray()) //  || typeInfo.IsIndirect())
             {
                 p.TypeInfo = typeInfo;
                 return p;

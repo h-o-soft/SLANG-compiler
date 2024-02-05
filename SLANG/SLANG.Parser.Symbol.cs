@@ -159,6 +159,7 @@ namespace SLANGCompiler.SLANG
             FunctionType functionType = isMachine ? FunctionType.Machine : FunctionType.Normal;
             Tree initialValueCodeTree = null;
 
+            List<int> initialValueList = null;
             while(true)
             {
                 if(tree == null)
@@ -184,35 +185,31 @@ namespace SLANGCompiler.SLANG
                             {
                                 address = tree.Address;
                             }
-                            int dataSize = firstTypeInfo.DataSize.GetDataSize();
+                            int dataSize;
+                            if(isIndirect)
+                            {
+                                // 間接変数はポインタなので必ずデータサイズは2バイト
+                                // 間接配列変数の場合は配列ぶんを掛けておく
+                                dataSize = 2;
+                            } else {
+                                dataSize = firstTypeInfo.DataSize.GetDataSize();
+                            }
                             if(arrayTree != null)
                             {
                                 dataSize *= arraySize;
                             }
-                            List<int> initialValueList;
                             Tree initialValueCode = null;
                             if(isArray)
                             {
                                 initialValueList = null;
                                 initialValueCode = initialValueCodeTree;
-                            } else {
-                                initialValueList = tree.InitialValues;
-                            }
-                            if(isIndirect)
+                            } else if(initialValueCodeTree != null)
                             {
-                                var baseTypeInfo = typeInfo.Clone();
-                                if(baseTypeInfo.DataSize == TypeDataSize.Byte)
-                                {
-                                    typeInfo = TypeInfo.IndirectByteTypeInfo.Clone();
-                                } else if(baseTypeInfo.DataSize == TypeDataSize.Word)
-                                {
-                                    typeInfo = TypeInfo.IndirectWordTypeInfo.Clone();
-                                } else if(baseTypeInfo.DataSize == TypeDataSize.Float)
-                                {
-                                    typeInfo = TypeInfo.IndirectFloatTypeInfo.Clone();
-                                } else {
-                                    bug("unknown type");
-                                }
+                                // 二次元間接変数の場合はここに来る
+                                initialValueCode = initialValueCodeTree;
+                            } else if(initialValueList == null)
+                            {
+                                initialValueList = tree.InitialValues;
                             }
                             s = new SymbolTable()
                             {
@@ -251,9 +248,31 @@ namespace SLANGCompiler.SLANG
                         }
                         arrayTree = tree;
                         var baseType = typeInfo;
-                        var tp = new TypeInfo((isArray || arrayCount > 1) ? TypeInfoClass.Array : TypeInfoClass.Indirect, tree.ArraySize + 1, typeInfo.GetDataSize(), typeInfo);
+
+                        // 間接変数の配列の場合はDataSizeは常にWORDになる(ポインタ配列なので)
+                        TypeDataSize dataSize;
+                        if(isIndirect)
+                        {
+                            dataSize = TypeDataSize.Word;
+                        } else {
+                            dataSize = typeInfo.GetDataSize();
+                        }
+                        bool indirectCheck = false;
+                        // isArrayがfalseでtree.ArraySizeが0の場合は強制的に間接変数
+                        // Sizeが入っている場合は型としてはArrayにする
+                        if(!isArray && tree.ArraySize == 0)
+                        {
+                            indirectCheck = true;
+                        }
+                        // var tp = new TypeInfo((isArray || arrayCount > 1) ? TypeInfoClass.Array : TypeInfoClass.Indirect, tree.ArraySize + 1, dataSize, typeInfo);
+                        var tp = new TypeInfo(!indirectCheck ? TypeInfoClass.Array : TypeInfoClass.Indirect, tree.ArraySize + 1, dataSize, typeInfo);
                         typeInfo = tp;
                         arraySize *= (tree.ArraySize+1);
+                        // 間接変数宣言である
+                        if(tp.InfoClass == TypeInfoClass.Indirect)
+                        {
+                            isIndirect = true;
+                        }
                         if(tree.Address != null)
                         {
                             address = tree.Address;
@@ -261,6 +280,10 @@ namespace SLANGCompiler.SLANG
                         if(tree.initialValueCodeTree != null)
                         {
                             initialValueCodeTree = tree.initialValueCodeTree;
+                        } else if(tree.InitialValues != null)
+                        {
+                            // 主に間接変数のアドレス初期値代入
+                            initialValueList = tree.InitialValues;
                         }
                         tree = tree.First;
                         break;

@@ -174,7 +174,9 @@ namespace SLANGCompiler.SLANG
                 case TypeInfoClass.Function:
                     return 1;
                 case TypeInfoClass.Indirect:
-                    return typeInfo.Size * (typeInfo.GetDataSize() == TypeDataSize.Byte ? 1 : 2);
+                    // ポインタなので常に2
+                    return 2;
+                    //return typeInfo.Size * (typeInfo.GetDataSize() == TypeDataSize.Byte ? 1 : 2);
                 default:
                     Error("bug computeSize : " + typeInfo.InfoClass + ":" + typeInfo.DataSize);
                     break;
@@ -547,6 +549,7 @@ namespace SLANGCompiler.SLANG
                 symbolTableManager.CheckTempFunc();
 
                 Console.WriteLine($"{ErrorCount} error(s)");
+                // symbolTableManager.DebugDisp();
             } catch(Exception e)
             {
                 // SystemError(e.ToString());
