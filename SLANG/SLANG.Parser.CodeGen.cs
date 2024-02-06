@@ -1967,6 +1967,7 @@ namespace SLANGCompiler.SLANG
 
             // SymbolTableのsizeが負値だとMACHINEの引数なし宣言(スタックにパラメータを積んで、数をHLに入れる)である
             var isNormalCall = func.Symbol.Size >= 0;
+            var stackArgCount = 0;
 
             // 0個:何もせずCALLのみ
             // 1個:HL
@@ -2046,6 +2047,7 @@ namespace SLANGCompiler.SLANG
                 {
                     genexp(param);
                     gencode(" PUSH HL\n");
+                    stackArgCount++;
                 }
 
                 // 引数無し宣言の場合は最後にHLに引数の数を入れる
@@ -2063,6 +2065,18 @@ namespace SLANGCompiler.SLANG
                 // ランタイムに存在しない場合は通常関数として呼び出す
                 gencode(" CALL %c\n", func);
             }
+
+            // スタックを戻す
+            // ※DEが破壊されるので注意(引数の多い関数は単独で呼ぶ事……)
+            if(stackArgCount > 0)
+            {
+                gencode(" EX DE,HL\n");                   // 戻り値保存(念の為)
+                gencode($" LD HL,{stackArgCount*2}\n"); // 常にWORDを積むので2倍する
+                gencode( " ADD HL,SP\n");
+                gencode( " LD SP,HL\n");
+                gencode(" EX DE,HL\n");
+            }
+
         }
 
         // 関数呼び出しを生成する
