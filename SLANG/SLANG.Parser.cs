@@ -375,7 +375,8 @@ namespace SLANGCompiler.SLANG
             var codeList = codeRepository.GenerateCodeList(orgValue, offsetAddressValue);
 
             // 出力されたコードを最適化する
-            codeOptimizer.PeepholeOptimize(codeList);
+            int matchCount;
+            codeList = codeOptimizer.PeepholeOptimize(codeList, out matchCount);
 
             foreach(var code in codeList)
             {
