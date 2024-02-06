@@ -253,7 +253,7 @@ namespace SLANGCompiler.SLANG
         /// <summary>
         /// のぞき穴的最適化を行う
         /// </summary>
-        public int PeepholeOptimize(List<string> codeListOrig)
+        public List<string> PeepholeOptimize(List<string> codeListOrig, out int matchCount)
         {
             int totalCount = 0;
             int optimizeCount;
@@ -280,7 +280,9 @@ namespace SLANGCompiler.SLANG
                 totalCount += optimizeCount;
             } while(optimizeCount != 0);
 
-            return totalCount;
+            matchCount = totalCount;
+
+            return codeList;
         }
 
         private string[] GetCodes(string codeStr)
