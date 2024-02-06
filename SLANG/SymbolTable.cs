@@ -167,6 +167,11 @@ namespace SLANGCompiler.SLANG
         public bool IsRuntime;
 
         /// <summary>
+        /// CONST値かどうか
+        /// </summary>
+        public bool IsConst;
+
+        /// <summary>
         /// ネームスペース名称
         /// </summary>
         public string NamespaceName;
@@ -202,6 +207,7 @@ namespace SLANGCompiler.SLANG
             this.FunctionType = FunctionType.Normal;
             this.UseOriginalSymbol = false;
             this.IsRuntime = false;
+            this.IsConst = false;
         }
 
         /// <summary>

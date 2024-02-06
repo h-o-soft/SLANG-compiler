@@ -278,7 +278,7 @@ namespace SLANGCompiler.SLANG
             return hasError;
         }
 
-        public void GenerateInitialValueSymbol(CodeRepository codeRepository, ICodeStatementGenerator codeStatementGenerator)
+        public void GenerateInitialValueSymbol(CodeRepository codeRepository, ICodeStatementGenerator codeStatementGenerator, bool targetConst)
         {
             bool isFirst = true;
             // Global Classの変数のコードを出力する
@@ -300,6 +300,12 @@ namespace SLANGCompiler.SLANG
                     continue;
                 }
                 if(symbol.InitialValueList == null && symbol.InitialValueCode == null)
+                {
+                    continue;
+                }
+
+                // CONST出力モード(ROM領域に出力)か、非CONSTの変数初期値出力モード(WORKのRAM領域に出力)か
+                if(targetConst != symbol.IsConst)
                 {
                     continue;
                 }

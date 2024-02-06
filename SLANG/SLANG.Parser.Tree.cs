@@ -63,7 +63,8 @@ namespace SLANGCompiler.SLANG
                 InitialValueCode = codeTree,
                 InitialValueList = null,
                 FunctionType = FunctionType.Machine,
-                Used = true
+                Used = true,
+                IsConst = true
             };
             symbolTableManager.Add(symbol);
 

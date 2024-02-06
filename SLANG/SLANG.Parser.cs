@@ -359,17 +359,17 @@ namespace SLANGCompiler.SLANG
                 genSymbolTable(outputStreamWriter);
             }
 
-            // 初期値つきシンボルテーブルを末尾に追加する
-            symbolTableManager.GenerateInitialValueSymbol(codeRepository, this);
+            // CONSTの初期値つきシンボルテーブルを末尾に追加する
+            symbolTableManager.GenerateInitialValueSymbol(codeRepository, this, true);
 
             // 関数の静的宣言の出力
             functionSymbolTableManagerList.Add(localSymbolTableManager);
             localSymbolTableManager = null;
-            foreach(var manager in functionSymbolTableManagerList)
-            {
-                manager.GenerateInitialValueSymbol(codeRepository, this);
-                //manager.GenerateCode(outputStreamWriter, null);
-            }
+            // foreach(var manager in functionSymbolTableManagerList)
+            // {
+            //     manager.GenerateInitialValueSymbol(codeRepository, this, true);
+            //     //manager.GenerateCode(outputStreamWriter, null);
+            // }
 
             // プログラムコードを出力する
             var codeList = codeRepository.GenerateCodeList(orgValue, offsetAddressValue);
@@ -399,6 +399,24 @@ namespace SLANGCompiler.SLANG
             if(workAddressValue <0 || workAddressValue > orgValue)
             {
                 genSymbolTable(outputStreamWriter);
+                
+                outputStreamWriter.WriteLine("\n\tORG\t__WORKEND__");
+
+                // 非CONSTの初期値あり変数の出力(WORK領域にある必要がある)
+                var workRepository = new CodeRepository(this);
+                symbolTableManager.GenerateInitialValueSymbol(workRepository, this, false);
+
+                foreach(var manager in functionSymbolTableManagerList)
+                {
+                    manager.GenerateInitialValueSymbol(workRepository, this, true);
+                    //manager.GenerateCode(outputStreamWriter, null);
+                }
+                // workRepositoryを出力
+                var workCodeList = workRepository.GenerateCodeList(workAddressValue, offsetAddressValue);
+                foreach(var code in workCodeList)
+                {
+                    outputStreamWriter.WriteLine(code);
+                }
             }
 
             outputStreamWriter.Flush();
