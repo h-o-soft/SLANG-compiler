@@ -2101,6 +2101,8 @@ namespace SLANGCompiler.SLANG
         private void genForloop(string forOp, Expr forIdentifier, Expr forExpr, int label)
         {
             // HLに現在のFOR変数の値が入っているのでそれを使うと良い
+            // Byteの場合は諸々どうにかする(あってるか？)
+            var isByte = forIdentifier.TypeInfo.GetDataSize() == TypeDataSize.Byte;
             if(forExpr.IsConst())
             {
                 if(!forExpr.IsIntValueConst())
@@ -2115,16 +2117,26 @@ namespace SLANGCompiler.SLANG
                 {
                     gencode(" LD A,L\n");
                     gencode($" SUB ${lowValue:X}\n");
-                    gencode(" LD A,H\n");
-                    gencode($" SBC A,${highValue:X}\n");
+                    if(!isByte)
+                    {
+                        gencode(" LD A,H\n");
+                        gencode($" SBC A,${highValue:X}\n");
+                    }
                 } else {    // DOWNTO
                     gencode($" LD A,${lowValue:X}\n");
                     gencode(" SUB L\n");
-                    gencode($" LD A,${highValue:X}\n");
-                    gencode(" SBC A,H\n");
+                    if(!isByte)
+                    {
+                        gencode($" LD A,${highValue:X}\n");
+                        gencode(" SBC A,H\n");
+                    }
                 }
                 gencondjump(OperatorType.Word, ComparisonOp.Gt, 0, label);
             } else {
+                if(isByte)
+                {
+                    gencode(" LD H,0\n");
+                }
                 if(forExpr.CanLoadDirect())
                 {
                     if(forOp != "TO")
