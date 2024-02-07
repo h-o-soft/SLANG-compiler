@@ -13,7 +13,9 @@ const VGS0_JOYPAD_T2 = 00000001b;
 // ; Variables (has initial values)
 // ↑これをWORKの下にするだけで良さそう
 ARRAY BYTE VGS0_ADDR_BG[]:$8000;
+ARRAY BYTE VGS0_ADDR_BG_ATTR[]:$8400;
 ARRAY BYTE VGS0_ADDR_FG[]:$8800;
+ARRAY BYTE VGS0_ADDR_FG_ATTR[]:$8C00;
 ARRAY BYTE VGS0_ADDR_OAM[]:$9000;
 
 ARRAY WORD VGS0_ADDR_PALETTE[]:$9800;
@@ -33,6 +35,14 @@ VAR BYTE VGS0_ADDR_BG_DPM:$9F08;
 VAR BYTE VGS0_ADDR_FG_DPM:$9F09;
 VAR BYTE VGS0_ADDR_SPRITE_DPM:$9F0A;
 
+CONST OAM_Y = 0;
+CONST OAM_X = 1;
+CONST OAM_PTN = 2;
+CONST OAM_ATTR = 3;
+CONST OAM_HEIGHT = 4;
+CONST OAM_WIDTH = 5;
+CONST OAM_BANK = 6;
+CONST OAM_RESERVED = 7;
 
 // SLANGでは実現不可能な部分のCライブラリの諸々
 ////! Real number type with fixed-point numbers
@@ -119,7 +129,7 @@ VAR x,y;
 {
     y = sy - dy;
     x = sx - dx;
-    return vgs0_atan2b(y, x);
+    return vgs0_atan2b(y, x) - 64;
 }
 
 vgs0_bg_putstr(x, y, attr, ptr)
@@ -156,6 +166,10 @@ VAR addrA;
     }
 }
 
+// typedef struct {
+//     uint8_t ptn[32][32];
+//     uint8_t attr[32][32];
+// } NameTable;
 vgs0_putstr(namtbl, x, y, attr, str)
 VAR BYTE namtbl_ptn[][32-1];
 VAR BYTE namtbl_attr[][32-1];

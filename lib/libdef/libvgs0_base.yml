@@ -261,7 +261,11 @@ vgs0_sin:
     ld a, l
     out ($C6), a
     ld l, a
+    bit 7,a
     ld h,0
+    jr z,.notminus
+    dec h
+    .notminus
     ret
 
 vgs0_cos:
@@ -269,7 +273,11 @@ vgs0_cos:
     ld a, l
     out ($C7), a
     ld l, a
+    bit 7,a
     ld h,0
+    jr z,.notminus
+    dec h
+    .notminus
     ret
 
 vgs0_atan2:
