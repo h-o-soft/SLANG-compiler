@@ -301,6 +301,68 @@ vgs0_atan2b:
     ld h,0
     ret
 
+vgs0_srand8:
+  code: |
+    ld a, l
+    out ($C9), a
+    ret
+
+vgs0_rand8:
+  code: |
+    in a, ($C9)
+    ret
+
+vgs0_srand16:
+  code: |
+    ld a, l
+    out ($CA), a
+    ret
+
+vgs0_rand16:
+  code: |
+    in a, ($CA)
+    ret
+
+vgs0_noise_seed:
+  code: |
+    in a, ($CB)
+    ret
+
+vgs0_noise_limitX:
+  code: |
+    out ($CC), a
+    ret
+
+vgs0_noise_limitY:
+  code: |
+    out ($CD), a
+    ret
+
+vgs0_noise:
+  code: |
+    ; HL = x
+    ; DE = y
+    in a,($CE)
+    ld l,a
+    ret
+
+vgs0_noise_oct:
+  code: |
+    ; HL = oct
+    ; DE = x
+    ; BC = y
+
+    ; oct -> A
+    ld a,l
+    ld l,c
+    ld h,b
+    ex de,hl
+    ; HL = x
+    ; DE = y
+    in a, ($CF)
+    ld l, a
+    ret
+
 vgs0_joypad_get:
   code: |
     in a, ($A0)
