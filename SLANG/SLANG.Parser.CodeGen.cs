@@ -1578,6 +1578,10 @@ namespace SLANGCompiler.SLANG
                 gencode(code);
             }
         }
+        public bool IsPowerOfTwo(int value)
+        {
+            return (value > 0) && ((value & (value - 1)) == 0);
+        }
 
         // 乗算、剰余算を出力する
         private void gendivmod(Expr left, Expr right, OperatorType operatorType, bool isDiv, bool isUnsigned = true)
@@ -1592,10 +1596,20 @@ namespace SLANGCompiler.SLANG
                 genFloatCall(isDiv ? "f24div" : "f24mod", left, right);
             } else if(right != null && right.IsConst() && isUnsigned)
             {
-                // HL / DEまたはHL % DEで、HLに返す
-                genexp(left);
-                gencode($" LD DE,{right.ConstValue.Value}\n");
-                genRuntimeCall(callName);
+                // MOD演算で右の数値が2のn乗の場合はANDに置き換える
+                var rightValue = right.ConstValue.Value;
+                if(!isDiv && IsPowerOfTwo(rightValue))
+                {
+                    var andValue = rightValue - 1;
+                    genexp(left);
+                    gencode($" LD DE,{andValue}\n");
+                    genRuntimeCall("ANDHLDE");
+                } else {
+                    // HL / DEまたはHL % DEで、HLに返す
+                    genexp(left);
+                    gencode($" LD DE,{rightValue}\n");
+                    genRuntimeCall(callName);
+                }
             } else if(right.CanLoadDirect())
             {
                 genexp(left);
