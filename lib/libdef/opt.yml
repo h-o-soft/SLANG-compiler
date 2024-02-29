@@ -30,3 +30,8 @@
     JP @1
   replace_code: |-
     JP @1
+- code: |-
+    LD (@1),HL
+    LD HL,(@1)
+  replace_code: |-
+    LD (@1),HL
