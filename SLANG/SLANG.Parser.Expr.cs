@@ -978,7 +978,7 @@ namespace SLANGCompiler.SLANG
                 return left;
             }
             var opType = OperatorType.Word;
-            return makeNode2(opcode, opType, opType.ToType(),  left, right );
+            return makeNode2(opcode, opType, opType.ToType(), coerce(left, opType), coerce(right, opType) );
         }
 
         // カンマ式を作る
