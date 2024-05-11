@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.10.0
+SLANG Compiler (Z80) 0.11.0
 
 # 概要
 
@@ -17,7 +17,7 @@ SLANG Compiler (Z80) 0.10.0
 
 ```
 SLANGCompiler filename [-L library-name] [-O output-path]
-SLANG Compiler 0.10.0
+SLANG Compiler 0.11.0
 Copyright (c) 2022-2023 OGINO Hiroshi / H.O SOFT
 
   -E, --env               Environment name.
