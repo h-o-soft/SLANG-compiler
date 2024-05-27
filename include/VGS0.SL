@@ -190,3 +190,21 @@ VAR BYTE namtbl_attr[][32-1];
         str++;
     }
 }
+
+vgs0_dma_ram(prg, ofs, sz, dst)
+{
+#ASM
+    ; prg
+    LD  A,(IY+104)
+    ; ofs
+    LD  C,(IY+106)
+    LD  B,(IY+107)
+    ; sz
+    LD  E,(IY+108)
+    LD  D,(IY+109)
+    ; dst
+    LD  L,(IY+110)
+    LD  H,(IY+111)
+    OUT (0xC1), A
+#END
+}
