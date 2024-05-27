@@ -75,6 +75,12 @@ vgs0_bank3_switch:
     out ($B3), a
     ret
 
+vgs0_rambank_switch:
+  code: |
+    ld a,l
+    out ($B4), a
+    ret
+
 vgs0_bank0_get:
   code: |
     in a, ($B0)
@@ -99,6 +105,13 @@ vgs0_bank2_get:
 vgs0_bank3_get:
   code: |
     in a, ($B3)
+    ld l, a
+    ld h,0
+    ret
+
+vgs0_rambank_get:
+  code: |
+    in a, ($B4)
     ld l, a
     ld h,0
     ret
