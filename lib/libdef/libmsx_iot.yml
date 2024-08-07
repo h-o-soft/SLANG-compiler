@@ -1,7 +1,8 @@
 
 IOT_COMMON:
   code: |
-    MSX0IO EQU 8
+    MSX0IO  EQU $58
+    MSX0IO2 EQU $57
 
 IOT_SET_DEVICE_PATH:
   calls:
@@ -10,7 +11,7 @@ IOT_SET_DEVICE_PATH:
   code: |
     PUSH  DE
     ; HL = Device Path
-    LD  C, 8
+    LD  C, MSX0IO 
     LD  A, 0xE0
     OUT (C), A
     LD  A, 1
@@ -99,22 +100,22 @@ IOTGET_STR:
 
     ; 受信コマンド送信
     LD		A, 0xE0
-    OUT		(8), A
+    OUT		(MSX0IO), A
     LD		A, 0x01
-    OUT		(8), A
+    OUT		(MSX0IO), A
     ; 文字列型識別コード送信
     LD		A, 0x03
-    OUT		(8), A
+    OUT		(MSX0IO), A
     ; 受信開始
     LD		A, 0x80
-    OUT		(8), A
-    IN		A, (8)		; 文字列長
+    OUT		(MSX0IO), A
+    IN		A, (MSX0IO)		; 文字列長
     OR		A
     JR    Z,_iotget_string_zero
 
     LD		B, A
     _iotget_string_loop:
-    IN		A, (8)
+    IN		A, (MSX0IO)
     LD		(HL), A
     INC   HL
     DJNZ	_iotget_string_loop
