@@ -2117,14 +2117,16 @@ namespace SLANGCompiler.SLANG
             // HLに現在のFOR変数の値が入っているのでそれを使うと良い
             // Byteの場合は諸々どうにかする(あってるか？)
             var isByte = forIdentifier.TypeInfo.GetDataSize() == TypeDataSize.Byte;
-            if(forExpr.IsConst())
+            // 強制的にWORDにする(必ず16ビットSBCするので手抜き)
+            var forExprCast = coerce(forExpr, OperatorType.Word);
+            if(forExprCast.IsConst())
             {
-                if(!forExpr.IsIntValueConst())
+                if(!forExprCast.IsIntValueConst())
                 {
                     Error("for expr is not value const");
                     return;
                 }
-                var forValue = forExpr.ConstValue.Value;
+                var forValue = forExprCast.ConstValue.Value;
                 var lowValue  =  forValue & 0xff;
                 var highValue = (forValue >> 8) & 0xff;
                 if(forOp == "TO")
@@ -2151,20 +2153,20 @@ namespace SLANGCompiler.SLANG
                 {
                     gencode(" LD H,0\n");
                 }
-                if(forExpr.CanLoadDirect())
+                if(forExprCast.CanLoadDirect())
                 {
                     if(forOp != "TO")
                     {
                         gencode($" EX DE,HL\n");
-                        genld(Register.HL, forExpr);
+                        genld(Register.HL, forExprCast);
                     } else {
-                        genld(Register.DE, forExpr);
+                        genld(Register.DE, forExprCast);
                     }
                     gencode($" OR A\n");
                     gencode($" SBC HL,DE\n");
                 } else {
                     gencode(" PUSH HL\n");
-                    genexp(forExpr);
+                    genexp(forExprCast);
                     if(forOp == "TO")
                     {
                         gencode(" EX DE,HL\n");

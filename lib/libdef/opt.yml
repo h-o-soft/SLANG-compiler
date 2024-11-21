@@ -35,3 +35,18 @@
     LD HL,(@1)
   replace_code: |-
     LD (@1),HL
+- code: |-
+    LD A,(@1)
+    LD L,A
+    INC HL
+    LD A,L
+    LD (@1),A
+    DEC HL
+    LD H,0
+  replace_code: |-
+    LD A,(@1)
+    INC A
+    LD (@1),A
+    DEC A
+    LD L,A
+    LD H,0
