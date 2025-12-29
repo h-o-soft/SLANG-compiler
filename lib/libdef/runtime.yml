@@ -409,6 +409,14 @@ SEX:
     DEC H
     RET
 
+SRAND:
+  param_count: 1
+  calls:
+    - RND
+  code: |
+    LD (RND_SEED1),HL
+    RET
+
 RND:
   param_count: 1
   calls:
@@ -594,3 +602,44 @@ STRLEN:
     LD H,0
     POP BC
     RET
+
+MIN:
+  code: |
+    ; HL = value 1
+    ; DE = value 2
+    ld a,h
+    cp d
+    jr c,.HL_is_Smaller
+    jr nz,.DE_is_Smaller
+    ; 上位バイトが等しい場合、下位バイトを比較
+    ld a,l        ; HL の下位バイトを A にロード
+    cp e          ; DE の下位バイトと比較
+    jr c,.HL_is_Smaller ; キャリーがセットされていれば HL < DE
+    jr .DE_is_Smaller   ; HL > DE（キャリーなし）
+    .HL_is_Smaller
+    ; HL はそのまま小さい
+    ret           ; そのまま戻る
+    .DE_is_Smaller:
+    ; 入れ替える
+    ex de,hl
+    ret
+
+MAX:
+  code: |
+    ld a,h        ; HL の上位バイトを A にロード
+    cp d          ; DE の上位バイトと比較
+    jr c,.DE_is_Greater ; キャリーがセットされていれば HL < DE
+    jr nz,.HL_is_Greater ; キャリーがなく、上位バイトが等しくない場合 HL > DE
+    ; 上位バイトが等しい場合、下位バイトを比較
+    ld a,l        ; HL の下位バイトを A にロード
+    cp e          ; DE の下位バイトと比較
+    jr c,.DE_is_Greater ; キャリーがセットされていれば HL < DE
+    jr .HL_is_Greater   ; HL > DE（キャリーなし）
+    .HL_is_Greater
+    ; HL はそのまま大きい
+    ret           ; そのまま戻る
+    .DE_is_Greater
+    ; 入れ替える
+    ex de,hl
+    ret
+

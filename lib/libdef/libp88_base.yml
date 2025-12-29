@@ -1,0 +1,295 @@
+SLANGINIT:
+  calls:
+    - P88WORK
+    - VTOS
+    - P88INT
+  code: |
+    DI
+
+    ; テキトーなところにしておく(8000hより後じゃないとROMから戻ってこられない)
+    LD SP,$8400
+
+    ld bc, scrinitcode_end - scrinitcode
+    ld hl,scrinitcode
+    ld de,$8400
+    ldir
+
+    call $8400
+
+    ; 正式なスタックを設定
+    LD SP,$1A00
+
+    ; WORK ZERO CLEAR
+    XOR A
+    LD HL,__WORK__
+    LD DE,__WORK__+1
+    LD BC,__WORKEND__-__WORK__-1
+    LD (HL),A
+    LDIR
+
+    <<CALLINITIALIZER>>
+
+    LD IY,__IYWORK
+
+    ; set interrupt
+    IM  2
+
+    LD	A,IVRTC/256
+    LD	I,A
+
+    LD	A,$FF
+    OUT	(0E4H),A
+    LD	A,0
+    OUT	(0E6H),A
+
+    EI
+
+    JP MAIN
+
+
+VSYNC:
+  code: |
+    P8WaitVBlank:
+    in	    a,($40)
+    and     $20
+    jr      nz,P8WaitVBlank
+    .wait
+    in      a,($40)
+    and     $20
+    jr      z,.wait
+    ret
+
+PSET:
+  calls:
+    - GETVRAMADR
+  code: |
+    ; HL = X, DE= Y, BC = COLOR
+    DI
+    LD A,C
+    LD (PSETCOLOR+1),A
+
+    CALL GETVRAMADR
+
+    ;	IN A,($32) ;
+    ;	OR %01000000	; 拡張アクセスモード
+    ;	OUT ($32),A
+    ;	LD A,%00000111
+    ;	OUT ($34),A	; bit OR
+    ;	LD A,%10000000	; GVRAM, $34の内容を使って書き込む
+    ;	OUT ($35),A
+    ;
+    ;	LD C,$FF
+    ;	LD (HL),C
+    ;
+    ;	IN A,($32)
+    ;	AND %10111111	; 独立アクセスモード
+    ;	OUT ($32),A
+    ;
+    ;	EI
+    ;
+    ;	RET
+
+    ; Aに左からのビット位置が入っているので %10000000 を右シフトして描画ビットを得る
+    ; A = A - 7
+    NEG
+    ADD A,7
+    SLA A
+    SLA A
+    SLA A
+    OR %11000111
+    LD (PSETADR+1),A
+
+    ; ALUで3プレーン同時描画
+    ; まずはnot ANDで全部消す
+    LD A,(IO32H)
+    OR %01000000	; 拡張アクセスモード
+    OUT ($32),A
+    XOR A
+    OUT ($34),A	; bit Reset
+    LD A,%10000000	; GVRAM, $34の内容を使って書き込む
+    OUT ($35),A
+
+    XOR A
+    PSETADR:
+    SET 0,A
+    LD (HL),A
+
+    LD C,A
+    PSETCOLOR:
+    LD A,%00000111
+    OUT ($34),A	; bit OR
+
+    LD (HL),C
+
+    LD A,(IO32H)
+    OUT ($32),A
+
+    EI
+
+    RET
+
+SETGRP:
+  calls:
+    - P88WORK
+  code: |
+    ; HL =
+    ;   0 = 青プレーン独立
+    ;   1 = 赤プレーン独立
+    ;   2 = 緑プレーン独立
+    ;   3 = メインRAM選択
+    ;   4 = 拡張アクセスモード(ALU)
+    LD A,L
+    CP 4
+    JR Z,.SETALU
+
+    ADD A,$5C
+    LD C,A
+
+    LD A,(IO32H)
+    AND %10111111	; 独立アクセスモード
+    OUT ($32),A
+    LD (IO32H),A
+
+    OUT (C),A
+
+    RET
+
+    .SETALU
+    LD A,(IO32H)
+    OR %01000000	; 拡張アクセスモード
+    OUT ($32),A
+    LD (IO32H),A
+    RET
+
+
+GETVRAMADR:
+  code: |
+    ; HL = X, DE = Y
+    PUSH BC
+    
+    ; HLについて8で割る(右シフト3)
+    ; AにはXを8で割った余りを入れてやる
+    LD A,L
+    AND %00000111
+    
+    ; Xを8で割る
+    SRL H      ; Hレジスタを右シフト。上位ビットからキャリーフラグへ
+    RR L       ; キャリーフラグをEレジスタの上位ビットに、Eレジスタを右シフト
+    
+    SRL H      ; 2回目のシフト
+    RR L
+    
+    SRL H      ; 3回目のシフト
+    RR L
+    ; HL = X/8
+    
+    ; 上位は空いてるのでAを保存
+    LD H,A
+    
+    ; _AにはVRAMアドレスの余りが入っている(10の場合は2、みたいな感じ。 %10000000 をその値で右シフトすると描画位置ビットが得られる)
+    ; ↓これをやっておくかは悩む
+    ; LD (_A),A
+    
+    ; Y * 80 + X
+    ; 400バイトくらい空きがあればテーブルを使いたいが……もったいないね
+    EX DE,HL
+    ADD HL,HL
+    ADD HL,HL
+    ADD HL,HL
+    ADD HL,HL
+    ; 16
+    LD C,L
+    LD B,H
+    ADD HL,HL
+    ADD HL,HL
+    ; 64 + 16
+    ADD HL,BC
+    ; ここでYが80倍された値がHLに入っている
+    
+    ; $C000とX/8を足してアドレスにしてやる
+    LD A,$C0
+    OR H
+    LD H,A
+    LD A,D
+    LD D,0
+    ADD HL,DE
+    
+    ; HLにはVRAMのアドレスが入っている
+    POP BC
+    
+    RET
+
+P88INT:
+  code: |
+    ALIGN	256
+    ;
+    ;	割り込みベクタ:アドレス下位1バイトが0になるように
+    ;	高速RAM(0F000H-0FFFFH)と被らないようにする
+    ;
+    IRXRDY:
+    DW	INTE88
+    IVRTC:
+    DW	INTVRTC
+    ICLOCK:
+    DW	INTE88
+    IINT4:
+    DW	INTE88
+    IINT3:
+    DW	INTE88
+    IINT2:
+    DW	INTE88
+    IFDINT1:
+    DW	INTE88
+    IFDINT2:
+    DW	INTE88
+
+    INTVRTC:
+    DI
+    PUSH AF
+
+    CALL GAMEVSYNC
+
+    LD A,(WKE4)
+    OUT (0E4H),A
+    POP AF
+    EI
+    RET
+
+    INTE88:
+    PUSH AF
+    LD A,(WKE4)
+    OUT (0E4H),A
+    POP AF
+    EI
+    RET
+
+    WKE4:
+    DB  01CH
+
+    scrinitcode:
+    ld			a,%00111001				;ROMバンクに戻す
+    out			($31),a
+    ld			a,%10001001				;bit4=0 TVRAM
+    out			($32),a
+
+    xor			a
+    ld			($E6A7),a				;カーソル表示フラグ 0=非表示 1=表示
+    call		$428B					;カーソル点滅停止
+    ld			bc,80*256+25
+    call		$6F6B
+    call		$5F0E					;テキスト画面クリア
+    call		$4021					;ファンクションキー表示停止
+    ld			a,%00111011				;64KB RAM mode TextWindow機能OFF
+    out			($31),a
+    ld			a,%00011001				;bit4=1 Main RAM
+    out			($32),a
+    LD      (IO32H),A
+    ret
+    scrinitcode_end:
+
+
+P88WORK:
+  code: |
+    ;
+  works:
+    IO32H: 1
