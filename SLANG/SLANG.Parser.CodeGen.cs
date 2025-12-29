@@ -280,10 +280,6 @@ namespace SLANGCompiler.SLANG
                             var expr = (Expr)obj[idx];
                             var symbolOffset = expr.SymbolOffset;
                             var symbol = expr.Symbol;
-                            if(symbol.TypeInfo.GetDataSize() == TypeDataSize.Word)
-                            {
-                                symbolOffset *= 2;
-                            }
                             if(symbol.Address != null)
                             {
                                 var ofs = symbolOffset >= 0 ? symbolOffset : 0;

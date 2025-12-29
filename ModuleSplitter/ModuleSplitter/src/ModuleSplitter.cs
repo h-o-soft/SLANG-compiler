@@ -108,28 +108,32 @@ namespace ModuleSplitter
                 // 全ファイルサイズからモジュール数*moduleAlignSizeを引いたサイズがメイン部のサイズとなる
                 var binSize = new System.IO.FileInfo(binPath).Length;
                 var mainSize = (int)(binSize - moduleAlignSize * moduleCount);
-                var mainData = new byte[mainSize];
-
-                Console.WriteLine($"Main Start: {mainStartAddress:X4} Size: {mainSize}bytes bin:{binSize}bytes modCount:{moduleCount}");
-                using(var reader = new BinaryReader(new FileStream(binPath, FileMode.Open)))
+                // mainSizeが負の場合は全モジュールモードなのでメイン部は出力しない
+                if(mainSize > 0)
                 {
-                    reader.BaseStream.Seek(moduleAlignSize * moduleCount, SeekOrigin.Begin);
-                    reader.Read(mainData, 0, mainSize);
-                }
+                    var mainData = new byte[mainSize];
 
-                var mainFileName =  GetMainPath(binPath);
-                using(var writer = new BinaryWriter(new FileStream(mainFileName, FileMode.Create)))
-                {
-                    writer.Write(mainData);
-                }
-
-                if(exportCmt)
-                {
-                    var cmtPath = System.IO.Path.ChangeExtension( mainFileName, ".cmt");
-                    using(var stream = new FileStream(cmtPath, FileMode.Create))
+                    Console.WriteLine($"Main Start: {mainStartAddress:X4} Size: {mainSize}bytes bin:{binSize}bytes modCount:{moduleCount}");
+                    using(var reader = new BinaryReader(new FileStream(binPath, FileMode.Open)))
                     {
-                        var writer = new CMTBinaryWriter((UInt16)mainStartAddress, mainData, stream);
-                        writer.Write();
+                        reader.BaseStream.Seek(moduleAlignSize * moduleCount, SeekOrigin.Begin);
+                        reader.Read(mainData, 0, mainSize);
+                    }
+
+                    var mainFileName =  GetMainPath(binPath);
+                    using(var writer = new BinaryWriter(new FileStream(mainFileName, FileMode.Create)))
+                    {
+                        writer.Write(mainData);
+                    }
+
+                    if(exportCmt)
+                    {
+                        var cmtPath = System.IO.Path.ChangeExtension( mainFileName, ".cmt");
+                        using(var stream = new FileStream(cmtPath, FileMode.Create))
+                        {
+                            var writer = new CMTBinaryWriter((UInt16)mainStartAddress, mainData, stream);
+                            writer.Write();
+                        }
                     }
                 }
             }
