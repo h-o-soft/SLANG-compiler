@@ -17,6 +17,7 @@ ARRAY BYTE VGS0_ADDR_BG_ATTR[]:$8400;
 ARRAY BYTE VGS0_ADDR_FG[]:$8800;
 ARRAY BYTE VGS0_ADDR_FG_ATTR[]:$8C00;
 ARRAY BYTE VGS0_ADDR_OAM[]:$9000;
+ARRAY WORD VGS0_ADDR_OAM16[]:$9A00;
 
 ARRAY WORD VGS0_ADDR_PALETTE[]:$9800;
 
@@ -47,6 +48,9 @@ CONST OAM_HEIGHT = 4;
 CONST OAM_WIDTH = 5;
 CONST OAM_BANK = 6;
 CONST OAM_RESERVED = 7;
+
+CONST OAM16_Y = 0;
+CONST OAM16_X = 1;
 
 // SLANGでは実現不可能な部分のCライブラリの諸々
 ////! Real number type with fixed-point numbers
@@ -189,4 +193,22 @@ VAR BYTE namtbl_attr[][32-1];
         x = x and $1F;
         str++;
     }
+}
+
+vgs0_dma_ram(prg, ofs, sz, dst)
+{
+#ASM
+    ; prg
+    LD  A,(IY+104)
+    ; ofs
+    LD  C,(IY+106)
+    LD  B,(IY+107)
+    ; sz
+    LD  E,(IY+108)
+    LD  D,(IY+109)
+    ; dst
+    LD  L,(IY+110)
+    LD  H,(IY+111)
+    OUT (0xC1), A
+#END
 }

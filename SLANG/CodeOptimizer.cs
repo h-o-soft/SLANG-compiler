@@ -66,7 +66,7 @@ namespace SLANGCompiler.SLANG
             bool captureMode = false;
             bool captureCheckMode = false;
             int captureNumber = 0;
-            char[] delimiters = new char[]{' ', ',', ':', '\t'};
+            char[] delimiters = new char[]{' ', ',', ':', '\t', ')'};
             StringBuilder sb = new StringBuilder();
 
             replacedCode = null;
@@ -121,7 +121,7 @@ namespace SLANGCompiler.SLANG
                     if(captureCheckMode)
                     {
                         var captureStr = stringReplaceDictionary[captureNumber];
-                        if(idx >= codeStr.Length && captureIdx >= captureStr.Length)
+                        if((idx >= codeStr.Length || delimiters.Contains(codeStr[idx])) && captureIdx >= captureStr.Length)
                         {
                             // 同時に終端に来たので@x に一致した
                             captureCheckMode = false;

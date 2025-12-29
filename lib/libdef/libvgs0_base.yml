@@ -2,6 +2,7 @@ VGSCALLS:
   code: |
     DUMMY   EQU $0000
     ADDR_OAM EQU $9000
+    ADDR_OAM16 EQU $9A00
 
 SLANGINIT:
   calls:
@@ -75,6 +76,12 @@ vgs0_bank3_switch:
     out ($B3), a
     ret
 
+vgs0_rambank_switch:
+  code: |
+    ld a,l
+    out ($B4), a
+    ret
+
 vgs0_bank0_get:
   code: |
     in a, ($B0)
@@ -99,6 +106,13 @@ vgs0_bank2_get:
 vgs0_bank3_get:
   code: |
     in a, ($B3)
+    ld l, a
+    ld h,0
+    ret
+
+vgs0_rambank_get:
+  code: |
+    in a, ($B4)
     ld l, a
     ld h,0
     ret
@@ -442,6 +456,101 @@ vgs0_load:
     ld h, 0
     ret
 
+vgs0_oam_set16:
+  code: |
+    ; (ret), h, w, ptn, attr, y, x, num の順で入っている
+    LD HL,12+2
+    ADD HL,SP
+
+    ; DE = num
+    LD E,(HL)
+    INC HL
+    LD D,(HL)
+
+    EX DE,HL
+    ADD HL,HL
+    ADD HL,HL   ; HL = HL * 4 (OAM16のオフセットにする)
+    PUSH HL
+    LD DE,ADDR_OAM16
+    ADD HL,DE
+    ; OAM16アドレスをDEに退避
+    EX DE,HL
+
+    ; y位置アドレスをDEに得る
+    LD HL,8+2+2   ; PUSH HLのぶんを足す
+    ADD HL,SP
+    ; OAM16アドレスをHLに戻す
+    EX DE,HL
+
+    ; y
+    LD A,(DE)
+    LD (HL),A
+    INC HL
+    INC DE
+    LD A,(DE)
+    LD (HL),A
+    INC HL
+    INC DE
+
+    ; x
+    LD A,(DE)
+    LD (HL),A
+    INC HL
+    INC DE
+    LD A,(DE)
+    LD (HL),A
+    DEC DE
+    DEC DE
+    DEC DE
+    DEC DE
+    DEC DE
+    DEC DE
+    DEC DE
+
+    ; HLをOAM16からOAMに切り替える
+    POP HL
+    PUSH DE
+    ADD HL,HL
+    LD DE,ADDR_OAM+2  ; ptnのオフセット
+    ADD HL,DE
+    POP DE
+
+    ; ptn
+    LD A,(DE)
+    LD (HL),A
+    INC HL
+    INC DE
+    INC DE
+
+    ; attr
+    LD A,(DE)
+    LD (HL),A
+    INC HL
+    DEC DE
+    DEC DE
+    DEC DE
+    DEC DE
+    DEC DE
+    DEC DE
+
+    ; h
+    LD A,(DE)
+    LD (HL),A
+    INC HL
+    INC DE
+    INC DE
+
+    ; w
+    LD A,(DE)
+    LD (HL),A
+    INC HL
+
+    ; bank
+    XOR A
+    LD (HL),A
+
+    RET
+
 
 vgs0_oam_set:
   code: |
@@ -519,7 +628,7 @@ vgs0_oam_set:
     INC HL
 
     ; bank
-    LD A,0
+    XOR A
     LD (HL),A
 
     RET
@@ -608,6 +717,18 @@ vgs0_oam_move:
     LD (HL),E
 
     RET
+
+vgs0_debug:
+  code: |
+    .loop
+    ld a, (hl)
+    out ($00), a
+    and a
+    ret z
+    inc hl
+    jr .loop
+    ret
+
 
 
 
