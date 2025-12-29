@@ -1,0 +1,36 @@
+
+// $E000から配置する場合は7になる($0000 = 0, $2000 = 1, $4000 = 2, $6000 = 3, $8000 = 4, $A000 = 5, $C000 = 6, $E000 = 7)
+CONST NEXTDAW_PLAYER_MMU = 7;
+
+// NextDAWのドライバーをどのバンクに配置するか(game.cfgで設定したバンク番号)
+CONST MMUPAGE_NEXTDAW_PLAYER = 52;
+
+CONST NEXTDAW_DATA_1_MMU = 0;
+CONST NEXTDAW_DATA_2_MMU = 1;
+CONST NEXTDAW_DATA_3_MMU = 2;
+
+VAR SAVE_MMU_PLAYER;
+
+NextDAW_SetMMU()
+{
+	SAVE_MMU_PLAYER = ZXN_SET_BANK_8K(NEXTDAW_PLAYER_MMU, MMUPAGE_NEXTDAW_PLAYER);
+}
+
+NextDAW_RestoreMMU()
+{
+	ZXN_SET_BANK_8K(NEXTDAW_PLAYER_MMU, SAVE_MMU_PLAYER);
+}
+
+NextDAWInit()
+{
+	NextDAW_SetMMU();
+	NextDAW_InitSystem(NEXTDAW_DATA_1_MMU, NEXTDAW_DATA_2_MMU, NEXTDAW_DATA_3_MMU);
+	NextDAW_RestoreMMU();
+}
+
+PlaySFX(sfx, bank)
+{
+	NextDAW_SetMMU();
+	NextDAW_PlaySFX(sfx, bank);
+	NextDAW_RestoreMMU();
+}
