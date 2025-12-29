@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.11.0
+SLANG Compiler (Z80) 0.12.0
 
 # 概要
 
@@ -17,8 +17,8 @@ SLANG Compiler (Z80) 0.11.0
 
 ```
 SLANGCompiler filename [-L library-name] [-O output-path]
-SLANG Compiler 0.11.0
-Copyright (c) 2022-2023 OGINO Hiroshi / H.O SOFT
+SLANG Compiler 0.12.0
+Copyright (c) 2022-2025 OGINO Hiroshi / H.O SOFT
 
   -E, --env               Environment name.
   -l, --lib               Library name(s). ( lib*.yml )
@@ -130,6 +130,26 @@ BIOS処理については比較的汎用的に作られており、PC-8001版の
 
 詳細は [XBIOSのドキュメント](lib/pc8001/XBIOS/README.md)を参照してください。
 
+## pc88mk2sr (PC-8801mkIISR)
+
+PC-8801mkIISR用の環境です。
+
+ORGは$1A00となっており、ディスクベーシックの環境上で動作する想定となっています。
+
+PRINT文はテキストVRAMへの直接書き込みで実現しています。また、VSYNCはV-BLANK割り込みを利用して実装されています。
+
+現状、基本的な文字表示とディスクアクセス機能が実装されていますが、キー入力関連については未実装となります。
+
+## zxn (ZX Spectrum Next)
+
+ZX Spectrum Next用の環境です。
+
+ORGは$8000、ワーク領域は$D000からとなっています。
+
+Layer 2グラフィックス、タイルマップ、スプライト、パレット設定、Copperプロセッサなど、ZX Spectrum Next固有の機能に対応したライブラリが用意されています。
+
+サンプルは examples/zxn フォルダにあります。
+
 # ランタイムについて
 
 SLANG Compilerはランタイムライブラリとして、複数のファイルを読み込む事が出来ます。
@@ -234,6 +254,41 @@ SLANG Compilerはランタイムライブラリとして、複数のファイル
   * その他SDカード読み書き用関数が用意されています(yanatakaさんの https://github.com/yanataka60/PC-8001mk2_SD こちらのハードウェアに対応しています)
 * libpc80mk2_print.yml
   * PC-8001mkIIのBIOS部を使ったPRINT関連の処理を行うライブラリ
+
+## PC-8801mkIISR関連ライブラリ
+* libp88_base.yml
+  * PC-8801mkIISR固有のライブラリ
+  * VSYNC()関数でV-BLANK待ちが可能です
+  * PSET(X,Y,COLOR)でグラフィック画面へのドット描画が可能です
+* libp88_print.yml
+  * PC-8801mkIISRのテキストVRAMへ直接書き込みを行うPRINT関連の処理を行うライブラリ
+  * LOCATE(X,Y)でカーソル位置を設定できます
+* libp88_file.yml
+  * PC-8801mkIISRのディスクアクセス関連のライブラリ
+  * Disk_Load(PATH,ADDRESS)でファイルを読み込みます
+  * Disk_Load3(ADDRESS,OFFSET,SIZE)で位置を指定した読み込みが可能です
+  * Disk_SecLoad(ADDRESS,B,C,D,E)でセクタ単位での読み込みが可能です
+
+## ZX Spectrum Next関連ライブラリ
+* libzxn_base.yml
+  * ZX Spectrum Next固有のライブラリ
+  * Layer 2グラフィックス関連関数（L2_VISIBLE、L2_SCREEN、L2_OFFSETなど）
+  * タイルマップ関連関数（TILE_INIT、TILE_VISIBLE、TILE_DEFなど）
+  * スプライト関連関数（SPR_LOAD、SPR_SET、SPR_MOVE、SPR_VISIBLEなど）
+  * パレット設定関数（SET_PAL、SET_PALALL、SET_PAL9など）
+  * Copperプロセッサ関数（COPPER_SET）
+  * NEXTREGアクセス関数（ZXN_READ_REG、ZXN_WRITE_REG）
+  * 8K/16Kバンク切り替え関数（ZXN_SET_BANK_8K、ZXN_SET_BANK_16K）
+* libzxn_print.yml
+  * ZX Spectrum Nextの文字表示関連処理を行うライブラリ
+* libzxn_input.yml
+  * ZX Spectrum Nextの入力関連処理を行うライブラリ
+  * STICK()でジョイスティック入力を取得できます
+* libzxn_file.yml
+  * ZX Spectrum NextのesxDOSファイルアクセス関連のライブラリ
+* libzxn_nextdaw.yml
+  * NextDAW音楽再生ドライバ用のライブラリ
+  * ※NextDAWドライバ本体は別途必要です
 
 ## X1におけるゲームループの処理
 
@@ -386,11 +441,53 @@ make TARGET=examples/FMANDEL ENV=msx2  といった感じで、TARGETに拡張�
 
 今後はバッチファイルはメンテされず、Makefileのみ更新される予定ですので、極力こちらをお使いください。
 
+## ソースからのビルドとインストール
+
+リポジトリからソースを取得した場合、以下のコマンドでコンパイラをビルド・インストールできます。
+
+### 前提条件
+* .NET 6 SDK がインストールされていること
+
+### ビルド
+```
+make
+```
+デバッグ用にビルドされます。
+
+```
+make release
+```
+リリース用にビルドされます。
+
+### インストール
+```
+make install
+```
+コンパイラとランタイムライブラリがシステムにインストールされます：
+* Windows: `%LOCALAPPDATA%\Programs\SLANG\` にコンパイラ、`%USERPROFILE%\.config\SLANG\` にランタイム
+* macOS/Linux: `/usr/local/bin/` にコンパイラ、`~/.config/SLANG/` にランタイム
+
+### クリーン
+```
+make clean
+```
+ビルド成果物を削除します。
 
 # ライセンス
 MIT
 
 # 更新履歴
+- Version 0.12.0
+  - ZX Spectrum Next環境（zxn）を追加
+  - PC-8801mkIISR環境（pc88mk2sr）を追加
+  - VGS-Zeroライブラリを1.24.0ベースに更新
+    - vgs0_oam_set16()関数を追加
+    - vgs0_debug()関数を追加
+  - Makefileの整理
+    - ソースからのビルド・インストールを`make`、`make install`で行えるよう対応
+    - `make publish`でリリースパッケージを作成可能に
+  - runtime.ymlにMIN()、MAX()関数を追加
+  - MEMSETのバグを修正（bcのデクリメント漏れ）
 - Version 0.11.0
   - VGS-Zero環境を追加
   - 間接変数が正常に動作していなかったのを修正
