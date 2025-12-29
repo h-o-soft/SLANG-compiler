@@ -131,6 +131,8 @@ PRT:
     ; HL -> VRAM ADDR
     CP $0D
     JR Z,.NEXTLINE
+    CP $00
+    JR Z,.NONEXT
 
     CALL GETLOCADR
     LD (HL),A
@@ -161,6 +163,9 @@ PRT:
     LD A,(LOCY)
     INC A
     LD (LOCY),A
+    XOR A
+    LD (LOCX),A
+    POP HL
     RET
 
 GETLOCADR:
