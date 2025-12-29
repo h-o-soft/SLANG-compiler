@@ -582,6 +582,7 @@ MEMSET:
 
     ; pop count
     pop bc
+    dec bc
 
     ldir
     ret
