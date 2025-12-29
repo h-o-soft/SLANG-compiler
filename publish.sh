@@ -12,7 +12,7 @@ createRelease() {
   cp -r ../../images .
   cp -r ../../syntax .
   cp ../../slbuild.$2 .
-  cp ../../Makefile .
+  cp ../../Makefile.dist ./Makefile
   cp ../../copyruntime.$2 .
   cp ../../setupenv.$2 .
   cp ../../README.md .

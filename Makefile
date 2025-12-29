@@ -1,198 +1,168 @@
-# ファイル名拡張子の設定
-SRC_EXT = .sl
-ASM_EXT = .asm
-BIN_EXT = .bin
+# SLANG Compiler Makefile
+# ===========================
+# make              - コンパイラをビルド
+# make release      - リリースビルド
+# make install      - インストール (PREFIX=/usr/local)
+# make uninstall    - アンインストール
+# make publish      - 全プラットフォーム向けリリース作成 (VERSION必須)
+# make setup-tools  - 開発ツール(AILZ80ASM等)のダウンロード
+# make clean        - クリーンアップ
 
-# 環境名を指定
-ENV ?= lsx
-SLANGENV=$(ENV)
+# 設定
+DOTNET = dotnet
+VERSION ?=
+PREFIX ?= /usr/local
+BINDIR = $(PREFIX)/bin
+CONFIG_DIR = $(HOME)/.config/SLANG
 
-# ファイル名（拡張子なし）を指定
-TARGET ?= examples/STARS
-
-RUNADR = 3000
-LOADADR = 3000
-
-# ツールのコマンド名
-SLANGCOMPILER = bin/SLANGcompiler
-ASM = tools/AILZ80ASM
-NDC = tools/ndc
-HUDISK = tools/HuDisk
-MODSPLIT = bin/ModuleSplitter
-
-OUTPROG = $(dir $(TARGET))PROG.bin
-ASM_OPT =
-
+# OS検出
 ifeq ($(OS),Windows_NT)
-    # Windows環境の場合
-    PATHSEP=\\
+    DETECTED_OS = Windows
+    MKDIR = mkdir
+    RM = del /Q
+    RMDIR = rmdir /S /Q
+    CP = copy
+    XCOPY = xcopy /E /Y
+    PATHSEP = \\
+    EXE_EXT = .exe
+    SHELL_EXT = bat
 else
-    # その以外の環境（Linux, macOSなど）の場合
-    PATHSEP=/
+    UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),Darwin)
+        DETECTED_OS = macOS
+        ARCH := $(shell uname -m)
+        ifeq ($(ARCH),arm64)
+            RID = osx-arm64
+        else
+            RID = osx-x64
+        endif
+    else
+        DETECTED_OS = Linux
+        RID = linux-x64
+    endif
+    MKDIR = mkdir -p
+    RM = rm -f
+    RMDIR = rm -rf
+    CP = cp
+    XCOPY = cp -R
+    PATHSEP = /
+    EXE_EXT =
+    SHELL_EXT = sh
 endif
 
-# エミュレータのコマンド名とディスクイメージファイル名を環境に応じて設定
-ifeq ($(ENV), lsx)
-  EMU = C:\emu\X1\X1.exe
-  # EMU = ~/emu/X1/X1.exe
-  DISK_IMAGE = images/LSXPROG.D88
-  BIN_EXT_ENV = .com
-else ifeq ($(ENV), x1)
-  EMU = C:\emu\X1\X1.exe
-  # EMU = ~/emu/X1/X1.exe
-  DISK_IMAGE = images/LSXPROG.D88
-  BIN_EXT_ENV = .com
-else ifeq ($(ENV), sos)
-  EMU = C:\emu\X1\X1.exe
-  # EMU = ~/emu/X1/X1.exe
-  DISK_IMAGE = images/SOSPROG.D88
-  BIN_EXT_ENV = $(BIN_EXT)
-else ifeq ($(ENV), msxrom)
-  EMU = C:\emu\MSX\openmsx\openmsx.exe
-  # EMU = /Applications/openMSX.app/Contents/MacOS/openmsx
-  BIN_EXT_ENV = $(BIN_EXT)
-  EMUOPT = -cart
-  DISK_IMAGE = $(OUTPROG)
-else ifeq ($(ENV), msx2)
-  EMU = C:\emu\MSX\openmsx\openmsx.exe
-  # EMU = /Applications/openMSX.app/Contents/MacOS/openmsx
-  DISK_IMAGE = images/dosformsx.dsk
-  BIN_EXT_ENV = .com
-  EMUOPT = -diska
-else ifeq ($(ENV), msxlsx)
-  EMU = C:\emu\MSX\openmsx\openmsx.exe
-  # EMU = /Applications/openMSX.app/Contents/MacOS/openmsx
-  DISK_IMAGE = images/dos2formsx.dsk
-  BIN_EXT_ENV = .com
-  EMUOPT = -diska
-else ifeq ($(findstring $(ENV),pc80mk2 pc80mk2x),$(ENV))
-  EMU = C:\emu\PC8001mkII\pc8001mk2.exe
-  # EMU = ~/emu/PC8001mkII/pc8001mk2.exe
-  BIN_EXT = .cmt
-  BIN_EXT_ENV = .cmt
-  OUTPROG = $(TARGET).bin
-  OUTCMT  = $(TARGET).cmt
-  # OUTPROG = $(TARGET).bin
-  DISK_IMAGE_TMP = $(dir $(TARGET))PROG.cmt
-  DISK_IMAGE = $(subst /,$(PATHSEP),$(DISK_IMAGE_TMP))
-  ASM_OPT = -cmt -gap 0
-else ifeq ($(ENV), cpm)
-  SLANGENV=lsx
-  EMU = tools/cpm.exe
-  DISK_IMAGE = $(OUTPROG)
-endif
+# ターゲット
+.PHONY: all build release install uninstall publish setup-tools clean help
 
-IMGPROG = $(basename $(OUTPROG))$(BIN_EXT_ENV)
+all: build
 
-# リネーム関数
-define rename_func
-ifeq ($(OS),Windows_NT)
-  move /Y $(1) $(2)
+# ビルド (Debug)
+build:
+	$(DOTNET) build
+	cd ModuleSplitter && $(DOTNET) build
+
+# ビルド (Release)
+release:
+	$(DOTNET) build -c Release
+	cd ModuleSplitter && $(DOTNET) build -c Release
+
+# ローカルインストール用にpublish (self-contained)
+publish-local:
+ifeq ($(DETECTED_OS),Windows)
+	$(DOTNET) publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true
+	cd ModuleSplitter && $(DOTNET) publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=true
 else
-  mv $(1) $(2)
+	$(DOTNET) publish -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
+	cd ModuleSplitter && $(DOTNET) publish -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=true
 endif
-endef
 
-all: run
+# インストール
+install: publish-local install-bin install-lib
+	@echo "Installation complete!"
+	@echo "  Binaries: $(BINDIR)"
+	@echo "  Libraries: $(CONFIG_DIR)"
 
-# ソースコードのコンパイル
-$(TARGET)$(ASM_EXT): $(TARGET)$(SRC_EXT)
-	$(SLANGCOMPILER) $< -E $(SLANGENV) --output-debug-symbol
-
-# アセンブリコードのアセンブル
-$(OUTPROG): $(TARGET)$(ASM_EXT)
-	$(ASM) $< -f -o $@ -bin -sym -lst $(ASM_OPT)
-
-# ディスクイメージにバイナリファイルを格納
-ifeq ($(ENV), cpm)
-disk_image: $(OUTPROG)
-else ifeq ($(ENV), msxrom)
-disk_image: $(OUTPROG)
-else ifeq ($(ENV),pc80mk2)
-
-cmtsplit: $(OUTPROG)
-	$(MODSPLIT) $(TARGET) --cmt
-ifeq ($(OS),Windows_NT)
-	copy /B /Y $(OUTCMT) $(DISK_IMAGE)
+install-bin:
+ifeq ($(DETECTED_OS),Windows)
+	@echo "Windows: Please add bin directory to PATH manually"
+	@if not exist "$(BINDIR)" $(MKDIR) "$(BINDIR)"
+	$(CP) bin\Release\net6.0\win-x64\publish\SLANGCompiler.exe "$(BINDIR)\"
+	$(CP) ModuleSplitter\ModuleSplitter\bin\Release\net6.0\win-x64\publish\ModuleSplitter.exe "$(BINDIR)\"
 else
-	cp $(OUTCMT) $(DISK_IMAGE)
+	$(MKDIR) $(BINDIR)
+	$(CP) bin/Release/net6.0/$(RID)/publish/SLANGCompiler $(BINDIR)/
+	$(CP) ModuleSplitter/ModuleSplitter/bin/Release/net6.0/$(RID)/publish/ModuleSplitter $(BINDIR)/
+	chmod +x $(BINDIR)/SLANGCompiler
+	chmod +x $(BINDIR)/ModuleSplitter
 endif
 
-disk_image: $(OUTPROG) cmtsplit
-
-else ifeq ($(ENV), pc80mk2x)
-
-$(DISK_IMAGE): $(OUTPROG)
-	echo $(DISK_IMAGE)
-	echo $(OUTPROG)
-	$(MODSPLIT) $(TARGET) --cmt
-
-## モジュールを使わないカセット環境の場合は下記を有効にする
-ifeq ($(OS),Windows_NT)
-	copy /B /Y $(OUTCMT)+lib\\pc8001\\XBIOS\\XBIOS.CMT TEMP.CMT
-	copy TEMP.CMT $(DISK_IMAGE)
-	del TEMP.CMT
+install-lib:
+ifeq ($(DETECTED_OS),Windows)
+	@if not exist "$(CONFIG_DIR)" $(MKDIR) "$(CONFIG_DIR)"
+	@if not exist "$(CONFIG_DIR)\include" $(MKDIR) "$(CONFIG_DIR)\include"
+	@if not exist "$(CONFIG_DIR)\lib" $(MKDIR) "$(CONFIG_DIR)\lib"
+	$(XCOPY) include "$(CONFIG_DIR)\include"
+	$(XCOPY) lib "$(CONFIG_DIR)\lib"
 else
-	cat $(OUTCMT) lib/pc8001/XBIOS/XBIOS.CMT > TEMP.CMT
-	cp TEMP.CMT $(DISK_IMAGE)
-	rm TEMP.CMT
+	$(MKDIR) $(CONFIG_DIR)
+	$(XCOPY) include $(CONFIG_DIR)/
+	$(XCOPY) lib $(CONFIG_DIR)/
 endif
 
-# モジュール対応あるいはSD環境の場合は下記を有効にしつつ必要に応じて書き換える
-## カセット環境
-#ifeq ($(OS),Windows_NT)
-#	copy /B $(TARGET)MAIN.cmt+lib\\pc8001\\XBIOS\\XBIOS.CMT+$(TARGET)M0.cmt TEMP.CMT
-#	copy TEMP.CMT $(DISK_IMAGE)
-#	del TEMP.CMT
-#else
-#	cat $(TARGET)MAIN.cmt lib/pc8001/XBIOS/XBIOS.CMT $(TARGET)M0.cmt > TEMP.CMT
-#	cp TEMP.CMT $(DISK_IMAGE)
-#	rm TEMP.CMT
-#endif
-
-## SDカード環境
-#ifeq ($(OS),Windows_NT)
-#	copy $(TARGET)*.cmt $(dir $(EMU))\\SD\\
-#else
-#	cp $(TARGET)*.cmt $(dir $(EMU))/SD/
-#endif
-
-disk_image: $(DISK_IMAGE)
-#$(OUTPROG) cmtsplit
-else ifeq ($(ENV), sos)
-disk_image: $(IMGPROG)
-	$(HUDISK) -d $(DISK_IMAGE) PROG.bin
-	$(HUDISK) -a $(DISK_IMAGE) $(IMGPROG) -r $(LOADADR) -g $(RUNADR)
-else ifeq ($(ENV), msx2)
-disk_image: $(IMGPROG)
-	- $(NDC) D $(DISK_IMAGE) 0 PROG$(BIN_EXT_ENV)
-	$(NDC) P $(DISK_IMAGE) 0 $(IMGPROG)
+# アンインストール
+uninstall:
+ifeq ($(DETECTED_OS),Windows)
+	$(RM) "$(BINDIR)\SLANGCompiler.exe"
+	$(RM) "$(BINDIR)\ModuleSplitter.exe"
+	$(RMDIR) "$(CONFIG_DIR)"
 else
-disk_image: $(IMGPROG)
-	- $(NDC) D $(DISK_IMAGE) 0 PROG$(BIN_EXT_ENV)
-	$(NDC) P $(DISK_IMAGE) 0 $(IMGPROG)
+	$(RM) $(BINDIR)/SLANGCompiler
+	$(RM) $(BINDIR)/ModuleSplitter
+	$(RMDIR) $(CONFIG_DIR)
 endif
+	@echo "Uninstallation complete!"
 
-# バイナリファイルの拡張子を環境に応じて変更(必要に応じて)
-ifneq ($(BIN_EXT), $(BIN_EXT_ENV))
-$(basename $(OUTPROG))$(BIN_EXT_ENV): $(OUTPROG)
-ifeq ($(OS),Windows_NT)
-	move $< $@
+# パブリッシュ (全プラットフォーム向けリリース作成)
+publish:
+ifndef VERSION
+	$(error VERSION is required. Usage: make publish VERSION=1.0.0)
+endif
+	./publish.sh $(VERSION)
+
+# 開発ツールのセットアップ
+setup-tools:
+ifeq ($(DETECTED_OS),Windows)
+	setupenv.bat
+else ifeq ($(DETECTED_OS),macOS)
+	./setupenv.sh mac
 else
-	mv $< $@
+	./setupenv.sh linux
 endif
-endif
-
-# エミュレータでの実行
-run: disk_image
-	$(EMU) $(EMUOPT) $(DISK_IMAGE)
 
 # クリーンアップ
 clean:
-ifeq ($(OS),Windows_NT)
-	del /Q /F $(subst /,\,$(TARGET)$(ASM_EXT)) $(subst /,\,$(TARGET)$(BIN_EXT)) $(subst /,\,$(dir $(TARGET))PROG.bin) $(subst /,\,$(dir $(TARGET))PROG.com) $(subst /,\,$(dir $(TARGET))PROG.cmt)
-else
-	rm -f $(TARGET)$(ASM_EXT) $(TARGET)$(BIN_EXT) $(TARGET)$(BIN_EXT_ENV) $(subst /,\,$(dir $(TARGET))PROG.bin) $(subst /,\,$(dir $(TARGET))PROG.com) $(subst /,\,$(dir $(TARGET))PROG.cmt)
-endif
+	$(DOTNET) clean
+	cd ModuleSplitter && $(DOTNET) clean
+	$(RMDIR) bin obj publish
+	$(RMDIR) ModuleSplitter/ModuleSplitter/bin ModuleSplitter/ModuleSplitter/obj
 
-.PHONY: all run clean
+# ヘルプ
+help:
+	@echo "SLANG Compiler Makefile"
+	@echo ""
+	@echo "Usage:"
+	@echo "  make              - Build compiler (Debug)"
+	@echo "  make release      - Build compiler (Release)"
+	@echo "  make install      - Install to $(PREFIX)"
+	@echo "  make uninstall    - Uninstall from $(PREFIX)"
+	@echo "  make publish VERSION=x.x.x - Create release packages"
+	@echo "  make setup-tools  - Download development tools"
+	@echo "  make clean        - Clean build artifacts"
+	@echo ""
+	@echo "Options:"
+	@echo "  PREFIX=path       - Installation prefix (default: /usr/local)"
+	@echo "  VERSION=x.x.x     - Version for publish target"
+	@echo ""
+	@echo "Detected OS: $(DETECTED_OS)"
+ifeq ($(DETECTED_OS),macOS)
+	@echo "Runtime ID: $(RID)"
+endif
