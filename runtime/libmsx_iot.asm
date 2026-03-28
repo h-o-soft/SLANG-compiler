@@ -1,0 +1,190 @@
+; Converted from /home/user/SLANG-compiler/lib/libdef/libmsx_iot.yml
+; SLANG Runtime Library (new format)
+
+; @name IOT_COMMON
+MSX0IO  EQU $58
+MSX0IO2 EQU $57
+
+
+; @name IOT_SET_DEVICE_PATH
+; @calls IOT_COMMON,STRLEN
+PUSH  DE
+; HL = Device Path
+LD  C, MSX0IO
+LD  A, 0xE0
+OUT (C), A
+LD  A, 1
+OUT (C), A
+LD  A, 0x53
+OUT (C), A
+
+LD  A, 0xC0
+OUT (C), A
+
+; 文字列長をAに取得
+PUSH HL
+CALL STRLEN
+LD  A,L
+POP HL
+
+_iot_set_device_path_loop1:
+LD		B, A
+CP		64
+JR		C, _iot_set_device_path_skip
+SUB		63
+LD		B, 0x7F
+_iot_set_device_path_skip:
+OUT		(C), B
+LD		D, A
+LD		A, B
+AND		0x3F
+LD		B, A
+_iot_set_device_path_loop2:
+LD		A, (HL)
+INC		HL
+OUT		(C), A
+DJNZ	_iot_set_device_path_loop2
+LD		A, D
+SUB		63
+JR		Z, _iot_set_device_path_exit
+JR		NC, _iot_set_device_path_loop1
+_iot_set_device_path_exit:
+IN		A, (C)
+RLCA									; エラーなら Cf = 1, 正常なら Cf = 0
+LD    HL,0
+POP   DE
+RET		NC
+DEC   HL
+RET
+
+
+; @name IOTGET_INT
+; @calls STRLEN,IOT_COMMON,IOT_SET_DEVICE_PATH
+; HL = Device Path
+
+CALL IOT_SET_DEVICE_PATH
+
+; 受信コマンド送信
+LD		A, 0xE0
+OUT		(MSX0IO), A
+LD		A, 0x01
+OUT		(MSX0IO), A
+; 整数型識別コード送信
+LD		A, 0x01
+OUT		(MSX0IO), A
+; 受信開始
+LD		A, 0x80
+OUT		(MSX0IO), A
+IN		A, (MSX0IO)		; 多分長さ 2 が返ってくる
+IN		A, (MSX0IO)
+LD    L,A
+IN		A, (MSX0IO)
+LD    H,A
+RET
+
+
+; @name IOTGET_STR
+; @calls IOT_COMMON,IOT_SET_DEVICE_PATH
+; HL = Device Path
+; DE = String Address
+
+CALL IOT_SET_DEVICE_PATH
+EX  DE,HL
+
+; 受信コマンド送信
+LD		A, 0xE0
+OUT		(MSX0IO), A
+LD		A, 0x01
+OUT		(MSX0IO), A
+; 文字列型識別コード送信
+LD		A, 0x03
+OUT		(MSX0IO), A
+; 受信開始
+LD		A, 0x80
+OUT		(MSX0IO), A
+IN		A, (MSX0IO)		; 文字列長
+OR		A
+JR    Z,_iotget_string_zero
+
+LD		B, A
+_iotget_string_loop:
+IN		A, (MSX0IO)
+LD		(HL), A
+INC   HL
+DJNZ	_iotget_string_loop
+
+_iotget_string_zero:
+XOR A
+LD    (HL),A
+RET
+
+
+; @name IOTPUT_INT
+; @calls IOT_COMMON,IOT_SET_DEVICE_PATH
+; HL = Device Path
+; DE = Value
+
+CALL  IOT_SET_DEVICE_PATH
+JR  C,.iotend
+
+LD  C,MSX0IO
+LD  A,0xE0
+OUT (C),A
+LD  A,0x01
+OUT (C),A
+LD  A,0x41
+OUT (C),A
+LD  A,0xC0
+OUT (C),A
+LD  A,0x02
+OUT (C),A
+; value
+OUT (C),E
+OUT (C),D
+
+.iotend
+LD    HL,0
+RET		NC
+DEC   HL
+RET
+
+
+; @name IOTPUT_STR
+; @calls IOT_COMMON,IOT_SET_DEVICE_PATH,STRLEN
+; HL = Device Path
+; DE = Value
+
+CALL  IOT_SET_DEVICE_PATH
+JR  C,.iotend
+
+LD  C,MSX0IO
+LD  A,0xE0
+OUT (C),A
+LD  A,0x01
+OUT (C),A
+LD  A,0x43
+OUT (C),A
+LD  A,0xC0
+OUT (C),A
+
+EX  DE,HL
+PUSH  HL
+CALL  STRLEN
+LD  B,L
+POP HL
+; length
+OUT (C),B
+
+OTIR
+XOR A
+OUT (C),A
+IN  A,(C)
+LD  L,A
+LD  H,0
+
+.iotend
+RET		NC
+DEC   HL
+RET
+
+

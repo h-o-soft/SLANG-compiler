@@ -127,9 +127,18 @@ class Program
             }
 
             // Phase 5: Code Generation
-            // ランタイムマネージャ（存在するlibdefからランタイムを読み込み）
+            // 環境設定の読み込みとランタイムロード
             var runtimeManager = new Runtime.RuntimeManager();
-            LoadRuntimeLibraries(runtimeManager, baseDir);
+            var envConfig = LoadEnvironment(envName, runtimeManager, baseDir);
+
+            // 環境のデフォルトORG/WORKをIrModuleに反映（ソースで未指定の場合）
+            if (envConfig != null)
+            {
+                if (!irModule.OrgAddress.HasValue && envConfig.DefaultOrg > 0)
+                    irModule.OrgAddress = envConfig.DefaultOrg;
+                if (!irModule.WorkAddress.HasValue && envConfig.DefaultWork > 0)
+                    irModule.WorkAddress = envConfig.DefaultWork;
+            }
 
             var codeGen = new CodeGenerator(irModule, runtimeManager);
             var (mainAsm, overlays) = codeGen.GenerateAll();
@@ -216,7 +225,60 @@ class Program
         }
     }
 
-    static void LoadRuntimeLibraries(Runtime.RuntimeManager manager, string baseDir)
+    /// <summary>
+    /// 環境設定(.env)を読み込み、指定されたランタイムライブラリをロード
+    /// </summary>
+    static Runtime.EnvironmentConfig? LoadEnvironment(string envName, Runtime.RuntimeManager manager, string baseDir)
+    {
+        // .envファイルを探す
+        var envSearchDirs = new[] {
+            Path.Combine(baseDir, "lib", "env"),
+            "lib/env",
+        };
+
+        foreach (var dir in envSearchDirs)
+        {
+            var envPath = Path.Combine(dir, $"{envName}.env");
+            if (File.Exists(envPath))
+            {
+                try
+                {
+                    var config = Runtime.EnvironmentLoader.Load(envPath);
+                    Console.Error.WriteLine($"; Environment: {config.Name} (type={config.EnvType})");
+
+                    // 環境が指定するライブラリをロード
+                    var runtimeDir = Path.Combine(Path.GetDirectoryName(envPath) ?? ".", "..", "..", "runtime");
+                    var altRuntimeDir = "runtime";
+                    foreach (var lib in config.Libraries)
+                    {
+                        var libPath = Path.Combine(runtimeDir, lib);
+                        if (!File.Exists(libPath))
+                            libPath = Path.Combine(altRuntimeDir, lib);
+                        if (File.Exists(libPath))
+                        {
+                            manager.LoadFromFile(libPath);
+                        }
+                        else
+                        {
+                            Console.Error.WriteLine($"; Warning: Runtime not found: {lib}");
+                        }
+                    }
+
+                    return config;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"; Warning: Failed to load env {envPath}: {ex.Message}");
+                }
+            }
+        }
+
+        // .envが見つからない場合はruntimeディレクトリから直接ロード
+        LoadRuntimeLibrariesFromDir(manager, baseDir);
+        return null;
+    }
+
+    static void LoadRuntimeLibrariesFromDir(Runtime.RuntimeManager manager, string baseDir)
     {
         // 新形式の.asmランタイムファイルを探す
         var searchDirs = new[] {

@@ -1,0 +1,294 @@
+; Converted from /home/user/SLANG-compiler/lib/libdef/libmsx2_file.yml
+; SLANG Runtime Library (new format)
+
+; @name LSXFILE
+; @calls MULHLDE
+; fnum to FCB address
+LSXCALCFCB:
+PUSH DE
+LD DE,LSXFCBS
+ADD HL,DE
+POP DE
+RET
+
+; HL >= 8 ?
+LSXFCHECKNUM:
+PUSH HL
+PUSH DE
+
+; HL >= 8
+LD DE,8
+OR A
+SBC HL,DE
+; non carry (HL >= 8)
+
+POP DE
+POP HL
+RET
+
+
+; @name FOPEN
+; @calls LSXCALLS,FWORK,LSXFILE
+; HL=fnum DE=fname addr BC=mode
+LD (LSXFCB),HL
+LD A,C
+AND 3
+LD C,A
+LD (LSXFMODE),BC
+
+CALL LSXFCHECKNUM
+JP C,.fopen1
+; return $FF
+LD HL,255
+RET
+
+.fopen1
+; LSXFCB=fnum+LSXFCBS
+.fopen_sp1           ;SPCUT
+LD A,(DE)
+CP $20
+JR NZ,.fopen_sp2
+INC DE
+JR .fopen_sp1
+.fopen_sp2
+
+LD B,64
+LD HL,LSXPATH
+.fopen_path1
+LD A,(DE)
+CP $20+1
+JR C,.fopen_path2
+INC DE
+LD (HL),A
+INC HL
+DJNZ .fopen_path1
+.fopen_path2
+XOR A
+LD (HL),A
+
+LD HL,(LSXFCB)
+CALL LSXCALCFCB
+LD (LSXFCB),HL
+
+LD HL,(LSXFMODE)
+; mode >= 3
+LD DE,3
+OR A
+SBC HL,DE
+JR C,.fopen2
+LD BC,$2044  ; _CREATE
+JR .fopen3
+.fopen2
+LD C,$43  ; _OPEN
+.fopen3
+
+LD DE,LSXPATH
+XOR A
+PUSH IY
+CALL BDOS
+POP IY
+LD C,A
+LD HL,(LSXFCB)
+LD (HL),B
+LD A,C
+LD L,A
+ADD A,0FFH
+SBC A,A
+LD H,A
+LD A,L
+RET
+
+
+; @name FSEEK
+; @calls LSXCALLS,FWORK,LSXFILE
+; HL=fnum DE=offset BC=mode(0=head, 1=current, 2=tail)
+CALL LSXFCHECKNUM
+JP C,.fseek1
+; return $FF
+LD HL,255
+RET
+
+.fseek1
+; LSXFCB=fnum+LSXFCBS
+CALL LSXCALCFCB
+LD B,(HL)
+EX DE,HL
+LD A,H
+ADD A,A
+SBC A,A
+LD E,A
+LD D,A
+LD C,$4A  ; _SEEK
+PUSH IY
+CALL BDOS
+POP IY
+LD L,A
+LD A,L
+ADD A,0FFH
+SBC A,A
+LD H,A
+LD A,L
+RET
+
+
+; @name FGETC
+; @calls LSXCALLS,FWORK,LSXFILE
+; HL=fnum
+
+CALL LSXFCHECKNUM
+JP C,.fgetc1
+; return $FF
+LD HL,255
+RET
+
+.fgetc1
+; LSXFCB=fnum+LSXFCBS
+CALL LSXCALCFCB
+LD B,(HL)
+
+LD  DE,.fgetbuf
+LD  HL,1
+LD  C,$48 ; _READ
+PUSH IY
+CALL  BDOS
+POP IY
+CP 0
+JR NZ,.fgeterr
+
+; ok
+LD A,(.fgetbuf)
+LD L,A
+LD H,0
+LD A,0
+RET
+
+.fgeterr
+LD H,$FF
+LD L,1    ; error code (tekito-)
+LD A,L
+SCF
+RET
+
+.fgetbuf
+DS  1
+
+
+; @name FPUTC
+; @calls LSXCALLS,FWORK,LSXFILE
+; HL=fnum DE=chr
+
+CALL LSXFCHECKNUM
+JP C,.fgetc1
+; return $FF
+LD HL,255
+RET
+
+.fputc1
+; LSXFCB=fnum+LSXFCBS
+CALL LSXCALCFCB
+LD B,(HL)
+
+LD  DE,.fgetbuf
+LD  HL,1
+LD  C,$49 ; _WRITE
+PUSH IY
+CALL  BDOS
+POP IY
+CP 0
+JR NZ,.fputerr
+
+; ok
+LD A,(.fputbuf)
+LD L,A
+LD H,0
+LD A,0
+RET
+
+.fputerr
+LD H,$FF
+LD L,1    ; error code (tekito-)
+LD A,L
+SCF
+RET
+
+.fputbuf
+DS  1
+
+
+; @name FCLOSE
+; @calls LSXCALLS,FWORK,LSXFILE
+; HL=fnum
+CALL LSXCALCFCB
+LD B,(HL)
+LD (HL),0
+LD C,$45  ; _CLOSE
+PUSH IY
+CALL BDOS
+POP IY
+LD L,A
+LD H,0
+RET
+
+
+; @name FREAD
+; @calls LSXCALLS,FWORK,LSXFILE
+; HL=fnum DE=address BC=size
+
+CALL LSXFCHECKNUM
+JP C,.fread1
+; return $FF
+LD HL,255
+RET
+
+.fread1
+; LSXFCB=fnum+LSXFCBS
+CALL LSXCALCFCB
+PUSH BC
+LD B,(HL)
+POP HL
+LD C,$48 ; _READ
+PUSH IY
+CALL BDOS
+POP IY
+ADD A,$FF
+SBC A,A
+RET NC
+LD L,A
+LD H,A  ;HL=$FFFF CF=1
+RET
+
+
+; @name FWRITE
+; @calls LSXCALLS,FWORK,LSXFILE
+; HL=fnum DE=address BC=size
+
+CALL LSXFCHECKNUM
+JP C,.fread1
+; return $FF
+LD HL,255
+RET
+
+.fread1
+; LSXFCB=fnum+LSXFCBS
+CALL LSXCALCFCB
+PUSH BC
+LD B,(HL)
+POP HL
+LD C,$49  ; _WRITE
+PUSH IY
+CALL BDOS
+POP IY
+
+LD L,A
+LD H,0
+
+RET
+
+
+; @name FWORK
+LSXFCBS: DS 8
+LSXFCB: DW 0
+LSXFMODE: DW 0
+LSXPATH: DS 64
+
+
