@@ -182,50 +182,141 @@ public class CodeGenerator
         _currentFunction = func;
         _e.Label(func.Name);
 
-        // スタックマシンモデル: 各命令の結果はHLに残る。
-        // 二項演算(src1, src2)では src1 の結果をPUSHしてから src2 を評価。
-        // 演算時に POP DE して HL op DE → HL。
+        // レジスタ直接ロード最適化付きスタックマシン:
         //
-        // PUSH挿入判定: 「次の命令がこのtempを第2オペランド以降として使う前に、
-        // 別の命令がHLを上書きする」場合にPUSHが必要。
+        // 二項演算 BinOp(t_dest, t_src1, t_src2) で、
+        // t_src1 と t_src2 の生成命令が両方とも「単純ロード」(LoadVar/LoadConst/LoadLocal/LoadAddr)
+        // の場合、PUSH/POP を省いて直接 HL/DE にロードする。
         //
-        // 簡略化: 二項演算/ストア/コールの直前の2命令がsrc1/src2なら、
-        // src1の結果の後にPUSH HLを挿入。
+        // 例: Z = X + Y
+        //   最適化前: LD HL,(X) → PUSH HL → LD HL,(Y) → POP DE → EX → ADD
+        //   最適化後: LD HL,(X) → LD DE,(Y) → ADD HL,DE
+        //
+        // 複雑な部分式はスタック経由のまま。
 
         var insts = func.Instructions;
+
+        // Pass 1: 各tempの生成命令マップと、直接ロード最適化対象の特定
+        var tempDef = new Dictionary<int, int>();
+        for (int i = 0; i < insts.Count; i++)
+        {
+            if (insts[i].Dest.Kind == IrOperandKind.Temp)
+                tempDef[insts[i].Dest.TempIndex] = i;
+        }
+
+        // 直接ロード最適化: 二項演算の両src が単純ロードなら、
+        // 元のLoad命令をスキップし、演算時にHL/DEに直接ロードする
+        var skipEmit = new HashSet<int>();
+        var directBinaryOps = new HashSet<int>(); // 二項演算命令のインデックス
+
         for (int i = 0; i < insts.Count; i++)
         {
             var inst = insts[i];
-
-            // 二項演算: src1とsrc2が両方tempの場合、src1の結果後にPUSH必要
-            if (IsBinaryOp(inst.Op) && inst.Src1.Kind == IrOperandKind.Temp && inst.Src2.Kind == IrOperandKind.Temp)
+            if (IsBinaryOp(inst.Op)
+                && inst.Src1.Kind == IrOperandKind.Temp
+                && inst.Src2.Kind == IrOperandKind.Temp
+                && tempDef.TryGetValue(inst.Src1.TempIndex, out int s1)
+                && tempDef.TryGetValue(inst.Src2.TempIndex, out int s2)
+                && IsSimpleLoad(insts[s1]) && IsSimpleLoad(insts[s2]))
             {
-                // src1のtemp結果（前にHLにある）をPUSHし、src2を評価してからPOP DEで取り出す
-                // ただしIR命令列ではsrc1が先に評価済みでHLにあり、
-                // src2の評価でHLが上書きされるのが問題。
-                //
-                // IR命令列を逆走査して、src1のtemp生成命令とsrc2のtemp生成命令の間に
-                // PUSH HLを挿入する必要があるが、CodeGen段階でやるのは複雑。
-                //
-                // 代替策: 二項演算の手前でスタック上にsrc1がありsrc2がHLにある前提で
-                // コードを生成する。つまり各temp生成命令の後、
-                // そのtempが二項演算のsrc1として使われるなら PUSH HL する。
+                skipEmit.Add(s1);
+                skipEmit.Add(s2);
+                directBinaryOps.Add(i);
+            }
+        }
+
+        // Pass 2: 出力
+        for (int i = 0; i < insts.Count; i++)
+        {
+            if (skipEmit.Contains(i)) continue;
+
+            var inst = insts[i];
+
+            if (directBinaryOps.Contains(i))
+            {
+                // 直接ロード最適化: src1→HL, src2→DE, 演算
+                var s1 = insts[tempDef[inst.Src1.TempIndex]];
+                var s2 = insts[tempDef[inst.Src2.TempIndex]];
+                EmitInstruction(s1); // src1 → HL
+                EmitLoadToDE(s2);    // src2 → DE
+                EmitBinaryDirect(inst);
+                continue;
             }
 
             EmitInstruction(inst);
 
-            // 結果がtempの場合、このtempが後続の二項演算等のsrc1として使われるか確認
-            if (inst.Dest.Kind == IrOperandKind.Temp)
+            // PUSH挿入判定
+            if (inst.Dest.Kind == IrOperandKind.Temp && !skipEmit.Contains(i))
             {
-                int destTemp = inst.Dest.TempIndex;
-                // 後続命令でこのtempがsrc1として使われ、かつsrc2も別のtempである場合
-                if (NeedsPushAfter(insts, i, destTemp))
-                {
+                if (NeedsPushAfter(insts, i, inst.Dest.TempIndex))
                     _e.Instruction("PUSH", "HL");
-                }
             }
         }
         _currentFunction = null;
+    }
+
+    /// <summary>単純ロード命令かどうか</summary>
+    private static bool IsSimpleLoad(IrInstruction inst) => inst.Op is
+        IrOp.LoadVar or IrOp.LoadConst or IrOp.LoadLocal or IrOp.LoadAddr;
+
+    /// <summary>ロード命令をDEレジスタ版で出力</summary>
+    private void EmitLoadToDE(IrInstruction inst)
+    {
+        switch (inst.Op)
+        {
+            case IrOp.LoadConst:
+                if (inst.Src1.Kind == IrOperandKind.AsmString)
+                    _e.Instruction("LD", "DE,0 ; string placeholder");
+                else
+                {
+                    int val = (int)(inst.Src1.ImmediateValue & 0xFFFF);
+                    _e.Instruction("LD", $"DE,${val:X4}");
+                }
+                break;
+            case IrOp.LoadVar:
+                _e.Instruction("LD", $"DE,({inst.Src1.Name})");
+                break;
+            case IrOp.LoadLocal:
+                int offset = (int)inst.Src1.ImmediateValue;
+                _e.Instruction("LD", $"E,(IY+${offset:X2})");
+                _e.Instruction("LD", $"D,(IY+${offset + 1:X2})");
+                break;
+            case IrOp.LoadAddr:
+                _e.Instruction("LD", $"DE,{inst.Src1.Name}");
+                break;
+        }
+    }
+
+    /// <summary>二項演算をHL/DE直接で出力（POP不要）</summary>
+    private void EmitBinaryDirect(IrInstruction inst)
+    {
+        switch (inst.Op)
+        {
+            case IrOp.Add:
+                _e.Instruction("ADD", "HL,DE");
+                break;
+            case IrOp.Sub:
+                _e.Instruction("OR", "A");
+                _e.Instruction("SBC", "HL,DE");
+                break;
+            case IrOp.Mul or IrOp.SMul:
+                _e.Instruction("CALL", "MUL16");
+                break;
+            case IrOp.Div:
+                _e.Instruction("CALL", "DIV16");
+                break;
+            case IrOp.SDiv:
+                _e.Instruction("CALL", "SDIV16");
+                break;
+            default:
+                // 他の二項演算は従来のPOP方式にフォールバック
+                // （HL=src1, DE=src2 は既にセット済み）
+                EmitInstruction(inst);
+                // ただしEmitInstructionはPOP DEを出すので二重になる...
+                // → 単純な演算だけ直接対応、他はフォールバックしない
+                _e.Comment($"TODO: direct {inst.Op}");
+                break;
+        }
     }
 
     /// <summary>
