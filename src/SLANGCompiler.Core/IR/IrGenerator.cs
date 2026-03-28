@@ -789,26 +789,74 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
         else
         {
-            // 通常配列: base_label + index * stride
-            // 配列のベースアドレスをロード
-            var dest = IrOperand.Temp(AllocTemp());
-            if (arrayName != null)
-                Emit(IrOp.LoadAddr, dest, IrOperand.Sym(arrayName));
-            else
-                dest = node.Array.Accept(this);
+            // 通常配列: base_label + sum(index[i] * stride[i])
+            //
+            // 例: ARRAY WORD AR2[5][10] → 6行×11列のWORD配列
+            //   AR2[i][j] → base + (i * 11 * 2) + (j * 2)
+            //   stride[0] = dim[1] * elemSize = 11 * 2 = 22
+            //   stride[1] = elemSize = 2
+            //
+            // 例: ARRAY BYTE ARB2[10][30] → 11行×31列のBYTE配列
+            //   ARB2[i][j] → base + (i * 31) + j
+            //   stride[0] = dim[1] = 31
+            //   stride[1] = 1
 
-            // 各次元のインデックスを処理
-            // 多次元: arr[i][j] → base + i * (dim2 * elemSize) + j * elemSize
-            // TODO: 多次元ストライド計算（現在は1次元のみ正しい）
+            // 配列のベースアドレスをロード
+            IrOperand baseAddr;
+            if (arrayName != null)
+            {
+                baseAddr = IrOperand.Temp(AllocTemp());
+                // ローカル配列チェック
+                if (_localVars != null && _localVars.TryGetValue(arrayName, out var localInfo))
+                    Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(localInfo.Offset));
+                else
+                    Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(arrayName));
+            }
+            else
+            {
+                baseAddr = node.Array.Accept(this);
+            }
+
+            // 各次元のストライドを計算
+            var strides = ComputeStrides(arraySym, node.Indices.Count);
+
+            // 各次元のインデックス×ストライドを加算
+            // base + idx0*stride0 + idx1*stride1 + ...
+            var addr = baseAddr;
             for (int i = 0; i < node.Indices.Count; i++)
             {
                 var idx = node.Indices[i].Accept(this);
-                var next = IrOperand.Temp(AllocTemp());
-                int elemSize = isByteAccess ? 1 : 2;
-                Emit(IrOp.ArrayLoad, next, dest, idx, dataSize: elemSize);
-                dest = next;
+                int stride = strides[i];
+
+                // idx * stride をアドレスに加算
+                var scaledIdx = IrOperand.Temp(AllocTemp());
+                if (stride == 1)
+                {
+                    scaledIdx = idx;
+                }
+                else if (stride == 2)
+                {
+                    // ×2は ADD HL,HL で効率的に生成される
+                    Emit(IrOp.Add, scaledIdx, idx, idx);
+                }
+                else
+                {
+                    // stride定数を乗算
+                    var strideOp = IrOperand.Temp(AllocTemp());
+                    Emit(IrOp.LoadConst, strideOp, IrOperand.Imm(stride));
+                    Emit(IrOp.Mul, scaledIdx, idx, strideOp);
+                }
+
+                var newAddr = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.Add, newAddr, addr, scaledIdx);
+                addr = newAddr;
             }
-            return dest;
+
+            // 最終アドレスから値をロード
+            var result = IrOperand.Temp(AllocTemp());
+            bool isByte = arraySym?.Type is ArrayType at && at.ElementType == SlangType.Byte;
+            Emit(IrOp.IndirLoad, result, addr, dataSize: isByte ? 1 : 2);
+            return result;
         }
     }
 
@@ -950,27 +998,51 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
             else
             {
-                // 通常配列/間接変数のストア
+                // 通常配列/間接変数のストア（多次元対応）
                 IrOperand baseAddr;
                 if (arrayName != null)
                 {
                     baseAddr = IrOperand.Temp(AllocTemp());
-                    // ローカル変数かグローバルかで読み分け
                     if (_localVars != null && _localVars.TryGetValue(arrayName, out var li))
                         Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(li.Offset));
                     else if (arraySym?.Type is PointerType)
-                        Emit(IrOp.LoadVar, baseAddr, IrOperand.Sym(arrayName)); // 間接変数: 値がアドレス
+                        Emit(IrOp.LoadVar, baseAddr, IrOperand.Sym(arrayName));
                     else
-                        Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(arrayName)); // 配列: ラベルがアドレス
+                        Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(arrayName));
                 }
                 else
                 {
                     baseAddr = arr.Array.Accept(this);
                 }
 
-                int elemSize = isByteAccess ? 1 : 2;
-                var idx = arr.Indices[0].Accept(this);
-                Emit(IrOp.ArrayStore, baseAddr, value, idx, dataSize: elemSize);
+                // 多次元ストライド計算してアドレスを算出
+                var strides = ComputeStrides(arraySym, arr.Indices.Count);
+                var addr = baseAddr;
+                for (int i = 0; i < arr.Indices.Count; i++)
+                {
+                    var idx = arr.Indices[i].Accept(this);
+                    int stride = strides[i];
+
+                    var scaledIdx = IrOperand.Temp(AllocTemp());
+                    if (stride == 1)
+                        scaledIdx = idx;
+                    else if (stride == 2)
+                        Emit(IrOp.Add, scaledIdx, idx, idx);
+                    else
+                    {
+                        var strideOp = IrOperand.Temp(AllocTemp());
+                        Emit(IrOp.LoadConst, strideOp, IrOperand.Imm(stride));
+                        Emit(IrOp.Mul, scaledIdx, idx, strideOp);
+                    }
+
+                    var newAddr = IrOperand.Temp(AllocTemp());
+                    Emit(IrOp.Add, newAddr, addr, scaledIdx);
+                    addr = newAddr;
+                }
+
+                // 最終アドレスに値を書き込み
+                bool isByte = arraySym?.Type is ArrayType at && at.ElementType == SlangType.Byte;
+                Emit(IrOp.IndirStore, addr, value, dataSize: isByte ? 1 : 2);
             }
         }
         else
@@ -982,6 +1054,31 @@ public class IrGenerator : IAstVisitor<IrOperand>
     }
 
     // ==== Loop stack for EXIT/CONTINUE ====
+
+    /// <summary>
+    /// 配列の各次元のストライド(バイト数)を計算する。
+    /// 例: ARRAY WORD AR2[5][10] → dims=[6,11], elemSize=2
+    ///   stride[0] = 11 * 2 = 22
+    ///   stride[1] = 2
+    /// </summary>
+    private List<int> ComputeStrides(Symbol? arraySym, int indexCount)
+    {
+        var strides = new List<int>();
+        if (arraySym?.Type is ArrayType at)
+        {
+            for (int i = 0; i < indexCount; i++)
+            {
+                strides.Add(at.GetStride(i));
+            }
+        }
+        else
+        {
+            // 型情報なし: WORD(2バイト)デフォルト
+            for (int i = 0; i < indexCount; i++)
+                strides.Add(2);
+        }
+        return strides;
+    }
 
     private readonly Stack<(string ContinueLabel, string BreakLabel)> _loopStack = new();
 

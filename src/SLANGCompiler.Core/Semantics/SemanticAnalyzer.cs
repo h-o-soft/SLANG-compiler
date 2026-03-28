@@ -13,6 +13,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
 {
     private readonly SymbolTable _symbols;
     private readonly DiagnosticBag _diagnostics;
+    private readonly ConstEvaluator _constEval;
     private FuncInfo? _currentFunc;
 
     public SymbolTable Symbols => _symbols;
@@ -21,6 +22,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     {
         _diagnostics = diagnostics;
         _symbols = new SymbolTable(caseSensitive);
+        _constEval = new ConstEvaluator(_symbols);
         RegisterBuiltins();
     }
 
@@ -138,12 +140,15 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         var dims = new List<int>();
         foreach (var dim in node.Dimensions)
         {
-            if (dim is IntegerLiteral lit)
-                dims.Add((int)lit.Value + 1); // 仕様: 定数式+1個分確保
-            else if (dim == null)
+            if (dim == null)
+            {
                 dims.Add(0); // 間接配列
+            }
             else
-                dims.Add(1); // TODO: 定数式評価
+            {
+                var val = _constEval.Evaluate(dim);
+                dims.Add(val.HasValue ? val.Value + 1 : 1); // 仕様: 定数式+1個分確保
+            }
         }
 
         SlangType type;
@@ -177,9 +182,10 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     public object? VisitConstDecl(ConstDecl node)
     {
         var sym = _symbols.Define(node.Name, SymbolKind.Constant, SlangType.Word);
-        // TODO: 定数式評価
-        if (node.Value is IntegerLiteral lit)
-            sym.ConstValue = (int)lit.Value;
+        // 定数式を評価（他のCONST参照も解決可能）
+        var val = _constEval.Evaluate(node.Value);
+        if (val.HasValue)
+            sym.ConstValue = val.Value;
         return null;
     }
 

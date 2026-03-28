@@ -171,11 +171,16 @@ _L6:
 	LD	HL,$01C8
 	LD	HL,(IVAL)
 	LD	HL,$0000
-; array store [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
@@ -189,7 +194,7 @@ _L6:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t54 == 0 goto _L9
+; if t56 == 0 goto _L9
 	LD	A,H
 	OR	L
 	JP	Z,_L9
@@ -234,7 +239,7 @@ _L8:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t67 == 0 goto _L11
+; if t69 == 0 goto _L11
 	LD	A,H
 	OR	L
 	JP	Z,_L11
@@ -261,30 +266,44 @@ _L10:
 	LD	HL,$000A
 	LD	HL,AR
 	LD	HL,$0003
-; array store [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,$0014
 	LD	HL,AR
 	LD	HL,$0004
-; array store [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,AR
 	LD	HL,$0003
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -301,9 +320,13 @@ _L10:
 	INC	HL
 	LD	HL,AR
 	LD	HL,$0004
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -327,7 +350,7 @@ _L10:
 	LD	A,L
 	AND	E
 	LD	L,A
-; if t91 == 0 goto _L13
+; if t101 == 0 goto _L13
 	LD	A,H
 	OR	L
 	JP	Z,_L13
@@ -388,7 +411,7 @@ _L12:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t112 == 0 goto _L15
+; if t122 == 0 goto _L15
 	LD	A,H
 	OR	L
 	JP	Z,_L15
@@ -419,11 +442,16 @@ _L14:
 	LD	HL,$0064
 	LD	HL,(IVAL)
 	LD	HL,(NUM)
-; array store [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
@@ -486,7 +514,7 @@ _L14:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t142 == 0 goto _L17
+; if t154 == 0 goto _L17
 	LD	A,H
 	OR	L
 	JP	Z,_L17
@@ -522,11 +550,16 @@ _L16:
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array store [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
@@ -604,7 +637,7 @@ _L16:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t180 == 0 goto _L19
+; if t194 == 0 goto _L19
 	LD	A,H
 	OR	L
 	JP	Z,_L19
@@ -663,7 +696,7 @@ _L18:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t197 == 0 goto _L21
+; if t211 == 0 goto _L21
 	LD	A,H
 	OR	L
 	JP	Z,_L21
@@ -768,7 +801,7 @@ _L20:
 	LD	A,L
 	AND	E
 	LD	L,A
-; if t224 == 0 goto _L23
+; if t238 == 0 goto _L23
 	LD	A,H
 	OR	L
 	JP	Z,_L23
@@ -868,7 +901,7 @@ _L22:
 	LD	A,L
 	AND	E
 	LD	L,A
-; if t248 == 0 goto _L25
+; if t262 == 0 goto _L25
 	LD	A,H
 	OR	L
 	JP	Z,_L25
@@ -910,7 +943,7 @@ _L24:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t261 == 0 goto _L27
+; if t275 == 0 goto _L27
 	LD	A,H
 	OR	L
 	JP	Z,_L27
@@ -932,7 +965,7 @@ _L27:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t266 == 0 goto _L26
+; if t280 == 0 goto _L26
 	LD	A,H
 	OR	L
 	JP	Z,_L26
@@ -962,7 +995,7 @@ _L26:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t275 == 0 goto _L29
+; if t289 == 0 goto _L29
 	LD	A,H
 	OR	L
 	JP	Z,_L29
@@ -984,7 +1017,7 @@ _L29:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t280 == 0 goto _L30
+; if t294 == 0 goto _L30
 	LD	A,H
 	OR	L
 	JP	Z,_L30
@@ -1012,7 +1045,7 @@ _L28:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t287 == 0 goto _L32
+; if t301 == 0 goto _L32
 	LD	A,H
 	OR	L
 	JP	Z,_L32
@@ -1034,7 +1067,7 @@ _L32:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t292 == 0 goto _L33
+; if t306 == 0 goto _L33
 	LD	A,H
 	OR	L
 	JP	Z,_L33
@@ -1062,7 +1095,7 @@ _L31:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t299 == 0 goto _L35
+; if t313 == 0 goto _L35
 	LD	A,H
 	OR	L
 	JP	Z,_L35
@@ -1083,7 +1116,7 @@ _L35:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t304 == 0 goto _L36
+; if t318 == 0 goto _L36
 	LD	A,H
 	OR	L
 	JP	Z,_L36
@@ -1117,7 +1150,7 @@ _L34:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t314 == 0 goto _L38
+; if t328 == 0 goto _L38
 	LD	A,H
 	OR	L
 	JP	Z,_L38
@@ -1132,7 +1165,7 @@ _L34:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t317 == 0 goto _L40
+; if t331 == 0 goto _L40
 	LD	A,H
 	OR	L
 	JP	Z,_L40
@@ -1186,7 +1219,7 @@ _L41:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t333 == 0 goto _L42
+; if t347 == 0 goto _L42
 	LD	A,H
 	OR	L
 	JP	Z,_L42
@@ -1215,7 +1248,7 @@ _L42:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t341 == 0 goto _L44
+; if t355 == 0 goto _L44
 	LD	A,H
 	OR	L
 	JP	Z,_L44
@@ -1252,7 +1285,7 @@ _L45:
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-; if t352 == 0 goto _L46
+; if t366 == 0 goto _L46
 	LD	A,H
 	OR	L
 	JP	Z,_L46
@@ -1266,7 +1299,7 @@ _L45:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t355 == 0 goto _L47
+; if t369 == 0 goto _L47
 	LD	A,H
 	OR	L
 	JP	Z,_L47
@@ -1292,7 +1325,7 @@ _L46:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t361 == 0 goto _L49
+; if t375 == 0 goto _L49
 	LD	A,H
 	OR	L
 	JP	Z,_L49
@@ -1332,7 +1365,7 @@ _L50:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t373 == 0 goto _L51
+; if t387 == 0 goto _L51
 	LD	A,H
 	OR	L
 	JP	Z,_L51
@@ -1348,7 +1381,7 @@ _L52:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t376 == 0 goto _L53
+; if t390 == 0 goto _L53
 	LD	A,H
 	OR	L
 	JP	Z,_L53
@@ -1362,7 +1395,7 @@ _L52:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t379 == 0 goto _L54
+; if t393 == 0 goto _L54
 	LD	A,H
 	OR	L
 	JP	Z,_L54
@@ -1409,7 +1442,7 @@ _L51:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t393 == 0 goto _L55
+; if t407 == 0 goto _L55
 	LD	A,H
 	OR	L
 	JP	Z,_L55
@@ -1452,7 +1485,7 @@ _L56:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t408 == 0 goto _L56
+; if t422 == 0 goto _L56
 	LD	A,H
 	OR	L
 	JP	Z,_L56
@@ -1470,7 +1503,7 @@ _L57:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t412 == 0 goto _L59
+; if t426 == 0 goto _L59
 	LD	A,H
 	OR	L
 	JP	Z,_L59
@@ -1524,7 +1557,7 @@ _L61:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t428 != 0 goto _L60
+; if t442 != 0 goto _L60
 	LD	A,H
 	OR	L
 	JP	NZ,_L60
@@ -1540,7 +1573,7 @@ _L62:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t431 == 0 goto _L64
+; if t445 == 0 goto _L64
 	LD	A,H
 	OR	L
 	JP	Z,_L64
@@ -1589,7 +1622,7 @@ _L66:
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-; if t446 != 0 goto _L65
+; if t460 != 0 goto _L65
 	LD	A,H
 	OR	L
 	JP	NZ,_L65
@@ -1612,7 +1645,7 @@ _L67:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t450 == 0 goto _L69
+; if t464 == 0 goto _L69
 	LD	A,H
 	OR	L
 	JP	Z,_L69
@@ -1696,7 +1729,7 @@ LABEL1:
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t473 == 0 goto _L71
+; if t487 == 0 goto _L71
 	LD	A,H
 	OR	L
 	JP	Z,_L71
@@ -1716,7 +1749,7 @@ _L71:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t477 == 0 goto _L72
+; if t491 == 0 goto _L72
 	LD	A,H
 	OR	L
 	JP	Z,_L72
@@ -1753,7 +1786,7 @@ _L70:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t488 == 0 goto _L74
+; if t502 == 0 goto _L74
 	LD	A,H
 	OR	L
 	JP	Z,_L74
@@ -1798,7 +1831,7 @@ _L74:
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t495 == 0 goto _L75
+; if t509 == 0 goto _L75
 	LD	A,H
 	OR	L
 	JP	Z,_L75
@@ -1835,7 +1868,7 @@ _L73:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t506 == 0 goto _L77
+; if t520 == 0 goto _L77
 	LD	A,H
 	OR	L
 	JP	Z,_L77
@@ -1880,7 +1913,7 @@ _L77:
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t513 == 0 goto _L78
+; if t527 == 0 goto _L78
 	LD	A,H
 	OR	L
 	JP	Z,_L78
@@ -1917,7 +1950,7 @@ _L76:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t524 == 0 goto _L80
+; if t538 == 0 goto _L80
 	LD	A,H
 	OR	L
 	JP	Z,_L80
@@ -1962,7 +1995,7 @@ _L80:
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t531 == 0 goto _L81
+; if t545 == 0 goto _L81
 	LD	A,H
 	OR	L
 	JP	Z,_L81
@@ -1982,7 +2015,7 @@ _L81:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t535 == 0 goto _L82
+; if t549 == 0 goto _L82
 	LD	A,H
 	OR	L
 	JP	Z,_L82
@@ -1997,7 +2030,7 @@ _L82:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t537 == 0 goto _L83
+; if t551 == 0 goto _L83
 	LD	A,H
 	OR	L
 	JP	Z,_L83
@@ -2012,7 +2045,7 @@ _L83:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t539 == 0 goto _L84
+; if t553 == 0 goto _L84
 	LD	A,H
 	OR	L
 	JP	Z,_L84
@@ -2064,7 +2097,7 @@ _L79:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t556 == 0 goto _L86
+; if t570 == 0 goto _L86
 	LD	A,H
 	OR	L
 	JP	Z,_L86
@@ -2098,7 +2131,7 @@ _L85:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t566 == 0 goto _L88
+; if t580 == 0 goto _L88
 	LD	A,H
 	OR	L
 	JP	Z,_L88
@@ -2139,7 +2172,7 @@ _L87:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t579 == 0 goto _L90
+; if t593 == 0 goto _L90
 	LD	A,H
 	OR	L
 	JP	Z,_L90
@@ -2178,7 +2211,7 @@ _L89:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t591 == 0 goto _L92
+; if t605 == 0 goto _L92
 	LD	A,H
 	OR	L
 	JP	Z,_L92
@@ -2220,7 +2253,7 @@ _L91:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t604 == 0 goto _L94
+; if t618 == 0 goto _L94
 	LD	A,H
 	OR	L
 	JP	Z,_L94
@@ -2279,7 +2312,7 @@ _L93:
 	LD	A,L
 	AND	E
 	LD	L,A
-; if t622 == 0 goto _L96
+; if t636 == 0 goto _L96
 	LD	A,H
 	OR	L
 	JP	Z,_L96
@@ -2326,7 +2359,7 @@ _L95:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t636 == 0 goto _L98
+; if t650 == 0 goto _L98
 	LD	A,H
 	OR	L
 	JP	Z,_L98
@@ -2372,7 +2405,7 @@ _L97:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t650 == 0 goto _L100
+; if t664 == 0 goto _L100
 	LD	A,H
 	OR	L
 	JP	Z,_L100
@@ -2464,7 +2497,7 @@ _L99:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t681 == 0 goto _L102
+; if t695 == 0 goto _L102
 	LD	A,H
 	OR	L
 	JP	Z,_L102
@@ -2511,7 +2544,7 @@ _L101:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t697 == 0 goto _L104
+; if t711 == 0 goto _L104
 	LD	A,H
 	OR	L
 	JP	Z,_L104
@@ -2550,7 +2583,7 @@ _L103:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t710 == 0 goto _L106
+; if t724 == 0 goto _L106
 	LD	A,H
 	OR	L
 	JP	Z,_L106
@@ -2590,7 +2623,7 @@ _L105:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t723 == 0 goto _L108
+; if t737 == 0 goto _L108
 	LD	A,H
 	OR	L
 	JP	Z,_L108
@@ -2627,7 +2660,7 @@ _L107:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t735 == 0 goto _L110
+; if t749 == 0 goto _L110
 	LD	A,H
 	OR	L
 	JP	Z,_L110
@@ -2700,7 +2733,7 @@ _L109:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t762 == 0 goto _L112
+; if t776 == 0 goto _L112
 	LD	A,H
 	OR	L
 	JP	Z,_L112
@@ -2734,28 +2767,48 @@ _L111:
 	LD	HL,$000A
 	LD	HL,AR2
 	LD	HL,$0001
-; array store [WORD]
-	ADD	HL,HL
+	LD	HL,$0016
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,$0005
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,AR2
 	LD	HL,$0001
-; array load [WORD]
-	ADD	HL,HL
+	LD	HL,$0016
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
-	LD	HL,$0005
-; array load [WORD]
-	ADD	HL,HL
+	CALL	MUL16
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,$0005
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -2770,7 +2823,7 @@ _L111:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t782 == 0 goto _L114
+; if t806 == 0 goto _L114
 	LD	A,H
 	OR	L
 	JP	Z,_L114
@@ -2797,33 +2850,41 @@ _L113:
 	LD	HL,$000A
 	LD	HL,ARB2
 	LD	HL,$0001
-; array store [WORD]
-	ADD	HL,HL
+	LD	HL,$001F
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,$0005
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
 	LD	HL,ARB2
 	LD	HL,$0001
-; array load [WORD]
-	ADD	HL,HL
+	LD	HL,$001F
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
 	LD	HL,$0005
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
+	ADD	HL,DE
+	LD	L,(HL)
+	LD	H,$00
 	LD	HL,$000A
 	PUSH	HL
 	POP	DE
@@ -2833,7 +2894,7 @@ _L113:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t799 == 0 goto _L116
+; if t833 == 0 goto _L116
 	LD	A,H
 	OR	L
 	JP	Z,_L116
@@ -2859,18 +2920,23 @@ _L115:
 	LD	(TNUM),HL
 	LD	HL,AR2
 	LD	HL,(VAL)
-; array load [WORD]
-	ADD	HL,HL
+	LD	HL,$0016
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
-	LD	HL,(NUM)
-; array load [WORD]
-	ADD	HL,HL
+	CALL	MUL16
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,(NUM)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -2885,7 +2951,7 @@ _L115:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t813 == 0 goto _L118
+; if t851 == 0 goto _L118
 	LD	A,H
 	OR	L
 	JP	Z,_L118
@@ -2911,23 +2977,22 @@ _L117:
 	LD	(TNUM),HL
 	LD	HL,ARB2
 	LD	HL,(VAL)
-; array load [WORD]
-	ADD	HL,HL
+	LD	HL,$001F
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
 	LD	HL,(NUM)
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
+	ADD	HL,DE
+	LD	L,(HL)
+	LD	H,$00
 	LD	HL,$000A
 	PUSH	HL
 	POP	DE
@@ -2937,7 +3002,7 @@ _L117:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t827 == 0 goto _L120
+; if t869 == 0 goto _L120
 	LD	A,H
 	OR	L
 	JP	Z,_L120
@@ -2973,14 +3038,15 @@ _L119:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load [WORD]
-	ADD	HL,HL
+	LD	HL,$0016
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
 	LD	HL,(NUM)
 	LD	HL,(VAL)
 	PUSH	HL
@@ -2993,9 +3059,13 @@ _L119:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3010,7 +3080,7 @@ _L119:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t849 == 0 goto _L122
+; if t895 == 0 goto _L122
 	LD	A,H
 	OR	L
 	JP	Z,_L122
@@ -3042,14 +3112,15 @@ _L121:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load [WORD]
-	ADD	HL,HL
+	LD	HL,$001F
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
 	LD	HL,(NUM)
 	LD	HL,(VAL)
 	PUSH	HL
@@ -3062,14 +3133,12 @@ _L121:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
+	ADD	HL,DE
+	LD	L,(HL)
+	LD	H,$00
 	LD	HL,$000A
 	PUSH	HL
 	POP	DE
@@ -3079,7 +3148,7 @@ _L121:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t869 == 0 goto _L124
+; if t919 == 0 goto _L124
 	LD	A,H
 	OR	L
 	JP	Z,_L124
@@ -3110,39 +3179,71 @@ _L123:
 	LD	HL,$000A
 	LD	HL,LAR
 	LD	HL,$0001
-; array store [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,$0003
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,$000A
 	LD	HL,LARB
 	LD	HL,$0001
-; array store [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,$0003
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,LAR
 	LD	HL,$0001
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
-	LD	HL,$0003
-; array load [WORD]
-	ADD	HL,HL
+	ADD	HL,DE
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,$0003
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3157,7 +3258,7 @@ _L123:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t891 == 0 goto _L126
+; if t954 == 0 goto _L126
 	LD	A,H
 	OR	L
 	JP	Z,_L126
@@ -3183,18 +3284,22 @@ _L125:
 	LD	(TNUM),HL
 	LD	HL,LARB
 	LD	HL,$0001
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
-	LD	HL,$0003
-; array load [WORD]
-	ADD	HL,HL
+	ADD	HL,DE
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,$0003
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3209,7 +3314,7 @@ _L125:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t905 == 0 goto _L128
+; if t971 == 0 goto _L128
 	LD	A,H
 	OR	L
 	JP	Z,_L128
@@ -3235,18 +3340,22 @@ _L127:
 	LD	(TNUM),HL
 	LD	HL,LAR
 	LD	HL,(VAL)
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
-	LD	HL,(NUM)
-; array load [WORD]
-	ADD	HL,HL
+	ADD	HL,DE
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,(NUM)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3261,7 +3370,7 @@ _L127:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t919 == 0 goto _L130
+; if t988 == 0 goto _L130
 	LD	A,H
 	OR	L
 	JP	Z,_L130
@@ -3287,18 +3396,22 @@ _L129:
 	LD	(TNUM),HL
 	LD	HL,LARB
 	LD	HL,(VAL)
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
-	LD	HL,(NUM)
-; array load [WORD]
-	ADD	HL,HL
+	ADD	HL,DE
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,(NUM)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3313,7 +3426,7 @@ _L129:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t933 == 0 goto _L132
+; if t1005 == 0 goto _L132
 	LD	A,H
 	OR	L
 	JP	Z,_L132
@@ -3349,14 +3462,14 @@ _L131:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
 	LD	HL,(NUM)
 	LD	HL,(VAL)
 	PUSH	HL
@@ -3369,9 +3482,13 @@ _L131:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3386,7 +3503,7 @@ _L131:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t955 == 0 goto _L134
+; if t1030 == 0 goto _L134
 	LD	A,H
 	OR	L
 	JP	Z,_L134
@@ -3418,14 +3535,14 @@ _L133:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
 	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
 	LD	HL,(NUM)
 	LD	HL,(VAL)
 	PUSH	HL
@@ -3438,9 +3555,13 @@ _L133:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load [WORD]
-	ADD	HL,HL
+	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3455,7 +3576,7 @@ _L133:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t975 == 0 goto _L136
+; if t1053 == 0 goto _L136
 	LD	A,H
 	OR	L
 	JP	Z,_L136
@@ -3501,7 +3622,7 @@ _L135:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t990 == 0 goto _L138
+; if t1068 == 0 goto _L138
 	LD	A,H
 	OR	L
 	JP	Z,_L138
