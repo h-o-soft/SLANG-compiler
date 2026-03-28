@@ -1,12 +1,14 @@
-; CONST NUM
-; CONST WD
-; ARRAY STARS[SLANGCompiler.Parser.Ast.BinaryExpr]
+; === Entry Point ===
+	LD	IY,__IYWORK
+	CALL	MAIN
+	RET
 
 MAIN:
 ; function MAIN
 	PUSH	IY
-	LD	HL,(WD)
-	PUSH	HL
+	LD	HL,$0050
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	WIDTH
 	CALL	INITSTARS
 	LD	HL,$0001
@@ -15,51 +17,36 @@ MAIN:
 	LD	(KEY),HL
 _L0:
 	LD	HL,(KEY)
-	LD	HL,$001B
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$001B
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	NZ,$+3
-	INC	HL
-; if t7 == 0 goto _L1
-	LD	A,H
-	OR	L
 	JP	Z,_L1
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	INKEY
 	LD	(KEY),HL
 	LD	HL,(KEY)
-	LD	HL,$0041
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0041
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
 	LD	HL,(CNT)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0001
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	LD	A,H
-	OR	L
-	LD	H,$00
-	LD	L,$00
+	LD	A,D
+	OR	E
+	LD	D,H
+	LD	E,L
+	LD	HL,$0000
 	JR	Z,$+7
 	LD	A,D
 	OR	E
@@ -70,89 +57,65 @@ _L0:
 	OR	L
 	JP	Z,_L2
 	LD	HL,(CNT)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	OR	A
-	SBC	HL,DE
+	DEC	HL
 	LD	(CNT),HL
 _L2:
 	LD	HL,(KEY)
-	LD	HL,$0044
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0044
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
 	LD	HL,(CNT)
-	LD	HL,(NUM)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	OR	A
-	SBC	HL,DE
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0063
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	LD	A,H
-	OR	L
-	LD	H,$00
-	LD	L,$00
+	LD	A,D
+	OR	E
+	LD	D,H
+	LD	E,L
+	LD	HL,$0000
 	JR	Z,$+7
 	LD	A,D
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t28 == 0 goto _L3
+; if t26 == 0 goto _L3
 	LD	A,H
 	OR	L
 	JP	Z,_L3
 	LD	HL,(CNT)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(CNT),HL
 _L3:
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	LOCATE
 	LD	HL,(CNT)
-	CALL	__strfunc_%
-	CALL	__print_func
+	CALL	PSIGN
 	LD	HL,$0000
 	LD	(I),HL
 _L4:
 	LD	HL,(I)
-	LD	HL,$0004
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0004
 	CALL	MUL16
 	LD	(IDX),HL
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-; array load: t44 = t41[t43]
+	LD	HL,STARS
 	PUSH	HL
+	LD	HL,(IDX)
+	LD	DE,(IDX)
+	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -160,19 +123,17 @@ _L4:
 	EX	DE,HL
 	LD	L,H
 	LD	H,$00
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,STARS
 	PUSH	HL
-	LD	HL,(STARS)
 	LD	HL,(IDX)
-	LD	HL,$0001
-	PUSH	HL
+	INC	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array load: t51 = t46[t50]
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -180,111 +141,110 @@ _L4:
 	EX	DE,HL
 	LD	L,H
 	LD	H,$00
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	LOCATE
-; load string " "
-	LD	HL,0 ; string placeholder
-	CALL	__strfunc_!
-	CALL	__print_func
-	LD	HL,(STARS)
+	LD	HL,_S0
+	CALL	PMSX
+	LD	HL,STARS
+	PUSH	HL
 	LD	HL,(IDX)
-; array load: t59 = t56[t58]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
+	LD	DE,(IDX)
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-	LD	HL,$0002
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,DE
-; array load: t65 = t60[t64]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
 	PUSH	HL
+	LD	HL,STARS
+	PUSH	HL
+	LD	HL,(IDX)
+	INC	HL
+	INC	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-; array store: t67[t68] = t66
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,STARS
+	PUSH	HL
+	LD	HL,(IDX)
+	LD	DE,(IDX)
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
-	LD	HL,(STARS)
+	LD	HL,STARS
+	PUSH	HL
 	LD	HL,(IDX)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
-; array load: t74 = t69[t73]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
-	LD	E,(HL)
 	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-	LD	HL,$0003
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array load: t80 = t75[t79]
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
-	LD	HL,(STARS)
+	LD	HL,STARS
+	PUSH	HL
 	LD	HL,(IDX)
-	LD	HL,$0001
-	PUSH	HL
+	LD	DE,$0003
+	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array store: t82[t85] = t81
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,STARS
+	PUSH	HL
+	LD	HL,(IDX)
+	INC	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-; array load: t89 = t86[t88]
+	LD	HL,STARS
 	PUSH	HL
+	LD	HL,(IDX)
+	LD	DE,(IDX)
+	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -292,19 +252,17 @@ _L4:
 	EX	DE,HL
 	LD	L,H
 	LD	H,$00
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,STARS
 	PUSH	HL
-	LD	HL,(STARS)
 	LD	HL,(IDX)
-	LD	HL,$0001
-	PUSH	HL
+	INC	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array load: t96 = t91[t95]
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -312,19 +270,18 @@ _L4:
 	EX	DE,HL
 	LD	L,H
 	LD	H,$00
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	LOCATE
-; load string "*"
-	LD	HL,0 ; string placeholder
-	CALL	__strfunc_!
-	CALL	__print_func
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-; array load: t104 = t101[t103]
+	LD	HL,_S1
+	CALL	PMSX
+	LD	HL,STARS
 	PUSH	HL
+	LD	HL,(IDX)
+	LD	DE,(IDX)
+	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -332,11 +289,9 @@ _L4:
 	EX	DE,HL
 	LD	L,H
 	LD	H,$00
+	PUSH	HL
 	LD	HL,$0000
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -345,13 +300,14 @@ _L4:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-; array load: t111 = t108[t110]
 	PUSH	HL
+	LD	HL,STARS
+	PUSH	HL
+	LD	HL,(IDX)
+	LD	DE,(IDX)
+	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -359,14 +315,8 @@ _L4:
 	EX	DE,HL
 	LD	L,H
 	LD	H,$00
-	LD	HL,(WD)
-	LD	HL,$0001
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	OR	A
-	SBC	HL,DE
-	PUSH	HL
+	LD	HL,$004F
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -374,9 +324,7 @@ _L4:
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
 	LD	A,H
 	OR	L
 	OR	D
@@ -384,22 +332,20 @@ _L4:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t117 == 0 goto _L7
+; if t124 == 0 goto _L7
 	LD	A,H
 	OR	L
 	JP	Z,_L7
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-	LD	HL,$0002
+	LD	HL,STARS
 	PUSH	HL
+	LD	HL,(IDX)
+	INC	HL
+	INC	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array load: t123 = t118[t122]
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -412,32 +358,32 @@ _L4:
 	CPL
 	LD	L,A
 	INC	HL
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-	LD	HL,$0002
+	LD	HL,STARS
 	PUSH	HL
+	LD	HL,(IDX)
+	INC	HL
+	INC	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array store: t125[t128] = t124
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 _L7:
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-	LD	HL,$0001
+	LD	HL,STARS
 	PUSH	HL
+	LD	HL,(IDX)
+	INC	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array load: t134 = t129[t133]
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -445,11 +391,9 @@ _L7:
 	EX	DE,HL
 	LD	L,H
 	LD	H,$00
-	LD	HL,$0000
 	PUSH	HL
+	LD	HL,$0000
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -458,18 +402,16 @@ _L7:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-	LD	HL,$0001
 	PUSH	HL
+	LD	HL,STARS
+	PUSH	HL
+	LD	HL,(IDX)
+	INC	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array load: t143 = t138[t142]
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -477,8 +419,8 @@ _L7:
 	EX	DE,HL
 	LD	L,H
 	LD	H,$00
-	LD	HL,$0017
 	PUSH	HL
+	LD	HL,$0017
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -486,9 +428,7 @@ _L7:
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
 	LD	A,H
 	OR	L
 	OR	D
@@ -496,22 +436,20 @@ _L7:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t147 == 0 goto _L8
+; if t159 == 0 goto _L8
 	LD	A,H
 	OR	L
 	JP	Z,_L8
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-	LD	HL,$0003
+	LD	HL,STARS
 	PUSH	HL
+	LD	HL,(IDX)
+	LD	DE,$0003
+	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array load: t153 = t148[t152]
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -524,39 +462,30 @@ _L7:
 	CPL
 	LD	L,A
 	INC	HL
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-	LD	HL,$0003
+	LD	HL,STARS
 	PUSH	HL
+	LD	HL,(IDX)
+	LD	DE,$0003
+	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array store: t155[t158] = t154
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 _L8:
 _L5:
 	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(I),HL
 	LD	HL,(CNT)
-	LD	HL,$0001
-	PUSH	HL
+	DEC	HL
 	POP	DE
-	EX	DE,HL
-	OR	A
-	SBC	HL,DE
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -565,14 +494,14 @@ _L5:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t165 != 0 goto _L4
+; if t180 != 0 goto _L4
 	LD	A,H
 	OR	L
 	JP	NZ,_L4
 _L6:
 	JP	_L0
 _L1:
-_EXIT:
+_MAIN_EXIT:
 	POP	IY
 	RET
 
@@ -583,79 +512,81 @@ INITSTARS:
 	LD	(I),HL
 _L9:
 	LD	HL,(I)
-	LD	HL,$0004
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0004
 	CALL	MUL16
 	LD	(IDX),HL
 	LD	HL,$0001
-	LD	HL,(WD)
-	LD	HL,$0003
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	OR	A
-	SBC	HL,DE
-	PUSH	HL
+	LD	HL,$004D
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	LD	HL,$0008
 	PUSH	HL
+	LD	HL,$0008
 	POP	DE
 	EX	DE,HL
 	CALL	SHL16
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-; array store: t12[t13] = t11
+	LD	HL,STARS
 	PUSH	HL
+	LD	HL,(IDX)
+	LD	DE,(IDX)
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,$0001
+	PUSH	HL
 	LD	HL,$0015
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	LD	HL,$0008
 	PUSH	HL
+	LD	HL,$0008
 	POP	DE
 	EX	DE,HL
 	CALL	SHL16
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-	LD	HL,$0001
+	LD	HL,STARS
 	PUSH	HL
+	LD	HL,(IDX)
+	INC	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array store: t20[t23] = t19
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,$0080
+	PUSH	HL
 	LD	HL,$0080
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(J),HL
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	LD	HL,$0000
 	PUSH	HL
+	LD	HL,$0000
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -663,7 +594,6 @@ _L9:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t31 == 0 goto _L12
 	LD	A,H
 	OR	L
 	JP	Z,_L12
@@ -678,33 +608,38 @@ _L9:
 	LD	(J),HL
 _L12:
 	LD	HL,(J)
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-	LD	HL,$0002
+	LD	HL,STARS
 	PUSH	HL
+	LD	HL,(IDX)
+	INC	HL
+	INC	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array store: t35[t38] = t34
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,$0080
+	PUSH	HL
 	LD	HL,$0080
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(J),HL
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	LD	HL,$0000
 	PUSH	HL
+	LD	HL,$0000
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -712,7 +647,6 @@ _L12:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t46 == 0 goto _L13
 	LD	A,H
 	OR	L
 	JP	Z,_L13
@@ -727,38 +661,28 @@ _L12:
 	LD	(J),HL
 _L13:
 	LD	HL,(J)
-	LD	HL,(STARS)
-	LD	HL,(IDX)
-	LD	HL,$0003
+	LD	HL,STARS
 	PUSH	HL
+	LD	HL,(IDX)
+	LD	DE,$0003
+	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array store: t50[t53] = t49
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 _L10:
 	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(I),HL
-	LD	HL,(NUM)
-	LD	HL,$0001
-	PUSH	HL
+	LD	HL,$0063
 	POP	DE
-	EX	DE,HL
-	OR	A
-	SBC	HL,DE
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -767,11 +691,309 @@ _L10:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t60 != 0 goto _L9
+; if t64 != 0 goto _L9
 	LD	A,H
 	OR	L
 	JP	NZ,_L9
 _L11:
-_EXIT:
+_INITSTARS_EXIT:
 	POP	IY
 	RET
+
+
+; === String Table ===
+_S0:
+	DB	$20,$00
+_S1:
+	DB	$2A,$00
+
+; === Global Variables (Work Area) ===
+_CNT:
+	DS	2
+_I:
+	DS	2
+_J:
+	DS	2
+_IDX:
+	DS	2
+_KEY:
+	DS	2
+_STARS:
+	DS	2
+
+; === Runtime Functions ===
+WIDTH:
+; WIDTH not supported
+RET
+
+INKEY:
+LD A,L
+CP 1
+JR NC,.inkey1
+CALL sGETKY
+JR .inkey_end
+.inkey1
+JR NZ,.inkey2
+CALL sFLGET
+JR .inkey_end
+.inkey2
+CALL sINKEY
+.inkey_end
+LD L,A
+LD H,0
+RET
+
+LOCATE:
+LD H,E
+JP sLOC
+
+PRT:
+PUSH HL
+PUSH DE
+PUSH BC
+PUSH IY
+LD E,A
+LD C,$06
+CALL $0005
+POP IY
+POP BC
+POP DE
+POP HL
+RET
+WORK10:
+DB  "12345",0
+DS  4
+
+CPLHL:
+LD A, H
+CPL
+LD H, A
+LD A, L
+CPL
+LD L, A
+RET
+
+NEGHL:
+DEC HL
+
+DIVHLDE8:
+INC E
+DEC E
+JR NZ, .div81
+EX DE, HL
+LD HL, 0000
+RET
+.div81
+XOR A
+LD B, $10
+.div84
+ADD HL, HL
+ADC A, A
+JR C, .div82
+CP E
+JR C, .div83
+.div82
+SUB E
+INC L
+.div83
+DJNZ .div84
+LD E, A
+RET
+
+VTOS:
+PUSH HL
+EXX
+POP HL
+EXX
+LD HL, $0005
+ADD HL, DE
+LD (HL), $00
+LD B, $05
+.vtos1
+EXX
+LD E, $0A
+CALL DIVHLDE8
+LD A, E
+ADD A, $30
+EXX
+DEC HL
+LD (HL), A
+DJNZ .vtos1
+LD B, $04
+.vtos3
+LD A, (HL)
+CP $30
+JR NZ, .vtos2
+LD (HL), $20
+INC HL
+DJNZ .vtos3
+.vtos2
+RET
+
+PMSG:
+LD B, $0D
+JR PMSX1
+
+PMSX1:
+LD A, (HL)
+CP B
+RET Z
+CALL PRT
+INC HL
+JR PMSX1
+
+PMSX:
+LD B, 00
+
+P10toN:
+PUSH DE
+LD DE, WORK10
+CALL VTOS
+EX DE, HL
+POP DE
+LD A, E
+CP $05
+JR NC, .p10ton1
+LD A, $05
+SUB E
+.p10ton2
+INC HL
+DEC A
+JR NZ, .p10ton2
+JR PMSX
+.p10ton1
+LD A, E
+CP $FF
+JR NZ, PMSX
+.p10ton4
+LD A, (HL)
+CP $20
+JR NZ, PMSX
+INC HL
+JR .p10ton4
+
+P10to5:
+LD DE, 0005
+
+P10:
+LD DE, -1
+JR P10toN
+
+PSIGN:
+BIT 7, H
+JR Z,.psign1
+LD A, $2D
+CALL PRT
+CALL NEGHL
+.psign1
+
+MULHLDE:
+LD A, L
+SUB E
+LD A, H
+SBC A, D
+JR NC, .mul1
+EX DE, HL
+.mul1
+LD B, H
+LD C, L
+LD HL, 0000
+LD A, D
+OR A
+JR Z, .mul2
+.mul4
+RRA
+RR E
+JR NC, .mul3
+ADD HL, BC
+.mul3
+SLA C
+RL B
+OR A
+JR NZ, .mul4
+.mul2
+LD A, E
+.mul6
+RRA
+JR NC, .mul5
+ADD HL, BC
+.mul5
+SLA C
+RL B
+OR A
+JR NZ, .mul6
+RET
+
+DIVHLDE:
+LD A, L
+SUB E
+LD A, H
+SBC A, D
+JR NC, .div1
+EX DE, HL
+LD HL, 0000
+RET
+.div1
+INC D
+DEC D
+JR Z, DIVHLDE8
+LD C, L
+LD L, H
+XOR A
+LD H, A
+LD B, 08
+.div3
+ADD A, A
+SLA C
+ADC HL, HL
+SBC HL, DE
+JR NC, .div2
+ADD HL, DE
+DEC A
+.div2
+INC A
+DJNZ .div3
+EX DE, HL
+LD H, B
+LD L, A
+RET
+
+MODHLDE:
+CALL DIVHLDE
+EX DE,HL
+RET
+
+RND:
+PUSH HL
+LD HL,(RND_SEED1)
+LD B,H
+LD C,L
+ADD HL,HL
+ADD HL,HL
+INC L
+ADD HL,BC
+LD (RND_SEED1),HL
+LD HL,(RND_SEED2)
+ADD HL,HL
+SBC A,A
+AND %00101101
+XOR L
+LD L,A
+LD (RND_SEED2),HL
+ADD HL,BC
+POP DE
+LD A,D
+OR E
+JR NZ,.RND1
+EX DE,HL
+RET
+.RND1
+JP MODHLDE
+RET
+
+
+; === IY Work Area (256 bytes) ===
+__IYWORK:
+	DS	256
+
+SLANG_PROG_END:

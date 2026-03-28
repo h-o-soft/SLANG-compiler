@@ -1,0 +1,478 @@
+	ORG	$C000
+
+; === Entry Point ===
+	LD	IY,__IYWORK
+	CALL	MAIN
+	RET
+
+MAIN:
+; function MAIN
+	PUSH	IY
+	LD	HL,$0000
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$0001
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	HL,$0007
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	CALL	CMDSCREEN
+	LD	HL,$0000
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$0001
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	CALL	TEXTMODE
+	LD	HL,$0028
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	CALL	WIDTH
+	LD	HL,$0041
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,(PCGPTN)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	CALL	PCGDEF
+	LD	HL,$0041
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,(PCGPTN)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	CALL	PCGDEF2
+	LD	HL,$0000
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$000A
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	CALL	LOCATE
+	LD	HL,_S0
+	CALL	PSTR
+	CALL	PCRONE
+	LD	HL,_S1
+	CALL	PSTR
+	CALL	PCRONE
+	LD	HL,_S2
+	CALL	PSTR
+	CALL	PCRONE
+	LD	HL,_S3
+	CALL	PSTR
+	CALL	PCRONE
+	LD	HL,_S4
+	CALL	PSTR
+	CALL	PCRONE
+	LD	HL,_S5
+	CALL	PSTR
+	CALL	PCRONE
+	LD	HL,$0003
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$0080
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	HL,$0048
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	CALL	SETATR
+	LD	HL,$0003
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$0002
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	HL,$0048
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	CALL	SETATR
+	LD	HL,$0003
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$000C
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	HL,$00E8
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	CALL	SETATR
+	LD	HL,$0004
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$000A
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	HL,$0028
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	CALL	SETATR
+	LD	HL,$0008
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$0000
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	CALL	KANJILOCATE
+	LD	HL,$0001
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	CALL	SETGVRAM
+	LD	HL,_S6
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	CALL	KANJIPUT
+	LD	HL,$0000
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	CALL	SETGVRAM
+	CALL	SND_INIT
+	LD	HL,(MUSADR)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	CALL	SND_PLAY
+	LD	HL,$0000
+	LD	(X),HL
+	LD	HL,$0000
+	LD	(Y),HL
+	LD	HL,$0000
+	LD	(SUJI),HL
+_L0:
+	LD	HL,$0009
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	CALL	KEYCHK
+	PUSH	HL
+	LD	HL,$0080
+	POP	DE
+	LD	A,D
+	AND	H
+	LD	H,A
+	LD	A,E
+	AND	L
+	LD	L,A
+	LD	A,H
+	OR	L
+	LD	HL,$0001
+	JR	Z,$+3
+	DEC	HL
+; if t59 == 0 goto _L2
+	LD	A,H
+	OR	L
+	JP	Z,_L2
+	JP	_L1
+_L2:
+	CALL	SND_ISPLAYING
+	LD	A,H
+	OR	L
+	LD	HL,$0001
+	JR	Z,$+3
+	DEC	HL
+; if t61 == 0 goto _L3
+	LD	A,H
+	OR	L
+	JP	Z,_L3
+	LD	HL,(MUSADR)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	CALL	SND_PLAY
+_L3:
+	CALL	STICK2
+	LD	(K),HL
+	LD	HL,(K)
+	LD	DE,$0001
+	LD	A,H
+	AND	D
+	LD	H,A
+	LD	A,L
+	AND	E
+	LD	L,A
+; if t67 == 0 goto _L4
+	LD	A,H
+	OR	L
+	JP	Z,_L4
+	LD	HL,(Y)
+	DEC	HL
+	LD	(Y),HL
+_L4:
+	LD	HL,(K)
+	LD	DE,$0002
+	LD	A,H
+	AND	D
+	LD	H,A
+	LD	A,L
+	AND	E
+	LD	L,A
+; if t73 == 0 goto _L5
+	LD	A,H
+	OR	L
+	JP	Z,_L5
+	LD	HL,(X)
+	INC	HL
+	LD	(X),HL
+_L5:
+	LD	HL,(K)
+	LD	DE,$0004
+	LD	A,H
+	AND	D
+	LD	H,A
+	LD	A,L
+	AND	E
+	LD	L,A
+; if t79 == 0 goto _L6
+	LD	A,H
+	OR	L
+	JP	Z,_L6
+	LD	HL,(Y)
+	INC	HL
+	LD	(Y),HL
+_L6:
+	LD	HL,(K)
+	LD	DE,$0008
+	LD	A,H
+	AND	D
+	LD	H,A
+	LD	A,L
+	AND	E
+	LD	L,A
+; if t85 == 0 goto _L7
+	LD	A,H
+	OR	L
+	JP	Z,_L7
+	LD	HL,(X)
+	DEC	HL
+	LD	(X),HL
+_L7:
+	LD	HL,(X)
+	LD	DE,$0000
+	CALL	SCMP_LT
+	LD	A,H
+	OR	L
+	JP	Z,_L9
+	LD	HL,$0000
+	LD	(X),HL
+	JP	_L8
+_L9:
+	LD	HL,(X)
+	LD	DE,$0027
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	JP	NC,_L8
+	LD	HL,$0027
+	LD	(X),HL
+_L8:
+	LD	HL,(Y)
+	LD	DE,$0000
+	CALL	SCMP_LT
+	LD	A,H
+	OR	L
+	JP	Z,_L11
+	LD	HL,$0000
+	LD	(Y),HL
+	JP	_L10
+_L11:
+	LD	HL,(Y)
+	LD	DE,$0018
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	JP	NC,_L10
+	LD	HL,$0018
+	LD	(Y),HL
+_L10:
+	LD	HL,$0001
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	CALL	STRIG
+; if t106 == 0 goto _L12
+	LD	A,H
+	OR	L
+	JP	Z,_L12
+	LD	HL,$F300
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$0000
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	HL,$0BB8
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	CALL	MEMSET
+	LD	HL,$0000
+	LD	(X),HL
+	LD	HL,$0000
+	LD	(Y),HL
+	LD	HL,(SEADR)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	CALL	SND_SEPLAY
+	LD	HL,$0003
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$0002
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	HL,$0048
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	CALL	SETATR
+	LD	HL,$0003
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$000C
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	HL,$00E8
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	CALL	SETATR
+_L12:
+	LD	HL,$00C1
+	LD	HL,$F300
+	PUSH	HL
+	LD	HL,(X)
+	LD	DE,$0002
+	CALL	MUL16
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	LD	HL,(Y)
+	LD	DE,$0078
+	CALL	MUL16
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
+	LD	(HL),E
+	CALL	VSYNC
+	CALL	SND_PROC
+	JP	_L0
+_L1:
+	CALL	SND_STOP
+	LD	HL,_S7
+	CALL	PSTR
+	CALL	PCRONE
+_MAIN_EXIT:
+	POP	IY
+	RET
+
+
+; === String Table ===
+_S0:
+	DB	$FF81,$FF81,$FF81,$00
+_S1:
+	DB	$FF81,$FF81,$FF81,$00
+_S2:
+	DB	$FF81,$FF81,$FF81,$00
+_S3:
+	DB	$41,$41,$41,$00
+_S4:
+	DB	$41,$41,$41,$00
+_S5:
+	DB	$41,$41,$41,$00
+_S6:
+	DB	$FF30,$FF23,$FF18,$FF10,$FF10,$FF11,$FF4D,$FF4B,$FF29,$FF29,$5404,$7A2E,$30C6,$30B9,$30C8,$00
+_S7:
+	DB	$45,$4E,$44,$00
+
+; === Global Variables (Work Area) ===
+_SUJI:
+	DS	2
+_C:
+	DS	2
+_K:
+	DS	2
+_X:
+	DS	2
+_Y:
+	DS	2
+_MUSADR:
+	DS	2
+_SEADR:
+	DS	2
+
+; === Runtime Functions ===
+WIDTH:
+; WIDTH not supported
+RET
+
+LOCATE:
+LD H,E
+JP sLOC
+
+PRT:
+PUSH HL
+PUSH DE
+PUSH BC
+PUSH IY
+LD E,A
+LD C,$06
+CALL $0005
+POP IY
+POP BC
+POP DE
+POP HL
+RET
+WORK10:
+DB  "12345",0
+DS  4
+
+PSTR:
+.pstr1
+LD A,D
+OR E
+RET Z
+LD A,L
+CALL PRT
+DEC DE
+JR .pstr1
+
+PCHR:
+LD A, H
+CALL PRT
+LD A, L
+JR PRT
+
+PSTR2:
+.pstr1
+LD A,D
+OR E
+RET Z
+CALL PCHR
+DEC DE
+JR .pstr1
+
+PCR:
+EX DE,HL
+LD HL,$0D0A
+JR PSTR2
+
+PCRONE:
+LD HL,1
+
+MEMSET:
+; hl = addr, de = value, bc = count
+push bc
+push de
+ld e,l
+ld d,h
+inc de
+; value to (addr)
+pop bc
+ld (hl),c
+; pop count
+pop bc
+dec bc
+ldir
+ret
+
+
+; === IY Work Area (256 bytes) ===
+__IYWORK:
+	DS	256
+
+SLANG_PROG_END:

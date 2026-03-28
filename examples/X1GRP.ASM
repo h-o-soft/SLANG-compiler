@@ -1,74 +1,121 @@
-; ARRAY PAINTDAT[]
-;   = {initial code}
+; === Entry Point ===
+	LD	IY,__IYWORK
+	CALL	MAIN
+	RET
 
 BOX:
 ; function BOX
 	PUSH	IY
-	LD	HL,(X1)
-	PUSH	HL
-	LD	HL,(Y1)
-	PUSH	HL
-	LD	HL,(X2)
-	PUSH	HL
-	LD	HL,(Y1)
-	PUSH	HL
-	LD	HL,(COL)
-	PUSH	HL
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	L,(IY+$74)
+	LD	H,(IY+$75)
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
+	LD	(IY+$76),L
+	LD	(IY+$77),H
+	LD	L,(IY+$78)
+	LD	H,(IY+$79)
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
-	LD	HL,(X2)
-	PUSH	HL
-	LD	HL,(Y1)
-	PUSH	HL
-	LD	HL,(X2)
-	PUSH	HL
-	LD	HL,(Y2)
-	PUSH	HL
-	LD	HL,(COL)
-	PUSH	HL
+	LD	L,(IY+$74)
+	LD	H,(IY+$75)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	L,(IY+$74)
+	LD	H,(IY+$75)
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	LD	L,(IY+$76)
+	LD	H,(IY+$77)
+	LD	(IY+$76),L
+	LD	(IY+$77),H
+	LD	L,(IY+$78)
+	LD	H,(IY+$79)
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
-	LD	HL,(X2)
-	PUSH	HL
-	LD	HL,(Y2)
-	PUSH	HL
-	LD	HL,(X1)
-	PUSH	HL
-	LD	HL,(Y2)
-	PUSH	HL
-	LD	HL,(COL)
-	PUSH	HL
+	LD	L,(IY+$74)
+	LD	H,(IY+$75)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$76)
+	LD	H,(IY+$77)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	LD	L,(IY+$76)
+	LD	H,(IY+$77)
+	LD	(IY+$76),L
+	LD	(IY+$77),H
+	LD	L,(IY+$78)
+	LD	H,(IY+$79)
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
-	LD	HL,(X1)
-	PUSH	HL
-	LD	HL,(Y2)
-	PUSH	HL
-	LD	HL,(X1)
-	PUSH	HL
-	LD	HL,(Y1)
-	PUSH	HL
-	LD	HL,(COL)
-	PUSH	HL
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$76)
+	LD	H,(IY+$77)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
+	LD	(IY+$76),L
+	LD	(IY+$77),H
+	LD	L,(IY+$78)
+	LD	H,(IY+$79)
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
-_EXIT:
+_BOX_EXIT:
 	POP	IY
 	RET
 
 MAIN:
 ; function MAIN
 	PUSH	IY
+	LD	BC,$0006
+	ADD	IY,BC
 	LD	HL,$0028
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	WIDTH
 	CALL	GRPSETUP
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	GRDISP
 	CALL	GRCLS
 _L0:
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	INKEY
-	LD	HL,$001B
 	PUSH	HL
+	LD	HL,$001B
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -76,154 +123,215 @@ _L0:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t9 == 0 goto _L2
 	LD	A,H
 	OR	L
 	JP	Z,_L2
 	JP	_L1
 _L2:
 	LD	HL,$0140
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$00C8
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0140
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$00C8
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0008
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
 	JP	_L0
 _L1:
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$013F
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$00C7
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	BFILL
 	LD	HL,$000A
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$001E
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$00C8
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$003C
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
 	LD	HL,$00C8
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$003C
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$012C
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$0028
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
 	LD	HL,$012C
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0028
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$00E6
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$0078
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
 	LD	HL,$00E6
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0078
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$012C
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$00B4
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
 	LD	HL,$012C
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$00B4
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0096
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$0064
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
 	LD	HL,$0096
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0064
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$003C
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$008C
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
 	LD	HL,$003C
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$008C
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$005A
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$0046
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
 	LD	HL,$005A
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0046
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$000A
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$001E
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	LINE
 	LD	HL,$0096
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0046
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0023
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	PAINT
 	LD	HL,$0096
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$000A
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0015
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	PAINT
 _L3:
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	INKEY
-	LD	HL,$001B
 	PUSH	HL
+	LD	HL,$001B
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -231,7 +339,6 @@ _L3:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t86 == 0 goto _L5
 	LD	A,H
 	OR	L
 	JP	Z,_L5
@@ -241,10 +348,11 @@ _L5:
 _L4:
 _L6:
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	INKEY
-	LD	HL,$001B
 	PUSH	HL
+	LD	HL,$001B
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -252,185 +360,188 @@ _L6:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t90 == 0 goto _L8
 	LD	A,H
 	OR	L
 	JP	Z,_L8
 	JP	_L7
 _L8:
 	LD	HL,$013F
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	LD	(J),HL
+	LD	(IY+$6C),L
+	LD	(IY+$6D),H
 	LD	HL,$00C7
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	LD	(K),HL
-	LD	HL,(J)
+	LD	(IY+$6A),L
+	LD	(IY+$6B),H
+	LD	L,(IY+$6C)
+	LD	H,(IY+$6D)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$6A)
+	LD	H,(IY+$6B)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	L,(IY+$6C)
+	LD	H,(IY+$6D)
 	PUSH	HL
-	LD	HL,(K)
-	PUSH	HL
-	LD	HL,(J)
 	LD	HL,$0140
-	LD	HL,(J)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	E,(IY+$6C)
+	LD	D,(IY+$6D)
 	OR	A
 	SBC	HL,DE
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	LD	L,(IY+$6A)
+	LD	H,(IY+$6B)
 	PUSH	HL
-	LD	HL,(K)
 	LD	HL,$00C8
-	LD	HL,(K)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	E,(IY+$6A)
+	LD	D,(IY+$6B)
 	OR	A
 	SBC	HL,DE
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0008
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	LD	HL,$0010
 	PUSH	HL
+	LD	HL,$0010
 	POP	DE
 	EX	DE,HL
 	CALL	MUL16
+	PUSH	HL
 	LD	HL,$0008
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	BFILL
 	JP	_L6
 _L7:
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	GRDISP
 	LD	HL,$0050
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	WIDTH
 	CALL	GRPSETUP
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$027F
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$00C7
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	BFILL
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	GRDISP
 	LD	HL,$0190
-	PUSH	HL
-	LD	HL,$0004
-	LD	HL,$0028
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	CALL	MUL16
-	LD	HL,$0008
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$00A8
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$026C
-	PUSH	HL
-	LD	HL,$00C8
-	LD	HL,$0008
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	OR	A
-	SBC	HL,DE
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	LD	HL,$00C0
+	LD	(IY+$76),L
+	LD	(IY+$77),H
 	LD	HL,$0007
-	PUSH	HL
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	BOX
 	LD	HL,$003A
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0016
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	LOCATE
-; load string "COLOR SAMPLE"
-	LD	HL,0 ; string placeholder
-	CALL	__print_str
+	LD	HL,_S0
+	CALL	PSTR
 	LD	HL,$0000
 	LD	(I),HL
 _L9:
-	LD	HL,(I)
-	LD	HL,$0005
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$0005
 	CALL	MUL16
 	LD	HL,$000D
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0014
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	LOCATE
-	LD	HL,(I)
-	CALL	__print_num
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	CALL	PRT
 	LD	HL,$0034
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0012
-	LD	HL,(I)
-	LD	HL,$0014
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$0014
 	CALL	MUL16
 	LD	HL,$0008
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	CALL	DIV16
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	LOCATE
-	LD	HL,(I)
-	CALL	__print_num
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	CALL	PRT
 _L10:
 	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(I),HL
 	LD	HL,$0007
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -439,7 +550,7 @@ _L10:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t169 != 0 goto _L9
+; if t163 != 0 goto _L9
 	LD	A,H
 	OR	L
 	JP	NZ,_L9
@@ -447,189 +558,167 @@ _L11:
 	LD	HL,$0000
 	LD	(I),HL
 _L12:
-	LD	HL,(I)
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
 	LD	(J),HL
 _L15:
-	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$0001
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-	LD	HL,(J)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6C)
+	LD	H,(IY+$6D)
+	LD	DE,$0001
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	LD	A,H
-	OR	D
+	LD	A,D
+	OR	H
 	LD	H,A
-	LD	A,L
-	OR	E
+	LD	A,E
+	OR	L
 	LD	L,A
-; if t178 == 0 goto _L19
+; if t172 == 0 goto _L19
 	LD	A,H
 	OR	L
 	JP	Z,_L19
-	LD	HL,(I)
-	LD	HL,$0002
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$0002
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-	LD	HL,(J)
-	LD	HL,$0002
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6C)
+	LD	H,(IY+$6D)
+	LD	DE,$0002
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	LD	A,H
-	OR	D
+	LD	A,D
+	OR	H
 	LD	H,A
-	LD	A,L
-	OR	E
+	LD	A,E
+	OR	L
 	LD	L,A
-; if t185 == 0 goto _L21
+; if t179 == 0 goto _L21
 	LD	A,H
 	OR	L
 	JP	Z,_L21
 	LD	HL,$0003
-	LD	(K),HL
+	LD	(IY+$6A),L
+	LD	(IY+$6B),H
 	JP	_L20
 _L21:
 	LD	HL,$0002
-	LD	(K),HL
+	LD	(IY+$6A),L
+	LD	(IY+$6B),H
 _L20:
 	JP	_L18
 _L19:
 	LD	HL,$0001
-	LD	(K),HL
+	LD	(IY+$6A),L
+	LD	(IY+$6B),H
 _L18:
-	LD	HL,(I)
-	LD	HL,$0028
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$0028
 	CALL	MUL16
 	LD	HL,$0061
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$008C
-	LD	HL,(J)
-	LD	HL,$0014
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6C)
+	LD	H,(IY+$6D)
+	LD	DE,$0014
 	CALL	MUL16
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	PUSH	HL
-	LD	HL,(I)
-	LD	HL,$0028
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$0028
 	CALL	MUL16
 	LD	HL,$0086
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$009E
-	LD	HL,(J)
-	LD	HL,$0014
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6C)
+	LD	H,(IY+$6D)
+	LD	DE,$0014
 	CALL	MUL16
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	PUSH	HL
-	LD	HL,(K)
-	PUSH	HL
+	LD	(IY+$76),L
+	LD	(IY+$77),H
+	LD	L,(IY+$6A)
+	LD	H,(IY+$6B)
+	LD	(IY+$78),L
+	LD	(IY+$79),H
 	CALL	BFILL
-	LD	HL,(I)
-	LD	HL,$0028
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$0028
 	CALL	MUL16
 	LD	HL,$0061
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$008C
-	LD	HL,(J)
-	LD	HL,$0014
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6C)
+	LD	H,(IY+$6D)
+	LD	DE,$0014
 	CALL	MUL16
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	PUSH	HL
-	LD	HL,(I)
-	LD	HL,$0010
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$0010
 	CALL	MUL16
-	LD	HL,(J)
-	PUSH	HL
+	LD	L,(IY+$6C)
+	LD	H,(IY+$6D)
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	PAINT
 _L16:
 	LD	HL,(J)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	OR	A
-	SBC	HL,DE
+	DEC	HL
 	LD	(J),HL
 	LD	HL,$0000
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -637,24 +726,17 @@ _L16:
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-; if t231 != 0 goto _L15
+; if t225 != 0 goto _L15
 	LD	A,H
 	OR	L
 	JP	NZ,_L15
 _L17:
 _L13:
 	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(I),HL
 	LD	HL,$0007
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -663,7 +745,7 @@ _L13:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t236 != 0 goto _L12
+; if t230 != 0 goto _L12
 	LD	A,H
 	OR	L
 	JP	NZ,_L12
@@ -671,6 +753,203 @@ _L14:
 _L22:
 	JP	_L22
 _L23:
-_EXIT:
+_MAIN_EXIT:
 	POP	IY
 	RET
+
+
+; === String Table ===
+_S0:
+	DB	$43,$4F,$4C,$4F,$52,$20,$53,$41,$4D,$50,$4C,$45,$00
+
+; === Global Variables (Work Area) ===
+_PAINTDAT:
+	DB	$00,$00,$00,$00,$12,$00,$01,$00,$02,$00,$03,$00,$04,$00,$05,$00,$06,$00,$07,$00
+
+; === Runtime Functions ===
+WIDTH:
+; WIDTH not supported
+RET
+
+INKEY:
+LD A,L
+CP 1
+JR NC,.inkey1
+CALL sGETKY
+JR .inkey_end
+.inkey1
+JR NZ,.inkey2
+CALL sFLGET
+JR .inkey_end
+.inkey2
+CALL sINKEY
+.inkey_end
+LD L,A
+LD H,0
+RET
+
+MULHLDE:
+LD A, L
+SUB E
+LD A, H
+SBC A, D
+JR NC, .mul1
+EX DE, HL
+.mul1
+LD B, H
+LD C, L
+LD HL, 0000
+LD A, D
+OR A
+JR Z, .mul2
+.mul4
+RRA
+RR E
+JR NC, .mul3
+ADD HL, BC
+.mul3
+SLA C
+RL B
+OR A
+JR NZ, .mul4
+.mul2
+LD A, E
+.mul6
+RRA
+JR NC, .mul5
+ADD HL, BC
+.mul5
+SLA C
+RL B
+OR A
+JR NZ, .mul6
+RET
+
+DIVHLDE8:
+INC E
+DEC E
+JR NZ, .div81
+EX DE, HL
+LD HL, 0000
+RET
+.div81
+XOR A
+LD B, $10
+.div84
+ADD HL, HL
+ADC A, A
+JR C, .div82
+CP E
+JR C, .div83
+.div82
+SUB E
+INC L
+.div83
+DJNZ .div84
+LD E, A
+RET
+
+DIVHLDE:
+LD A, L
+SUB E
+LD A, H
+SBC A, D
+JR NC, .div1
+EX DE, HL
+LD HL, 0000
+RET
+.div1
+INC D
+DEC D
+JR Z, DIVHLDE8
+LD C, L
+LD L, H
+XOR A
+LD H, A
+LD B, 08
+.div3
+ADD A, A
+SLA C
+ADC HL, HL
+SBC HL, DE
+JR NC, .div2
+ADD HL, DE
+DEC A
+.div2
+INC A
+DJNZ .div3
+EX DE, HL
+LD H, B
+LD L, A
+RET
+
+MODHLDE:
+CALL DIVHLDE
+EX DE,HL
+RET
+
+RND:
+PUSH HL
+LD HL,(RND_SEED1)
+LD B,H
+LD C,L
+ADD HL,HL
+ADD HL,HL
+INC L
+ADD HL,BC
+LD (RND_SEED1),HL
+LD HL,(RND_SEED2)
+ADD HL,HL
+SBC A,A
+AND %00101101
+XOR L
+LD L,A
+LD (RND_SEED2),HL
+ADD HL,BC
+POP DE
+LD A,D
+OR E
+JR NZ,.RND1
+EX DE,HL
+RET
+.RND1
+JP MODHLDE
+RET
+
+LOCATE:
+LD H,E
+JP sLOC
+
+PRT:
+PUSH HL
+PUSH DE
+PUSH BC
+PUSH IY
+LD E,A
+LD C,$06
+CALL $0005
+POP IY
+POP BC
+POP DE
+POP HL
+RET
+WORK10:
+DB  "12345",0
+DS  4
+
+PSTR:
+.pstr1
+LD A,D
+OR E
+RET Z
+LD A,L
+CALL PRT
+DEC DE
+JR .pstr1
+
+
+; === IY Work Area (256 bytes) ===
+__IYWORK:
+	DS	256
+
+SLANG_PROG_END:

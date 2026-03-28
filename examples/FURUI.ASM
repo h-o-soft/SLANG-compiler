@@ -1,4 +1,7 @@
-; ARRAY NT[SLANGCompiler.Parser.Ast.IntegerLiteral]
+; === Entry Point ===
+	LD	IY,__IYWORK
+	CALL	MAIN
+	RET
 
 MAIN:
 ; function MAIN
@@ -7,27 +10,18 @@ MAIN:
 	LD	(I),HL
 _L0:
 	LD	HL,$0000
-	LD	HL,(NT)
-	LD	HL,(I)
-; array store: t2[t3] = t1
-	PUSH	HL
+	LD	HL,NT
+	LD	DE,(I)
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
 _L1:
 	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(I),HL
 	LD	HL,$2710
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -36,7 +30,7 @@ _L1:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t8 != 0 goto _L0
+; if t10 != 0 goto _L0
 	LD	A,H
 	OR	L
 	JP	NZ,_L0
@@ -45,37 +39,23 @@ _L2:
 	LD	(I),HL
 _L3:
 	LD	HL,$0001
-	LD	HL,(NT)
-	LD	HL,(I)
-	LD	HL,$0002
+	LD	HL,NT
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	HL,(I)
+	LD	DE,$0002
 	CALL	MUL16
-; array store: t11[t14] = t10
-	PUSH	HL
-	POP	DE
-	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-_L4:
-	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
+	LD	(HL),E
+_L4:
+	LD	HL,(I)
+	INC	HL
 	LD	(I),HL
-	LD	HL,$2710
-	LD	HL,$0002
-	PUSH	HL
+	LD	HL,$1388
 	POP	DE
-	EX	DE,HL
-	CALL	DIV16
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -84,7 +64,7 @@ _L4:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t21 != 0 goto _L3
+; if t23 != 0 goto _L3
 	LD	A,H
 	OR	L
 	JP	NZ,_L3
@@ -93,16 +73,10 @@ _L5:
 	LD	(P),HL
 _L6:
 	LD	HL,(P)
-	LD	HL,(P)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,(P)
 	CALL	MUL16
 	LD	HL,$2710
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -111,7 +85,6 @@ _L6:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t27 == 0 goto _L7
 	LD	A,H
 	OR	L
 	JP	Z,_L7
@@ -119,44 +92,28 @@ _L6:
 	LD	(I),HL
 _L8:
 	LD	HL,$0001
-	LD	HL,(NT)
-	LD	HL,(I)
-	LD	HL,(P)
+	LD	HL,NT
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	HL,(I)
+	LD	DE,(P)
 	CALL	MUL16
-; array store: t30[t33] = t29
-	PUSH	HL
-	POP	DE
-	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
+	LD	(HL),E
+	LD	HL,(I)
+	INC	HL
 	LD	(I),HL
 _L9:
 	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(I),HL
 	LD	HL,$2710
-	LD	HL,(P)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,(P)
 	CALL	DIV16
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -165,33 +122,22 @@ _L9:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t43 != 0 goto _L8
+; if t47 != 0 goto _L8
 	LD	A,H
 	OR	L
 	JP	NZ,_L8
 _L10:
 	LD	HL,(P)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(P),HL
 _L11:
-	LD	HL,(NT)
-	LD	HL,(P)
-; array load: t50 = t47[t49]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
+	LD	HL,NT
+	LD	DE,(P)
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	LD	HL,$0001
+	LD	L,(HL)
+	LD	H,$00
 	PUSH	HL
+	LD	HL,$0001
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -199,16 +145,11 @@ _L11:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t52 == 0 goto _L12
 	LD	A,H
 	OR	L
 	JP	Z,_L12
 	LD	HL,(P)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(P),HL
 	JP	_L11
 _L12:
@@ -217,20 +158,13 @@ _L7:
 	LD	HL,$0002
 	LD	(I),HL
 _L13:
-	LD	HL,(NT)
-	LD	HL,(I)
-; array load: t60 = t57[t59]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
+	LD	HL,NT
+	LD	DE,(I)
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	LD	HL,$0000
+	LD	L,(HL)
+	LD	H,$00
 	PUSH	HL
+	LD	HL,$0000
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -238,29 +172,20 @@ _L13:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t62 == 0 goto _L16
 	LD	A,H
 	OR	L
 	JP	Z,_L16
 	LD	HL,(I)
-	CALL	__print_num
-; load string " "
-	LD	HL,0 ; string placeholder
-	CALL	__print_str
+	CALL	PRT
+	LD	HL,_S0
+	CALL	PSTR
 _L16:
 _L14:
 	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(I),HL
 	LD	HL,$2710
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -269,11 +194,59 @@ _L14:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t69 != 0 goto _L13
+; if t75 != 0 goto _L13
 	LD	A,H
 	OR	L
 	JP	NZ,_L13
 _L15:
-_EXIT:
+_MAIN_EXIT:
 	POP	IY
 	RET
+
+
+; === String Table ===
+_S0:
+	DB	$20,$00
+
+; === Global Variables (Work Area) ===
+_I:
+	DS	2
+_P:
+	DS	2
+_NT:
+	DS	10001
+
+; === Runtime Functions ===
+PRT:
+PUSH HL
+PUSH DE
+PUSH BC
+PUSH IY
+LD E,A
+LD C,$06
+CALL $0005
+POP IY
+POP BC
+POP DE
+POP HL
+RET
+WORK10:
+DB  "12345",0
+DS  4
+
+PSTR:
+.pstr1
+LD A,D
+OR E
+RET Z
+LD A,L
+CALL PRT
+DEC DE
+JR .pstr1
+
+
+; === IY Work Area (256 bytes) ===
+__IYWORK:
+	DS	256
+
+SLANG_PROG_END:

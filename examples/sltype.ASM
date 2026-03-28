@@ -1,18 +1,27 @@
-; global: LoadConst t0 #256
-; ORG t0
+	ORG	$0100
+
+; === Entry Point ===
+	LD	IY,__IYWORK
+	CALL	MAIN
+	RET
 
 main:
 ; function main
 	PUSH	IY
+	LD	BC,$0002
+	ADD	IY,BC
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0081
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	fopen
-	LD	HL,$0000
 	PUSH	HL
+	LD	HL,$0000
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -20,70 +29,119 @@ main:
 	LD	HL,$0000
 	JR	NZ,$+3
 	INC	HL
-; if t5 == 0 goto _L0
 	LD	A,H
 	OR	L
 	JP	Z,_L0
-	JP	_EXIT
+	JP	_main_EXIT
 _L0:
 _L1:
-	LD	HL,$0001
-; if t6 == 0 goto _L2
-	LD	A,H
-	OR	L
-	JP	Z,_L2
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	fgetc
-	LD	(c),HL
-	LD	HL,(c)
-	LD	HL,$00FF
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	(IY+$6E),L
+	LD	(IY+$6F),H
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$00FF
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-	LD	HL,(c)
-	LD	HL,$001A
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$001A
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	LD	A,H
-	OR	D
+	LD	A,D
+	OR	H
 	LD	H,A
-	LD	A,L
-	OR	E
+	LD	A,E
+	OR	L
 	LD	L,A
-; if t15 == 0 goto _L3
+; if t14 == 0 goto _L3
 	LD	A,H
 	OR	L
 	JP	Z,_L3
 	JP	_L2
 _L3:
-	LD	HL,(c)
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
 	LD	(^DE),HL
 	LD	HL,$0002
 	LD	(^BC),HL
 	LD	HL,$0005
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	CALL
 	JP	_L1
 _L2:
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	fclose
-_EXIT:
+_main_EXIT:
 	POP	IY
 	RET
+
+
+; === Runtime Functions ===
+GETREG:
+PUSH HL
+LD (_IY), IY
+LD (_IX), IX
+LD (_HL), HL
+LD (_DE), DE
+LD (_BC), BC
+PUSH AF
+POP HL
+LD (_AF), HL
+LD HL, 0000
+JR NC, .getreg1
+INC HL
+.getreg1
+LD (_CARRY), HL
+LD HL, 0000
+JR NZ, .getreg2
+INC HL
+.getreg2
+LD (_ZERO), HL
+LD HL, 0004
+ADD HL, SP
+LD (_SP), HL
+POP HL
+RET
+
+CALL:
+PUSH IY
+LD DE,.call1
+PUSH DE
+PUSH HL
+LD A,(___AF+1)
+LD BC,(___BC)
+LD DE,(___DE)
+LD HL,(___HL)
+LD IX,(___IX)
+LD IY,(___IY)
+RET
+.call1
+PUSH HL
+CALL GETREG
+LD HL,0006
+ADD HL,SP
+POP HL
+POP IY
+RET
+
+
+; === IY Work Area (256 bytes) ===
+__IYWORK:
+	DS	256
+
+SLANG_PROG_END:

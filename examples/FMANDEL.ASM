@@ -1,3 +1,7 @@
+; === Entry Point ===
+	LD	IY,__IYWORK
+	CALL	MAIN
+	RET
 
 MAIN:
 ; function MAIN
@@ -9,33 +13,21 @@ _L0:
 	LD	(X),HL
 _L3:
 	LD	HL,(X)
-	LD	HL,$0027
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0027
 	OR	A
 	SBC	HL,DE
 	LD	(FX),HL
 	LD	HL,(Y)
-	LD	HL,$000C
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$000C
 	OR	A
 	SBC	HL,DE
 	LD	(FY),HL
 	LD	HL,(FX)
-	LD	HL,$4817
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$4817
 	CALL	MUL16
 	LD	(CA),HL
 	LD	HL,(FY)
-	LD	HL,$92F7
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$92F7
 	CALL	MUL16
 	LD	(CB),HL
 	LD	HL,(CA)
@@ -46,41 +38,30 @@ _L3:
 	LD	(I),HL
 _L6:
 	LD	HL,(A)
-	LD	HL,(A)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,(A)
 	CALL	MUL16
 	LD	HL,(B)
-	LD	HL,(B)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,(B)
 	CALL	MUL16
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,(CA)
 	PUSH	HL
+	LD	HL,(CA)
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(T),HL
 	LD	HL,$0002
-	LD	HL,(A)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,(A)
 	CALL	MUL16
 	LD	HL,(B)
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	CALL	MUL16
-	LD	HL,(CB)
 	PUSH	HL
+	LD	HL,(CB)
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
@@ -88,32 +69,22 @@ _L6:
 	LD	HL,(T)
 	LD	(A),HL
 	LD	HL,(A)
-	LD	HL,(A)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,(A)
 	CALL	MUL16
 	LD	HL,(B)
-	LD	HL,(B)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,(B)
 	CALL	MUL16
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	LD	HL,$0000
 	PUSH	HL
+	LD	HL,$0000
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t42 == 0 goto _L9
 	LD	A,H
 	OR	L
 	JP	Z,_L9
@@ -121,17 +92,10 @@ _L6:
 _L9:
 _L7:
 	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(I),HL
 	LD	HL,$000F
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -146,73 +110,37 @@ _L7:
 	JP	NZ,_L6
 _L8:
 	LD	HL,(I)
-	LD	HL,$000F
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$000F
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-	LD	A,L
-	XOR	$01
-	LD	L,A
-; if t50 == 0 goto _L11
-	LD	A,H
-	OR	L
-	JP	Z,_L11
+	JP	C,_L11
 	LD	HL,(I)
-	LD	HL,$0009
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0009
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t53 == 0 goto _L12
-	LD	A,H
-	OR	L
-	JP	Z,_L12
+	JP	NC,_L12
 	LD	HL,(I)
-	LD	HL,$0007
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0007
 	ADD	HL,DE
 	LD	(I),HL
 _L12:
 	LD	HL,$0030
-	LD	HL,(I)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,(I)
 	ADD	HL,DE
-	CALL	__strfunc_CHR$
-	CALL	__print_func
+	CALL	PCHR
 	JP	_L10
 _L11:
-; load string " "
-	LD	HL,0 ; string placeholder
-	CALL	__print_str
+	LD	HL,_S0
+	CALL	PSTR
 _L10:
 _L4:
 	LD	HL,(X)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(X),HL
 	LD	HL,$004E
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -221,26 +149,18 @@ _L4:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t66 != 0 goto _L3
+; if t65 != 0 goto _L3
 	LD	A,H
 	OR	L
 	JP	NZ,_L3
 _L5:
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PCRONE
 _L1:
 	LD	HL,(Y)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(Y),HL
 	LD	HL,$0018
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -249,11 +169,98 @@ _L1:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t72 != 0 goto _L0
+; if t70 != 0 goto _L0
 	LD	A,H
 	OR	L
 	JP	NZ,_L0
 _L2:
-_EXIT:
+_MAIN_EXIT:
 	POP	IY
 	RET
+
+
+; === String Table ===
+_S0:
+	DB	$20,$00
+
+; === Global Variables (Work Area) ===
+_X:
+	DS	2
+_Y:
+	DS	2
+_I:
+	DS	2
+_VAL:
+	DS	2
+_CA:
+	DS	3
+_CB:
+	DS	3
+_FX:
+	DS	3
+_FY:
+	DS	3
+_A:
+	DS	3
+_B:
+	DS	3
+_T:
+	DS	3
+
+; === Runtime Functions ===
+PRT:
+PUSH HL
+PUSH DE
+PUSH BC
+PUSH IY
+LD E,A
+LD C,$06
+CALL $0005
+POP IY
+POP BC
+POP DE
+POP HL
+RET
+WORK10:
+DB  "12345",0
+DS  4
+
+PCHR:
+LD A, H
+CALL PRT
+LD A, L
+JR PRT
+
+PSTR:
+.pstr1
+LD A,D
+OR E
+RET Z
+LD A,L
+CALL PRT
+DEC DE
+JR .pstr1
+
+PSTR2:
+.pstr1
+LD A,D
+OR E
+RET Z
+CALL PCHR
+DEC DE
+JR .pstr1
+
+PCR:
+EX DE,HL
+LD HL,$0D0A
+JR PSTR2
+
+PCRONE:
+LD HL,1
+
+
+; === IY Work Area (256 bytes) ===
+__IYWORK:
+	DS	256
+
+SLANG_PROG_END:

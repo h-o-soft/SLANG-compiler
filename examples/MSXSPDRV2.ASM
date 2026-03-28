@@ -1,380 +1,136 @@
-; CONST MODE_0
-; CONST MODE_1
-; CONST MODE_2
-; CONST MODE_3
-; CONST SETGRP
-; CONST MODE2_ATTR
-; CONST SPRITE_DEFAULT
-; CONST SPRITE_SCALED
-; CONST SPRITE_LARGE
-; CONST VRAM_START
-; CONST VRAM_NONE
-; CONST VRAM_WIDTH
-; CONST VRAM_HEIGHT
-; CONST SPMAN_PAT_UNUSED
-; CONST SPMAN_MAX_SPRITES
-; CONST SPMAN_MAX_PATTERNS
-; CONST SPR_HIDE
-; ARRAY SP_FIXED[SLANGCompiler.Parser.Ast.BinaryExpr]
-; ARRAY SP_BUFFER[SLANGCompiler.Parser.Ast.BinaryExpr]
-; ARRAY SP_PAT_MAP[SLANGCompiler.Parser.Ast.IdentifierExpr]
-; ARRAY SP_LAST_PAT[]
-; CONST MSXROMADR
-; CONST SPRPAT
-; ARRAY SPATR[SLANGCompiler.Parser.Ast.BinaryExpr]
-; global: InlineAsm asm"				; =============================================================
-				;		data
-				; =============================================================
-sprite_pattern:
-				db		0b00000000				; #0
-				db		0b00000011
-				db		0b00001111
-				db		0b00011111
-				db		0b00111111
-				db		0b00111111
-				db		0b01111111
-				db		0b01111111
-				db		0b01111111
-				db		0b01111111
-				db		0b00111111
-				db		0b00111111
-				db		0b00011111
-				db		0b00001111
-				db		0b00000011
-				db		0b00000000
-				db		0b00000000
-				db		0b11000000
-				db		0b11110000
-				db		0b11111000
-				db		0b11111100
-				db		0b11111100
-				db		0b11111110
-				db		0b11111110
-				db		0b11111110
-				db		0b11111110
-				db		0b11111100
-				db		0b11111100
-				db		0b11111000
-				db		0b11110000
-				db		0b11000000
-				db		0b00000000
-
-				db		0b00000011				; #4
-				db		0b00001100
-				db		0b00010000
-				db		0b00100000
-				db		0b01000000
-				db		0b01000000
-				db		0b10000000
-				db		0b10000000
-				db		0b10000000
-				db		0b10000000
-				db		0b01000000
-				db		0b01000000
-				db		0b00110000
-				db		0b00011111
-				db		0b00001111
-				db		0b00000011
-				db		0b11000000
-				db		0b00110000
-				db		0b00001000
-				db		0b00000100
-				db		0b00000010
-				db		0b00000010
-				db		0b00000011
-				db		0b00000011
-				db		0b00000111
-				db		0b00000111
-				db		0b00001110
-				db		0b00011110
-				db		0b01111100
-				db		0b11111000
-				db		0b11110000
-				db		0b11000000
-
-				db		0b00111111				; #8
-				db		0b01111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b01111111
-				db		0b00111111
-				db		0b11111100
-				db		0b11111110
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111111
-				db		0b11111110
-				db		0b11111100
-
-sprite_color_table:
-				db		0x02			; #0
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-
-				db		0x04			; #1
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-
-				db		0x08			; #2
-				db		0x08
-				db		0x08
-				db		0x08
-				db		0x08
-				db		0x08
-				db		0x08
-				db		0x08
-				db		0x08
-				db		0x08
-				db		0x08
-				db		0x08
-				db		0x08
-				db		0x08
-				db		0x08
-				db		0x08
-
-				db		0x0A			; #3
-				db		0x0A
-				db		0x0A
-				db		0x0A
-				db		0x0A
-				db		0x0A
-				db		0x0A
-				db		0x0A
-				db		0x0A
-				db		0x0A
-				db		0x0A
-				db		0x0A
-				db		0x0A
-				db		0x0A
-				db		0x0A
-				db		0x0A
-
-				db		0x41			; #4
-				db		0x41
-				db		0x41
-				db		0x41
-				db		0x41
-				db		0x41
-				db		0x41
-				db		0x41
-				db		0x41
-				db		0x41
-				db		0x41
-				db		0x41
-				db		0x41
-				db		0x41
-				db		0x41
-				db		0x41
-
-				db		0x04			; #5
-				db		0x05
-				db		0x07
-				db		0x07
-				db		0x05
-				db		0x05
-				db		0x05
-				db		0x05
-				db		0x04
-				db		0x05
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-				db		0x04
-
-				db		0x0C			; #6
-				db		0x02
-				db		0x03
-				db		0x03
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x02
-				db		0x0C
-				db		0x02
-				db		0x0C
-				db		0x0C
-				db		0x0C
-				db		0x0C
-				db		0x0C
-				db		0x0C
-"
+; === Entry Point ===
+	LD	IY,__IYWORK
+	CALL	MAIN
+	RET
 
 MSX_GRPINIT:
 ; function MSX_GRPINIT
 	PUSH	IY
-	LD	HL,(MODE_1)
-	PUSH	HL
+	LD	HL,$006F
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	MSX_CALLBIOS
-	LD	HL,(SETGRP)
-	PUSH	HL
+	LD	HL,$007E
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	MSX_CALLBIOS
-	LD	HL,(MEMW)
 	LD	HL,$F920
-; array load: t7 = t4[t6]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0800
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0800
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MSX_VWRITE
-	LD	HL,(MEMW)
 	LD	HL,$F920
-; array load: t14 = t11[t13]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$1000
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0800
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MSX_VWRITE
-	LD	HL,(MODE2_ATTR)
-	PUSH	HL
+	LD	HL,$2000
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$00F0
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$17FF
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MSX_VFILL
-_EXIT:
+_MSX_GRPINIT_EXIT:
 	POP	IY
 	RET
 
 SET_CLICK:
 ; function SET_CLICK
 	PUSH	IY
-	LD	HL,(FLG)
-	LD	HL,(MEM)
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
 	LD	HL,$F3DB
-; array store: t1[t2] = t0
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-_EXIT:
+_SET_CLICK_EXIT:
 	POP	IY
 	RET
 
 SET_SPRITE_MODE:
 ; function SET_SPRITE_MODE
 	PUSH	IY
+	LD	BC,$0002
+	ADD	IY,BC
 	LD	HL,$0001
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	GET_VDP_REG
-	LD	(M),HL
+	LD	(IY+$6E),L
+	LD	(IY+$6F),H
 	LD	HL,$0001
-	PUSH	HL
-	LD	HL,(M)
-	LD	HL,$00FC
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$00FC
 	LD	A,H
 	AND	D
 	LD	H,A
 	LD	A,L
 	AND	E
 	LD	L,A
-	LD	HL,(MODE)
-	PUSH	HL
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
 	POP	DE
-	EX	DE,HL
-	LD	A,H
-	OR	D
+	LD	A,D
+	OR	H
 	LD	H,A
-	LD	A,L
-	OR	E
+	LD	A,E
+	OR	L
 	LD	L,A
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	SET_VDP_REG
-_EXIT:
+_SET_SPRITE_MODE_EXIT:
 	POP	IY
 	RET
 
 SET_SPRITE_16:
 ; function SET_SPRITE_16
 	PUSH	IY
-	LD	HL,(DATA)
-	PUSH	HL
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$3800
-	LD	HL,(HANDLE)
-	LD	HL,$0005
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
+	LD	DE,$0005
 	CALL	SHL16
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0020
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MSX_VWRITE_DIRECT
-_EXIT:
+_SET_SPRITE_16_EXIT:
 	POP	IY
 	RET
 
@@ -384,15 +140,18 @@ SPMAN_INIT:
 	LD	HL,$0000
 	LD	(SP_LAST_PAT),HL
 	LD	HL,(SP_PAT_MAP)
-	PUSH	HL
-	LD	HL,(SPMAN_PAT_UNUSED)
-	PUSH	HL
-	LD	HL,(SPMAN_MAX_PATTERNS)
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	HL,$00FF
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	HL,$0040
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MEMSET
 	CALL	SPMAN_SPRITE_FLUSH
 	CALL	SPMAN_HIDE_ALL_SPRITES
-_EXIT:
+_SPMAN_INIT_EXIT:
 	POP	IY
 	RET
 
@@ -403,67 +162,71 @@ SPMAN_SPRITE_FLUSH:
 	LD	(SP_LAST_FIXED_SPRITE),HL
 	LD	HL,$0000
 	LD	(SP_LAST_SPRITE),HL
-_EXIT:
+_SPMAN_SPRITE_FLUSH_EXIT:
 	POP	IY
 	RET
 
 SPR_DEF:
 ; function SPR_DEF
 	PUSH	IY
-	LD	HL,(LEN)
-	LD	HL,(TP)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	BC,$0002
+	ADD	IY,BC
+	LD	L,(IY+$74)
+	LD	H,(IY+$75)
+	LD	E,(IY+$70)
+	LD	D,(IY+$71)
 	ADD	HL,DE
 	LD	HL,$0001
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	(LEN),HL
-	LD	HL,(TP)
+	LD	(IY+$74),L
+	LD	(IY+$75),H
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
 	LD	(I),HL
 _L0:
-	LD	HL,(FLIP)
+	LD	L,(IY+$76)
+	LD	H,(IY+$77)
 ; if t6 == 0 goto _L4
 	LD	A,H
 	OR	L
 	JP	Z,_L4
-	LD	HL,(I)
-	PUSH	HL
-	LD	HL,(DATA)
-	PUSH	HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	SET_SPRITE_16HFLIP
 	JP	_L3
 _L4:
-	LD	HL,(I)
-	PUSH	HL
-	LD	HL,(DATA)
-	PUSH	HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	SET_SPRITE_16
 _L3:
-	LD	HL,(DATA)
-	LD	HL,$0020
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
+	LD	DE,$0020
 	ADD	HL,DE
-	LD	(DATA),HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 _L1:
 	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(I),HL
-	LD	HL,(LEN)
-	PUSH	HL
+	LD	L,(IY+$74)
+	LD	H,(IY+$75)
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -477,27 +240,21 @@ _L1:
 	OR	L
 	JP	NZ,_L0
 _L2:
-_EXIT:
+_SPR_DEF_EXIT:
 	POP	IY
 	RET
 
 SPMAN_ALLOC_PAT:
 ; function SPMAN_ALLOC_PAT
 	PUSH	IY
-	LD	HL,(SP_PAT_MAP)
-	LD	HL,(TP)
-; array load: t3 = t0[t2]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
+	LD	HL,SP_PAT_MAP
+	LD	E,(IY+$70)
+	LD	D,(IY+$71)
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	LD	HL,(SPMAN_PAT_UNUSED)
+	LD	L,(HL)
+	LD	H,$00
 	PUSH	HL
+	LD	HL,$00FF
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -505,75 +262,66 @@ SPMAN_ALLOC_PAT:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t5 == 0 goto _L5
 	LD	A,H
 	OR	L
 	JP	Z,_L5
 	LD	HL,(SP_LAST_PAT)
-	LD	HL,(SP_PAT_MAP)
-	LD	HL,(TP)
-; array store: t7[t8] = t6
-	PUSH	HL
-	POP	DE
-	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-	LD	HL,(LEN)
-	LD	HL,$0001
-	PUSH	HL
+	LD	HL,SP_PAT_MAP
+	LD	E,(IY+$70)
+	LD	D,(IY+$71)
+	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
-	OR	A
-	SBC	HL,DE
-	LD	(LEN),HL
+	LD	(HL),E
+	LD	L,(IY+$74)
+	LD	H,(IY+$75)
+	DEC	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	LD	HL,$0000
 	LD	(I),HL
 _L6:
-	LD	HL,(FLIP)
-; if t13 == 0 goto _L10
+	LD	L,(IY+$76)
+	LD	H,(IY+$77)
+; if t16 == 0 goto _L10
 	LD	A,H
 	OR	L
 	JP	Z,_L10
 	LD	HL,(SP_LAST_PAT)
-	PUSH	HL
-	LD	HL,(DATA)
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	SET_SPRITE_16HFLIP
 	JP	_L9
 _L10:
 	LD	HL,(SP_LAST_PAT)
-	PUSH	HL
-	LD	HL,(DATA)
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	SET_SPRITE_16
 _L9:
-	LD	HL,(DATA)
-	LD	HL,$0020
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
+	LD	DE,$0020
 	ADD	HL,DE
-	LD	(DATA),HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,(SP_LAST_PAT)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(SP_LAST_PAT),HL
 _L7:
 	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(I),HL
-	LD	HL,(LEN)
-	PUSH	HL
+	LD	L,(IY+$74)
+	LD	H,(IY+$75)
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -582,196 +330,146 @@ _L7:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t30 != 0 goto _L6
+; if t33 != 0 goto _L6
 	LD	A,H
 	OR	L
 	JP	NZ,_L6
 _L8:
 _L5:
-	LD	HL,(SP_PAT_MAP)
-	LD	HL,(TP)
-; array load: t34 = t31[t33]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
+	LD	HL,SP_PAT_MAP
+	LD	E,(IY+$70)
+	LD	D,(IY+$71)
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	LD	HL,$0004
+	LD	L,(HL)
+	LD	H,$00
 	PUSH	HL
+	LD	HL,$0004
 	POP	DE
 	EX	DE,HL
 	CALL	MUL16
-; return t36
-	JP	_EXIT
-_EXIT:
+; return value in HL
+	JP	_SPMAN_ALLOC_PAT_EXIT
+_SPMAN_ALLOC_PAT_EXIT:
 	POP	IY
 	RET
 
 SPMAN_ALLOC_FIXED_SPRITE:
 ; function SPMAN_ALLOC_FIXED_SPRITE
 	PUSH	IY
-	LD	HL,(SP_FIXED)
+	LD	HL,SP_FIXED
+	PUSH	HL
 	LD	HL,(SP_LAST_FIXED_SPRITE)
-	LD	HL,$0002
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0002
 	CALL	SHL16
-; array load: t5 = t0[t4]
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	PUSH	HL
-	LD	HL,(SPADR)
-	PUSH	HL
+	LD	L,(HL)
+	LD	H,$00
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0004
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MEMCPY
 	LD	HL,(SP_LAST_FIXED_SPRITE)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(SP_LAST_FIXED_SPRITE),HL
-_EXIT:
+_SPMAN_ALLOC_FIXED_SPRITE_EXIT:
 	POP	IY
 	RET
 
 SPMAN_ALLOC_SPRITE:
 ; function SPMAN_ALLOC_SPRITE
 	PUSH	IY
-	LD	HL,(SP_BUFFER)
+	LD	HL,SP_BUFFER
+	PUSH	HL
 	LD	HL,(SP_LAST_SPRITE)
-	LD	HL,$0002
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0002
 	CALL	SHL16
-; array load: t5 = t0[t4]
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	PUSH	HL
-	LD	HL,(SPADR)
-	PUSH	HL
+	LD	L,(HL)
+	LD	H,$00
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0004
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MEMCPY
 	LD	HL,(SP_LAST_SPRITE)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(SP_LAST_SPRITE),HL
-_EXIT:
+_SPMAN_ALLOC_SPRITE_EXIT:
 	POP	IY
 	RET
 
 SPMAN_UPDATE:
 ; function SPMAN_UPDATE
 	PUSH	IY
+	LD	BC,$0002
+	ADD	IY,BC
 	LD	HL,$1B00
 	LD	(SPR_POINT),HL
 	LD	HL,(SP_LAST_SPRITE)
-	LD	HL,$0000
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0000
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	NZ,$+3
-	INC	HL
-; if t3 == 0 goto _L12
-	LD	A,H
-	OR	L
 	JP	Z,_L12
-	LD	HL,(SP_BUFFER)
-	LD	HL,(SP_LAST_SPRITE)
-	LD	HL,$0002
+	LD	HL,SP_BUFFER
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	HL,(SP_LAST_SPRITE)
+	LD	DE,$0002
 	CALL	SHL16
-; array load: t9 = t4[t8]
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	PUSH	HL
+	LD	L,(HL)
+	LD	H,$00
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,(SP_BUFFER)
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,(SP_LAST_SPRITE)
-	LD	HL,$0004
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0004
 	CALL	MUL16
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MEMCPY
 	LD	HL,(SP_LAST_SPRITE)
-	LD	HL,(SP_LAST_FIXED_SPRITE)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,(SP_LAST_FIXED_SPRITE)
 	ADD	HL,DE
-	LD	(ADDCNT),HL
-	LD	HL,(ADDCNT)
-	LD	HL,$0004
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	(IY+$6E),L
+	LD	(IY+$6F),H
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$0004
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t20 == 0 goto _L13
-	LD	A,H
-	OR	L
-	JP	Z,_L13
+	JP	NC,_L13
 	LD	HL,(SP_IDX)
-	LD	HL,$0002
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
-	LD	HL,(ADDCNT)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	INC	HL
+	INC	HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$0001
 	LD	A,H
 	AND	D
 	LD	H,A
 	LD	A,L
 	AND	E
 	LD	L,A
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -779,24 +477,12 @@ SPMAN_UPDATE:
 	LD	(SP_IDX),HL
 _L13:
 	LD	HL,(SP_IDX)
-	LD	HL,(SP_LAST_SPRITE)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,(SP_LAST_SPRITE)
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	NC,$+3
-	INC	HL
-; if t30 == 0 goto _L14
-	LD	A,H
-	OR	L
-	JP	Z,_L14
+	JP	C,_L14
 	LD	HL,(SP_IDX)
-	LD	HL,(SP_LAST_SPRITE)
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,(SP_LAST_SPRITE)
 	OR	A
 	SBC	HL,DE
 	LD	(SP_IDX),HL
@@ -806,110 +492,86 @@ _L12:
 	LD	HL,$0000
 	LD	(SP_IDX),HL
 _L11:
-	LD	HL,(SP_BUFFER)
-	LD	HL,(SP_IDX)
-	LD	HL,(SP_LAST_SPRITE)
+	LD	HL,SP_BUFFER
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	HL,(SP_IDX)
+	LD	DE,(SP_LAST_SPRITE)
 	ADD	HL,DE
 	LD	HL,$0002
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	CALL	SHL16
-; array load: t42 = t35[t41]
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	PUSH	HL
+	LD	L,(HL)
+	LD	H,$00
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,(SPR_HIDE)
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0004
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MEMCPY
     HALT
 
 	LD	HL,(SP_LAST_FIXED_SPRITE)
-	LD	HL,$0000
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0000
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	NZ,$+3
-	INC	HL
-; if t48 == 0 goto _L15
-	LD	A,H
-	OR	L
 	JP	Z,_L15
 	LD	HL,(SP_FIXED)
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,(SPR_POINT)
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,(SP_LAST_FIXED_SPRITE)
-	LD	HL,$0004
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0004
 	CALL	MUL16
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MSX_VWRITE_DIRECT
 	LD	HL,(SPR_POINT)
+	PUSH	HL
 	LD	HL,(SP_LAST_FIXED_SPRITE)
-	LD	HL,$0004
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0004
 	CALL	MUL16
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(SPR_POINT),HL
 _L15:
-	LD	HL,(SP_BUFFER)
+	LD	HL,SP_BUFFER
+	PUSH	HL
 	LD	HL,(SP_IDX)
-	LD	HL,$0002
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0002
 	CALL	SHL16
-; array load: t65 = t60[t64]
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	PUSH	HL
+	LD	L,(HL)
+	LD	H,$00
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,(SPR_POINT)
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0004
+	PUSH	HL
 	LD	HL,(SP_LAST_SPRITE)
-	LD	HL,$0004
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0004
 	CALL	MUL16
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MSX_VWRITE_DIRECT
 	CALL	SPMAN_SPRITE_FLUSH
-_EXIT:
+_SPMAN_UPDATE_EXIT:
 	POP	IY
 	RET
 
@@ -917,13 +579,16 @@ SPMAN_HIDE_ALL_SPRITES:
 ; function SPMAN_HIDE_ALL_SPRITES
 	PUSH	IY
 	LD	HL,(SPR_HIDE)
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$1B00
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0004
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MSX_VWRITE
-_EXIT:
+_SPMAN_HIDE_ALL_SPRITES_EXIT:
 	POP	IY
 	RET
 
@@ -931,20 +596,14 @@ WAIT_VSYNC:
 ; function WAIT_VSYNC
 	PUSH	IY
 _L16:
-	LD	HL,(MEMW)
 	LD	HL,$FC9E
-; array load: t3 = t0[t2]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
-	LD	HL,(CNT)
 	PUSH	HL
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
 	POP	DE
 	EX	DE,HL
 	OR	A
@@ -952,165 +611,150 @@ _L16:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t5 == 0 goto _L17
 	LD	A,H
 	OR	L
 	JP	Z,_L17
 	JP	_L16
 _L17:
 	LD	HL,$0000
-	LD	HL,(MEMW)
 	LD	HL,$FC9E
-; array store: t7[t8] = t6
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
-_EXIT:
+_WAIT_VSYNC_EXIT:
 	POP	IY
 	RET
 
 MAIN:
 ; function MAIN
 	PUSH	IY
+	LD	BC,$0002
+	ADD	IY,BC
 	LD	HL,$000F
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$0009
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0006
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MSX_SET_COLOR
 	LD	HL,$0005
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	MSX_SCREEN
-	LD	HL,(SPRITE_LARGE)
-	PUSH	HL
+	LD	HL,$0002
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	SET_SPRITE_MODE
 	CALL	SPDRV2_INITIALIZE
 	LD	HL,$0000
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	SET_CLICK
 	LD	HL,(SPRPAT)
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$7800
-	PUSH	HL
-	LD	HL,$0020
-	LD	HL,$0003
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	CALL	MUL16
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
+	LD	HL,$0060
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	MSX_VWRITE
 	LD	HL,$0064
-	LD	HL,(SPATR)
-	LD	HL,$0000
-; array store: t18[t19] = t17
-	PUSH	HL
+	LD	HL,SPATR
+	LD	DE,$0000
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
 	LD	HL,$0032
-	LD	HL,(SPATR)
-	LD	HL,$0001
-; array store: t21[t22] = t20
-	PUSH	HL
-	POP	DE
-	LD	(HL),E
+	LD	HL,SPATR
 	INC	HL
-	LD	(HL),D
+	POP	DE
+	EX	DE,HL
+	LD	(HL),E
 	LD	HL,$0000
-	LD	HL,(SPATR)
+	LD	HL,SPATR
+	INC	HL
+	INC	HL
+	POP	DE
+	EX	DE,HL
+	LD	(HL),E
 	LD	HL,$0002
-; array store: t24[t25] = t23
-	PUSH	HL
+	LD	HL,SPATR
+	LD	DE,$0004
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-	LD	HL,$0002
-	LD	HL,(SPATR)
 	LD	HL,$0004
-; array store: t27[t28] = t26
-	PUSH	HL
+	LD	HL,SPATR
+	LD	DE,$0005
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
 	LD	HL,$0004
-	LD	HL,(SPATR)
-	LD	HL,$0005
-; array store: t30[t31] = t29
-	PUSH	HL
+	LD	HL,SPATR
+	LD	DE,$0006
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-	LD	HL,$0004
-	LD	HL,(SPATR)
-	LD	HL,$0006
-; array store: t33[t34] = t32
-	PUSH	HL
-	POP	DE
-	LD	(HL),E
-	INC	HL
-	LD	(HL),D
 	LD	HL,$0000
 	LD	(I),HL
 _L18:
 	LD	HL,$0003
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	LD	HL,(SPATR)
-	LD	HL,$0003
-; array store: t38[t39] = t37
-	PUSH	HL
+	LD	HL,SPATR
+	LD	DE,$0003
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-	LD	HL,(I)
-	PUSH	HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,(SPATR)
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	SPDRV2_SET
-	LD	HL,(I)
-	PUSH	HL
-	LD	HL,(I)
-	LD	HL,$001E
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$001E
 	CALL	MUL16
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0032
-	LD	HL,(I)
-	LD	HL,$0002
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$0002
 	CALL	MUL16
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	SPDRV2_MOVE
 _L19:
 	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(I),HL
 	LD	HL,$0002
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -1119,93 +763,84 @@ _L19:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t57 != 0 goto _L18
+; if t69 != 0 goto _L18
 	LD	A,H
 	OR	L
 	JP	NZ,_L18
 _L20:
 	LD	HL,$0008
-	LD	HL,(SPATR)
-	LD	HL,$0002
-; array store: t59[t60] = t58
-	PUSH	HL
-	POP	DE
-	LD	(HL),E
+	LD	HL,SPATR
 	INC	HL
-	LD	(HL),D
+	INC	HL
+	POP	DE
+	EX	DE,HL
+	LD	(HL),E
 	LD	HL,$0001
-	LD	HL,(SPATR)
-	LD	HL,$0004
-; array store: t62[t63] = t61
-	PUSH	HL
+	LD	HL,SPATR
+	LD	DE,$0004
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
 	LD	HL,$0003
 	LD	(I),HL
 _L21:
 	LD	HL,$0005
+	PUSH	HL
 	LD	HL,$0003
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	RND
-	LD	HL,$0001
 	PUSH	HL
+	LD	HL,$0001
 	POP	DE
 	EX	DE,HL
 	CALL	SHR16
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	LD	HL,(SPATR)
-	LD	HL,$0003
-; array store: t71[t72] = t70
-	PUSH	HL
+	LD	HL,SPATR
+	LD	DE,$0003
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-	LD	HL,(I)
-	PUSH	HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,(SPATR)
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	SPDRV2_SET
-	LD	HL,(I)
-	PUSH	HL
-	LD	HL,(I)
-	LD	HL,$001E
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$001E
 	CALL	MUL16
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	LD	HL,$0032
-	LD	HL,(I)
-	LD	HL,$0002
 	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
+	LD	DE,$0002
 	CALL	MUL16
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	PUSH	HL
+	LD	(IY+$74),L
+	LD	(IY+$75),H
 	CALL	SPDRV2_MOVE
 _L22:
 	LD	HL,(I)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(I),HL
 	LD	HL,$0005
-	PUSH	HL
 	POP	DE
-	EX	DE,HL
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -1214,7 +849,7 @@ _L22:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t90 != 0 goto _L21
+; if t108 != 0 goto _L21
 	LD	A,H
 	OR	L
 	JP	NZ,_L21
@@ -1224,197 +859,338 @@ _L23:
 	LD	HL,$0032
 	LD	(Y),HL
 	LD	HL,$0000
-	LD	HL,(SPATR)
-	LD	HL,$0002
-; array store: t94[t95] = t93
-	PUSH	HL
-	POP	DE
-	LD	(HL),E
+	LD	HL,SPATR
 	INC	HL
-	LD	(HL),D
-	LD	HL,$0002
-	LD	HL,(SPATR)
-	LD	HL,$0004
-; array store: t97[t98] = t96
-	PUSH	HL
-	POP	DE
-	LD	(HL),E
 	INC	HL
-	LD	(HL),D
-_L24:
-	LD	HL,$0000
-	PUSH	HL
-	CALL	STICK2
-	LD	HL,$0001
-	PUSH	HL
-	CALL	STICK2
-	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	LD	A,H
-	OR	D
+	LD	(HL),E
+	LD	HL,$0002
+	LD	HL,SPATR
+	LD	DE,$0004
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
+	LD	(HL),E
+_L24:
+	LD	HL,$0000
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	CALL	STICK2
+	PUSH	HL
+	LD	HL,$0001
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	CALL	STICK2
+	POP	DE
+	LD	A,D
+	OR	H
 	LD	H,A
-	LD	A,L
-	OR	E
+	LD	A,E
+	OR	L
 	LD	L,A
 	LD	(S),HL
 	LD	HL,(S)
-	LD	HL,$0008
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0008
 	LD	A,H
 	AND	D
 	LD	H,A
 	LD	A,L
 	AND	E
 	LD	L,A
-; if t106 == 0 goto _L27
+; if t128 == 0 goto _L27
 	LD	A,H
 	OR	L
 	JP	Z,_L27
 	LD	HL,(X)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	OR	A
-	SBC	HL,DE
+	DEC	HL
 	LD	(X),HL
 	JP	_L26
 _L27:
 	LD	HL,(S)
-	LD	HL,$0002
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0002
 	LD	A,H
 	AND	D
 	LD	H,A
 	LD	A,L
 	AND	E
 	LD	L,A
-; if t112 == 0 goto _L26
+; if t134 == 0 goto _L26
 	LD	A,H
 	OR	L
 	JP	Z,_L26
 	LD	HL,(X)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(X),HL
 _L26:
 	LD	HL,(S)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0001
 	LD	A,H
 	AND	D
 	LD	H,A
 	LD	A,L
 	AND	E
 	LD	L,A
-; if t118 == 0 goto _L29
+; if t140 == 0 goto _L29
 	LD	A,H
 	OR	L
 	JP	Z,_L29
 	LD	HL,(Y)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	OR	A
-	SBC	HL,DE
+	DEC	HL
 	LD	(Y),HL
 	JP	_L28
 _L29:
 	LD	HL,(S)
-	LD	HL,$0004
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+	LD	DE,$0004
 	LD	A,H
 	AND	D
 	LD	H,A
 	LD	A,L
 	AND	E
 	LD	L,A
-; if t124 == 0 goto _L28
+; if t146 == 0 goto _L28
 	LD	A,H
 	OR	L
 	JP	Z,_L28
 	LD	HL,(Y)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(Y),HL
 _L28:
 	LD	HL,(ANIM)
-	LD	HL,$0001
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,DE
+	INC	HL
 	LD	(ANIM),HL
 	LD	HL,(Y)
-	LD	HL,(SPATR)
-	LD	HL,$0000
-; array store: t132[t133] = t131
-	PUSH	HL
-	POP	DE
-	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-	LD	HL,(X)
-	LD	HL,(SPATR)
-	LD	HL,$0001
-; array store: t135[t136] = t134
-	PUSH	HL
-	POP	DE
-	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-	LD	HL,(ANIM)
-	LD	HL,$0004
-	PUSH	HL
+	LD	HL,SPATR
+	LD	DE,$0000
+	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
+	LD	(HL),E
+	LD	HL,(X)
+	LD	HL,SPATR
+	INC	HL
+	POP	DE
+	EX	DE,HL
+	LD	(HL),E
+	LD	HL,(ANIM)
+	LD	DE,$0004
 	CALL	SHR16
 	LD	HL,$0003
-	PUSH	HL
+	POP	DE
+	LD	A,D
+	AND	H
+	LD	H,A
+	LD	A,E
+	AND	L
+	LD	L,A
+	LD	HL,SPATR
+	LD	DE,$0003
+	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
-	LD	A,H
-	AND	D
-	LD	H,A
-	LD	A,L
-	AND	E
-	LD	L,A
-	LD	HL,(SPATR)
-	LD	HL,$0003
-; array store: t142[t143] = t141
-	PUSH	HL
-	POP	DE
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
 	LD	HL,$0006
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,(SPATR)
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	SPDRV2_SET
 	CALL	SPDRV2_UPDATE
 	LD	HL,$0002
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	WAIT_VSYNC
 	CALL	SPDRV2_FLIP
 	JP	_L24
 _L25:
-_EXIT:
+_MAIN_EXIT:
 	POP	IY
 	RET
+
+
+; === Global Variables (Work Area) ===
+_SPR_POINT:
+	DS	2
+_SP_LAST_SPRITE:
+	DS	2
+_SP_LAST_FIXED_SPRITE:
+	DS	2
+_SP_IDX:
+	DS	2
+_SP_FIXED:
+	DS	1
+_SP_BUFFER:
+	DS	1
+_SP_PAT_MAP:
+	DS	1
+_SP_LAST_PAT:
+	DS	1
+_SPATR:
+	DS	1
+_ANIM:
+	DS	2
+_X:
+	DS	2
+_Y:
+	DS	2
+_S:
+	DS	2
+
+; === Runtime Functions ===
+MEMSET:
+; hl = addr, de = value, bc = count
+push bc
+push de
+ld e,l
+ld d,h
+inc de
+; value to (addr)
+pop bc
+ld (hl),c
+; pop count
+pop bc
+dec bc
+ldir
+ret
+
+MEMCPY:
+; hl = dst, de = source, bc = size
+ex de,hl
+ldir
+ret
+
+MULHLDE:
+LD A, L
+SUB E
+LD A, H
+SBC A, D
+JR NC, .mul1
+EX DE, HL
+.mul1
+LD B, H
+LD C, L
+LD HL, 0000
+LD A, D
+OR A
+JR Z, .mul2
+.mul4
+RRA
+RR E
+JR NC, .mul3
+ADD HL, BC
+.mul3
+SLA C
+RL B
+OR A
+JR NZ, .mul4
+.mul2
+LD A, E
+.mul6
+RRA
+JR NC, .mul5
+ADD HL, BC
+.mul5
+SLA C
+RL B
+OR A
+JR NZ, .mul6
+RET
+
+DIVHLDE8:
+INC E
+DEC E
+JR NZ, .div81
+EX DE, HL
+LD HL, 0000
+RET
+.div81
+XOR A
+LD B, $10
+.div84
+ADD HL, HL
+ADC A, A
+JR C, .div82
+CP E
+JR C, .div83
+.div82
+SUB E
+INC L
+.div83
+DJNZ .div84
+LD E, A
+RET
+
+DIVHLDE:
+LD A, L
+SUB E
+LD A, H
+SBC A, D
+JR NC, .div1
+EX DE, HL
+LD HL, 0000
+RET
+.div1
+INC D
+DEC D
+JR Z, DIVHLDE8
+LD C, L
+LD L, H
+XOR A
+LD H, A
+LD B, 08
+.div3
+ADD A, A
+SLA C
+ADC HL, HL
+SBC HL, DE
+JR NC, .div2
+ADD HL, DE
+DEC A
+.div2
+INC A
+DJNZ .div3
+EX DE, HL
+LD H, B
+LD L, A
+RET
+
+MODHLDE:
+CALL DIVHLDE
+EX DE,HL
+RET
+
+RND:
+PUSH HL
+LD HL,(RND_SEED1)
+LD B,H
+LD C,L
+ADD HL,HL
+ADD HL,HL
+INC L
+ADD HL,BC
+LD (RND_SEED1),HL
+LD HL,(RND_SEED2)
+ADD HL,HL
+SBC A,A
+AND %00101101
+XOR L
+LD L,A
+LD (RND_SEED2),HL
+ADD HL,BC
+POP DE
+LD A,D
+OR E
+JR NZ,.RND1
+EX DE,HL
+RET
+.RND1
+JP MODHLDE
+RET
+
+
+; === IY Work Area (256 bytes) ===
+__IYWORK:
+	DS	256
+
+SLANG_PROG_END:
