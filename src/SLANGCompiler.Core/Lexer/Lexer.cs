@@ -177,9 +177,17 @@ public class Lexer
         if (c == '#')
             return ReadPreprocessor(start);
 
-        // Numbers
+        // Numbers (including .51 style floats, which can appear after dot-operator boundary cases)
         if (char.IsDigit(c) || (c == '$' && _pos + 1 < _source.Length && IsHexDigit(Peek(1))))
             return ReadNumber(start);
+
+        // .数字 → 数値リテラルとして読む (0を補完: .51 → 0.51 → 整数51として扱う)
+        // これは .>=-.51 のような記述で .>=.(閉じドット省略) + - + .51 となった場合の救済
+        if (c == '.' && _pos + 1 < _source.Length && char.IsDigit(Peek(1)))
+        {
+            Advance(); // skip '.'
+            return ReadNumber(start);
+        }
 
         // String literals
         if (c == '"')
@@ -190,7 +198,8 @@ public class Lexer
             return ReadChar(start);
 
         // Dot operators (.op.)
-        if (c == '.' && _pos + 1 < _source.Length)
+        // ただし .数字 (例: .51) は数値リテラルの一部なのでスキップ
+        if (c == '.' && _pos + 1 < _source.Length && !char.IsDigit(Peek(1)))
             return ReadDotOperator(start) ?? ReadOperator(start);
 
         // Identifiers and keywords
@@ -405,37 +414,68 @@ public class Lexer
         text = null;
         kind = TokenKind.Error;
 
-        // Try to match known .op. patterns by looking ahead
-        int startPos = _pos;
+        // .op. 演算子のマッチング
+        // 正規形: .>=. (開きドット + 演算子 + 閉じドット)
+        // 許容形: .>=- (閉じドットが省略され、次のトークンに直結)
+        //
+        // 閉じドットの省略を許容する理由:
+        //   VAL.>=-.51 のような記述で .>=. の閉じの . と
+        //   -51 の間にスペースがない場合でも正しく認識するため。
 
-        // Known patterns: .*. ./. .MOD. .<<. .>>. .<. .>. .<=. .>=.
-        // Match by trying each pattern
-        var patterns = new (string Pat, TokenKind Kind)[]
+        // 演算子パターン（開きドット無し、内側部分のみ。長いものから試す）
+        var patterns = new (string Inner, string Full, TokenKind Kind)[]
         {
-            (".>=.", TokenKind.SignedGe),
-            (".<=.", TokenKind.SignedLe),
-            (".>>.", TokenKind.SignedShr),
-            (".<<.", TokenKind.SignedShl),
-            (".>.", TokenKind.SignedGt),
-            (".<.", TokenKind.SignedLt),
-            (".MOD.", TokenKind.SignedMod),
-            (".*.", TokenKind.SignedMul),
-            ("./.", TokenKind.SignedDiv),
+            (">=", ".>=.", TokenKind.SignedGe),
+            ("<=", ".<=.", TokenKind.SignedLe),
+            (">>", ".>>.", TokenKind.SignedShr),
+            ("<<", ".<<.", TokenKind.SignedShl),
+            (">",  ".>.",  TokenKind.SignedGt),
+            ("<",  ".<.",  TokenKind.SignedLt),
+            ("MOD",".MOD.",TokenKind.SignedMod),
+            ("*",  ".*.",  TokenKind.SignedMul),
+            ("/",  "./.",  TokenKind.SignedDiv),
         };
 
-        foreach (var (pat, k) in patterns)
+        // 先頭が . であることを確認
+        if (Peek() != '.') return false;
+
+        foreach (var (inner, full, k) in patterns)
         {
-            if (_pos + pat.Length <= _source.Length)
+            int innerLen = inner.Length;
+            int fullLen = 1 + innerLen; // 開きドット + inner
+
+            // 開きドット + 内側演算子がマッチするか確認
+            if (_pos + fullLen > _source.Length) continue;
+
+            var innerSlice = _source.Substring(_pos + 1, innerLen);
+            if (!innerSlice.Equals(inner, StringComparison.OrdinalIgnoreCase)) continue;
+
+            // 閉じドットの処理
+            //
+            // SLANGの .op. 演算子は開きドット+演算子+閉じドットの3部構成だが、
+            // 閉じドットの直後に演算子や数値が密着する場合がある。
+            //   正規形:   VAL .>=. -51   (スペースで分離)
+            //   密着形:   VAL.>=-.51     (閉じドットなし、-が直後)
+            //   密着形2:  VAL.>=.51      (閉じドットの後に数値が密着)
+            //
+            // 方針: 閉じドットは「あれば消費、なくてもOK」とする。
+            // これにより .>=- は .>=. と同等に扱われ、残りの -51 が正しくトークン化される。
+            int consumeLen;
+            if (_pos + fullLen < _source.Length && _source[_pos + fullLen] == '.')
             {
-                var slice = _source.Substring(_pos, pat.Length);
-                if (slice.Equals(pat, StringComparison.OrdinalIgnoreCase))
-                {
-                    text = slice;
-                    kind = k;
-                    for (int i = 0; i < pat.Length; i++) Advance();
-                    return true;
-                }
+                // 閉じドットあり → 消費する
+                consumeLen = fullLen + 1;
             }
+            else
+            {
+                // 閉じドットなし → 内側部分だけで .op. として認識
+                consumeLen = fullLen;
+            }
+
+            text = full; // 常に正規形のテキストを返す
+            kind = k;
+            for (int i = 0; i < consumeLen; i++) Advance();
+            return true;
         }
 
         return false;
