@@ -124,6 +124,39 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (node.Address is IntegerLiteral addrLit)
                 fixedAddr = (int)addrLit.Value;
 
+            // 初期値付き配列: CODEリストの定数値をバイト列に変換
+            List<byte>? initData = null;
+            if (node.InitialCode != null)
+            {
+                initData = new List<byte>();
+                foreach (var expr in node.InitialCode)
+                {
+                    if (expr is IntegerLiteral ilit)
+                    {
+                        if (elemSize == 1)
+                            initData.Add((byte)(ilit.Value & 0xFF));
+                        else
+                        {
+                            initData.Add((byte)(ilit.Value & 0xFF));
+                            initData.Add((byte)((ilit.Value >> 8) & 0xFF));
+                        }
+                    }
+                    else if (expr is StringLiteral slit)
+                    {
+                        foreach (var ch in slit.Value)
+                            initData.Add((byte)ch);
+                    }
+                    else
+                    {
+                        // 非定数式: プレースホルダ
+                        for (int j = 0; j < elemSize; j++) initData.Add(0);
+                    }
+                }
+                // totalSizeに満たない場合は0で埋める
+                while (initData.Count < totalSize)
+                    initData.Add(0);
+            }
+
             _module.GlobalVars.Add(new GlobalVarInfo
             {
                 Name = node.Name,
@@ -131,9 +164,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 ByteSize = totalSize,
                 FixedAddress = fixedAddr,
                 IsArray = true,
+                InitialData = initData,
             });
-
-            // 初期値付き配列: TODO - 初期値データをInitialDataに設定
         }
         return IrOperand.None;
     }
@@ -855,22 +887,22 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitOrgDirective(OrgDirective node)
     {
-        var val = node.Value.Accept(this);
-        Emit(IrOp.Comment, IrOperand.Asm($"ORG {val}"));
+        if (node.Value is IntegerLiteral lit)
+            _module.OrgAddress = (int)lit.Value;
         return IrOperand.None;
     }
 
     public IrOperand VisitWorkDirective(WorkDirective node)
     {
-        var val = node.Value.Accept(this);
-        Emit(IrOp.Comment, IrOperand.Asm($"WORK {val}"));
+        if (node.Value is IntegerLiteral lit)
+            _module.WorkAddress = (int)lit.Value;
         return IrOperand.None;
     }
 
     public IrOperand VisitOffsetDirective(OffsetDirective node)
     {
-        var val = node.Value.Accept(this);
-        Emit(IrOp.Comment, IrOperand.Asm($"OFFSET {val}"));
+        if (node.Value is IntegerLiteral lit)
+            _module.OffsetAddress = (int)lit.Value;
         return IrOperand.None;
     }
 

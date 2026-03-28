@@ -28,12 +28,19 @@ public class CodeGenerator
 
     public string Generate()
     {
-        // Global data
-        foreach (var inst in _module.GlobalData)
+        // ORG宣言
+        if (_module.OrgAddress.HasValue)
         {
-            EmitGlobalData(inst);
+            _e.Instruction("ORG", $"${_module.OrgAddress.Value:X4}");
+            _e.Blank();
         }
 
+        // エントリポイント: IYワーク設定 → MAIN呼び出し → STOP
+        _e.Comment("=== Entry Point ===");
+        _e.Instruction("LD", "IY,__IYWORK");
+        _e.Instruction("CALL", "MAIN");
+        // STOP相当(S-OS: JP 0 or RET depending on environment)
+        _e.Instruction("RET");
         _e.Blank();
 
         // Functions
@@ -85,6 +92,23 @@ public class CodeGenerator
                 }
             }
         }
+
+        // WORK宣言がある場合
+        if (_module.WorkAddress.HasValue)
+        {
+            _e.Blank();
+            _e.Comment($"=== WORK at ${_module.WorkAddress.Value:X4} ===");
+        }
+
+        // IYワーク領域 (256バイト)
+        _e.Blank();
+        _e.Comment("=== IY Work Area (256 bytes) ===");
+        _e.Label("__IYWORK");
+        _e.Raw("\tDS\t256");
+
+        // プログラム末尾マーカー
+        _e.Blank();
+        _e.Label("SLANG_PROG_END");
 
         return _e.ToAssembly();
     }
@@ -202,6 +226,8 @@ public class CodeGenerator
             case IrOp.MemStore: EmitMemStore(inst); break;
             case IrOp.IndirLoad: EmitIndirLoad(inst); break;
             case IrOp.IndirStore: EmitIndirStore(inst); break;
+            case IrOp.PortIn: EmitPortIn(inst); break;
+            case IrOp.PortOut: EmitPortOut(inst); break;
 
             case IrOp.Label:
                 _e.Label(inst.Dest.Name ?? "");
@@ -724,6 +750,48 @@ public class CodeGenerator
             _e.Instruction("LD", "(HL),E");
             _e.Instruction("INC", "HL");
             _e.Instruction("LD", "(HL),D");
+        }
+    }
+
+    // ==== PORT I/O ====
+
+    private void EmitPortIn(IrInstruction inst)
+    {
+        // HL = port address → read from port
+        bool isByte = inst.DataSize == 1;
+        _e.Instruction("LD", "B,H");
+        _e.Instruction("LD", "C,L");
+        if (isByte)
+        {
+            _e.Instruction("IN", "L,(C)");
+            _e.Instruction("LD", "H,$00");
+        }
+        else
+        {
+            _e.Instruction("IN", "L,(C)");
+            _e.Instruction("INC", "BC");
+            _e.Instruction("IN", "H,(C)");
+        }
+    }
+
+    private void EmitPortOut(IrInstruction inst)
+    {
+        // HL = port address, DE = value
+        bool isByte = inst.DataSize == 1;
+        _e.Instruction("POP", "DE"); // value
+        _e.Instruction("EX", "DE,HL");
+        _e.Instruction("LD", "B,H");
+        _e.Instruction("LD", "C,L");
+        _e.Instruction("EX", "DE,HL");
+        if (isByte)
+        {
+            _e.Instruction("OUT", "(C),L");
+        }
+        else
+        {
+            _e.Instruction("OUT", "(C),L");
+            _e.Instruction("INC", "BC");
+            _e.Instruction("OUT", "(C),H");
         }
     }
 

@@ -205,8 +205,11 @@ public class IrModule
 {
     public List<IrFunction> Functions { get; } = new();
     public List<IrInstruction> GlobalData { get; } = new();
-    public Dictionary<string, string> StringTable { get; } = new(); // label → string content
-    public List<GlobalVarInfo> GlobalVars { get; } = new(); // グローバル変数一覧
+    public Dictionary<string, string> StringTable { get; } = new();
+    public List<GlobalVarInfo> GlobalVars { get; } = new();
+    public int? OrgAddress { get; set; }
+    public int? WorkAddress { get; set; }
+    public int? OffsetAddress { get; set; }
 
     public override string ToString()
     {
