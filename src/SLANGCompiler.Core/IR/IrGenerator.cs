@@ -631,6 +631,19 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitBinaryExpr(BinaryExpr node)
     {
+        // 定数畳み込み: 両辺が定数ならコンパイル時に計算
+        if (_globalSymbols != null)
+        {
+            var constEval = new ConstEvaluator(_globalSymbols);
+            var constResult = constEval.Evaluate(node);
+            if (constResult.HasValue)
+            {
+                var t = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.LoadConst, t, IrOperand.Imm(constResult.Value));
+                return t;
+            }
+        }
+
         var left = node.Left.Accept(this);
         var right = node.Right.Accept(this);
         var dest = IrOperand.Temp(AllocTemp());

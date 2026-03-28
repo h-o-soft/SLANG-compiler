@@ -297,6 +297,26 @@ public class CodeGenerator
                     continue;
                 }
 
+                // INC/DEC最適化: x+1 → INC HL, x-1 → DEC HL
+                if ((inst.Op == IrOp.Add || inst.Op == IrOp.Sub)
+                    && s2.Op == IrOp.LoadConst && s2.Src1.Kind == IrOperandKind.Immediate)
+                {
+                    int constVal = (int)(s2.Src1.ImmediateValue & 0xFFFF);
+                    if (constVal == 1)
+                    {
+                        EmitInstruction(s1); // src1 → HL
+                        _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
+                        continue;
+                    }
+                    if (constVal == 2)
+                    {
+                        EmitInstruction(s1);
+                        _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
+                        _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
+                        continue;
+                    }
+                }
+
                 // 通常の直接ロード最適化
                 EmitInstruction(s1);
                 EmitLoadToDE(s2);
