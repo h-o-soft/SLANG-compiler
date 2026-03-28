@@ -2762,11 +2762,6 @@ STRCMP:
 	LD	(IY+$6C),L
 	LD	(IY+$6D),H
 _L139:
-	LD	HL,$0001
-; if t2 == 0 goto _L140
-	LD	A,H
-	OR	L
-	JP	Z,_L140
 	LD	L,(IY+$6E)
 	LD	H,(IY+$6F)
 	LD	L,(HL)

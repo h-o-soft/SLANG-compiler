@@ -283,9 +283,21 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
         PushLoop(startLabel, endLabel);
 
+        // 定数TRUE条件: 条件チェック省略（無限ループ = LOOP相当）
+        var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+        var constCond = constEval?.Evaluate(node.Condition);
+
         Emit(IrOp.Label, IrOperand.Lbl(startLabel));
-        var condVal = node.Condition.Accept(this);
-        Emit(IrOp.JumpIfZero, IrOperand.Lbl(endLabel), condVal);
+
+        if (constCond.HasValue && constCond.Value != 0)
+        {
+            // WHILE(TRUE) or WHILE(非ゼロ定数): 条件チェック不要
+        }
+        else
+        {
+            var condVal = node.Condition.Accept(this);
+            Emit(IrOp.JumpIfZero, IrOperand.Lbl(endLabel), condVal);
+        }
 
         node.Body.Accept(this);
         Emit(IrOp.Jump, IrOperand.Lbl(startLabel));
