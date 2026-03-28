@@ -1,0 +1,279 @@
+; ARRAY NT[SLANGCompiler.Parser.Ast.IntegerLiteral]
+
+MAIN:
+; function MAIN
+	PUSH	IY
+	LD	HL,$0000
+	LD	(I),HL
+_L0:
+	LD	HL,$0000
+	LD	HL,(NT)
+	LD	HL,(I)
+; array store: t2[t3] = t1
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+_L1:
+	LD	HL,(I)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(I),HL
+	LD	HL,$2710
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t8 != 0 goto _L0
+	LD	A,H
+	OR	L
+	JP	NZ,_L0
+_L2:
+	LD	HL,$0002
+	LD	(I),HL
+_L3:
+	LD	HL,$0001
+	LD	HL,(NT)
+	LD	HL,(I)
+	LD	HL,$0002
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+; array store: t11[t14] = t10
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+_L4:
+	LD	HL,(I)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(I),HL
+	LD	HL,$2710
+	LD	HL,$0002
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	DIV16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t21 != 0 goto _L3
+	LD	A,H
+	OR	L
+	JP	NZ,_L3
+_L5:
+	LD	HL,$0003
+	LD	(P),HL
+_L6:
+	LD	HL,(P)
+	LD	HL,(P)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	LD	HL,$2710
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t27 == 0 goto _L7
+	LD	A,H
+	OR	L
+	JP	Z,_L7
+	LD	HL,(P)
+	LD	(I),HL
+_L8:
+	LD	HL,$0001
+	LD	HL,(NT)
+	LD	HL,(I)
+	LD	HL,(P)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+; array store: t30[t33] = t29
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,(I)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(I),HL
+_L9:
+	LD	HL,(I)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(I),HL
+	LD	HL,$2710
+	LD	HL,(P)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	DIV16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t43 != 0 goto _L8
+	LD	A,H
+	OR	L
+	JP	NZ,_L8
+_L10:
+	LD	HL,(P)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(P),HL
+_L11:
+	LD	HL,(NT)
+	LD	HL,(P)
+; array load: t50 = t47[t49]
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	Z,$+3
+	INC	HL
+; if t52 == 0 goto _L12
+	LD	A,H
+	OR	L
+	JP	Z,_L12
+	LD	HL,(P)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(P),HL
+	JP	_L11
+_L12:
+	JP	_L6
+_L7:
+	LD	HL,$0002
+	LD	(I),HL
+_L13:
+	LD	HL,(NT)
+	LD	HL,(I)
+; array load: t60 = t57[t59]
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	LD	HL,$0000
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	Z,$+3
+	INC	HL
+; if t62 == 0 goto _L16
+	LD	A,H
+	OR	L
+	JP	Z,_L16
+	LD	HL,(I)
+	CALL	__print_num
+; load string " "
+	LD	HL,0 ; string placeholder
+	CALL	__print_str
+_L16:
+_L14:
+	LD	HL,(I)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(I),HL
+	LD	HL,$2710
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t69 != 0 goto _L13
+	LD	A,H
+	OR	L
+	JP	NZ,_L13
+_L15:
+_EXIT:
+	POP	IY
+	RET

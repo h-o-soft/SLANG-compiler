@@ -1,0 +1,89 @@
+; global: LoadConst t0 #256
+; ORG t0
+
+main:
+; function main
+	PUSH	IY
+	LD	HL,$0000
+	PUSH	HL
+	LD	HL,$0081
+	PUSH	HL
+	LD	HL,$0000
+	PUSH	HL
+	CALL	fopen
+	LD	HL,$0000
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	NZ,$+3
+	INC	HL
+; if t5 == 0 goto _L0
+	LD	A,H
+	OR	L
+	JP	Z,_L0
+	JP	_EXIT
+_L0:
+_L1:
+	LD	HL,$0001
+; if t6 == 0 goto _L2
+	LD	A,H
+	OR	L
+	JP	Z,_L2
+	LD	HL,$0000
+	PUSH	HL
+	CALL	fgetc
+	LD	(c),HL
+	LD	HL,(c)
+	LD	HL,$00FF
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	HL,(c)
+	LD	HL,$001A
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	Z,$+3
+	INC	HL
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	LD	A,H
+	OR	D
+	LD	H,A
+	LD	A,L
+	OR	E
+	LD	L,A
+; if t15 == 0 goto _L3
+	LD	A,H
+	OR	L
+	JP	Z,_L3
+	JP	_L2
+_L3:
+	LD	HL,(c)
+	LD	(^DE),HL
+	LD	HL,$0002
+	LD	(^BC),HL
+	LD	HL,$0005
+	PUSH	HL
+	CALL	CALL
+	JP	_L1
+_L2:
+	LD	HL,$0000
+	PUSH	HL
+	CALL	fclose
+_EXIT:
+	POP	IY
+	RET

@@ -90,7 +90,14 @@ class Program
             }
 
             // Phase 3: Semantic Analysis
-            // TODO: name resolution, type checking
+            var analyzer = new Semantics.SemanticAnalyzer(diagnostics);
+            analyzer.Analyze(ast);
+
+            if (diagnostics.HasErrors)
+            {
+                diagnostics.WriteTo(Console.Error);
+                return 1;
+            }
 
             // Phase 4: IR Generation
             var irGen = new IrGenerator(diagnostics);

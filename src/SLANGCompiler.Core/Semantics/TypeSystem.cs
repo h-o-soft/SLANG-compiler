@@ -35,7 +35,7 @@ public record PrimitiveType(PrimitiveKind Kind) : SlangType
     {
         PrimitiveKind.Byte => 1,
         PrimitiveKind.Word => 2,
-        PrimitiveKind.Float => 4,   // TODO: 実際のサイズを確認
+        PrimitiveKind.Float => 3,   // 24ビット浮動小数点(元実装: f24)
         PrimitiveKind.Void => 0,
         _ => 0,
     };
