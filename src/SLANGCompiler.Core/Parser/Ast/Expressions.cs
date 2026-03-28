@@ -257,6 +257,28 @@ public class CodeExpr : Expression
     public override T Accept<T>(IAstVisitor<T> visitor) => visitor.VisitCodeExpr(this);
 }
 
+/// <summary>
+/// CODEリスト内の [式] 項目 — 式を評価してHLに代入するコードを埋め込む
+/// </summary>
+public class CodeEvalExpr : Expression
+{
+    public Expression Inner { get; }
+    public CodeEvalExpr(Expression inner, SourceSpan span) : base(span) { Inner = inner; }
+    // CodeExpr.ValuesリストのONLY子要素として使用。単独でのAcceptはInnerを委譲。
+    public override T Accept<T>(IAstVisitor<T> visitor) => Inner.Accept(visitor);
+}
+
+/// <summary>
+/// CODEリスト内の &lt;ラベル名&gt; 項目 — ラベルアドレスを2バイトで埋め込む
+/// </summary>
+public class CodeLabelRef : Expression
+{
+    public string Label { get; }
+    public CodeLabelRef(string label, SourceSpan span) : base(span) { Label = label; }
+    // CodeExpr.ValuesリストのONLY子要素として使用。単独AcceptはIdentifierとして扱う。
+    public override T Accept<T>(IAstVisitor<T> visitor) => visitor.VisitIdentifier(new IdentifierExpr(Label, Span));
+}
+
 // -- Type cast (% prefix) --
 
 public class CastExpr : Expression

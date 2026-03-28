@@ -830,6 +830,23 @@ public class CodeGenerator
                 _e.Comment(inst.Dest.Name ?? "");
                 break;
 
+            case IrOp.DefByte:
+                _e.Raw($"\tDB\t${inst.Dest.ImmediateValue & 0xFF:X2}");
+                break;
+            case IrOp.DefWord:
+                if (inst.Dest.Kind == IrOperandKind.Label)
+                    _e.Raw($"\tDW\t{inst.Dest.Name}");
+                else
+                    _e.Raw($"\tDW\t${inst.Dest.ImmediateValue & 0xFFFF:X4}");
+                break;
+            case IrOp.DefString:
+                if (inst.Dest.Name != null)
+                {
+                    var bytes = inst.Dest.Name.Select(ch => $"${(int)ch:X2}");
+                    _e.Raw($"\tDB\t{string.Join(",", bytes)}");
+                }
+                break;
+
             case IrOp.Nop:
                 break;
 

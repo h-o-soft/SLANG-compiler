@@ -1001,10 +1001,55 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitCodeExpr(CodeExpr node)
     {
-        // CODE(values...) - emit as data bytes
-        var dest = IrOperand.Temp(AllocTemp());
+        // CODE関数: データを直接オブジェクトに埋め込む。
+        // 式中で使用した場合、実行後のHLの値が関数の値。
         foreach (var v in node.Values)
-            v.Accept(this);
+        {
+            if (v is StringLiteral str)
+            {
+                // "文字列" → そのままバイト列（$00なし）
+                Emit(IrOp.DefString, IrOperand.Asm(str.Value));
+            }
+            else if (v is CodeEvalExpr eval)
+            {
+                // [式] → 式を評価してHLに代入するコードを埋め込み
+                eval.Inner.Accept(this);
+            }
+            else if (v is CodeLabelRef labelRef)
+            {
+                // <ラベル> → ラベルアドレスを2バイトで埋め込み
+                Emit(IrOp.DefWord, IrOperand.Lbl(labelRef.Label));
+            }
+            else if (v is CastExpr cast)
+            {
+                // 型,定数式 → BYTE: 1バイト, WORD: 2バイト
+                var constVal = _globalSymbols != null ? new ConstEvaluator(_globalSymbols).Evaluate(cast.Operand) : null;
+                if (constVal.HasValue)
+                {
+                    if (cast.TargetSize == DataSize.Byte)
+                        Emit(IrOp.DefByte, IrOperand.Imm(constVal.Value & 0xFF));
+                    else
+                        Emit(IrOp.DefWord, IrOperand.Imm(constVal.Value & 0xFFFF));
+                }
+                else
+                {
+                    cast.Operand.Accept(this); // 非定数→実行時コード
+                }
+            }
+            else if (v is IntegerLiteral ilit)
+            {
+                // 定数(型指定なし) → デフォルト1バイト
+                Emit(IrOp.DefByte, IrOperand.Imm(ilit.Value & 0xFF));
+            }
+            else
+            {
+                // その他の式 → 実行時コード
+                v.Accept(this);
+            }
+        }
+
+        // CODE関数の値 = 実行後のHLの値
+        var dest = IrOperand.Temp(AllocTemp());
         return dest;
     }
 

@@ -1035,8 +1035,54 @@ public class Parser
     private List<Expression> ParseCodeExprList()
     {
         var list = new List<Expression>();
-        do { list.Add(ParseNcExpr()); } while (Match(TokenKind.Comma));
+        do { list.Add(ParseCodeItem()); } while (Match(TokenKind.Comma));
         return list;
+    }
+
+    /// <summary>
+    /// CODEリスト項目: 定数式 | "文字列" | [式] | &lt;ラベル&gt; | 型,定数式
+    /// </summary>
+    private Expression ParseCodeItem()
+    {
+        var s = Current.Span;
+
+        // [式] → 式を評価してHLに代入するコード
+        if (Check(TokenKind.LBracket))
+        {
+            Advance();
+            var expr = ParseNcExpr();
+            Expect(TokenKind.RBracket, "Expected ']'");
+            return new CodeEvalExpr(expr, s);
+        }
+
+        // <ラベル名> → ラベルアドレスを2バイト
+        if (Check(TokenKind.Lt))
+        {
+            Advance();
+            var label = Expect(TokenKind.Identifier, "Expected label name").StringValue;
+            Expect(TokenKind.Gt, "Expected '>'");
+            return new CodeLabelRef(label, s);
+        }
+
+        // BYTE/WORD型指定: BYTE,expr or WORD,expr or !,expr or %,expr
+        if (CheckAny(TokenKind.Byte, TokenKind.Exclamation))
+        {
+            Advance();
+            Match(TokenKind.Comma);
+            var expr = ParseNcExpr();
+            // BYTE→1バイト。CastExprで表現
+            return new CastExpr(DataSize.Byte, expr, s);
+        }
+        if (Check(TokenKind.Word))
+        {
+            Advance();
+            Match(TokenKind.Comma);
+            var expr = ParseNcExpr();
+            return new CastExpr(DataSize.Word, expr, s);
+        }
+
+        // 文字列/定数式
+        return ParseNcExpr();
     }
 
     private List<Expression> ParseCodeBlock()
