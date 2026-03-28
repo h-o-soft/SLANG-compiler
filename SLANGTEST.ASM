@@ -23,8 +23,7 @@ MAIN:
 ; ARRAY LARB[SLANGCompiler.Parser.Ast.IntegerLiteral,SLANGCompiler.Parser.Ast.IntegerLiteral]
 	LD	HL,$0001
 	LD	(TNUM),HL
-; load string "CONST TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S0
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -44,8 +43,7 @@ MAIN:
 	JP	Z,_L1
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S1
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -53,8 +51,7 @@ MAIN:
 _L1:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S2
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -66,8 +63,7 @@ _L0:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "VAR TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S3
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -89,8 +85,7 @@ _L0:
 	JP	Z,_L3
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S4
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -98,8 +93,7 @@ _L0:
 _L3:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S5
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -129,8 +123,7 @@ _L2:
 	JP	Z,_L5
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S6
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -138,8 +131,7 @@ _L2:
 _L5:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S7
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -151,8 +143,7 @@ _L4:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "INDIRECT VAR TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S8
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -185,8 +176,7 @@ _L4:
 	JP	Z,_L7
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S9
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -194,8 +184,7 @@ _L4:
 _L7:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S10
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -232,8 +221,7 @@ _L6:
 	JP	Z,_L9
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S11
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -241,8 +229,7 @@ _L6:
 _L9:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S12
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -283,8 +270,7 @@ _L8:
 	JP	Z,_L11
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S13
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -292,8 +278,7 @@ _L8:
 _L11:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S14
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -380,8 +365,7 @@ _L10:
 	JP	Z,_L13
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S15
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -389,8 +373,7 @@ _L10:
 _L13:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S16
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -402,8 +385,7 @@ _L12:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "Expr TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S17
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -447,8 +429,7 @@ _L12:
 	JP	Z,_L15
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S18
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -456,8 +437,7 @@ _L12:
 _L15:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S19
 	CALL	__print_str
 	LD	HL,(VAL)
 	CALL	__print_num
@@ -553,8 +533,7 @@ _L14:
 	JP	Z,_L17
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S20
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -562,8 +541,7 @@ _L14:
 _L17:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S21
 	CALL	__print_str
 	LD	HL,(VAL)
 	CALL	__print_num
@@ -679,8 +657,7 @@ _L16:
 	JP	Z,_L19
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S22
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -688,8 +665,7 @@ _L16:
 _L19:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S23
 	CALL	__print_str
 	LD	HL,(VAL)
 	CALL	__print_num
@@ -742,8 +718,7 @@ _L18:
 	JP	Z,_L21
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S24
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -751,8 +726,7 @@ _L18:
 _L21:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S25
 	CALL	__print_str
 	LD	HL,(VAL)
 	CALL	__print_num
@@ -851,8 +825,7 @@ _L20:
 	JP	Z,_L23
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S26
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -860,8 +833,7 @@ _L20:
 _L23:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S27
 	CALL	__print_str
 	LD	HL,(VAL)
 	CALL	__print_num
@@ -955,8 +927,7 @@ _L22:
 	JP	Z,_L25
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S28
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -964,8 +935,7 @@ _L22:
 _L25:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S29
 	CALL	__print_str
 	LD	HL,(VAL)
 	CALL	__print_num
@@ -979,8 +949,7 @@ _L24:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "IF TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S30
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1003,8 +972,7 @@ _L24:
 	JP	Z,_L27
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S31
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1027,8 +995,7 @@ _L27:
 	JP	Z,_L26
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S32
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1059,8 +1026,7 @@ _L26:
 	JP	Z,_L29
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S33
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1083,8 +1049,7 @@ _L29:
 	JP	Z,_L30
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S34
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1092,8 +1057,7 @@ _L29:
 _L30:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S35
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1115,8 +1079,7 @@ _L28:
 	JP	Z,_L32
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S36
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1139,8 +1102,7 @@ _L32:
 	JP	Z,_L33
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S37
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1148,8 +1110,7 @@ _L32:
 _L33:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S38
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1171,8 +1132,7 @@ _L31:
 	JP	Z,_L35
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S39
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1194,8 +1154,7 @@ _L35:
 	JP	Z,_L36
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S40
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1203,8 +1162,7 @@ _L35:
 _L36:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S41
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1247,8 +1205,7 @@ _L34:
 	JP	Z,_L40
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S42
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1256,14 +1213,12 @@ _L34:
 _L40:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S43
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
 _L39:
-; load string " -> OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S44
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1271,8 +1226,7 @@ _L39:
 _L38:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG2"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S45
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1284,15 +1238,13 @@ _L37:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "WHILE TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S46
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
 	LD	HL,$0014
 	LD	(VAL),HL
-; load string "COUNT "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S47
 	CALL	__print_str
 _L41:
 	LD	HL,(VAL)
@@ -1312,8 +1264,7 @@ _L41:
 	JP	Z,_L42
 	LD	HL,(VAL)
 	CALL	__print_num
-; load string " "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S48
 	CALL	__print_str
 	LD	HL,(VAL)
 	LD	HL,$0001
@@ -1343,8 +1294,7 @@ _L42:
 	JP	Z,_L44
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S49
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1352,8 +1302,7 @@ _L42:
 _L44:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S50
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1424,8 +1373,7 @@ _L46:
 	JP	Z,_L49
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S51
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1433,8 +1381,7 @@ _L46:
 _L49:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S52
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1448,8 +1395,7 @@ _L48:
 	LD	(TNUM),HL
 	LD	HL,$000A
 	LD	(VAL),HL
-; load string "WHILE "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S53
 	CALL	__print_str
 _L50:
 	LD	HL,(VAL)
@@ -1499,13 +1445,11 @@ _L52:
 	JP	Z,_L54
 	JP	_L53
 _L54:
-; load string "["
-	LD	HL,0 ; string placeholder
+	LD	HL,_S54
 	CALL	__print_str
 	LD	HL,(VAL)
 	CALL	__print_num
-; load string "] "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S55
 	CALL	__print_str
 	LD	HL,(VAL)
 	LD	HL,$0001
@@ -1519,8 +1463,7 @@ _L54:
 _L53:
 	LD	HL,(VAL)
 	CALL	__print_num
-; load string " "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S56
 	CALL	__print_str
 	LD	HL,(VAL)
 	LD	HL,$0001
@@ -1550,8 +1493,7 @@ _L51:
 	JP	Z,_L55
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S57
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1563,16 +1505,14 @@ _L55:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "REPEAT UNTIL TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S58
 	CALL	__print_str
 	LD	HL,$0000
 	LD	(VAL),HL
 _L56:
 	LD	HL,(VAL)
 	CALL	__print_num
-; load string " "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S59
 	CALL	__print_str
 	LD	HL,(VAL)
 	LD	HL,$0001
@@ -1616,8 +1556,7 @@ _L57:
 	JP	Z,_L59
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S60
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1625,8 +1564,7 @@ _L57:
 _L59:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S61
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1638,16 +1576,14 @@ _L58:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "FOR TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S62
 	CALL	__print_str
 	LD	HL,$0000
 	LD	(VAL),HL
 _L60:
 	LD	HL,(VAL)
 	CALL	__print_num
-; load string " "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S63
 	CALL	__print_str
 _L61:
 	LD	HL,(VAL)
@@ -1693,8 +1629,7 @@ _L62:
 	JP	Z,_L64
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S64
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1702,8 +1637,7 @@ _L62:
 _L64:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S65
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1720,8 +1654,7 @@ _L63:
 _L65:
 	LD	HL,(VAL)
 	CALL	__print_num
-; load string " "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S66
 	CALL	__print_str
 _L66:
 	LD	HL,(VAL)
@@ -1771,8 +1704,7 @@ _L67:
 	JP	Z,_L69
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S67
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1780,8 +1712,7 @@ _L67:
 _L69:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S68
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1793,22 +1724,19 @@ _L68:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "LABEL TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S69
 	CALL	__print_str
 	JP	LABEL1
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S70
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
 LABEL1:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S71
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1819,8 +1747,7 @@ LABEL1:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "CASE TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S72
 	CALL	__print_str
 	LD	HL,$0005
 	LD	(VAL),HL
@@ -1865,8 +1792,7 @@ LABEL1:
 	JP	Z,_L71
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S73
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1887,8 +1813,7 @@ _L71:
 	JP	Z,_L72
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S74
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1896,8 +1821,7 @@ _L71:
 _L72:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S75
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1928,8 +1852,7 @@ _L70:
 	JP	Z,_L74
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S76
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1975,8 +1898,7 @@ _L74:
 	JP	Z,_L75
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S77
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -1984,8 +1906,7 @@ _L74:
 _L75:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S78
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2016,8 +1937,7 @@ _L73:
 	JP	Z,_L77
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S79
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2063,8 +1983,7 @@ _L77:
 	JP	Z,_L78
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S80
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2072,8 +1991,7 @@ _L77:
 _L78:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S81
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2104,8 +2022,7 @@ _L76:
 	JP	Z,_L80
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S82
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2151,8 +2068,7 @@ _L80:
 	JP	Z,_L81
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S83
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2203,8 +2119,7 @@ _L83:
 	JP	Z,_L84
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S84
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2212,8 +2127,7 @@ _L83:
 _L84:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S85
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2226,8 +2140,7 @@ _L79:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "FUNC TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S86
 	CALL	__print_str
 	LD	HL,$0005
 	LD	(VAL),HL
@@ -2237,8 +2150,7 @@ _L79:
 	PUSH	HL
 	CALL	FUNC1
 	LD	(NUM),HL
-; load string "MAIN VAL:"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S87
 	CALL	__print_str
 	LD	HL,(VAL)
 	CALL	__print_num
@@ -2260,8 +2172,7 @@ _L79:
 	JP	Z,_L86
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S88
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2269,8 +2180,7 @@ _L79:
 _L86:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S89
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2298,8 +2208,7 @@ _L85:
 	JP	Z,_L88
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S90
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2307,8 +2216,7 @@ _L85:
 _L88:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S91
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2320,8 +2228,7 @@ _L87:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "FUNC RETURN TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S92
 	CALL	__print_str
 	LD	HL,$000A
 	PUSH	HL
@@ -2343,8 +2250,7 @@ _L87:
 	JP	Z,_L90
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S93
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2352,8 +2258,7 @@ _L87:
 _L90:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S94
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2385,8 +2290,7 @@ _L89:
 	JP	Z,_L92
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S95
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2394,8 +2298,7 @@ _L89:
 _L92:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S96
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2407,8 +2310,7 @@ _L91:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "MEM[] MEMW[] TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S97
 	CALL	__print_str
 	LD	HL,$04D2
 	LD	(AVAL),HL
@@ -2439,15 +2341,13 @@ _L91:
 	JP	Z,_L94
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S98
 	CALL	__print_str
 	JP	_L93
 _L94:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S99
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2519,8 +2419,7 @@ _L93:
 	JP	Z,_L96
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S100
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2528,8 +2427,7 @@ _L93:
 _L96:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S101
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2579,15 +2477,13 @@ _L95:
 	JP	Z,_L98
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S102
 	CALL	__print_str
 	JP	_L97
 _L98:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S103
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2637,15 +2533,13 @@ _L97:
 	JP	Z,_L100
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S104
 	CALL	__print_str
 	JP	_L99
 _L100:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S105
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2750,15 +2644,13 @@ _L99:
 	JP	Z,_L102
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S106
 	CALL	__print_str
 	JP	_L101
 _L102:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S107
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2817,15 +2709,13 @@ _L101:
 	JP	Z,_L104
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S108
 	CALL	__print_str
 	JP	_L103
 _L104:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S109
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2868,15 +2758,13 @@ _L103:
 	JP	Z,_L106
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S110
 	CALL	__print_str
 	JP	_L105
 _L106:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S111
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2924,15 +2812,13 @@ _L105:
 	JP	Z,_L108
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S112
 	CALL	__print_str
 	JP	_L107
 _L108:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S113
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -2973,15 +2859,13 @@ _L107:
 	JP	Z,_L110
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK "
-	LD	HL,0 ; string placeholder
+	LD	HL,_S114
 	CALL	__print_str
 	JP	_L109
 _L110:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S115
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3075,8 +2959,7 @@ _L109:
 	JP	Z,_L112
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S116
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3084,8 +2967,7 @@ _L109:
 _L112:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S117
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3097,8 +2979,7 @@ _L111:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "ARRAY2 TEST"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S118
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3164,8 +3045,7 @@ _L111:
 	JP	Z,_L114
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S119
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3173,8 +3053,7 @@ _L111:
 _L114:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S120
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3244,8 +3123,7 @@ _L113:
 	JP	Z,_L116
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S121
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3253,8 +3131,7 @@ _L113:
 _L116:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S122
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3304,8 +3181,7 @@ _L115:
 	JP	Z,_L118
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S123
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3313,8 +3189,7 @@ _L115:
 _L118:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S124
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3364,8 +3239,7 @@ _L117:
 	JP	Z,_L120
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S125
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3373,8 +3247,7 @@ _L117:
 _L120:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S126
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3445,8 +3318,7 @@ _L119:
 	JP	Z,_L122
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S127
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3454,8 +3326,7 @@ _L119:
 _L122:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S128
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3522,8 +3393,7 @@ _L121:
 	JP	Z,_L124
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S129
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3531,8 +3401,7 @@ _L121:
 _L124:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S130
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3626,8 +3495,7 @@ _L123:
 	JP	Z,_L126
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S131
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3635,8 +3503,7 @@ _L123:
 _L126:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S132
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3686,8 +3553,7 @@ _L125:
 	JP	Z,_L128
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S133
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3695,8 +3561,7 @@ _L125:
 _L128:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S134
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3746,8 +3611,7 @@ _L127:
 	JP	Z,_L130
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S135
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3755,8 +3619,7 @@ _L127:
 _L130:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S136
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3806,8 +3669,7 @@ _L129:
 	JP	Z,_L132
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S137
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3815,8 +3677,7 @@ _L129:
 _L132:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S138
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3887,8 +3748,7 @@ _L131:
 	JP	Z,_L134
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S139
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3896,8 +3756,7 @@ _L131:
 _L134:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S140
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3964,8 +3823,7 @@ _L133:
 	JP	Z,_L136
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S141
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3973,8 +3831,7 @@ _L133:
 _L136:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S142
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -3986,16 +3843,14 @@ _L135:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-; load string "INPUT 'START'"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S143
 	CALL	__print_str
 	LD	HL,(AARB)
 	PUSH	HL
 	CALL	GETL
 	LD	HL,(AARB)
 	PUSH	HL
-; load string "START"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S144
 	PUSH	HL
 	CALL	STRCMP
 	LD	HL,$0000
@@ -4013,8 +3868,7 @@ _L135:
 	JP	Z,_L138
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S145
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -4022,8 +3876,7 @@ _L135:
 _L138:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S146
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -4149,8 +4002,7 @@ FUNC1:
 	LD	(LOCAL),HL
 	LD	HL,(I)
 	CALL	__print_num
-; load string ","
-	LD	HL,0 ; string placeholder
+	LD	HL,_S147
 	CALL	__print_str
 	LD	HL,(J)
 	CALL	__print_num
@@ -4158,15 +4010,13 @@ FUNC1:
 	CALL	__print_newline
 	LD	HL,$0064
 	LD	(VAL),HL
-; load string "FUNC VAL:"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S148
 	CALL	__print_str
 	LD	HL,(VAL)
 	CALL	__print_num
 	CALL	__strfunc_/
 	CALL	__print_newline
-; load string "I:"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S149
 	CALL	__print_str
 	LD	HL,(I)
 	CALL	__print_num
@@ -4200,8 +4050,7 @@ FUNC1:
 	JP	Z,_L144
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "OK"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S150
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -4209,22 +4058,19 @@ FUNC1:
 _L144:
 	LD	HL,(TNUM)
 	CALL	__print_num
-; load string "NG"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S151
 	CALL	__print_str
 	LD	HL,(I)
 	CALL	__print_num
 	CALL	__strfunc_/
 	CALL	__print_newline
-; load string "LOCAL:"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S152
 	CALL	__print_str
 	LD	HL,(LOCAL)
 	CALL	__print_num
 	CALL	__strfunc_/
 	CALL	__print_newline
-; load string "VAL:"
-	LD	HL,0 ; string placeholder
+	LD	HL,_S153
 	CALL	__print_str
 	LD	HL,(VAL)
 	CALL	__print_num
@@ -4272,3 +4118,314 @@ _L145:
 _EXIT:
 	POP	IY
 	RET
+
+
+; === String Table ===
+_S0:
+	DB	$43,$4F,$4E,$53,$54,$20,$54,$45,$53,$54,$00
+_S1:
+	DB	$4F,$4B,$00
+_S2:
+	DB	$4E,$47,$00
+_S3:
+	DB	$56,$41,$52,$20,$54,$45,$53,$54,$00
+_S4:
+	DB	$4F,$4B,$00
+_S5:
+	DB	$4E,$47,$00
+_S6:
+	DB	$4F,$4B,$00
+_S7:
+	DB	$4E,$47,$00
+_S8:
+	DB	$49,$4E,$44,$49,$52,$45,$43,$54,$20,$56,$41,$52,$20,$54,$45,$53,$54,$00
+_S9:
+	DB	$4F,$4B,$00
+_S10:
+	DB	$4E,$47,$00
+_S11:
+	DB	$4F,$4B,$00
+_S12:
+	DB	$4E,$47,$00
+_S13:
+	DB	$4F,$4B,$00
+_S14:
+	DB	$4E,$47,$00
+_S15:
+	DB	$4F,$4B,$00
+_S16:
+	DB	$4E,$47,$00
+_S17:
+	DB	$45,$78,$70,$72,$20,$54,$45,$53,$54,$00
+_S18:
+	DB	$4F,$4B,$00
+_S19:
+	DB	$4E,$47,$00
+_S20:
+	DB	$4F,$4B,$00
+_S21:
+	DB	$4E,$47,$00
+_S22:
+	DB	$4F,$4B,$00
+_S23:
+	DB	$4E,$47,$00
+_S24:
+	DB	$4F,$4B,$00
+_S25:
+	DB	$4E,$47,$00
+_S26:
+	DB	$4F,$4B,$00
+_S27:
+	DB	$4E,$47,$00
+_S28:
+	DB	$4F,$4B,$00
+_S29:
+	DB	$4E,$47,$00
+_S30:
+	DB	$49,$46,$20,$54,$45,$53,$54,$00
+_S31:
+	DB	$4E,$47,$00
+_S32:
+	DB	$4F,$4B,$00
+_S33:
+	DB	$4E,$47,$00
+_S34:
+	DB	$4E,$47,$00
+_S35:
+	DB	$4F,$4B,$00
+_S36:
+	DB	$4F,$4B,$00
+_S37:
+	DB	$4E,$47,$00
+_S38:
+	DB	$4E,$47,$00
+_S39:
+	DB	$4E,$47,$00
+_S40:
+	DB	$4F,$4B,$00
+_S41:
+	DB	$4E,$47,$00
+_S42:
+	DB	$4E,$47,$00
+_S43:
+	DB	$4F,$4B,$00
+_S44:
+	DB	$20,$2D,$3E,$20,$4F,$4B,$00
+_S45:
+	DB	$4E,$47,$32,$00
+_S46:
+	DB	$57,$48,$49,$4C,$45,$20,$54,$45,$53,$54,$00
+_S47:
+	DB	$43,$4F,$55,$4E,$54,$20,$00
+_S48:
+	DB	$20,$00
+_S49:
+	DB	$4F,$4B,$00
+_S50:
+	DB	$4E,$47,$00
+_S51:
+	DB	$4F,$4B,$00
+_S52:
+	DB	$4E,$47,$00
+_S53:
+	DB	$57,$48,$49,$4C,$45,$20,$00
+_S54:
+	DB	$5B,$00
+_S55:
+	DB	$5D,$20,$00
+_S56:
+	DB	$20,$00
+_S57:
+	DB	$4F,$4B,$00
+_S58:
+	DB	$52,$45,$50,$45,$41,$54,$20,$55,$4E,$54,$49,$4C,$20,$54,$45,$53,$54,$0D,$00
+_S59:
+	DB	$20,$00
+_S60:
+	DB	$4F,$4B,$00
+_S61:
+	DB	$4E,$47,$00
+_S62:
+	DB	$46,$4F,$52,$20,$54,$45,$53,$54,$0D,$00
+_S63:
+	DB	$20,$00
+_S64:
+	DB	$4F,$4B,$00
+_S65:
+	DB	$4E,$47,$00
+_S66:
+	DB	$20,$00
+_S67:
+	DB	$4F,$4B,$00
+_S68:
+	DB	$4E,$47,$00
+_S69:
+	DB	$4C,$41,$42,$45,$4C,$20,$54,$45,$53,$54,$0D,$00
+_S70:
+	DB	$4E,$47,$00
+_S71:
+	DB	$4F,$4B,$00
+_S72:
+	DB	$43,$41,$53,$45,$20,$54,$45,$53,$54,$0D,$00
+_S73:
+	DB	$4E,$47,$00
+_S74:
+	DB	$4F,$4B,$00
+_S75:
+	DB	$4E,$47,$00
+_S76:
+	DB	$4E,$47,$00
+_S77:
+	DB	$4F,$4B,$00
+_S78:
+	DB	$4E,$47,$00
+_S79:
+	DB	$4E,$47,$00
+_S80:
+	DB	$4E,$47,$00
+_S81:
+	DB	$4F,$4B,$00
+_S82:
+	DB	$4E,$47,$00
+_S83:
+	DB	$4E,$47,$00
+_S84:
+	DB	$4F,$4B,$00
+_S85:
+	DB	$4E,$47,$00
+_S86:
+	DB	$46,$55,$4E,$43,$20,$54,$45,$53,$54,$0D,$00
+_S87:
+	DB	$4D,$41,$49,$4E,$20,$56,$41,$4C,$3A,$00
+_S88:
+	DB	$4F,$4B,$00
+_S89:
+	DB	$4E,$47,$00
+_S90:
+	DB	$4F,$4B,$00
+_S91:
+	DB	$4E,$47,$00
+_S92:
+	DB	$46,$55,$4E,$43,$20,$52,$45,$54,$55,$52,$4E,$20,$54,$45,$53,$54,$0D,$00
+_S93:
+	DB	$4F,$4B,$00
+_S94:
+	DB	$4E,$47,$00
+_S95:
+	DB	$4F,$4B,$00
+_S96:
+	DB	$4E,$47,$00
+_S97:
+	DB	$4D,$45,$4D,$5B,$5D,$20,$4D,$45,$4D,$57,$5B,$5D,$20,$54,$45,$53,$54,$0D,$00
+_S98:
+	DB	$4F,$4B,$20,$00
+_S99:
+	DB	$4E,$47,$00
+_S100:
+	DB	$4F,$4B,$00
+_S101:
+	DB	$4E,$47,$00
+_S102:
+	DB	$4F,$4B,$20,$00
+_S103:
+	DB	$4E,$47,$00
+_S104:
+	DB	$4F,$4B,$20,$00
+_S105:
+	DB	$4E,$47,$00
+_S106:
+	DB	$4F,$4B,$20,$00
+_S107:
+	DB	$4E,$47,$00
+_S108:
+	DB	$4F,$4B,$20,$00
+_S109:
+	DB	$4E,$47,$00
+_S110:
+	DB	$4F,$4B,$20,$00
+_S111:
+	DB	$4E,$47,$00
+_S112:
+	DB	$4F,$4B,$20,$00
+_S113:
+	DB	$4E,$47,$00
+_S114:
+	DB	$4F,$4B,$20,$00
+_S115:
+	DB	$4E,$47,$00
+_S116:
+	DB	$4F,$4B,$00
+_S117:
+	DB	$4E,$47,$00
+_S118:
+	DB	$41,$52,$52,$41,$59,$32,$20,$54,$45,$53,$54,$00
+_S119:
+	DB	$4F,$4B,$00
+_S120:
+	DB	$4E,$47,$00
+_S121:
+	DB	$4F,$4B,$00
+_S122:
+	DB	$4E,$47,$00
+_S123:
+	DB	$4F,$4B,$00
+_S124:
+	DB	$4E,$47,$00
+_S125:
+	DB	$4F,$4B,$00
+_S126:
+	DB	$4E,$47,$00
+_S127:
+	DB	$4F,$4B,$00
+_S128:
+	DB	$4E,$47,$00
+_S129:
+	DB	$4F,$4B,$00
+_S130:
+	DB	$4E,$47,$00
+_S131:
+	DB	$4F,$4B,$00
+_S132:
+	DB	$4E,$47,$00
+_S133:
+	DB	$4F,$4B,$00
+_S134:
+	DB	$4E,$47,$00
+_S135:
+	DB	$4F,$4B,$00
+_S136:
+	DB	$4E,$47,$00
+_S137:
+	DB	$4F,$4B,$00
+_S138:
+	DB	$4E,$47,$00
+_S139:
+	DB	$4F,$4B,$00
+_S140:
+	DB	$4E,$47,$00
+_S141:
+	DB	$4F,$4B,$00
+_S142:
+	DB	$4E,$47,$00
+_S143:
+	DB	$49,$4E,$50,$55,$54,$20,$27,$53,$54,$41,$52,$54,$27,$0D,$00
+_S144:
+	DB	$53,$54,$41,$52,$54,$00
+_S145:
+	DB	$4F,$4B,$00
+_S146:
+	DB	$4E,$47,$00
+_S147:
+	DB	$2C,$00
+_S148:
+	DB	$46,$55,$4E,$43,$20,$56,$41,$4C,$3A,$00
+_S149:
+	DB	$49,$3A,$00
+_S150:
+	DB	$4F,$4B,$00
+_S151:
+	DB	$4E,$47,$00
+_S152:
+	DB	$4C,$4F,$43,$41,$4C,$3A,$00
+_S153:
+	DB	$56,$41,$4C,$3A,$00

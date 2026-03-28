@@ -41,7 +41,31 @@ public class CodeGenerator
             _e.Blank();
         }
 
+        // String table
+        if (_module.StringTable.Count > 0)
+        {
+            _e.Blank();
+            _e.Comment("=== String Table ===");
+            foreach (var (label, text) in _module.StringTable)
+            {
+                _e.Label(label);
+                EmitStringData(text);
+            }
+        }
+
         return _e.ToAssembly();
+    }
+
+    private void EmitStringData(string text)
+    {
+        // 文字列をDBバイト列として出力（末尾$00付き）
+        var bytes = new List<string>();
+        foreach (var ch in text)
+        {
+            bytes.Add($"${(int)ch:X2}");
+        }
+        bytes.Add("$00");
+        _e.Raw($"\tDB\t{string.Join(",", bytes)}");
     }
 
     private void EmitGlobalData(IrInstruction inst)

@@ -1,0 +1,1420 @@
+; CONST MODE_0
+; CONST MODE_1
+; CONST MODE_2
+; CONST MODE_3
+; CONST SETGRP
+; CONST MODE2_ATTR
+; CONST SPRITE_DEFAULT
+; CONST SPRITE_SCALED
+; CONST SPRITE_LARGE
+; CONST VRAM_START
+; CONST VRAM_NONE
+; CONST VRAM_WIDTH
+; CONST VRAM_HEIGHT
+; CONST SPMAN_PAT_UNUSED
+; CONST SPMAN_MAX_SPRITES
+; CONST SPMAN_MAX_PATTERNS
+; CONST SPR_HIDE
+; ARRAY SP_FIXED[SLANGCompiler.Parser.Ast.BinaryExpr]
+; ARRAY SP_BUFFER[SLANGCompiler.Parser.Ast.BinaryExpr]
+; ARRAY SP_PAT_MAP[SLANGCompiler.Parser.Ast.IdentifierExpr]
+; ARRAY SP_LAST_PAT[]
+; CONST MSXROMADR
+; CONST SPRPAT
+; ARRAY SPATR[SLANGCompiler.Parser.Ast.BinaryExpr]
+; global: InlineAsm asm"				; =============================================================
+				;		data
+				; =============================================================
+sprite_pattern:
+				db		0b00000000				; #0
+				db		0b00000011
+				db		0b00001111
+				db		0b00011111
+				db		0b00111111
+				db		0b00111111
+				db		0b01111111
+				db		0b01111111
+				db		0b01111111
+				db		0b01111111
+				db		0b00111111
+				db		0b00111111
+				db		0b00011111
+				db		0b00001111
+				db		0b00000011
+				db		0b00000000
+				db		0b00000000
+				db		0b11000000
+				db		0b11110000
+				db		0b11111000
+				db		0b11111100
+				db		0b11111100
+				db		0b11111110
+				db		0b11111110
+				db		0b11111110
+				db		0b11111110
+				db		0b11111100
+				db		0b11111100
+				db		0b11111000
+				db		0b11110000
+				db		0b11000000
+				db		0b00000000
+
+				db		0b00000011				; #4
+				db		0b00001100
+				db		0b00010000
+				db		0b00100000
+				db		0b01000000
+				db		0b01000000
+				db		0b10000000
+				db		0b10000000
+				db		0b10000000
+				db		0b10000000
+				db		0b01000000
+				db		0b01000000
+				db		0b00110000
+				db		0b00011111
+				db		0b00001111
+				db		0b00000011
+				db		0b11000000
+				db		0b00110000
+				db		0b00001000
+				db		0b00000100
+				db		0b00000010
+				db		0b00000010
+				db		0b00000011
+				db		0b00000011
+				db		0b00000111
+				db		0b00000111
+				db		0b00001110
+				db		0b00011110
+				db		0b01111100
+				db		0b11111000
+				db		0b11110000
+				db		0b11000000
+
+				db		0b00111111				; #8
+				db		0b01111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b01111111
+				db		0b00111111
+				db		0b11111100
+				db		0b11111110
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111111
+				db		0b11111110
+				db		0b11111100
+
+sprite_color_table:
+				db		0x02			; #0
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+
+				db		0x04			; #1
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+
+				db		0x08			; #2
+				db		0x08
+				db		0x08
+				db		0x08
+				db		0x08
+				db		0x08
+				db		0x08
+				db		0x08
+				db		0x08
+				db		0x08
+				db		0x08
+				db		0x08
+				db		0x08
+				db		0x08
+				db		0x08
+				db		0x08
+
+				db		0x0A			; #3
+				db		0x0A
+				db		0x0A
+				db		0x0A
+				db		0x0A
+				db		0x0A
+				db		0x0A
+				db		0x0A
+				db		0x0A
+				db		0x0A
+				db		0x0A
+				db		0x0A
+				db		0x0A
+				db		0x0A
+				db		0x0A
+				db		0x0A
+
+				db		0x41			; #4
+				db		0x41
+				db		0x41
+				db		0x41
+				db		0x41
+				db		0x41
+				db		0x41
+				db		0x41
+				db		0x41
+				db		0x41
+				db		0x41
+				db		0x41
+				db		0x41
+				db		0x41
+				db		0x41
+				db		0x41
+
+				db		0x04			; #5
+				db		0x05
+				db		0x07
+				db		0x07
+				db		0x05
+				db		0x05
+				db		0x05
+				db		0x05
+				db		0x04
+				db		0x05
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+				db		0x04
+
+				db		0x0C			; #6
+				db		0x02
+				db		0x03
+				db		0x03
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x02
+				db		0x0C
+				db		0x02
+				db		0x0C
+				db		0x0C
+				db		0x0C
+				db		0x0C
+				db		0x0C
+				db		0x0C
+"
+
+MSX_GRPINIT:
+; function MSX_GRPINIT
+	PUSH	IY
+	LD	HL,(MODE_1)
+	PUSH	HL
+	CALL	MSX_CALLBIOS
+	LD	HL,(SETGRP)
+	PUSH	HL
+	CALL	MSX_CALLBIOS
+	LD	HL,(MEMW)
+	LD	HL,$F920
+; array load: t7 = t4[t6]
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	PUSH	HL
+	LD	HL,$0800
+	PUSH	HL
+	LD	HL,$0800
+	PUSH	HL
+	CALL	MSX_VWRITE
+	LD	HL,(MEMW)
+	LD	HL,$F920
+; array load: t14 = t11[t13]
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	PUSH	HL
+	LD	HL,$1000
+	PUSH	HL
+	LD	HL,$0800
+	PUSH	HL
+	CALL	MSX_VWRITE
+	LD	HL,(MODE2_ATTR)
+	PUSH	HL
+	LD	HL,$00F0
+	PUSH	HL
+	LD	HL,$17FF
+	PUSH	HL
+	CALL	MSX_VFILL
+_EXIT:
+	POP	IY
+	RET
+
+SET_CLICK:
+; function SET_CLICK
+	PUSH	IY
+	LD	HL,(FLG)
+	LD	HL,(MEM)
+	LD	HL,$F3DB
+; array store: t1[t2] = t0
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+_EXIT:
+	POP	IY
+	RET
+
+SET_SPRITE_MODE:
+; function SET_SPRITE_MODE
+	PUSH	IY
+	LD	HL,$0001
+	PUSH	HL
+	CALL	GET_VDP_REG
+	LD	(M),HL
+	LD	HL,$0001
+	PUSH	HL
+	LD	HL,(M)
+	LD	HL,$00FC
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	LD	A,H
+	AND	D
+	LD	H,A
+	LD	A,L
+	AND	E
+	LD	L,A
+	LD	HL,(MODE)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	LD	A,H
+	OR	D
+	LD	H,A
+	LD	A,L
+	OR	E
+	LD	L,A
+	PUSH	HL
+	CALL	SET_VDP_REG
+_EXIT:
+	POP	IY
+	RET
+
+SET_SPRITE_16:
+; function SET_SPRITE_16
+	PUSH	IY
+	LD	HL,(DATA)
+	PUSH	HL
+	LD	HL,$3800
+	LD	HL,(HANDLE)
+	LD	HL,$0005
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	SHL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	LD	HL,$0020
+	PUSH	HL
+	CALL	MSX_VWRITE_DIRECT
+_EXIT:
+	POP	IY
+	RET
+
+SPMAN_INIT:
+; function SPMAN_INIT
+	PUSH	IY
+	LD	HL,$0000
+	LD	(SP_LAST_PAT),HL
+	LD	HL,(SP_PAT_MAP)
+	PUSH	HL
+	LD	HL,(SPMAN_PAT_UNUSED)
+	PUSH	HL
+	LD	HL,(SPMAN_MAX_PATTERNS)
+	PUSH	HL
+	CALL	MEMSET
+	CALL	SPMAN_SPRITE_FLUSH
+	CALL	SPMAN_HIDE_ALL_SPRITES
+_EXIT:
+	POP	IY
+	RET
+
+SPMAN_SPRITE_FLUSH:
+; function SPMAN_SPRITE_FLUSH
+	PUSH	IY
+	LD	HL,$0000
+	LD	(SP_LAST_FIXED_SPRITE),HL
+	LD	HL,$0000
+	LD	(SP_LAST_SPRITE),HL
+_EXIT:
+	POP	IY
+	RET
+
+SPR_DEF:
+; function SPR_DEF
+	PUSH	IY
+	LD	HL,(LEN)
+	LD	HL,(TP)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	(LEN),HL
+	LD	HL,(TP)
+	LD	(I),HL
+_L0:
+	LD	HL,(FLIP)
+; if t6 == 0 goto _L4
+	LD	A,H
+	OR	L
+	JP	Z,_L4
+	LD	HL,(I)
+	PUSH	HL
+	LD	HL,(DATA)
+	PUSH	HL
+	CALL	SET_SPRITE_16HFLIP
+	JP	_L3
+_L4:
+	LD	HL,(I)
+	PUSH	HL
+	LD	HL,(DATA)
+	PUSH	HL
+	CALL	SET_SPRITE_16
+_L3:
+	LD	HL,(DATA)
+	LD	HL,$0020
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(DATA),HL
+_L1:
+	LD	HL,(I)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(I),HL
+	LD	HL,(LEN)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t20 != 0 goto _L0
+	LD	A,H
+	OR	L
+	JP	NZ,_L0
+_L2:
+_EXIT:
+	POP	IY
+	RET
+
+SPMAN_ALLOC_PAT:
+; function SPMAN_ALLOC_PAT
+	PUSH	IY
+	LD	HL,(SP_PAT_MAP)
+	LD	HL,(TP)
+; array load: t3 = t0[t2]
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	LD	HL,(SPMAN_PAT_UNUSED)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	Z,$+3
+	INC	HL
+; if t5 == 0 goto _L5
+	LD	A,H
+	OR	L
+	JP	Z,_L5
+	LD	HL,(SP_LAST_PAT)
+	LD	HL,(SP_PAT_MAP)
+	LD	HL,(TP)
+; array store: t7[t8] = t6
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,(LEN)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	(LEN),HL
+	LD	HL,$0000
+	LD	(I),HL
+_L6:
+	LD	HL,(FLIP)
+; if t13 == 0 goto _L10
+	LD	A,H
+	OR	L
+	JP	Z,_L10
+	LD	HL,(SP_LAST_PAT)
+	PUSH	HL
+	LD	HL,(DATA)
+	PUSH	HL
+	CALL	SET_SPRITE_16HFLIP
+	JP	_L9
+_L10:
+	LD	HL,(SP_LAST_PAT)
+	PUSH	HL
+	LD	HL,(DATA)
+	PUSH	HL
+	CALL	SET_SPRITE_16
+_L9:
+	LD	HL,(DATA)
+	LD	HL,$0020
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(DATA),HL
+	LD	HL,(SP_LAST_PAT)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(SP_LAST_PAT),HL
+_L7:
+	LD	HL,(I)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(I),HL
+	LD	HL,(LEN)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t30 != 0 goto _L6
+	LD	A,H
+	OR	L
+	JP	NZ,_L6
+_L8:
+_L5:
+	LD	HL,(SP_PAT_MAP)
+	LD	HL,(TP)
+; array load: t34 = t31[t33]
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	LD	HL,$0004
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+; return t36
+	JP	_EXIT
+_EXIT:
+	POP	IY
+	RET
+
+SPMAN_ALLOC_FIXED_SPRITE:
+; function SPMAN_ALLOC_FIXED_SPRITE
+	PUSH	IY
+	LD	HL,(SP_FIXED)
+	LD	HL,(SP_LAST_FIXED_SPRITE)
+	LD	HL,$0002
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	SHL16
+; array load: t5 = t0[t4]
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	PUSH	HL
+	LD	HL,(SPADR)
+	PUSH	HL
+	LD	HL,$0004
+	PUSH	HL
+	CALL	MEMCPY
+	LD	HL,(SP_LAST_FIXED_SPRITE)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(SP_LAST_FIXED_SPRITE),HL
+_EXIT:
+	POP	IY
+	RET
+
+SPMAN_ALLOC_SPRITE:
+; function SPMAN_ALLOC_SPRITE
+	PUSH	IY
+	LD	HL,(SP_BUFFER)
+	LD	HL,(SP_LAST_SPRITE)
+	LD	HL,$0002
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	SHL16
+; array load: t5 = t0[t4]
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	PUSH	HL
+	LD	HL,(SPADR)
+	PUSH	HL
+	LD	HL,$0004
+	PUSH	HL
+	CALL	MEMCPY
+	LD	HL,(SP_LAST_SPRITE)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(SP_LAST_SPRITE),HL
+_EXIT:
+	POP	IY
+	RET
+
+SPMAN_UPDATE:
+; function SPMAN_UPDATE
+	PUSH	IY
+	LD	HL,$1B00
+	LD	(SPR_POINT),HL
+	LD	HL,(SP_LAST_SPRITE)
+	LD	HL,$0000
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	NZ,$+3
+	INC	HL
+; if t3 == 0 goto _L12
+	LD	A,H
+	OR	L
+	JP	Z,_L12
+	LD	HL,(SP_BUFFER)
+	LD	HL,(SP_LAST_SPRITE)
+	LD	HL,$0002
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	SHL16
+; array load: t9 = t4[t8]
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	PUSH	HL
+	LD	HL,(SP_BUFFER)
+	PUSH	HL
+	LD	HL,(SP_LAST_SPRITE)
+	LD	HL,$0004
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	CALL	MEMCPY
+	LD	HL,(SP_LAST_SPRITE)
+	LD	HL,(SP_LAST_FIXED_SPRITE)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(ADDCNT),HL
+	LD	HL,(ADDCNT)
+	LD	HL,$0004
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+; if t20 == 0 goto _L13
+	LD	A,H
+	OR	L
+	JP	Z,_L13
+	LD	HL,(SP_IDX)
+	LD	HL,$0002
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,(ADDCNT)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	LD	A,H
+	AND	D
+	LD	H,A
+	LD	A,L
+	AND	E
+	LD	L,A
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	(SP_IDX),HL
+_L13:
+	LD	HL,(SP_IDX)
+	LD	HL,(SP_LAST_SPRITE)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	NC,$+3
+	INC	HL
+; if t30 == 0 goto _L14
+	LD	A,H
+	OR	L
+	JP	Z,_L14
+	LD	HL,(SP_IDX)
+	LD	HL,(SP_LAST_SPRITE)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	(SP_IDX),HL
+_L14:
+	JP	_L11
+_L12:
+	LD	HL,$0000
+	LD	(SP_IDX),HL
+_L11:
+	LD	HL,(SP_BUFFER)
+	LD	HL,(SP_IDX)
+	LD	HL,(SP_LAST_SPRITE)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,$0002
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	SHL16
+; array load: t42 = t35[t41]
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	PUSH	HL
+	LD	HL,(SPR_HIDE)
+	PUSH	HL
+	LD	HL,$0004
+	PUSH	HL
+	CALL	MEMCPY
+    HALT
+
+	LD	HL,(SP_LAST_FIXED_SPRITE)
+	LD	HL,$0000
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	NZ,$+3
+	INC	HL
+; if t48 == 0 goto _L15
+	LD	A,H
+	OR	L
+	JP	Z,_L15
+	LD	HL,(SP_FIXED)
+	PUSH	HL
+	LD	HL,(SPR_POINT)
+	PUSH	HL
+	LD	HL,(SP_LAST_FIXED_SPRITE)
+	LD	HL,$0004
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	CALL	MSX_VWRITE_DIRECT
+	LD	HL,(SPR_POINT)
+	LD	HL,(SP_LAST_FIXED_SPRITE)
+	LD	HL,$0004
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(SPR_POINT),HL
+_L15:
+	LD	HL,(SP_BUFFER)
+	LD	HL,(SP_IDX)
+	LD	HL,$0002
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	SHL16
+; array load: t65 = t60[t64]
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	PUSH	HL
+	LD	HL,(SPR_POINT)
+	PUSH	HL
+	LD	HL,$0004
+	LD	HL,(SP_LAST_SPRITE)
+	LD	HL,$0004
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	CALL	MSX_VWRITE_DIRECT
+	CALL	SPMAN_SPRITE_FLUSH
+_EXIT:
+	POP	IY
+	RET
+
+SPMAN_HIDE_ALL_SPRITES:
+; function SPMAN_HIDE_ALL_SPRITES
+	PUSH	IY
+	LD	HL,(SPR_HIDE)
+	PUSH	HL
+	LD	HL,$1B00
+	PUSH	HL
+	LD	HL,$0004
+	PUSH	HL
+	CALL	MSX_VWRITE
+_EXIT:
+	POP	IY
+	RET
+
+WAIT_VSYNC:
+; function WAIT_VSYNC
+	PUSH	IY
+_L16:
+	LD	HL,(MEMW)
+	LD	HL,$FC9E
+; array load: t3 = t0[t2]
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,HL
+	ADD	HL,DE
+	LD	E,(HL)
+	INC	HL
+	LD	D,(HL)
+	EX	DE,HL
+	LD	HL,(CNT)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+; if t5 == 0 goto _L17
+	LD	A,H
+	OR	L
+	JP	Z,_L17
+	JP	_L16
+_L17:
+	LD	HL,$0000
+	LD	HL,(MEMW)
+	LD	HL,$FC9E
+; array store: t7[t8] = t6
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+_EXIT:
+	POP	IY
+	RET
+
+MAIN:
+; function MAIN
+	PUSH	IY
+	LD	HL,$000F
+	PUSH	HL
+	LD	HL,$0009
+	PUSH	HL
+	LD	HL,$0006
+	PUSH	HL
+	CALL	MSX_SET_COLOR
+	LD	HL,$0005
+	PUSH	HL
+	CALL	MSX_SCREEN
+	LD	HL,(SPRITE_LARGE)
+	PUSH	HL
+	CALL	SET_SPRITE_MODE
+	CALL	SPDRV2_INITIALIZE
+	LD	HL,$0000
+	PUSH	HL
+	CALL	SET_CLICK
+	LD	HL,(SPRPAT)
+	PUSH	HL
+	LD	HL,$7800
+	PUSH	HL
+	LD	HL,$0020
+	LD	HL,$0003
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	CALL	MSX_VWRITE
+	LD	HL,$0064
+	LD	HL,(SPATR)
+	LD	HL,$0000
+; array store: t18[t19] = t17
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,$0032
+	LD	HL,(SPATR)
+	LD	HL,$0001
+; array store: t21[t22] = t20
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,$0000
+	LD	HL,(SPATR)
+	LD	HL,$0002
+; array store: t24[t25] = t23
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,$0002
+	LD	HL,(SPATR)
+	LD	HL,$0004
+; array store: t27[t28] = t26
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,$0004
+	LD	HL,(SPATR)
+	LD	HL,$0005
+; array store: t30[t31] = t29
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,$0004
+	LD	HL,(SPATR)
+	LD	HL,$0006
+; array store: t33[t34] = t32
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,$0000
+	LD	(I),HL
+_L18:
+	LD	HL,$0003
+	PUSH	HL
+	CALL	RND
+	LD	HL,(SPATR)
+	LD	HL,$0003
+; array store: t38[t39] = t37
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,(I)
+	PUSH	HL
+	LD	HL,(SPATR)
+	PUSH	HL
+	CALL	SPDRV2_SET
+	LD	HL,(I)
+	PUSH	HL
+	LD	HL,(I)
+	LD	HL,$001E
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	LD	HL,$0032
+	LD	HL,(I)
+	LD	HL,$0002
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	CALL	SPDRV2_MOVE
+_L19:
+	LD	HL,(I)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(I),HL
+	LD	HL,$0002
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t57 != 0 goto _L18
+	LD	A,H
+	OR	L
+	JP	NZ,_L18
+_L20:
+	LD	HL,$0008
+	LD	HL,(SPATR)
+	LD	HL,$0002
+; array store: t59[t60] = t58
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,$0001
+	LD	HL,(SPATR)
+	LD	HL,$0004
+; array store: t62[t63] = t61
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,$0003
+	LD	(I),HL
+_L21:
+	LD	HL,$0005
+	LD	HL,$0003
+	PUSH	HL
+	CALL	RND
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	SHR16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,(SPATR)
+	LD	HL,$0003
+; array store: t71[t72] = t70
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,(I)
+	PUSH	HL
+	LD	HL,(SPATR)
+	PUSH	HL
+	CALL	SPDRV2_SET
+	LD	HL,(I)
+	PUSH	HL
+	LD	HL,(I)
+	LD	HL,$001E
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	LD	HL,$0032
+	LD	HL,(I)
+	LD	HL,$0002
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	PUSH	HL
+	CALL	SPDRV2_MOVE
+_L22:
+	LD	HL,(I)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(I),HL
+	LD	HL,$0005
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t90 != 0 goto _L21
+	LD	A,H
+	OR	L
+	JP	NZ,_L21
+_L23:
+	LD	HL,$000A
+	LD	(X),HL
+	LD	HL,$0032
+	LD	(Y),HL
+	LD	HL,$0000
+	LD	HL,(SPATR)
+	LD	HL,$0002
+; array store: t94[t95] = t93
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,$0002
+	LD	HL,(SPATR)
+	LD	HL,$0004
+; array store: t97[t98] = t96
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+_L24:
+	LD	HL,$0000
+	PUSH	HL
+	CALL	STICK2
+	LD	HL,$0001
+	PUSH	HL
+	CALL	STICK2
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	LD	A,H
+	OR	D
+	LD	H,A
+	LD	A,L
+	OR	E
+	LD	L,A
+	LD	(S),HL
+	LD	HL,(S)
+	LD	HL,$0008
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	LD	A,H
+	AND	D
+	LD	H,A
+	LD	A,L
+	AND	E
+	LD	L,A
+; if t106 == 0 goto _L27
+	LD	A,H
+	OR	L
+	JP	Z,_L27
+	LD	HL,(X)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	(X),HL
+	JP	_L26
+_L27:
+	LD	HL,(S)
+	LD	HL,$0002
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	LD	A,H
+	AND	D
+	LD	H,A
+	LD	A,L
+	AND	E
+	LD	L,A
+; if t112 == 0 goto _L26
+	LD	A,H
+	OR	L
+	JP	Z,_L26
+	LD	HL,(X)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(X),HL
+_L26:
+	LD	HL,(S)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	LD	A,H
+	AND	D
+	LD	H,A
+	LD	A,L
+	AND	E
+	LD	L,A
+; if t118 == 0 goto _L29
+	LD	A,H
+	OR	L
+	JP	Z,_L29
+	LD	HL,(Y)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	(Y),HL
+	JP	_L28
+_L29:
+	LD	HL,(S)
+	LD	HL,$0004
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	LD	A,H
+	AND	D
+	LD	H,A
+	LD	A,L
+	AND	E
+	LD	L,A
+; if t124 == 0 goto _L28
+	LD	A,H
+	OR	L
+	JP	Z,_L28
+	LD	HL,(Y)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(Y),HL
+_L28:
+	LD	HL,(ANIM)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(ANIM),HL
+	LD	HL,(Y)
+	LD	HL,(SPATR)
+	LD	HL,$0000
+; array store: t132[t133] = t131
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,(X)
+	LD	HL,(SPATR)
+	LD	HL,$0001
+; array store: t135[t136] = t134
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,(ANIM)
+	LD	HL,$0004
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	SHR16
+	LD	HL,$0003
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	LD	A,H
+	AND	D
+	LD	H,A
+	LD	A,L
+	AND	E
+	LD	L,A
+	LD	HL,(SPATR)
+	LD	HL,$0003
+; array store: t142[t143] = t141
+	PUSH	HL
+	POP	DE
+	LD	(HL),E
+	INC	HL
+	LD	(HL),D
+	LD	HL,$0006
+	PUSH	HL
+	LD	HL,(SPATR)
+	PUSH	HL
+	CALL	SPDRV2_SET
+	CALL	SPDRV2_UPDATE
+	LD	HL,$0002
+	PUSH	HL
+	CALL	WAIT_VSYNC
+	CALL	SPDRV2_FLIP
+	JP	_L24
+_L25:
+_EXIT:
+	POP	IY
+	RET

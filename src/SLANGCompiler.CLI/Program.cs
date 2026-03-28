@@ -72,6 +72,18 @@ class Program
             var lexer = new Lexer.Lexer(source, filePath);
             var tokens = lexer.Tokenize();
 
+            // Phase 1.5: Preprocessor (#INCLUDE展開, #IF/#ELSE/#ENDIF評価)
+            var baseDir = Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? ".";
+            var includePaths = new List<string> { baseDir, ".", "include" };
+            var preprocessor = new Lexer.Preprocessor(diagnostics, includePaths);
+            tokens = preprocessor.Process(tokens, baseDir);
+
+            if (diagnostics.HasErrors)
+            {
+                diagnostics.WriteTo(Console.Error);
+                return 1;
+            }
+
             // Phase 2: Parser
             var parser = new Parser.Parser(tokens, diagnostics);
             var ast = parser.ParseCompilationUnit();

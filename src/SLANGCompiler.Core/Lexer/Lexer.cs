@@ -56,6 +56,8 @@ public class Lexer
         ["NOT"] = TokenKind.Not,
         ["CPL"] = TokenKind.Cpl,
         ["MOD"] = TokenKind.Mod,
+        ["FLOAT"] = TokenKind.Float,  // FLOATもキーワードとして認識(%%と同等)
+        ["ASM"] = TokenKind.Asm,
         ["AND"] = TokenKind.And,
         ["OR"] = TokenKind.Or,
         ["XOR"] = TokenKind.Xor,

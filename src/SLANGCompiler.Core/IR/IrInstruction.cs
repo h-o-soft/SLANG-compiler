@@ -191,6 +191,7 @@ public class IrModule
 {
     public List<IrFunction> Functions { get; } = new();
     public List<IrInstruction> GlobalData { get; } = new();
+    public Dictionary<string, string> StringTable { get; } = new(); // label → string content
 
     public override string ToString()
     {

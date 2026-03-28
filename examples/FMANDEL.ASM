@@ -1,0 +1,259 @@
+
+MAIN:
+; function MAIN
+	PUSH	IY
+	LD	HL,$0000
+	LD	(Y),HL
+_L0:
+	LD	HL,$0000
+	LD	(X),HL
+_L3:
+	LD	HL,(X)
+	LD	HL,$0027
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	(FX),HL
+	LD	HL,(Y)
+	LD	HL,$000C
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	(FY),HL
+	LD	HL,(FX)
+	LD	HL,$4817
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	LD	(CA),HL
+	LD	HL,(FY)
+	LD	HL,$92F7
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	LD	(CB),HL
+	LD	HL,(CA)
+	LD	(A),HL
+	LD	HL,(CB)
+	LD	(B),HL
+	LD	HL,$0000
+	LD	(I),HL
+_L6:
+	LD	HL,(A)
+	LD	HL,(A)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	LD	HL,(B)
+	LD	HL,(B)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,(CA)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(T),HL
+	LD	HL,$0002
+	LD	HL,(A)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	LD	HL,(B)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	LD	HL,(CB)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(B),HL
+	LD	HL,(T)
+	LD	(A),HL
+	LD	HL,(A)
+	LD	HL,(A)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	LD	HL,(B)
+	LD	HL,(B)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	HL,$0000
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+; if t42 == 0 goto _L9
+	LD	A,H
+	OR	L
+	JP	Z,_L9
+	JP	_L8
+_L9:
+_L7:
+	LD	HL,(I)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(I),HL
+	LD	HL,$000F
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t47 != 0 goto _L6
+	LD	A,H
+	OR	L
+	JP	NZ,_L6
+_L8:
+	LD	HL,(I)
+	LD	HL,$000F
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t50 == 0 goto _L11
+	LD	A,H
+	OR	L
+	JP	Z,_L11
+	LD	HL,(I)
+	LD	HL,$0009
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+; if t53 == 0 goto _L12
+	LD	A,H
+	OR	L
+	JP	Z,_L12
+	LD	HL,(I)
+	LD	HL,$0007
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(I),HL
+_L12:
+	LD	HL,$0030
+	LD	HL,(I)
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	CALL	__strfunc_CHR$
+	CALL	__print_func
+	JP	_L10
+_L11:
+; load string " "
+	LD	HL,0 ; string placeholder
+	CALL	__print_str
+_L10:
+_L4:
+	LD	HL,(X)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(X),HL
+	LD	HL,$004E
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t66 != 0 goto _L3
+	LD	A,H
+	OR	L
+	JP	NZ,_L3
+_L5:
+	CALL	__strfunc_/
+	CALL	__print_newline
+_L1:
+	LD	HL,(Y)
+	LD	HL,$0001
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	LD	(Y),HL
+	LD	HL,$0018
+	PUSH	HL
+	POP	DE
+	EX	DE,HL
+	EX	DE,HL
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
+	LD	A,L
+	XOR	$01
+	LD	L,A
+; if t72 != 0 goto _L0
+	LD	A,H
+	OR	L
+	JP	NZ,_L0
+_L2:
+_EXIT:
+	POP	IY
+	RET

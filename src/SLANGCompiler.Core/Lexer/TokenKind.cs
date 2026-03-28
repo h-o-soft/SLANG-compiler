@@ -26,6 +26,7 @@ public enum TokenKind
     Array,
     Const,
     Machine,
+    Asm,                // ASM (CONST ASM等で使用)
 
     // Keywords - control flow
     If,

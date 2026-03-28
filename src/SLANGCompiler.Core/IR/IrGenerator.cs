@@ -394,8 +394,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitStringLiteral(StringLiteral node)
     {
+        // 文字列テーブルに登録し、ラベルアドレスをロード
+        var label = $"_S{_module.StringTable.Count}";
+        _module.StringTable[label] = node.Value;
+
         var t = IrOperand.Temp(AllocTemp());
-        Emit(IrOp.LoadConst, t, IrOperand.Asm($"\"{node.Value}\""));
+        Emit(IrOp.LoadAddr, t, IrOperand.Lbl(label));
         return t;
     }
 

@@ -66,7 +66,9 @@ public class Parser
             case TokenKind.Offset: return ParseOffset();
             case TokenKind.Plain: return new PlainAsm(Advance().StringValue, Current.Span);
             case TokenKind.PreprocIf: return ParsePreprocIf();
-            case TokenKind.PreprocEnd: Advance(); return null; // stray #END
+            case TokenKind.PreprocElse: Advance(); return null;
+            case TokenKind.PreprocEnd: Advance(); return null;
+            case TokenKind.PreprocInclude: Advance(); return null; // preprocessorが処理済み
             case TokenKind.Const: return ParseConstDecl();
             case TokenKind.Var: return ParseVarDeclList();
             case TokenKind.Array: return ParseArrayDeclList();
@@ -155,7 +157,7 @@ public class Parser
         var decls = new List<AstNode>();
         do
         {
-            bool isAsm = Match(TokenKind.Machine); // ASM keyword before const
+            bool isAsm = Match(TokenKind.Asm); // CONST ASM → EQUとして定義
             var name = Expect(TokenKind.Identifier, "Expected constant name").StringValue;
             Expect(TokenKind.Eq, "Expected '='");
             Expression value;
@@ -1021,8 +1023,7 @@ public class Parser
     {
         if (Match(TokenKind.Byte) || Match(TokenKind.Exclamation)) return DataSize.Byte;
         if (Match(TokenKind.Word)) return DataSize.Word;
-        if (Check(TokenKind.Float) && Peek(1).Kind != TokenKind.Identifier)
-        { Advance(); return DataSize.Float; }
+        if (Match(TokenKind.Float)) return DataSize.Float;
         return DataSize.Word;
     }
 
