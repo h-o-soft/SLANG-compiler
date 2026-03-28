@@ -264,6 +264,9 @@ public class CodeGenerator
         _e.Blank();
         _e.Label("SLANG_PROG_END");
 
+        // ピープホール最適化
+        _e.OptimizeWith(new PeepholeOptimizer());
+
         return _e.ToAssembly();
     }
 

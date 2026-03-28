@@ -69,6 +69,13 @@ public class Z80Emitter
         _lines.Add($"\tDB\t\"{text}\",0");
     }
 
+    public void OptimizeWith(PeepholeOptimizer optimizer)
+    {
+        var optimized = optimizer.Optimize(_lines);
+        _lines.Clear();
+        _lines.AddRange(optimized);
+    }
+
     public string ToAssembly()
     {
         return string.Join("\n", _lines);
