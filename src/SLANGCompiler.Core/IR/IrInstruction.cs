@@ -59,8 +59,20 @@ public enum IrOp
     Low,
 
     // -- Array access --
-    ArrayLoad,          // dest = base[index * stride]
-    ArrayStore,         // base[index * stride] = src
+    // ArrayLoad: dest = *(base + index * stride)
+    //   Dest=result, Src1=base, Src2=index, DataSize=element size, stride in ImmediateValue of Src2 if needed
+    ArrayLoad,
+    // ArrayStore: *(base + index * stride) = value
+    //   Dest=base, Src1=value, Src2=index
+    ArrayStore,
+
+    // -- Memory direct access (MEM/MEMW) --
+    MemLoad,            // dest = MEM[addr] or MEMW[addr]
+    MemStore,           // MEM[addr] = value or MEMW[addr] = value
+
+    // -- Indirect variable access --
+    IndirLoad,          // dest = *ptr (dereference pointer)
+    IndirStore,         // *ptr = value
 
     // -- Port I/O --
     PortIn,

@@ -442,17 +442,104 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitPrintStmt(PrintStmt node)
     {
+        // 仕様準拠のランタイム関数名:
+        //   PSTR: 文字列出力(HL=文字列アドレス)
+        //   PRT:  数値出力(HL=値、10進左詰め)
+        //   PCRONE: 改行出力
+        //   PHEX2/PHEX4: 16進出力
+        //   P10toN: n桁右詰め出力(HL=値, DE=桁数)
+        //   PSIGN/PSPC/PMSX/PMSG 等
+
         foreach (var arg in node.Arguments)
         {
-            var val = arg.Accept(this);
-            if (arg is StringLiteral)
-                Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("__print_str"), val);
-            else if (arg is StringFuncExpr sf && sf.FuncName == "/")
-                Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("__print_newline"));
-            else if (arg is StringFuncExpr)
-                Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("__print_func"), val);
+            if (arg is StringFuncExpr sf)
+            {
+                switch (sf.FuncName.ToUpperInvariant())
+                {
+                    case "/":
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PCRONE"));
+                        break;
+                    case "HEX2$":
+                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PHEX2"));
+                        break;
+                    case "HEX4$":
+                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PHEX4"));
+                        break;
+                    case "FORM$":
+                        // FORM$(value, n): HL=value, DE=n桁
+                        if (sf.Arguments.Count >= 2)
+                        {
+                            var v = sf.Arguments[0].Accept(this);
+                            Emit(IrOp.PushArg, v);
+                            var n = sf.Arguments[1].Accept(this);
+                            // DE=n, HL=value
+                        }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10toN"));
+                        break;
+                    case "DECI$":
+                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10to5"));
+                        break;
+                    case "%" or "PN$":
+                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSIGN"));
+                        break;
+                    case "MSG$":
+                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PMSG"));
+                        break;
+                    case "!" or "MSX$":
+                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PMSX"));
+                        break;
+                    case "STR$":
+                        // STR$(char, n)
+                        if (sf.Arguments.Count >= 2)
+                        {
+                            sf.Arguments[0].Accept(this);
+                            Emit(IrOp.PushArg, IrOperand.None);
+                            sf.Arguments[1].Accept(this);
+                        }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSTR2"));
+                        break;
+                    case "CHR$":
+                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PCHR"));
+                        break;
+                    case "SPC$":
+                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSPC"));
+                        break;
+                    case "CR$":
+                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PCR"));
+                        break;
+                    case "TAB$":
+                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PTAB"));
+                        break;
+                    default:
+                        foreach (var a in sf.Arguments) a.Accept(this);
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym($"PRINT_{sf.FuncName}"));
+                        break;
+                }
+            }
             else
-                Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("__print_num"), val);
+            {
+                var val = arg.Accept(this);
+                if (arg is StringLiteral)
+                {
+                    // PSTR: HL=文字列アドレス
+                    Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSTR"));
+                }
+                else
+                {
+                    // PRT: HL=数値
+                    Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PRT"));
+                }
+            }
         }
         return IrOperand.None;
     }
@@ -640,19 +727,57 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitArrayAccessExpr(ArrayAccessExpr node)
     {
-        var baseAddr = node.Array.Accept(this);
-        var dest = IrOperand.Temp(AllocTemp());
+        var arrayName = (node.Array as IdentifierExpr)?.Name;
+        var arraySym = arrayName != null ? _globalSymbols?.Resolve(arrayName) : null;
 
-        // Each index generates an ArrayLoad
-        IrOperand current = baseAddr;
-        for (int i = 0; i < node.Indices.Count; i++)
+        // システム配列判定 (MEM, MEMW, PORT, PORTW, SOS, SOSW)
+        bool isMemArray = arraySym?.Type is MemoryArrayType;
+        bool isByteAccess = arraySym?.Type is MemoryArrayType mat && mat.ElementType == SlangType.Byte;
+
+        // 間接変数判定 (VAR x[])
+        bool isIndirect = arraySym?.Type is PointerType;
+
+        if (isMemArray)
         {
-            var idx = node.Indices[i].Accept(this);
-            var next = IrOperand.Temp(AllocTemp());
-            Emit(IrOp.ArrayLoad, next, current, idx);
-            current = next;
+            // MEM[addr] / MEMW[addr]: インデックスがそのままアドレス
+            var addr = node.Indices[0].Accept(this);
+            var dest = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.MemLoad, dest, addr, dataSize: isByteAccess ? 1 : 2);
+            return dest;
         }
-        return current;
+        else if (isIndirect)
+        {
+            // 間接変数: IVAL[i] → *(IVAL + i * elemSize)
+            var baseAddr = node.Array.Accept(this); // IVALの値(アドレス)をロード
+            var idx = node.Indices[0].Accept(this);
+            var dest = IrOperand.Temp(AllocTemp());
+            int elemSize = isByteAccess ? 1 : 2;
+            Emit(IrOp.ArrayLoad, dest, baseAddr, idx, dataSize: elemSize);
+            return dest;
+        }
+        else
+        {
+            // 通常配列: base_label + index * stride
+            // 配列のベースアドレスをロード
+            var dest = IrOperand.Temp(AllocTemp());
+            if (arrayName != null)
+                Emit(IrOp.LoadAddr, dest, IrOperand.Sym(arrayName));
+            else
+                dest = node.Array.Accept(this);
+
+            // 各次元のインデックスを処理
+            // 多次元: arr[i][j] → base + i * (dim2 * elemSize) + j * elemSize
+            // TODO: 多次元ストライド計算（現在は1次元のみ正しい）
+            for (int i = 0; i < node.Indices.Count; i++)
+            {
+                var idx = node.Indices[i].Accept(this);
+                var next = IrOperand.Temp(AllocTemp());
+                int elemSize = isByteAccess ? 1 : 2;
+                Emit(IrOp.ArrayLoad, next, dest, idx, dataSize: elemSize);
+                dest = next;
+            }
+            return dest;
+        }
     }
 
     public IrOperand VisitConditionalExpr(ConditionalExpr node)
@@ -780,22 +905,40 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
         else if (target is ArrayAccessExpr arr)
         {
-            var baseAddr = arr.Array.Accept(this);
-            // For multi-dimensional, compute final address
-            IrOperand addr = baseAddr;
-            for (int i = 0; i < arr.Indices.Count; i++)
+            var arrayName = (arr.Array as IdentifierExpr)?.Name;
+            var arraySym = arrayName != null ? _globalSymbols?.Resolve(arrayName) : null;
+            bool isMemArray = arraySym?.Type is MemoryArrayType;
+            bool isByteAccess = arraySym?.Type is MemoryArrayType mt && mt.ElementType == SlangType.Byte;
+
+            if (isMemArray)
             {
-                var idx = arr.Indices[i].Accept(this);
-                if (i < arr.Indices.Count - 1)
+                // MEM[addr] = value / MEMW[addr] = value
+                var addr = arr.Indices[0].Accept(this);
+                Emit(IrOp.MemStore, addr, value, dataSize: isByteAccess ? 1 : 2);
+            }
+            else
+            {
+                // 通常配列/間接変数のストア
+                IrOperand baseAddr;
+                if (arrayName != null)
                 {
-                    var next = IrOperand.Temp(AllocTemp());
-                    Emit(IrOp.ArrayLoad, next, addr, idx);
-                    addr = next;
+                    baseAddr = IrOperand.Temp(AllocTemp());
+                    // ローカル変数かグローバルかで読み分け
+                    if (_localVars != null && _localVars.TryGetValue(arrayName, out var li))
+                        Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(li.Offset));
+                    else if (arraySym?.Type is PointerType)
+                        Emit(IrOp.LoadVar, baseAddr, IrOperand.Sym(arrayName)); // 間接変数: 値がアドレス
+                    else
+                        Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(arrayName)); // 配列: ラベルがアドレス
                 }
                 else
                 {
-                    Emit(IrOp.ArrayStore, addr, value, idx);
+                    baseAddr = arr.Array.Accept(this);
                 }
+
+                int elemSize = isByteAccess ? 1 : 2;
+                var idx = arr.Indices[0].Accept(this);
+                Emit(IrOp.ArrayStore, baseAddr, value, idx, dataSize: elemSize);
             }
         }
         else

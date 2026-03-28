@@ -9,9 +9,8 @@ MAIN:
 	LD	HL,$0001
 	LD	(TNUM),HL
 	LD	HL,_S0
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	LD	HL,$007B
 	LD	HL,$007B
 	PUSH	HL
@@ -22,24 +21,22 @@ MAIN:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t5 == 0 goto _L1
+; if t4 == 0 goto _L1
 	LD	A,H
 	OR	L
 	JP	Z,_L1
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S1
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L0
 _L1:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S2
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L0:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -49,9 +46,8 @@ _L0:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S3
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	LD	HL,$007B
 	LD	(VAL),HL
 	LD	HL,(VAL)
@@ -64,24 +60,22 @@ _L0:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t20 == 0 goto _L3
+; if t16 == 0 goto _L3
 	LD	A,H
 	OR	L
 	JP	Z,_L3
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S4
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L2
 _L3:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S5
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L2:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -102,24 +96,22 @@ _L2:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t33 == 0 goto _L5
+; if t27 == 0 goto _L5
 	LD	A,H
 	OR	L
 	JP	Z,_L5
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S6
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L4
 _L5:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S7
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L4:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -129,18 +121,15 @@ _L4:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S8
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	LD	HL,$7000
 	LD	(IVAL),HL
 	LD	HL,(IVAL)
 	LD	HL,$0000
-; array load: t49 = t46[t48]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -155,24 +144,22 @@ _L4:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t51 == 0 goto _L7
+; if t41 == 0 goto _L7
 	LD	A,H
 	OR	L
 	JP	Z,_L7
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S9
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L6
 _L7:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S10
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L6:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -184,8 +171,10 @@ _L6:
 	LD	HL,$01C8
 	LD	HL,(IVAL)
 	LD	HL,$0000
-; array store: t62[t63] = t61
-	PUSH	HL
+; array store [WORD]
+	ADD	HL,HL
+	POP	DE
+	ADD	HL,DE
 	POP	DE
 	LD	(HL),E
 	INC	HL
@@ -200,24 +189,22 @@ _L6:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t66 == 0 goto _L9
+; if t54 == 0 goto _L9
 	LD	A,H
 	OR	L
 	JP	Z,_L9
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S11
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L8
 _L9:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S12
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L8:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -230,11 +217,9 @@ _L8:
 	LD	(AIVAL),HL
 	LD	HL,(AIVAL)
 	LD	HL,$0000
-; array load: t80 = t77[t79]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -249,24 +234,22 @@ _L8:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t82 == 0 goto _L11
+; if t67 == 0 goto _L11
 	LD	A,H
 	OR	L
 	JP	Z,_L11
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S13
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L10
 _L11:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S14
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L10:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -276,30 +259,32 @@ _L10:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,$000A
-	LD	HL,(AR)
+	LD	HL,AR
 	LD	HL,$0003
-; array store: t93[t94] = t92
-	PUSH	HL
+; array store [WORD]
+	ADD	HL,HL
+	POP	DE
+	ADD	HL,DE
 	POP	DE
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,$0014
-	LD	HL,(AR)
+	LD	HL,AR
 	LD	HL,$0004
-; array store: t96[t97] = t95
-	PUSH	HL
+; array store [WORD]
+	ADD	HL,HL
+	POP	DE
+	ADD	HL,DE
 	POP	DE
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
-	LD	HL,(AR)
+	LD	HL,AR
 	LD	HL,$0003
-; array load: t101 = t98[t100]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -314,13 +299,11 @@ _L10:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-	LD	HL,(AR)
+	LD	HL,AR
 	LD	HL,$0004
-; array load: t107 = t104[t106]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -344,24 +327,22 @@ _L10:
 	LD	A,L
 	AND	E
 	LD	L,A
-; if t110 == 0 goto _L13
+; if t91 == 0 goto _L13
 	LD	A,H
 	OR	L
 	JP	Z,_L13
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S15
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L12
 _L13:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S16
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L12:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -371,9 +352,8 @@ _L12:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S17
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	LD	HL,$0064
 	LD	(NUM),HL
 	LD	HL,(NUM)
@@ -408,26 +388,24 @@ _L12:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t134 == 0 goto _L15
+; if t112 == 0 goto _L15
 	LD	A,H
 	OR	L
 	JP	Z,_L15
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S18
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L14
 _L15:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S19
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(VAL)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 _L14:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -441,19 +419,19 @@ _L14:
 	LD	HL,$0064
 	LD	HL,(IVAL)
 	LD	HL,(NUM)
-; array store: t147[t148] = t146
-	PUSH	HL
+; array store [WORD]
+	ADD	HL,HL
+	POP	DE
+	ADD	HL,DE
 	POP	DE
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,(IVAL)
 	LD	HL,(NUM)
-; array load: t152 = t149[t151]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -466,11 +444,9 @@ _L14:
 	CALL	MUL16
 	LD	HL,(IVAL)
 	LD	HL,(NUM)
-; array load: t158 = t155[t157]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -478,11 +454,9 @@ _L14:
 	EX	DE,HL
 	LD	HL,(IVAL)
 	LD	HL,(NUM)
-; array load: t162 = t159[t161]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -512,26 +486,24 @@ _L14:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t169 == 0 goto _L17
+; if t142 == 0 goto _L17
 	LD	A,H
 	OR	L
 	JP	Z,_L17
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S20
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L16
 _L17:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S21
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(VAL)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 _L16:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -550,8 +522,10 @@ _L16:
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array store: t182[t185] = t181
-	PUSH	HL
+; array store [WORD]
+	ADD	HL,HL
+	POP	DE
+	ADD	HL,DE
 	POP	DE
 	LD	(HL),E
 	INC	HL
@@ -563,11 +537,9 @@ _L16:
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array load: t191 = t186[t190]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -585,11 +557,9 @@ _L16:
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array load: t199 = t194[t198]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -602,11 +572,9 @@ _L16:
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array load: t205 = t200[t204]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -636,26 +604,24 @@ _L16:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t212 == 0 goto _L19
+; if t180 == 0 goto _L19
 	LD	A,H
 	OR	L
 	JP	Z,_L19
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S22
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L18
 _L19:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S23
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(VAL)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 _L18:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -697,26 +663,24 @@ _L18:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t231 == 0 goto _L21
+; if t197 == 0 goto _L21
 	LD	A,H
 	OR	L
 	JP	Z,_L21
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S24
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L20
 _L21:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S25
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(VAL)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 _L20:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -804,26 +768,24 @@ _L20:
 	LD	A,L
 	AND	E
 	LD	L,A
-; if t260 == 0 goto _L23
+; if t224 == 0 goto _L23
 	LD	A,H
 	OR	L
 	JP	Z,_L23
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S26
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L22
 _L23:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S27
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(VAL)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 _L22:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -906,26 +868,24 @@ _L22:
 	LD	A,L
 	AND	E
 	LD	L,A
-; if t286 == 0 goto _L25
+; if t248 == 0 goto _L25
 	LD	A,H
 	OR	L
 	JP	Z,_L25
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S28
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L24
 _L25:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S29
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(VAL)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 _L24:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -935,9 +895,8 @@ _L24:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S30
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	LD	HL,$0032
 	LD	(VAL),HL
 	LD	HL,(VAL)
@@ -951,16 +910,15 @@ _L24:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t302 == 0 goto _L27
+; if t261 == 0 goto _L27
 	LD	A,H
 	OR	L
 	JP	Z,_L27
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S31
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L26
 _L27:
 	LD	HL,(VAL)
@@ -974,16 +932,15 @@ _L27:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t308 == 0 goto _L26
+; if t266 == 0 goto _L26
 	LD	A,H
 	OR	L
 	JP	Z,_L26
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S32
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L26:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -1005,16 +962,15 @@ _L26:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t318 == 0 goto _L29
+; if t275 == 0 goto _L29
 	LD	A,H
 	OR	L
 	JP	Z,_L29
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S33
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L28
 _L29:
 	LD	HL,(VAL)
@@ -1028,24 +984,22 @@ _L29:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t324 == 0 goto _L30
+; if t280 == 0 goto _L30
 	LD	A,H
 	OR	L
 	JP	Z,_L30
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S34
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L28
 _L30:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S35
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L28:
 	LD	HL,(VAL)
 	LD	HL,$0031
@@ -1058,16 +1012,15 @@ _L28:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t333 == 0 goto _L32
+; if t287 == 0 goto _L32
 	LD	A,H
 	OR	L
 	JP	Z,_L32
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S36
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L31
 _L32:
 	LD	HL,(VAL)
@@ -1081,24 +1034,22 @@ _L32:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t339 == 0 goto _L33
+; if t292 == 0 goto _L33
 	LD	A,H
 	OR	L
 	JP	Z,_L33
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S37
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L31
 _L33:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S38
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L31:
 	LD	HL,(VAL)
 	LD	HL,$0032
@@ -1111,16 +1062,15 @@ _L31:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t348 == 0 goto _L35
+; if t299 == 0 goto _L35
 	LD	A,H
 	OR	L
 	JP	Z,_L35
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S39
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L34
 _L35:
 	LD	HL,(VAL)
@@ -1133,24 +1083,22 @@ _L35:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t354 == 0 goto _L36
+; if t304 == 0 goto _L36
 	LD	A,H
 	OR	L
 	JP	Z,_L36
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S40
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L34
 _L36:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S41
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L34:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -1169,7 +1117,7 @@ _L34:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t366 == 0 goto _L38
+; if t314 == 0 goto _L38
 	LD	A,H
 	OR	L
 	JP	Z,_L38
@@ -1184,37 +1132,33 @@ _L34:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t369 == 0 goto _L40
+; if t317 == 0 goto _L40
 	LD	A,H
 	OR	L
 	JP	Z,_L40
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S42
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L39
 _L40:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S43
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L39:
 	LD	HL,_S44
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L37
 _L38:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S45
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L37:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -1224,13 +1168,12 @@ _L37:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S46
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	LD	HL,$0014
 	LD	(VAL),HL
 	LD	HL,_S47
-	CALL	__print_str
+	CALL	PSTR
 _L41:
 	LD	HL,(VAL)
 	LD	HL,$000A
@@ -1243,14 +1186,14 @@ _L41:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t390 == 0 goto _L42
+; if t333 == 0 goto _L42
 	LD	A,H
 	OR	L
 	JP	Z,_L42
 	LD	HL,(VAL)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S48
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(VAL)
 	LD	HL,$0001
 	PUSH	HL
@@ -1261,8 +1204,7 @@ _L41:
 	LD	(VAL),HL
 	JP	_L41
 _L42:
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PCRONE
 	LD	HL,(VAL)
 	LD	HL,$000A
 	PUSH	HL
@@ -1273,24 +1215,22 @@ _L42:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t399 == 0 goto _L44
+; if t341 == 0 goto _L44
 	LD	A,H
 	OR	L
 	JP	Z,_L44
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S49
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L43
 _L44:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S50
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L43:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -1312,7 +1252,7 @@ _L45:
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-; if t412 == 0 goto _L46
+; if t352 == 0 goto _L46
 	LD	A,H
 	OR	L
 	JP	Z,_L46
@@ -1326,7 +1266,7 @@ _L45:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t415 == 0 goto _L47
+; if t355 == 0 goto _L47
 	LD	A,H
 	OR	L
 	JP	Z,_L47
@@ -1352,24 +1292,22 @@ _L46:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t421 == 0 goto _L49
+; if t361 == 0 goto _L49
 	LD	A,H
 	OR	L
 	JP	Z,_L49
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S51
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L48
 _L49:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S52
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L48:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -1381,7 +1319,7 @@ _L48:
 	LD	HL,$000A
 	LD	(VAL),HL
 	LD	HL,_S53
-	CALL	__print_str
+	CALL	PSTR
 _L50:
 	LD	HL,(VAL)
 	LD	HL,$0000
@@ -1394,7 +1332,7 @@ _L50:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t435 == 0 goto _L51
+; if t373 == 0 goto _L51
 	LD	A,H
 	OR	L
 	JP	Z,_L51
@@ -1410,7 +1348,7 @@ _L52:
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; if t438 == 0 goto _L53
+; if t376 == 0 goto _L53
 	LD	A,H
 	OR	L
 	JP	Z,_L53
@@ -1424,18 +1362,18 @@ _L52:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t441 == 0 goto _L54
+; if t379 == 0 goto _L54
 	LD	A,H
 	OR	L
 	JP	Z,_L54
 	JP	_L53
 _L54:
 	LD	HL,_S54
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(VAL)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S55
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(VAL)
 	LD	HL,$0001
 	PUSH	HL
@@ -1447,9 +1385,9 @@ _L54:
 	JP	_L52
 _L53:
 	LD	HL,(VAL)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S56
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(VAL)
 	LD	HL,$0001
 	PUSH	HL
@@ -1460,8 +1398,7 @@ _L53:
 	LD	(VAL),HL
 	JP	_L50
 _L51:
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PCRONE
 	LD	HL,(VAL)
 	LD	HL,$0000
 	PUSH	HL
@@ -1472,16 +1409,15 @@ _L51:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t456 == 0 goto _L55
+; if t393 == 0 goto _L55
 	LD	A,H
 	OR	L
 	JP	Z,_L55
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S57
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L55:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -1491,14 +1427,14 @@ _L55:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S58
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,$0000
 	LD	(VAL),HL
 _L56:
 	LD	HL,(VAL)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S59
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(VAL)
 	LD	HL,$0001
 	PUSH	HL
@@ -1516,15 +1452,14 @@ _L56:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t472 == 0 goto _L56
+; if t408 == 0 goto _L56
 	LD	A,H
 	OR	L
 	JP	Z,_L56
 _L57:
 	LD	HL,(VAL)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 	LD	HL,(VAL)
 	LD	HL,$000A
 	PUSH	HL
@@ -1535,24 +1470,22 @@ _L57:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t477 == 0 goto _L59
+; if t412 == 0 goto _L59
 	LD	A,H
 	OR	L
 	JP	Z,_L59
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S60
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L58
 _L59:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S61
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L58:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -1562,14 +1495,14 @@ _L58:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S62
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,$0000
 	LD	(VAL),HL
 _L60:
 	LD	HL,(VAL)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S63
-	CALL	__print_str
+	CALL	PSTR
 _L61:
 	LD	HL,(VAL)
 	LD	HL,$0001
@@ -1591,13 +1524,12 @@ _L61:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t495 != 0 goto _L60
+; if t428 != 0 goto _L60
 	LD	A,H
 	OR	L
 	JP	NZ,_L60
 _L62:
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PCRONE
 	LD	HL,(VAL)
 	LD	HL,$000B
 	PUSH	HL
@@ -1608,24 +1540,22 @@ _L62:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t499 == 0 goto _L64
+; if t431 == 0 goto _L64
 	LD	A,H
 	OR	L
 	JP	Z,_L64
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S64
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L63
 _L64:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S65
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L63:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -1638,9 +1568,9 @@ _L63:
 	LD	(VAL),HL
 _L65:
 	LD	HL,(VAL)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S66
-	CALL	__print_str
+	CALL	PSTR
 _L66:
 	LD	HL,(VAL)
 	LD	HL,$0001
@@ -1659,13 +1589,12 @@ _L66:
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-; if t516 != 0 goto _L65
+; if t446 != 0 goto _L65
 	LD	A,H
 	OR	L
 	JP	NZ,_L65
 _L67:
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PCRONE
 	LD	HL,(VAL)
 	LD	HL,$0001
 	LD	A,H
@@ -1683,24 +1612,22 @@ _L67:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t521 == 0 goto _L69
+; if t450 == 0 goto _L69
 	LD	A,H
 	OR	L
 	JP	Z,_L69
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S67
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L68
 _L69:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S68
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L68:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -1710,21 +1637,19 @@ _L68:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S69
-	CALL	__print_str
+	CALL	PSTR
 	JP	LABEL1
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S70
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 LABEL1:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S71
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	LD	HL,(TNUM)
 	LD	HL,$0001
 	PUSH	HL
@@ -1733,7 +1658,7 @@ LABEL1:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S72
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,$0005
 	LD	(VAL),HL
 	LD	HL,(VAL)
@@ -1771,16 +1696,15 @@ LABEL1:
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t548 == 0 goto _L71
+; if t473 == 0 goto _L71
 	LD	A,H
 	OR	L
 	JP	Z,_L71
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S73
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L70
 _L71:
 	LD	HL,$0005
@@ -1792,24 +1716,22 @@ _L71:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t553 == 0 goto _L72
+; if t477 == 0 goto _L72
 	LD	A,H
 	OR	L
 	JP	Z,_L72
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S74
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L70
 _L72:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S75
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L70
 _L70:
 	LD	HL,(TNUM)
@@ -1831,16 +1753,15 @@ _L70:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t566 == 0 goto _L74
+; if t488 == 0 goto _L74
 	LD	A,H
 	OR	L
 	JP	Z,_L74
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S76
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L73
 _L74:
 	LD	HL,$0001
@@ -1877,24 +1798,22 @@ _L74:
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t574 == 0 goto _L75
+; if t495 == 0 goto _L75
 	LD	A,H
 	OR	L
 	JP	Z,_L75
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S77
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L73
 _L75:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S78
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L73
 _L73:
 	LD	HL,(TNUM)
@@ -1916,16 +1835,15 @@ _L73:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t587 == 0 goto _L77
+; if t506 == 0 goto _L77
 	LD	A,H
 	OR	L
 	JP	Z,_L77
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S79
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L76
 _L77:
 	LD	HL,$0001
@@ -1962,24 +1880,22 @@ _L77:
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t595 == 0 goto _L78
+; if t513 == 0 goto _L78
 	LD	A,H
 	OR	L
 	JP	Z,_L78
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S80
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L76
 _L78:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S81
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L76
 _L76:
 	LD	HL,(TNUM)
@@ -2001,16 +1917,15 @@ _L76:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t608 == 0 goto _L80
+; if t524 == 0 goto _L80
 	LD	A,H
 	OR	L
 	JP	Z,_L80
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S82
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L79
 _L80:
 	LD	HL,$0001
@@ -2047,16 +1962,15 @@ _L80:
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t616 == 0 goto _L81
+; if t531 == 0 goto _L81
 	LD	A,H
 	OR	L
 	JP	Z,_L81
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S83
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L79
 _L81:
 	LD	HL,$0006
@@ -2068,7 +1982,7 @@ _L81:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t621 == 0 goto _L82
+; if t535 == 0 goto _L82
 	LD	A,H
 	OR	L
 	JP	Z,_L82
@@ -2083,7 +1997,7 @@ _L82:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t623 == 0 goto _L83
+; if t537 == 0 goto _L83
 	LD	A,H
 	OR	L
 	JP	Z,_L83
@@ -2098,24 +2012,22 @@ _L83:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t625 == 0 goto _L84
+; if t539 == 0 goto _L84
 	LD	A,H
 	OR	L
 	JP	Z,_L84
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S84
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L79
 _L84:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S85
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L79
 _L79:
 	LD	HL,(TNUM)
@@ -2126,7 +2038,7 @@ _L79:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S86
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,$0005
 	LD	(VAL),HL
 	LD	HL,(VAL)
@@ -2138,11 +2050,10 @@ _L79:
 	CALL	FUNC1
 	LD	(NUM),HL
 	LD	HL,_S87
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(VAL)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 	LD	HL,(VAL)
 	LD	HL,$0005
 	PUSH	HL
@@ -2153,24 +2064,22 @@ _L79:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t645 == 0 goto _L86
+; if t556 == 0 goto _L86
 	LD	A,H
 	OR	L
 	JP	Z,_L86
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S88
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L85
 _L86:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S89
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L85:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2189,24 +2098,22 @@ _L85:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t657 == 0 goto _L88
+; if t566 == 0 goto _L88
 	LD	A,H
 	OR	L
 	JP	Z,_L88
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S90
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L87
 _L88:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S91
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L87:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2216,7 +2123,7 @@ _L87:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S92
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,$000A
 	LD	(IY+$70),L
 	LD	(IY+$71),H
@@ -2232,24 +2139,22 @@ _L87:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t672 == 0 goto _L90
+; if t579 == 0 goto _L90
 	LD	A,H
 	OR	L
 	JP	Z,_L90
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S93
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L89
 _L90:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S94
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L89:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2273,24 +2178,22 @@ _L89:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t686 == 0 goto _L92
+; if t591 == 0 goto _L92
 	LD	A,H
 	OR	L
 	JP	Z,_L92
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S95
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L91
 _L92:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S96
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L91:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2300,17 +2203,10 @@ _L91:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S97
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,$04D2
 	LD	(AVAL),HL
-	LD	HL,(MEMW)
 	LD	HL,$7000
-; array load: t701 = t698[t700]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
@@ -2324,22 +2220,21 @@ _L91:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t703 == 0 goto _L94
+; if t604 == 0 goto _L94
 	LD	A,H
 	OR	L
 	JP	Z,_L94
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S98
-	CALL	__print_str
+	CALL	PSTR
 	JP	_L93
 _L94:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S99
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L93:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2348,18 +2243,9 @@ _L93:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-	LD	HL,(MEM)
 	LD	HL,$7000
-; array load: t715 = t712[t714]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
+	LD	L,(HL)
+	LD	H,$00
 	LD	HL,$04D2
 	LD	H,$00
 	PUSH	HL
@@ -2370,18 +2256,9 @@ _L93:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-	LD	HL,(MEM)
 	LD	HL,$7001
-; array load: t722 = t719[t721]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
+	LD	L,(HL)
+	LD	H,$00
 	LD	HL,$04D2
 	LD	L,H
 	LD	H,$00
@@ -2402,24 +2279,22 @@ _L93:
 	LD	A,L
 	AND	E
 	LD	L,A
-; if t726 == 0 goto _L96
+; if t622 == 0 goto _L96
 	LD	A,H
 	OR	L
 	JP	Z,_L96
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S100
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L95
 _L96:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S101
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L95:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2429,22 +2304,13 @@ _L95:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,$8000
-	LD	HL,(MEMW)
 	LD	HL,$8000
-; array store: t737[t738] = t736
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
-	LD	HL,(MEMW)
 	LD	HL,$8000
-; array load: t742 = t739[t741]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
@@ -2460,22 +2326,21 @@ _L95:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t745 == 0 goto _L98
+; if t636 == 0 goto _L98
 	LD	A,H
 	OR	L
 	JP	Z,_L98
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S102
-	CALL	__print_str
+	CALL	PSTR
 	JP	_L97
 _L98:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S103
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L97:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2485,22 +2350,13 @@ _L97:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,$0002
-	LD	HL,(MEMW)
 	LD	HL,(VAL)
-; array store: t755[t756] = t754
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
-	LD	HL,(MEMW)
 	LD	HL,(VAL)
-; array load: t760 = t757[t759]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
@@ -2516,22 +2372,21 @@ _L97:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t763 == 0 goto _L100
+; if t650 == 0 goto _L100
 	LD	A,H
 	OR	L
 	JP	Z,_L100
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S104
-	CALL	__print_str
+	CALL	PSTR
 	JP	_L99
 _L100:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S105
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L99:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2541,21 +2396,18 @@ _L99:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,$0064
-	LD	HL,(MEMW)
 	LD	HL,(VAL)
 	LD	HL,(NUM)
 	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array store: t773[t776] = t772
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,$0017
-	LD	HL,(MEMW)
 	LD	HL,(VAL)
 	LD	HL,(NUM)
 	PUSH	HL
@@ -2567,30 +2419,21 @@ _L99:
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array store: t778[t783] = t777
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
-	LD	HL,(MEMW)
 	LD	HL,(VAL)
 	LD	HL,(NUM)
 	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,DE
-; array load: t789 = t784[t788]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
-	LD	HL,(MEMW)
 	LD	HL,(VAL)
 	LD	HL,(NUM)
 	PUSH	HL
@@ -2601,12 +2444,6 @@ _L99:
 	PUSH	HL
 	POP	DE
 	EX	DE,HL
-	ADD	HL,DE
-; array load: t797 = t790[t796]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -2627,22 +2464,21 @@ _L99:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t801 == 0 goto _L102
+; if t681 == 0 goto _L102
 	LD	A,H
 	OR	L
 	JP	Z,_L102
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S106
-	CALL	__print_str
+	CALL	PSTR
 	JP	_L101
 _L102:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S107
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L101:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2652,35 +2488,18 @@ _L101:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,$0001
-	LD	HL,(MEM)
 	LD	HL,$8000
-; array store: t811[t812] = t810
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
 	LD	HL,$0064
-	LD	HL,(MEM)
 	LD	HL,$8001
-; array store: t814[t815] = t813
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-	LD	HL,(MEM)
 	LD	HL,$8000
-; array load: t819 = t816[t818]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
+	LD	L,(HL)
+	LD	H,$00
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	HL,$0001
@@ -2692,22 +2511,21 @@ _L101:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t822 == 0 goto _L104
+; if t697 == 0 goto _L104
 	LD	A,H
 	OR	L
 	JP	Z,_L104
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S108
-	CALL	__print_str
+	CALL	PSTR
 	JP	_L103
 _L104:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S109
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L103:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2718,18 +2536,9 @@ _L103:
 	LD	(TNUM),HL
 	LD	HL,$8000
 	LD	(VAL),HL
-	LD	HL,(MEM)
 	LD	HL,(VAL)
-; array load: t835 = t832[t834]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
+	LD	L,(HL)
+	LD	H,$00
 	LD	(NUM),HL
 	LD	HL,(NUM)
 	LD	HL,$0001
@@ -2741,22 +2550,21 @@ _L103:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t838 == 0 goto _L106
+; if t710 == 0 goto _L106
 	LD	A,H
 	OR	L
 	JP	Z,_L106
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S110
-	CALL	__print_str
+	CALL	PSTR
 	JP	_L105
 _L106:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S111
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L105:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2766,26 +2574,13 @@ _L105:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,$007B
-	LD	HL,(MEM)
 	LD	HL,(VAL)
-; array store: t848[t849] = t847
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-	LD	HL,(MEM)
 	LD	HL,(VAL)
-; array load: t853 = t850[t852]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
+	LD	L,(HL)
+	LD	H,$00
 	LD	HL,$007B
 	PUSH	HL
 	POP	DE
@@ -2795,22 +2590,21 @@ _L105:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t855 == 0 goto _L108
+; if t723 == 0 goto _L108
 	LD	A,H
 	OR	L
 	JP	Z,_L108
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S112
-	CALL	__print_str
+	CALL	PSTR
 	JP	_L107
 _L108:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S113
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L107:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2819,18 +2613,9 @@ _L107:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-	LD	HL,(MEM)
 	LD	HL,(VAL)
-; array load: t867 = t864[t866]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
+	LD	L,(HL)
+	LD	H,$00
 	LD	(NUM),HL
 	LD	HL,(NUM)
 	LD	HL,$007B
@@ -2842,22 +2627,21 @@ _L107:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t870 == 0 goto _L110
+; if t735 == 0 goto _L110
 	LD	A,H
 	OR	L
 	JP	Z,_L110
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S114
-	CALL	__print_str
+	CALL	PSTR
 	JP	_L109
 _L110:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S115
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L109:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2871,41 +2655,23 @@ _L109:
 	LD	HL,$0001
 	LD	(NUM),HL
 	LD	HL,$001E
-	LD	HL,(MEM)
 	LD	HL,$8001
-; array store: t882[t883] = t881
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
 	LD	HL,$0019
-	LD	HL,(MEM)
 	LD	HL,$8003
-; array store: t885[t886] = t884
-	PUSH	HL
 	POP	DE
+	EX	DE,HL
 	LD	(HL),E
-	INC	HL
-	LD	(HL),D
-	LD	HL,(MEM)
 	LD	HL,(VAL)
 	LD	HL,(NUM)
 	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array load: t892 = t887[t891]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	LD	HL,(MEM)
+	LD	L,(HL)
+	LD	H,$00
 	LD	HL,(VAL)
 	LD	HL,(NUM)
 	PUSH	HL
@@ -2917,16 +2683,8 @@ _L109:
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-; array load: t900 = t893[t899]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
+	LD	L,(HL)
+	LD	H,$00
 	PUSH	HL
 	POP	DE
 	EX	DE,HL
@@ -2942,24 +2700,22 @@ _L109:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t904 == 0 goto _L112
+; if t762 == 0 goto _L112
 	LD	A,H
 	OR	L
 	JP	Z,_L112
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S116
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L111
 _L112:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S117
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L111:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -2969,51 +2725,37 @@ _L111:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S118
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	LD	HL,$0001
 	LD	(VAL),HL
 	LD	HL,$0005
 	LD	(NUM),HL
 	LD	HL,$000A
-	LD	HL,(AR2)
+	LD	HL,AR2
 	LD	HL,$0001
-; array load: t921 = t919[t920]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array store [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	LD	HL,$0005
-; array store: t921[t922] = t918
-	PUSH	HL
 	POP	DE
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
-	LD	HL,(AR2)
+	LD	HL,AR2
 	LD	HL,$0001
-; array load: t926 = t923[t925]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
 	LD	HL,$0005
-; array load: t928 = t926[t927]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3028,24 +2770,22 @@ _L111:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t930 == 0 goto _L114
+; if t782 == 0 goto _L114
 	LD	A,H
 	OR	L
 	JP	Z,_L114
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S119
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L113
 _L114:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S120
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L113:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -3055,43 +2795,30 @@ _L113:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,$000A
-	LD	HL,(ARB2)
+	LD	HL,ARB2
 	LD	HL,$0001
-; array load: t943 = t941[t942]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array store [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	LD	HL,$0005
-; array store: t943[t944] = t940
-	PUSH	HL
 	POP	DE
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
-	LD	HL,(ARB2)
+	LD	HL,ARB2
 	LD	HL,$0001
-; array load: t948 = t945[t947]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
 	LD	HL,$0005
-; array load: t950 = t948[t949]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3106,24 +2833,22 @@ _L113:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t952 == 0 goto _L116
+; if t799 == 0 goto _L116
 	LD	A,H
 	OR	L
 	JP	Z,_L116
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S121
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L115
 _L116:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S122
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L115:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -3132,24 +2857,20 @@ _L115:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-	LD	HL,(AR2)
+	LD	HL,AR2
 	LD	HL,(VAL)
-; array load: t965 = t962[t964]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
 	LD	HL,(NUM)
-; array load: t967 = t965[t966]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3164,24 +2885,22 @@ _L115:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t969 == 0 goto _L118
+; if t813 == 0 goto _L118
 	LD	A,H
 	OR	L
 	JP	Z,_L118
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S123
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L117
 _L118:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S124
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L117:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -3190,24 +2909,20 @@ _L117:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-	LD	HL,(ARB2)
+	LD	HL,ARB2
 	LD	HL,(VAL)
-; array load: t982 = t979[t981]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
 	LD	HL,(NUM)
-; array load: t984 = t982[t983]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3222,24 +2937,22 @@ _L117:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t986 == 0 goto _L120
+; if t827 == 0 goto _L120
 	LD	A,H
 	OR	L
 	JP	Z,_L120
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S125
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L119
 _L120:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S126
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L119:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -3252,7 +2965,7 @@ _L119:
 	LD	(VAL),HL
 	LD	HL,$0004
 	LD	(NUM),HL
-	LD	HL,(AR2)
+	LD	HL,AR2
 	LD	HL,(VAL)
 	LD	HL,$0001
 	PUSH	HL
@@ -3260,11 +2973,9 @@ _L119:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load: t1003 = t998[t1002]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3282,11 +2993,9 @@ _L119:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load: t1009 = t1003[t1008]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3301,24 +3010,22 @@ _L119:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1011 == 0 goto _L122
+; if t849 == 0 goto _L122
 	LD	A,H
 	OR	L
 	JP	Z,_L122
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S127
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L121
 _L122:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S128
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L121:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -3327,7 +3034,7 @@ _L121:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-	LD	HL,(ARB2)
+	LD	HL,ARB2
 	LD	HL,(VAL)
 	LD	HL,$0001
 	PUSH	HL
@@ -3335,11 +3042,9 @@ _L121:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load: t1026 = t1021[t1025]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3357,11 +3062,9 @@ _L121:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load: t1032 = t1026[t1031]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3376,24 +3079,22 @@ _L121:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1034 == 0 goto _L124
+; if t869 == 0 goto _L124
 	LD	A,H
 	OR	L
 	JP	Z,_L124
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S129
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L123
 _L124:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S130
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L123:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -3407,63 +3108,41 @@ _L123:
 	LD	HL,$0003
 	LD	(NUM),HL
 	LD	HL,$000A
-	LD	HL,(LAR)
+	LD	HL,LAR
 	LD	HL,$0001
-; array load: t1049 = t1047[t1048]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array store [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	LD	HL,$0003
-; array store: t1049[t1050] = t1046
-	PUSH	HL
 	POP	DE
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,$000A
-	LD	HL,(LARB)
+	LD	HL,LARB
 	LD	HL,$0001
-; array load: t1054 = t1052[t1053]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array store [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	LD	HL,$0003
-; array store: t1054[t1055] = t1051
-	PUSH	HL
 	POP	DE
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
-	LD	HL,(LAR)
+	LD	HL,LAR
 	LD	HL,$0001
-; array load: t1059 = t1056[t1058]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
 	LD	HL,$0003
-; array load: t1061 = t1059[t1060]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3478,24 +3157,22 @@ _L123:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1063 == 0 goto _L126
+; if t891 == 0 goto _L126
 	LD	A,H
 	OR	L
 	JP	Z,_L126
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S131
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L125
 _L126:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S132
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L125:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -3504,24 +3181,20 @@ _L125:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-	LD	HL,(LARB)
+	LD	HL,LARB
 	LD	HL,$0001
-; array load: t1076 = t1073[t1075]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
 	LD	HL,$0003
-; array load: t1078 = t1076[t1077]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3536,24 +3209,22 @@ _L125:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1080 == 0 goto _L128
+; if t905 == 0 goto _L128
 	LD	A,H
 	OR	L
 	JP	Z,_L128
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S133
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L127
 _L128:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S134
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L127:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -3562,24 +3233,20 @@ _L127:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-	LD	HL,(LAR)
+	LD	HL,LAR
 	LD	HL,(VAL)
-; array load: t1093 = t1090[t1092]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
 	LD	HL,(NUM)
-; array load: t1095 = t1093[t1094]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3594,24 +3261,22 @@ _L127:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1097 == 0 goto _L130
+; if t919 == 0 goto _L130
 	LD	A,H
 	OR	L
 	JP	Z,_L130
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S135
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L129
 _L130:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S136
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L129:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -3620,24 +3285,20 @@ _L129:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-	LD	HL,(LARB)
+	LD	HL,LARB
 	LD	HL,(VAL)
-; array load: t1110 = t1107[t1109]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
 	LD	D,(HL)
 	EX	DE,HL
 	LD	HL,(NUM)
-; array load: t1112 = t1110[t1111]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3652,24 +3313,22 @@ _L129:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1114 == 0 goto _L132
+; if t933 == 0 goto _L132
 	LD	A,H
 	OR	L
 	JP	Z,_L132
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S137
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L131
 _L132:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S138
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L131:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -3682,7 +3341,7 @@ _L131:
 	LD	(VAL),HL
 	LD	HL,$0002
 	LD	(NUM),HL
-	LD	HL,(LAR)
+	LD	HL,LAR
 	LD	HL,(VAL)
 	LD	HL,$0001
 	PUSH	HL
@@ -3690,11 +3349,9 @@ _L131:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load: t1131 = t1126[t1130]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3712,11 +3369,9 @@ _L131:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load: t1137 = t1131[t1136]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3731,24 +3386,22 @@ _L131:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1139 == 0 goto _L134
+; if t955 == 0 goto _L134
 	LD	A,H
 	OR	L
 	JP	Z,_L134
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S139
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L133
 _L134:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S140
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L133:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -3757,7 +3410,7 @@ _L133:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-	LD	HL,(LARB)
+	LD	HL,LARB
 	LD	HL,(VAL)
 	LD	HL,$0001
 	PUSH	HL
@@ -3765,11 +3418,9 @@ _L133:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load: t1154 = t1149[t1153]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3787,11 +3438,9 @@ _L133:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-; array load: t1160 = t1154[t1159]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
+; array load [WORD]
 	ADD	HL,HL
+	POP	DE
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -3806,24 +3455,22 @@ _L133:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1162 == 0 goto _L136
+; if t975 == 0 goto _L136
 	LD	A,H
 	OR	L
 	JP	Z,_L136
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S141
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L135
 _L136:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S142
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L135:
 	LD	HL,(TNUM)
 	LD	HL,$0001
@@ -3833,7 +3480,7 @@ _L135:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,_S143
-	CALL	__print_str
+	CALL	PSTR
 	LD	HL,(AARB)
 	LD	(IY+$70),L
 	LD	(IY+$71),H
@@ -3854,24 +3501,22 @@ _L135:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1179 == 0 goto _L138
+; if t990 == 0 goto _L138
 	LD	A,H
 	OR	L
 	JP	Z,_L138
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S145
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L137
 _L138:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S146
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 _L137:
 _MAIN_EXIT:
 	POP	IY
@@ -3896,32 +3541,14 @@ _L139:
 	LD	A,H
 	OR	L
 	JP	Z,_L140
-	LD	HL,(MEM)
 	LD	L,(IY+$6E)
 	LD	H,(IY+$6F)
-; array load: t6 = t3[t5]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
-	LD	HL,(MEM)
+	LD	L,(HL)
+	LD	H,$00
 	LD	L,(IY+$6C)
 	LD	H,(IY+$6D)
-; array load: t10 = t7[t9]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
+	LD	L,(HL)
+	LD	H,$00
 	PUSH	HL
 	POP	DE
 	EX	DE,HL
@@ -3940,7 +3567,7 @@ _L139:
 	LD	HL,$0000
 	JR	NZ,$+3
 	INC	HL
-; if t14 == 0 goto _L141
+; if t10 == 0 goto _L141
 	LD	A,H
 	OR	L
 	JP	Z,_L141
@@ -3949,19 +3576,10 @@ _L139:
 ; return value in HL
 	JP	_STRCMP_EXIT
 _L141:
-	LD	HL,(MEM)
 	LD	L,(IY+$6E)
 	LD	H,(IY+$6F)
-; array load: t19 = t16[t18]
-	PUSH	HL
-	POP	DE
-	EX	DE,HL
-	ADD	HL,HL
-	ADD	HL,DE
-	LD	E,(HL)
-	INC	HL
-	LD	D,(HL)
-	EX	DE,HL
+	LD	L,(HL)
+	LD	H,$00
 	LD	HL,$0000
 	PUSH	HL
 	POP	DE
@@ -3971,7 +3589,7 @@ _L141:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t21 == 0 goto _L142
+; if t15 == 0 goto _L142
 	LD	A,H
 	OR	L
 	JP	Z,_L142
@@ -4013,31 +3631,28 @@ FUNC1:
 	LD	(IY+$6D),H
 	LD	L,(IY+$70)
 	LD	H,(IY+$71)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S147
-	CALL	__print_str
+	CALL	PSTR
 	LD	L,(IY+$72)
 	LD	H,(IY+$73)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 	LD	HL,$0064
 	LD	(IY+$6E),L
 	LD	(IY+$6F),H
 	LD	HL,_S148
-	CALL	__print_str
+	CALL	PSTR
 	LD	L,(IY+$6E)
 	LD	H,(IY+$6F)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 	LD	HL,_S149
-	CALL	__print_str
+	CALL	PSTR
 	LD	L,(IY+$70)
 	LD	H,(IY+$71)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 	LD	L,(IY+$70)
 	LD	H,(IY+$71)
 	LD	L,(IY+$6C)
@@ -4065,41 +3680,37 @@ FUNC1:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t19 == 0 goto _L144
+; if t16 == 0 goto _L144
 	LD	A,H
 	OR	L
 	JP	Z,_L144
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S150
-	CALL	__print_str
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PSTR
+	CALL	PCRONE
 	JP	_L143
 _L144:
 	LD	HL,(TNUM)
-	CALL	__print_num
+	CALL	PRT
 	LD	HL,_S151
-	CALL	__print_str
+	CALL	PSTR
 	LD	L,(IY+$70)
 	LD	H,(IY+$71)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 	LD	HL,_S152
-	CALL	__print_str
+	CALL	PSTR
 	LD	L,(IY+$6C)
 	LD	H,(IY+$6D)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 	LD	HL,_S153
-	CALL	__print_str
+	CALL	PSTR
 	LD	L,(IY+$6E)
 	LD	H,(IY+$6F)
-	CALL	__print_num
-	CALL	__strfunc_/
-	CALL	__print_newline
+	CALL	PRT
+	CALL	PCRONE
 _L143:
 	LD	HL,(TNUM)
 	LD	HL,$0001

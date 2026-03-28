@@ -198,6 +198,10 @@ public class CodeGenerator
 
             case IrOp.ArrayLoad: EmitArrayLoad(inst); break;
             case IrOp.ArrayStore: EmitArrayStore(inst); break;
+            case IrOp.MemLoad: EmitMemLoad(inst); break;
+            case IrOp.MemStore: EmitMemStore(inst); break;
+            case IrOp.IndirLoad: EmitIndirLoad(inst); break;
+            case IrOp.IndirStore: EmitIndirStore(inst); break;
 
             case IrOp.Label:
                 _e.Label(inst.Dest.Name ?? "");
@@ -571,36 +575,156 @@ public class CodeGenerator
         }
     }
 
+    // ==== Array Access Z80 Code Generation ====
+    //
+    // 元実装に準拠したZ80パターン:
+    //   WORD配列ロード: base + index*2 → LD E,(HL) / INC HL / LD D,(HL) / EX DE,HL
+    //   BYTE配列ロード: base + index*1 → LD L,(HL) / LD H,0
+    //   スケーリング: ×1=nop, ×2=ADD HL,HL, ×4=ADD HL,HL×2
+
     private void EmitArrayLoad(IrInstruction inst)
     {
-        // HL = base[index]  (word array)
-        _e.Comment($"array load: {inst.Dest} = {inst.Src1}[{inst.Src2}]");
-        // index in HL, base address in DE
-        _e.Instruction("PUSH", "HL"); // save index
-        _e.Instruction("POP", "DE");
-        _e.Instruction("EX", "DE,HL"); // HL = index, DE = base
-        // Scale index * 2 for word array
-        _e.Instruction("ADD", "HL,HL");
-        _e.Instruction("ADD", "HL,DE");
-        // Load value
-        _e.Instruction("LD", "E,(HL)");
-        _e.Instruction("INC", "HL");
-        _e.Instruction("LD", "D,(HL)");
-        _e.Instruction("EX", "DE,HL");
+        // Src1=base(スタック上), Src2=index(HL), DataSize=要素サイズ
+        bool isByte = inst.DataSize == 1;
+
+        _e.Comment($"array load [{(isByte ? "BYTE" : "WORD")}]");
+        // 現在: HL=index, スタック上にbase
+        // index * scale
+        if (!isByte)
+            _e.Instruction("ADD", "HL,HL"); // ×2 for WORD
+
+        // base + scaled_index
+        _e.Instruction("POP", "DE");  // DE = base address
+        _e.Instruction("ADD", "HL,DE"); // HL = final address
+
+        // Dereference
+        if (isByte)
+        {
+            _e.Instruction("LD", "L,(HL)");
+            _e.Instruction("LD", "H,$00");
+        }
+        else
+        {
+            _e.Instruction("LD", "E,(HL)");
+            _e.Instruction("INC", "HL");
+            _e.Instruction("LD", "D,(HL)");
+            _e.Instruction("EX", "DE,HL");
+        }
     }
 
     private void EmitArrayStore(IrInstruction inst)
     {
-        // base[index] = value
-        _e.Comment($"array store: {inst.Dest}[{inst.Src2}] = {inst.Src1}");
-        // This is complex - need base, index, and value
-        // Simplified: value in HL, push it, compute address, store
-        _e.Instruction("PUSH", "HL"); // save value
-        // TODO: proper address computation
+        // Dest=base, Src1=value(HL), Src2=index
+        // 呼ばれる時点: HL=index (最後に評価された値)
+        // その前にvalue, baseがスタック上にある
+        bool isByte = inst.DataSize == 1;
+
+        _e.Comment($"array store [{(isByte ? "BYTE" : "WORD")}]");
+
+        // HL=index → scale
+        if (!isByte)
+            _e.Instruction("ADD", "HL,HL");
+
+        // base + scaled_index
+        _e.Instruction("POP", "DE"); // DE = base
+        _e.Instruction("ADD", "HL,DE"); // HL = address
+
+        // value → store
         _e.Instruction("POP", "DE"); // DE = value
-        _e.Instruction("LD", "(HL),E");
-        _e.Instruction("INC", "HL");
-        _e.Instruction("LD", "(HL),D");
+        if (isByte)
+        {
+            _e.Instruction("LD", "(HL),E");
+        }
+        else
+        {
+            _e.Instruction("LD", "(HL),E");
+            _e.Instruction("INC", "HL");
+            _e.Instruction("LD", "(HL),D");
+        }
+    }
+
+    // ==== MEM/MEMW Direct Memory Access ====
+
+    private void EmitMemLoad(IrInstruction inst)
+    {
+        // HL = address, DataSize = 1(MEM) or 2(MEMW)
+        bool isByte = inst.DataSize == 1;
+
+        if (isByte)
+        {
+            // MEM[addr]: LD L,(HL) / LD H,0
+            _e.Instruction("LD", "L,(HL)");
+            _e.Instruction("LD", "H,$00");
+        }
+        else
+        {
+            // MEMW[addr]: LD E,(HL) / INC HL / LD D,(HL) / EX DE,HL
+            _e.Instruction("LD", "E,(HL)");
+            _e.Instruction("INC", "HL");
+            _e.Instruction("LD", "D,(HL)");
+            _e.Instruction("EX", "DE,HL");
+        }
+    }
+
+    private void EmitMemStore(IrInstruction inst)
+    {
+        // Dest=addr(was in HL, now stack), Src1=value(HL)
+        bool isByte = inst.DataSize == 1;
+
+        _e.Instruction("POP", "DE"); // DE = addr (pushed before value)
+        _e.Instruction("EX", "DE,HL"); // HL = addr, DE = value
+
+        // 実際にはaddr→HL, value→DEの順序は呼び出しパターンに依存
+        // TODO: 正確なスタック順序を確認
+
+        if (isByte)
+        {
+            _e.Instruction("LD", "(HL),E");
+        }
+        else
+        {
+            _e.Instruction("LD", "(HL),E");
+            _e.Instruction("INC", "HL");
+            _e.Instruction("LD", "(HL),D");
+        }
+    }
+
+    // ==== Indirect Variable Dereference ====
+
+    private void EmitIndirLoad(IrInstruction inst)
+    {
+        // HL = *HL
+        bool isByte = inst.DataSize == 1;
+        if (isByte)
+        {
+            _e.Instruction("LD", "L,(HL)");
+            _e.Instruction("LD", "H,$00");
+        }
+        else
+        {
+            _e.Instruction("LD", "E,(HL)");
+            _e.Instruction("INC", "HL");
+            _e.Instruction("LD", "D,(HL)");
+            _e.Instruction("EX", "DE,HL");
+        }
+    }
+
+    private void EmitIndirStore(IrInstruction inst)
+    {
+        // *HL = DE
+        bool isByte = inst.DataSize == 1;
+        _e.Instruction("POP", "DE");
+        _e.Instruction("EX", "DE,HL");
+        if (isByte)
+        {
+            _e.Instruction("LD", "(HL),E");
+        }
+        else
+        {
+            _e.Instruction("LD", "(HL),E");
+            _e.Instruction("INC", "HL");
+            _e.Instruction("LD", "(HL),D");
+        }
     }
 
     private void EmitCall(IrInstruction inst)
