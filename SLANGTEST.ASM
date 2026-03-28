@@ -1,5 +1,7 @@
 ; === Entry Point ===
 	LD	IY,__IYWORK
+	LD	HL,$000E
+	LD	(IVV),HL
 	CALL	MAIN
 	RET
 
@@ -13,14 +15,11 @@ MAIN:
 	CALL	PCRONE
 	LD	HL,$007B
 	LD	DE,$007B
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t4 == 0 goto _L1
 	LD	A,H
 	OR	L
@@ -49,14 +48,11 @@ _L0:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$007B
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t16 == 0 goto _L3
 	LD	A,H
 	OR	L
@@ -82,14 +78,11 @@ _L2:
 	LD	(AVAL),HL
 	LD	HL,(AVAL)
 	LD	DE,$007B
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t27 == 0 goto _L5
 	LD	A,H
 	OR	L
@@ -172,14 +165,11 @@ _L6:
 	LD	(HL),D
 	LD	HL,(AVAL)
 	LD	DE,$01C8
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t56 == 0 goto _L9
 	LD	A,H
 	OR	L
@@ -363,14 +353,11 @@ _L12:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$0514
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t122 == 0 goto _L15
 	LD	A,H
 	OR	L
@@ -461,14 +448,11 @@ _L14:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$0514
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t154 == 0 goto _L17
 	LD	A,H
 	OR	L
@@ -568,14 +552,11 @@ _L16:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$0514
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t194 == 0 goto _L19
 	LD	A,H
 	OR	L
@@ -755,23 +736,19 @@ _L22:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$000A
-	POP	DE
-	OR	A
-	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; TODO: direct CmpGt
-	LD	HL,(VAL)
-	LD	DE,$0033
-	POP	DE
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpLt
+	LD	HL,(VAL)
+	LD	DE,$0033
+	OR	A
+	SBC	HL,DE
+	LD	HL,$0000
+	JR	C,$+3
+	INC	HL
 	POP	DE
 	LD	A,D
 	AND	H
@@ -782,16 +759,12 @@ _L22:
 	PUSH	HL
 	LD	HL,(VAL)
 	LD	DE,$0033
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
+	LD	HL,$0001
 	JR	C,$+3
-	INC	HL
-	LD	A,L
-	XOR	$01
-	LD	L,A
-; TODO: direct CmpLe
+	DEC	HL
 	POP	DE
 	LD	A,D
 	AND	H
@@ -802,14 +775,11 @@ _L22:
 	PUSH	HL
 	LD	HL,(VAL)
 	LD	DE,$0032
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-; TODO: direct CmpGe
 	POP	DE
 	LD	A,D
 	AND	H
@@ -847,13 +817,12 @@ _L24:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$0032
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpGt
 ; if t275 == 0 goto _L27
 	LD	A,H
 	OR	L
@@ -867,13 +836,12 @@ _L24:
 _L27:
 	LD	HL,(VAL)
 	LD	DE,$0031
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpGt
 ; if t280 == 0 goto _L26
 	LD	A,H
 	OR	L
@@ -892,13 +860,12 @@ _L26:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$0032
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpGt
 ; if t289 == 0 goto _L29
 	LD	A,H
 	OR	L
@@ -912,13 +879,12 @@ _L26:
 _L29:
 	LD	HL,(VAL)
 	LD	DE,$0033
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpGt
 ; if t294 == 0 goto _L30
 	LD	A,H
 	OR	L
@@ -938,13 +904,12 @@ _L30:
 _L28:
 	LD	HL,(VAL)
 	LD	DE,$0031
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpGt
 ; if t301 == 0 goto _L32
 	LD	A,H
 	OR	L
@@ -958,13 +923,12 @@ _L28:
 _L32:
 	LD	HL,(VAL)
 	LD	DE,$0033
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpGt
 ; if t306 == 0 goto _L33
 	LD	A,H
 	OR	L
@@ -984,13 +948,12 @@ _L33:
 _L31:
 	LD	HL,(VAL)
 	LD	DE,$0032
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpGt
 ; if t313 == 0 goto _L35
 	LD	A,H
 	OR	L
@@ -1004,14 +967,11 @@ _L31:
 _L35:
 	LD	HL,(VAL)
 	LD	DE,$0033
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpLt
 ; if t318 == 0 goto _L36
 	LD	A,H
 	OR	L
@@ -1035,27 +995,23 @@ _L34:
 	LD	(TNUM),HL
 	LD	HL,(VAL)
 	LD	DE,$0032
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t328 == 0 goto _L38
 	LD	A,H
 	OR	L
 	JP	Z,_L38
 	LD	HL,(VAL)
 	LD	DE,$0032
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpGt
 ; if t331 == 0 goto _L40
 	LD	A,H
 	OR	L
@@ -1098,13 +1054,12 @@ _L37:
 _L41:
 	LD	HL,(VAL)
 	LD	DE,$000A
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpGt
 ; if t347 == 0 goto _L42
 	LD	A,H
 	OR	L
@@ -1123,14 +1078,11 @@ _L42:
 	CALL	PCRONE
 	LD	HL,(VAL)
 	LD	DE,$000A
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t355 == 0 goto _L44
 	LD	A,H
 	OR	L
@@ -1157,28 +1109,22 @@ _L43:
 _L45:
 	LD	HL,(VAL)
 	LD	DE,$0000
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-; TODO: direct CmpGe
 ; if t366 == 0 goto _L46
 	LD	A,H
 	OR	L
 	JP	Z,_L46
 	LD	HL,(VAL)
 	LD	DE,$0005
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t369 == 0 goto _L47
 	LD	A,H
 	OR	L
@@ -1194,14 +1140,11 @@ _L47:
 _L46:
 	LD	HL,(VAL)
 	LD	DE,$0005
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t375 == 0 goto _L49
 	LD	A,H
 	OR	L
@@ -1230,13 +1173,12 @@ _L48:
 _L50:
 	LD	HL,(VAL)
 	LD	DE,$0000
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpGt
 ; if t387 == 0 goto _L51
 	LD	A,H
 	OR	L
@@ -1244,27 +1186,23 @@ _L50:
 _L52:
 	LD	HL,(VAL)
 	LD	DE,$0005
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpGt
 ; if t390 == 0 goto _L53
 	LD	A,H
 	OR	L
 	JP	Z,_L53
 	LD	HL,(VAL)
 	LD	DE,$0007
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t393 == 0 goto _L54
 	LD	A,H
 	OR	L
@@ -1298,14 +1236,11 @@ _L51:
 	CALL	PCRONE
 	LD	HL,(VAL)
 	LD	DE,$0000
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t407 == 0 goto _L55
 	LD	A,H
 	OR	L
@@ -1335,14 +1270,11 @@ _L56:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$000A
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t422 == 0 goto _L56
 	LD	A,H
 	OR	L
@@ -1353,14 +1285,11 @@ _L57:
 	CALL	PCRONE
 	LD	HL,(VAL)
 	LD	DE,$000A
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t426 == 0 goto _L59
 	LD	A,H
 	OR	L
@@ -1414,14 +1343,11 @@ _L62:
 	CALL	PCRONE
 	LD	HL,(VAL)
 	LD	DE,$000B
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t445 == 0 goto _L64
 	LD	A,H
 	OR	L
@@ -1532,26 +1458,19 @@ LABEL1:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$0000
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-; TODO: direct CmpGe
 	LD	HL,(VAL)
 	LD	DE,$0004
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
+	LD	HL,$0001
 	JR	C,$+3
-	INC	HL
-	LD	A,L
-	XOR	$01
-	LD	L,A
-; TODO: direct CmpLe
+	DEC	HL
 	POP	DE
 	LD	A,D
 	OR	E
@@ -1576,14 +1495,11 @@ LABEL1:
 _L71:
 	LD	HL,(VAL)
 	LD	DE,$0005
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t491 == 0 goto _L72
 	LD	A,H
 	OR	L
@@ -1610,14 +1526,11 @@ _L70:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$0000
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t502 == 0 goto _L74
 	LD	A,H
 	OR	L
@@ -1631,26 +1544,19 @@ _L70:
 _L74:
 	LD	HL,(VAL)
 	LD	DE,$0001
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-; TODO: direct CmpGe
 	LD	HL,(VAL)
 	LD	DE,$0005
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
+	LD	HL,$0001
 	JR	C,$+3
-	INC	HL
-	LD	A,L
-	XOR	$01
-	LD	L,A
-; TODO: direct CmpLe
+	DEC	HL
 	POP	DE
 	LD	A,D
 	OR	E
@@ -1688,14 +1594,11 @@ _L73:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$0000
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t520 == 0 goto _L77
 	LD	A,H
 	OR	L
@@ -1709,26 +1612,19 @@ _L73:
 _L77:
 	LD	HL,(VAL)
 	LD	DE,$0001
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-; TODO: direct CmpGe
 	LD	HL,(VAL)
 	LD	DE,$0005
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
+	LD	HL,$0001
 	JR	C,$+3
-	INC	HL
-	LD	A,L
-	XOR	$01
-	LD	L,A
-; TODO: direct CmpLe
+	DEC	HL
 	POP	DE
 	LD	A,D
 	OR	E
@@ -1766,14 +1662,11 @@ _L76:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$0000
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t538 == 0 goto _L80
 	LD	A,H
 	OR	L
@@ -1787,26 +1680,19 @@ _L76:
 _L80:
 	LD	HL,(VAL)
 	LD	DE,$0001
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-; TODO: direct CmpGe
 	LD	HL,(VAL)
 	LD	DE,$0005
-	POP	DE
+	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
+	LD	HL,$0001
 	JR	C,$+3
-	INC	HL
-	LD	A,L
-	XOR	$01
-	LD	L,A
-; TODO: direct CmpLe
+	DEC	HL
 	POP	DE
 	LD	A,D
 	OR	E
@@ -1831,14 +1717,11 @@ _L80:
 _L81:
 	LD	HL,(VAL)
 	LD	DE,$0006
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t549 == 0 goto _L82
 	LD	A,H
 	OR	L
@@ -1847,14 +1730,11 @@ _L81:
 _L82:
 	LD	HL,(VAL)
 	LD	DE,$0007
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t551 == 0 goto _L83
 	LD	A,H
 	OR	L
@@ -1863,14 +1743,11 @@ _L82:
 _L83:
 	LD	HL,(VAL)
 	LD	DE,$0008
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t553 == 0 goto _L84
 	LD	A,H
 	OR	L
@@ -1912,14 +1789,11 @@ _L79:
 	CALL	PCRONE
 	LD	HL,(VAL)
 	LD	DE,$0005
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t570 == 0 goto _L86
 	LD	A,H
 	OR	L
@@ -1943,14 +1817,11 @@ _L85:
 	LD	(TNUM),HL
 	LD	HL,(NUM)
 	LD	DE,$00E4
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t580 == 0 goto _L88
 	LD	A,H
 	OR	L
@@ -1981,14 +1852,11 @@ _L87:
 	LD	(NUM),HL
 	LD	HL,(NUM)
 	LD	DE,$0001
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t593 == 0 goto _L90
 	LD	A,H
 	OR	L
@@ -2017,14 +1885,11 @@ _L89:
 	LD	(NUM),HL
 	LD	HL,(NUM)
 	LD	DE,$000A
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t605 == 0 goto _L92
 	LD	A,H
 	OR	L
@@ -2155,14 +2020,11 @@ _L95:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$8000
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t650 == 0 goto _L98
 	LD	A,H
 	OR	L
@@ -2198,14 +2060,11 @@ _L97:
 	LD	(NUM),HL
 	LD	HL,(NUM)
 	LD	DE,$0002
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t664 == 0 goto _L100
 	LD	A,H
 	OR	L
@@ -2273,14 +2132,11 @@ _L99:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$007B
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t695 == 0 goto _L102
 	LD	A,H
 	OR	L
@@ -2317,14 +2173,11 @@ _L101:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$0001
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t711 == 0 goto _L104
 	LD	A,H
 	OR	L
@@ -2353,14 +2206,11 @@ _L103:
 	LD	(NUM),HL
 	LD	HL,(NUM)
 	LD	DE,$0001
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t724 == 0 goto _L106
 	LD	A,H
 	OR	L
@@ -2424,14 +2274,11 @@ _L107:
 	LD	(NUM),HL
 	LD	HL,(NUM)
 	LD	DE,$007B
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t749 == 0 goto _L110
 	LD	A,H
 	OR	L
@@ -2487,14 +2334,11 @@ _L109:
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	DE,$0037
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t776 == 0 goto _L112
 	LD	A,H
 	OR	L
@@ -3323,14 +3167,11 @@ _L139:
 	LD	L,(IY+$6A)
 	LD	H,(IY+$6B)
 	LD	DE,$0000
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	NZ,$+3
 	INC	HL
-; TODO: direct CmpNeq
 ; if t10 == 0 goto _L141
 	LD	A,H
 	OR	L
@@ -3426,14 +3267,11 @@ FUNC1:
 	LD	L,(IY+$70)
 	LD	H,(IY+$71)
 	LD	DE,$00E4
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; TODO: direct CmpEq
 ; if t16 == 0 goto _L144
 	LD	A,H
 	OR	L
@@ -3484,14 +3322,11 @@ FUNC2:
 	LD	L,(IY+$70)
 	LD	H,(IY+$71)
 	LD	DE,$0064
-	POP	DE
-	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
 	JR	C,$+3
 	INC	HL
-; TODO: direct CmpLt
 ; if t2 == 0 goto _L145
 	LD	A,H
 	OR	L

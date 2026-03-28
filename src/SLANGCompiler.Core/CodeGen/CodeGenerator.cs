@@ -38,11 +38,33 @@ public class CodeGenerator
             _e.Blank();
         }
 
-        // エントリポイント: IYワーク設定 → MAIN呼び出し → STOP
+        // エントリポイント: IYワーク設定 → グローバル初期化 → MAIN呼び出し → STOP
         _e.Comment("=== Entry Point ===");
         _e.Instruction("LD", "IY,__IYWORK");
+
+        // グローバル変数の初期化コード (LoadConst + StoreVar のペア)
+        {
+            int? pendingConstVal = null;
+            foreach (var inst in _module.GlobalData)
+            {
+                if (inst.Op == IrOp.LoadConst && inst.Src1.Kind == IrOperandKind.Immediate)
+                {
+                    pendingConstVal = (int)(inst.Src1.ImmediateValue & 0xFFFF);
+                }
+                else if (inst.Op == IrOp.StoreVar && pendingConstVal.HasValue)
+                {
+                    _e.Instruction("LD", $"HL,${pendingConstVal.Value:X4}");
+                    _e.Instruction("LD", $"({inst.Dest.Name}),HL");
+                    pendingConstVal = null;
+                }
+                else
+                {
+                    pendingConstVal = null;
+                }
+            }
+        }
+
         _e.Instruction("CALL", "MAIN");
-        // STOP相当(S-OS: JP 0 or RET depending on environment)
         _e.Instruction("RET");
         _e.Blank();
 
@@ -287,34 +309,92 @@ public class CodeGenerator
         }
     }
 
-    /// <summary>二項演算をHL/DE直接で出力（POP不要）</summary>
+    /// <summary>
+    /// 二項演算をHL/DE直接で出力（POP不要）。
+    /// 呼び出し時点で HL=src1, DE=src2 がセット済み。
+    /// </summary>
     private void EmitBinaryDirect(IrInstruction inst)
     {
         switch (inst.Op)
         {
-            case IrOp.Add:
-                _e.Instruction("ADD", "HL,DE");
+            // 算術
+            case IrOp.Add: _e.Instruction("ADD", "HL,DE"); break;
+            case IrOp.Sub: _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE"); break;
+            case IrOp.Mul or IrOp.SMul: _e.Instruction("CALL", "MUL16"); break;
+            case IrOp.Div: _e.Instruction("CALL", "DIV16"); break;
+            case IrOp.SDiv: _e.Instruction("CALL", "SDIV16"); break;
+            case IrOp.Mod: _e.Instruction("CALL", "MOD16"); break;
+            case IrOp.SMod: _e.Instruction("CALL", "SMOD16"); break;
+
+            // ビット演算
+            case IrOp.And:
+                _e.Instruction("LD", "A,H"); _e.Instruction("AND", "D"); _e.Instruction("LD", "H,A");
+                _e.Instruction("LD", "A,L"); _e.Instruction("AND", "E"); _e.Instruction("LD", "L,A");
                 break;
-            case IrOp.Sub:
-                _e.Instruction("OR", "A");
-                _e.Instruction("SBC", "HL,DE");
+            case IrOp.Or:
+                _e.Instruction("LD", "A,H"); _e.Instruction("OR", "D"); _e.Instruction("LD", "H,A");
+                _e.Instruction("LD", "A,L"); _e.Instruction("OR", "E"); _e.Instruction("LD", "L,A");
                 break;
-            case IrOp.Mul or IrOp.SMul:
-                _e.Instruction("CALL", "MUL16");
+            case IrOp.Xor:
+                _e.Instruction("LD", "A,H"); _e.Instruction("XOR", "D"); _e.Instruction("LD", "H,A");
+                _e.Instruction("LD", "A,L"); _e.Instruction("XOR", "E"); _e.Instruction("LD", "L,A");
                 break;
-            case IrOp.Div:
-                _e.Instruction("CALL", "DIV16");
+
+            // シフト
+            case IrOp.Shl: _e.Instruction("CALL", "SHL16"); break;
+            case IrOp.Shr: _e.Instruction("CALL", "SHR16"); break;
+            case IrOp.SShl: _e.Instruction("CALL", "SHL16"); break;
+            case IrOp.SShr: _e.Instruction("CALL", "SSHR16"); break;
+
+            // 比較 (HL=src1, DE=src2 → src1 - src2 のフラグで判定)
+            case IrOp.CmpEq:
+                _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "Z,$+3"); _e.Instruction("INC", "HL");
                 break;
-            case IrOp.SDiv:
-                _e.Instruction("CALL", "SDIV16");
+            case IrOp.CmpNeq:
+                _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "NZ,$+3"); _e.Instruction("INC", "HL");
                 break;
+            case IrOp.CmpLt:
+                _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "C,$+3"); _e.Instruction("INC", "HL");
+                break;
+            case IrOp.CmpGe:
+                _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "NC,$+3"); _e.Instruction("INC", "HL");
+                break;
+            case IrOp.CmpGt:
+                // src1 > src2 → src2 - src1 で C
+                _e.Instruction("EX", "DE,HL"); _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "C,$+3"); _e.Instruction("INC", "HL");
+                break;
+            case IrOp.CmpLe:
+                // src1 <= src2 → !(src1 > src2)
+                _e.Instruction("EX", "DE,HL"); _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("LD", "HL,$0001"); _e.Instruction("JR", "C,$+3"); _e.Instruction("DEC", "HL");
+                break;
+
+            // 符号付き比較
+            case IrOp.CmpSLt: _e.Instruction("CALL", "SCMP_LT"); break;
+            case IrOp.CmpSGt: _e.Instruction("CALL", "SCMP_GT"); break;
+            case IrOp.CmpSLe: _e.Instruction("CALL", "SCMP_LE"); break;
+            case IrOp.CmpSGe: _e.Instruction("CALL", "SCMP_GE"); break;
+
+            // 論理
+            case IrOp.LogAnd:
+                _e.Instruction("LD", "A,H"); _e.Instruction("OR", "L");
+                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "Z,$+7");
+                _e.Instruction("LD", "A,D"); _e.Instruction("OR", "E");
+                _e.Instruction("JR", "Z,$+3"); _e.Instruction("INC", "HL");
+                break;
+            case IrOp.LogOr:
+                _e.Instruction("LD", "A,H"); _e.Instruction("OR", "L");
+                _e.Instruction("OR", "D"); _e.Instruction("OR", "E");
+                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "Z,$+3"); _e.Instruction("INC", "HL");
+                break;
+
             default:
-                // 他の二項演算は従来のPOP方式にフォールバック
-                // （HL=src1, DE=src2 は既にセット済み）
-                EmitInstruction(inst);
-                // ただしEmitInstructionはPOP DEを出すので二重になる...
-                // → 単純な演算だけ直接対応、他はフォールバックしない
-                _e.Comment($"TODO: direct {inst.Op}");
+                _e.Comment($"unsupported direct: {inst.Op}");
                 break;
         }
     }

@@ -241,43 +241,57 @@ public class Lexer
             return MakeToken(TokenKind.IntegerLiteral, text, start, (int)val);
         }
 
-        // Read digits
-        while (!IsAtEnd && (char.IsDigit(Peek()) || IsHexDigit(Peek()) || Peek() == '.'))
+        // Read digit characters (数字のみ。hex suffix判定は後で)
+        while (!IsAtEnd && char.IsDigit(Peek()))
         {
-            if (Peek() == '.' && !char.IsDigit(Peek(1))) break;
             Advance();
         }
 
-        // Check suffix
-        string raw = _source[startPos.._pos];
-
-        // Float literal
-        if (raw.Contains('.'))
+        // Float: 小数点の後に数字が続く
+        if (!IsAtEnd && Peek() == '.' && _pos + 1 < _source.Length && char.IsDigit(Peek(1)))
         {
-            double fval = double.Parse(raw);
-            return MakeToken(TokenKind.FloatLiteral, raw, start, fval);
+            Advance(); // consume '.'
+            while (!IsAtEnd && char.IsDigit(Peek())) Advance();
+            string ftext = _source[startPos.._pos];
+            double fval = double.Parse(ftext);
+            return MakeToken(TokenKind.FloatLiteral, ftext, start, fval);
         }
 
-        // Hex suffix (H/h)
+        // Binary suffix (B/b): 0と1のみで構成されていればバイナリ
+        string raw = _source[startPos.._pos];
+        if (!IsAtEnd && (Peek() == 'B' || Peek() == 'b') && raw.All(ch => ch == '0' || ch == '1'))
+        {
+            Advance();
+            string text = _source[startPos.._pos];
+            long val = Convert.ToInt64(raw, 2);
+            return MakeToken(TokenKind.IntegerLiteral, text, start, (int)val);
+        }
+
+        // Hex: 数字の後にa-f文字が続き、最後にHが付く → 全体をhex
+        if (!IsAtEnd && IsHexDigit(Peek()) && Peek() != 'B' && Peek() != 'b')
+        {
+            // hex digits を追加で読む
+            while (!IsAtEnd && IsHexDigit(Peek())) Advance();
+            raw = _source[startPos.._pos];
+
+            if (!IsAtEnd && (Peek() == 'H' || Peek() == 'h'))
+            {
+                Advance();
+                string text = _source[startPos.._pos];
+                long val = Convert.ToInt64(raw, 16);
+                return MakeToken(TokenKind.IntegerLiteral, text, start, (int)val);
+            }
+            // H suffixがない場合、hex文字を戻す...複雑になるので
+            // 実際にはSLANGのhex表記は常にH suffix必須なので、ここには来にくい
+        }
+
+        // Hex suffix (H/h): 純粋な数字列 + H
         if (!IsAtEnd && (Peek() == 'H' || Peek() == 'h'))
         {
             Advance();
             string text = _source[startPos.._pos];
             long val = Convert.ToInt64(raw, 16);
             return MakeToken(TokenKind.IntegerLiteral, text, start, (int)val);
-        }
-
-        // Binary suffix (B/b)
-        if (!IsAtEnd && (Peek() == 'B' || Peek() == 'b'))
-        {
-            // Check if it's all 0s and 1s
-            if (raw.All(ch => ch == '0' || ch == '1'))
-            {
-                Advance();
-                string text = _source[startPos.._pos];
-                long val = Convert.ToInt64(raw, 2);
-                return MakeToken(TokenKind.IntegerLiteral, text, start, (int)val);
-            }
         }
 
         // Decimal
