@@ -32,14 +32,14 @@ MAIN:
 	LD	HL,$0041
 	LD	(IY+$70),L
 	LD	(IY+$71),H
-	LD	HL,(PCGPTN)
+	LD	HL,(_PCGPTN)
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	CALL	PCGDEF
 	LD	HL,$0041
 	LD	(IY+$70),L
 	LD	(IY+$71),H
-	LD	HL,(PCGPTN)
+	LD	HL,(_PCGPTN)
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	CALL	PCGDEF2
@@ -128,16 +128,16 @@ MAIN:
 	LD	(IY+$71),H
 	CALL	SETGVRAM
 	CALL	SND_INIT
-	LD	HL,(MUSADR)
+	LD	HL,(_MUSADR)
 	LD	(IY+$70),L
 	LD	(IY+$71),H
 	CALL	SND_PLAY
 	LD	HL,$0000
-	LD	(X),HL
+	LD	(_X),HL
 	LD	HL,$0000
-	LD	(Y),HL
+	LD	(_Y),HL
 	LD	HL,$0000
-	LD	(SUJI),HL
+	LD	(_SUJI),HL
 _L0:
 	LD	HL,$0009
 	LD	(IY+$70),L
@@ -173,14 +173,14 @@ _L2:
 	LD	A,H
 	OR	L
 	JP	Z,_L3
-	LD	HL,(MUSADR)
+	LD	HL,(_MUSADR)
 	LD	(IY+$70),L
 	LD	(IY+$71),H
 	CALL	SND_PLAY
 _L3:
 	CALL	STICK2
-	LD	(K),HL
-	LD	HL,(K)
+	LD	(_K),HL
+	LD	HL,(_K)
 	LD	DE,$0001
 	LD	A,H
 	AND	D
@@ -192,11 +192,11 @@ _L3:
 	LD	A,H
 	OR	L
 	JP	Z,_L4
-	LD	HL,(Y)
+	LD	HL,(_Y)
 	DEC	HL
-	LD	(Y),HL
+	LD	(_Y),HL
 _L4:
-	LD	HL,(K)
+	LD	HL,(_K)
 	LD	DE,$0002
 	LD	A,H
 	AND	D
@@ -208,11 +208,11 @@ _L4:
 	LD	A,H
 	OR	L
 	JP	Z,_L5
-	LD	HL,(X)
+	LD	HL,(_X)
 	INC	HL
-	LD	(X),HL
+	LD	(_X),HL
 _L5:
-	LD	HL,(K)
+	LD	HL,(_K)
 	LD	DE,$0004
 	LD	A,H
 	AND	D
@@ -224,11 +224,11 @@ _L5:
 	LD	A,H
 	OR	L
 	JP	Z,_L6
-	LD	HL,(Y)
+	LD	HL,(_Y)
 	INC	HL
-	LD	(Y),HL
+	LD	(_Y),HL
 _L6:
-	LD	HL,(K)
+	LD	HL,(_K)
 	LD	DE,$0008
 	LD	A,H
 	AND	D
@@ -240,47 +240,47 @@ _L6:
 	LD	A,H
 	OR	L
 	JP	Z,_L7
-	LD	HL,(X)
+	LD	HL,(_X)
 	DEC	HL
-	LD	(X),HL
+	LD	(_X),HL
 _L7:
-	LD	HL,(X)
+	LD	HL,(_X)
 	LD	DE,$0000
 	CALL	SCMP_LT
 	LD	A,H
 	OR	L
 	JP	Z,_L9
 	LD	HL,$0000
-	LD	(X),HL
+	LD	(_X),HL
 	JP	_L8
 _L9:
-	LD	HL,(X)
+	LD	HL,(_X)
 	LD	DE,$0027
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	JP	NC,_L8
 	LD	HL,$0027
-	LD	(X),HL
+	LD	(_X),HL
 _L8:
-	LD	HL,(Y)
+	LD	HL,(_Y)
 	LD	DE,$0000
 	CALL	SCMP_LT
 	LD	A,H
 	OR	L
 	JP	Z,_L11
 	LD	HL,$0000
-	LD	(Y),HL
+	LD	(_Y),HL
 	JP	_L10
 _L11:
-	LD	HL,(Y)
+	LD	HL,(_Y)
 	LD	DE,$0018
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	JP	NC,_L10
 	LD	HL,$0018
-	LD	(Y),HL
+	LD	(_Y),HL
 _L10:
 	LD	HL,$0001
 	LD	(IY+$70),L
@@ -301,10 +301,10 @@ _L10:
 	LD	(IY+$75),H
 	CALL	MEMSET
 	LD	HL,$0000
-	LD	(X),HL
+	LD	(_X),HL
 	LD	HL,$0000
-	LD	(Y),HL
-	LD	HL,(SEADR)
+	LD	(_Y),HL
+	LD	HL,(_SEADR)
 	LD	(IY+$70),L
 	LD	(IY+$71),H
 	CALL	SND_SEPLAY
@@ -330,16 +330,17 @@ _L10:
 	CALL	SETATR
 _L12:
 	LD	HL,$00C1
+	PUSH	HL
 	LD	HL,$F300
 	PUSH	HL
-	LD	HL,(X)
+	LD	HL,(_X)
 	LD	DE,$0002
 	CALL	MUL16
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
 	PUSH	HL
-	LD	HL,(Y)
+	LD	HL,(_Y)
 	LD	DE,$0078
 	CALL	MUL16
 	POP	DE

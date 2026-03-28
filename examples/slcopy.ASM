@@ -114,7 +114,7 @@ _L6:
 	LD	HL,$0000
 	LD	(IY+$70),L
 	LD	(IY+$71),H
-	LD	HL,(buf)
+	LD	HL,(_buf)
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	LD	HL,$8000
@@ -147,6 +147,8 @@ _L6:
 	LD	DE,$0000
 	OR	A
 	SBC	HL,DE
+	OR	A
+	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
@@ -167,7 +169,7 @@ _L8:
 	LD	HL,$0001
 	LD	(IY+$70),L
 	LD	(IY+$71),H
-	LD	HL,(buf)
+	LD	HL,(_buf)
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	LD	L,(IY+$6E)

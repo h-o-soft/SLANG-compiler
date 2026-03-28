@@ -7,19 +7,19 @@ MAIN:
 ; function MAIN
 	PUSH	IY
 	LD	HL,$0000
-	LD	(I),HL
+	LD	(_I),HL
 _L0:
 	LD	HL,$0000
-	LD	HL,NT
-	LD	DE,(I)
+	PUSH	HL
+	LD	HL,_NT
+	LD	DE,(_I)
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 _L1:
-	LD	HL,(I)
+	LD	HL,(_I)
 	INC	HL
-	LD	(I),HL
+	LD	(_I),HL
 	LD	HL,$2710
 	POP	DE
 	OR	A
@@ -36,24 +36,24 @@ _L1:
 	JP	NZ,_L0
 _L2:
 	LD	HL,$0002
-	LD	(I),HL
+	LD	(_I),HL
 _L3:
 	LD	HL,$0001
-	LD	HL,NT
 	PUSH	HL
-	LD	HL,(I)
+	LD	HL,_NT
+	PUSH	HL
+	LD	HL,(_I)
 	LD	DE,$0002
 	CALL	MUL16
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 _L4:
-	LD	HL,(I)
+	LD	HL,(_I)
 	INC	HL
-	LD	(I),HL
+	LD	(_I),HL
 	LD	HL,$1388
 	POP	DE
 	OR	A
@@ -70,10 +70,10 @@ _L4:
 	JP	NZ,_L3
 _L5:
 	LD	HL,$0003
-	LD	(P),HL
+	LD	(_P),HL
 _L6:
-	LD	HL,(P)
-	LD	DE,(P)
+	LD	HL,(_P)
+	LD	DE,(_P)
 	CALL	MUL16
 	LD	HL,$2710
 	POP	DE
@@ -88,30 +88,30 @@ _L6:
 	LD	A,H
 	OR	L
 	JP	Z,_L7
-	LD	HL,(P)
-	LD	(I),HL
+	LD	HL,(_P)
+	LD	(_I),HL
 _L8:
 	LD	HL,$0001
-	LD	HL,NT
 	PUSH	HL
-	LD	HL,(I)
-	LD	DE,(P)
+	LD	HL,_NT
+	PUSH	HL
+	LD	HL,(_I)
+	LD	DE,(_P)
 	CALL	MUL16
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
-	LD	HL,(I)
+	LD	HL,(_I)
 	INC	HL
-	LD	(I),HL
+	LD	(_I),HL
 _L9:
-	LD	HL,(I)
+	LD	HL,(_I)
 	INC	HL
-	LD	(I),HL
+	LD	(_I),HL
 	LD	HL,$2710
-	LD	DE,(P)
+	LD	DE,(_P)
 	CALL	DIV16
 	POP	DE
 	OR	A
@@ -127,12 +127,12 @@ _L9:
 	OR	L
 	JP	NZ,_L8
 _L10:
-	LD	HL,(P)
+	LD	HL,(_P)
 	INC	HL
-	LD	(P),HL
+	LD	(_P),HL
 _L11:
-	LD	HL,NT
-	LD	DE,(P)
+	LD	HL,_NT
+	LD	DE,(_P)
 	ADD	HL,DE
 	LD	L,(HL)
 	LD	H,$00
@@ -148,18 +148,18 @@ _L11:
 	LD	A,H
 	OR	L
 	JP	Z,_L12
-	LD	HL,(P)
+	LD	HL,(_P)
 	INC	HL
-	LD	(P),HL
+	LD	(_P),HL
 	JP	_L11
 _L12:
 	JP	_L6
 _L7:
 	LD	HL,$0002
-	LD	(I),HL
+	LD	(_I),HL
 _L13:
-	LD	HL,NT
-	LD	DE,(I)
+	LD	HL,_NT
+	LD	DE,(_I)
 	ADD	HL,DE
 	LD	L,(HL)
 	LD	H,$00
@@ -175,15 +175,15 @@ _L13:
 	LD	A,H
 	OR	L
 	JP	Z,_L16
-	LD	HL,(I)
+	LD	HL,(_I)
 	CALL	PRT
 	LD	HL,_S0
 	CALL	PSTR
 _L16:
 _L14:
-	LD	HL,(I)
+	LD	HL,(_I)
 	INC	HL
-	LD	(I),HL
+	LD	(_I),HL
 	LD	HL,$2710
 	POP	DE
 	OR	A

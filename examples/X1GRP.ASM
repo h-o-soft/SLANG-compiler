@@ -494,7 +494,7 @@ _L7:
 	LD	HL,_S0
 	CALL	PSTR
 	LD	HL,$0000
-	LD	(I),HL
+	LD	(_I),HL
 _L9:
 	LD	L,(IY+$6E)
 	LD	H,(IY+$6F)
@@ -537,9 +537,9 @@ _L9:
 	LD	H,(IY+$6F)
 	CALL	PRT
 _L10:
-	LD	HL,(I)
+	LD	HL,(_I)
 	INC	HL
-	LD	(I),HL
+	LD	(_I),HL
 	LD	HL,$0007
 	POP	DE
 	OR	A
@@ -556,15 +556,17 @@ _L10:
 	JP	NZ,_L9
 _L11:
 	LD	HL,$0000
-	LD	(I),HL
+	LD	(_I),HL
 _L12:
 	LD	L,(IY+$6E)
 	LD	H,(IY+$6F)
-	LD	(J),HL
+	LD	(_J),HL
 _L15:
 	LD	L,(IY+$6E)
 	LD	H,(IY+$6F)
 	LD	DE,$0001
+	OR	A
+	SBC	HL,DE
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -573,6 +575,8 @@ _L15:
 	LD	L,(IY+$6C)
 	LD	H,(IY+$6D)
 	LD	DE,$0001
+	OR	A
+	SBC	HL,DE
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -594,12 +598,16 @@ _L15:
 	LD	DE,$0002
 	OR	A
 	SBC	HL,DE
+	OR	A
+	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
 	LD	L,(IY+$6C)
 	LD	H,(IY+$6D)
 	LD	DE,$0002
+	OR	A
+	SBC	HL,DE
 	OR	A
 	SBC	HL,DE
 	LD	HL,$0000
@@ -715,9 +723,9 @@ _L18:
 	LD	(IY+$75),H
 	CALL	PAINT
 _L16:
-	LD	HL,(J)
+	LD	HL,(_J)
 	DEC	HL
-	LD	(J),HL
+	LD	(_J),HL
 	LD	HL,$0000
 	POP	DE
 	EX	DE,HL
@@ -732,9 +740,9 @@ _L16:
 	JP	NZ,_L15
 _L17:
 _L13:
-	LD	HL,(I)
+	LD	HL,(_I)
 	INC	HL
-	LD	(I),HL
+	LD	(_I),HL
 	LD	HL,$0007
 	POP	DE
 	OR	A

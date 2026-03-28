@@ -55,6 +55,8 @@ _L1:
 	LD	DE,$001A
 	OR	A
 	SBC	HL,DE
+	OR	A
+	SBC	HL,DE
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
@@ -73,9 +75,9 @@ _L1:
 _L3:
 	LD	L,(IY+$6E)
 	LD	H,(IY+$6F)
-	LD	(^DE),HL
+	LD	(_^DE),HL
 	LD	HL,$0002
-	LD	(^BC),HL
+	LD	(_^BC),HL
 	LD	HL,$0005
 	LD	(IY+$70),L
 	LD	(IY+$71),H

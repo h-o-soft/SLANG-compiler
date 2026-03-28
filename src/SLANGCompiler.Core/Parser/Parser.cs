@@ -352,7 +352,16 @@ public class Parser
 
         Expect(TokenKind.LParen, "Expected '('");
         var parms = new List<ParamDecl>();
-        if (!Check(TokenKind.RParen))
+        bool isMachineCodeDef = false;
+
+        if (Check(TokenKind.IntegerLiteral))
+        {
+            // MACHINE関数のCODE定義: @FUNC(引数数) [CODE(...)]
+            // (定数) は引数数であって引数リストではない
+            isMachineCodeDef = true;
+            Advance(); // 引数数（無視、MACHINE宣言側で管理）
+        }
+        else if (!Check(TokenKind.RParen))
         {
             do
             {

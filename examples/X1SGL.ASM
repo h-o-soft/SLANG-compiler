@@ -20,14 +20,15 @@ TATR_FILL:
 	LD	(IY+$77),H
 	LD	L,(IY+$72)
 	LD	H,(IY+$73)
-	LD	(J),HL
+	LD	(_J),HL
 _L0:
 	LD	L,(IY+$70)
 	LD	H,(IY+$71)
-	LD	(I),HL
+	LD	(_I),HL
 _L3:
 	LD	L,(IY+$78)
 	LD	H,(IY+$79)
+	PUSH	HL
 	LD	HL,$2800
 	LD	E,(IY+$6E)
 	LD	D,(IY+$6F)
@@ -41,9 +42,13 @@ _L3:
 	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
-	LD	(HL),E
+	LD	B,H
+	LD	C,L
+	EX	DE,HL
+	OUT	(C),L
 	LD	L,(IY+$78)
 	LD	H,(IY+$79)
+	PUSH	HL
 	LD	HL,$2800
 	LD	E,(IY+$6E)
 	LD	D,(IY+$6F)
@@ -62,11 +67,14 @@ _L3:
 	ADD	HL,DE
 	POP	DE
 	EX	DE,HL
-	LD	(HL),E
+	LD	B,H
+	LD	C,L
+	EX	DE,HL
+	OUT	(C),L
 _L4:
-	LD	HL,(I)
+	LD	HL,(_I)
 	INC	HL
-	LD	(I),HL
+	LD	(_I),HL
 	LD	L,(IY+$74)
 	LD	H,(IY+$75)
 	POP	DE
@@ -84,9 +92,9 @@ _L4:
 	JP	NZ,_L3
 _L5:
 _L1:
-	LD	HL,(J)
+	LD	HL,(_J)
 	INC	HL
-	LD	(J),HL
+	LD	(_J),HL
 	LD	L,(IY+$76)
 	LD	H,(IY+$77)
 	POP	DE
@@ -124,7 +132,8 @@ SGL_TFILL:
 	LD	(IY+$77),H
 	LD	L,(IY+$78)
 	LD	H,(IY+$79)
-	LD	HL,MOJI
+	PUSH	HL
+	LD	HL,_MOJI
 	PUSH	HL
 	LD	HL,$0000
 	LD	DE,$0000
@@ -133,12 +142,12 @@ SGL_TFILL:
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,$0000
-	LD	HL,MOJI
+	PUSH	HL
+	LD	HL,_MOJI
 	PUSH	HL
 	LD	HL,$0001
 	INC	HL
@@ -146,17 +155,16 @@ SGL_TFILL:
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	L,(IY+$72)
 	LD	H,(IY+$73)
-	LD	(J),HL
+	LD	(_J),HL
 _L6:
 	LD	L,(IY+$70)
 	LD	H,(IY+$71)
-	LD	(I),HL
+	LD	(_I),HL
 _L9:
 	LD	L,(IY+$6E)
 	LD	H,(IY+$6F)
@@ -166,14 +174,14 @@ _L9:
 	LD	H,(IY+$6D)
 	LD	(IY+$72),L
 	LD	(IY+$73),H
-	LD	HL,(MOJI)
+	LD	HL,(_MOJI)
 	LD	(IY+$74),L
 	LD	(IY+$75),H
 	CALL	SGL_PRINT2
 _L10:
-	LD	HL,(I)
+	LD	HL,(_I)
 	INC	HL
-	LD	(I),HL
+	LD	(_I),HL
 	LD	L,(IY+$74)
 	LD	H,(IY+$75)
 	POP	DE
@@ -191,9 +199,9 @@ _L10:
 	JP	NZ,_L9
 _L11:
 _L7:
-	LD	HL,(J)
+	LD	HL,(_J)
 	INC	HL
-	LD	(J),HL
+	LD	(_J),HL
 	LD	L,(IY+$76)
 	LD	H,(IY+$77)
 	POP	DE
@@ -237,7 +245,7 @@ MAIN:
 	LD	HL,$002A
 	LD	(IY+$70),L
 	LD	(IY+$71),H
-	LD	HL,(BLOCKPCG)
+	LD	HL,(_BLOCKPCG)
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	CALL	PCGDEF
@@ -290,14 +298,14 @@ MAIN:
 	LD	(IY+$79),H
 	CALL	SGL_TFILL
 	LD	HL,$0000
-	LD	(Y),HL
+	LD	(_Y),HL
 _L12:
 	LD	HL,$0001
 	LD	(IY+$70),L
 	LD	(IY+$71),H
 	LD	HL,$0003
 	PUSH	HL
-	LD	HL,(Y)
+	LD	HL,(_Y)
 	LD	DE,$0004
 	CALL	MUL16
 	POP	DE
@@ -310,7 +318,7 @@ _L12:
 	LD	(IY+$75),H
 	LD	HL,$0003
 	PUSH	HL
-	LD	HL,(Y)
+	LD	HL,(_Y)
 	LD	DE,$0004
 	CALL	MUL16
 	POP	DE
@@ -323,9 +331,9 @@ _L12:
 	LD	(IY+$79),H
 	CALL	SGL_TFILL
 _L13:
-	LD	HL,(Y)
+	LD	HL,(_Y)
 	INC	HL
-	LD	(Y),HL
+	LD	(_Y),HL
 	LD	HL,$0005
 	POP	DE
 	OR	A
@@ -370,14 +378,14 @@ _L14:
 	LD	HL,$0001
 	LD	(IY+$70),L
 	LD	(IY+$71),H
-	LD	HL,(BALL1)
+	LD	HL,(_BALL1)
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	CALL	SGL_DEFPAT
 	LD	HL,$0002
 	LD	(IY+$70),L
 	LD	(IY+$71),H
-	LD	HL,(BALL3)
+	LD	HL,(_BALL3)
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	CALL	SGL_DEFPAT
@@ -388,7 +396,7 @@ _L14:
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	CALL	SGL_SPRCREATE
-	LD	(SPR1),HL
+	LD	(_SPR1),HL
 	LD	HL,$0001
 	LD	(IY+$70),L
 	LD	(IY+$71),H
@@ -396,7 +404,7 @@ _L14:
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	CALL	SGL_SPRCREATE
-	LD	(SPR2),HL
+	LD	(_SPR2),HL
 	LD	HL,$0001
 	LD	(IY+$70),L
 	LD	(IY+$71),H
@@ -404,25 +412,25 @@ _L14:
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	CALL	SGL_SPRCREATE
-	LD	(SPR3),HL
+	LD	(_SPR3),HL
 	LD	HL,$5000
-	LD	(X),HL
+	LD	(_X),HL
 	LD	HL,$5A00
-	LD	(Y),HL
-	LD	HL,(SPR2)
+	LD	(_Y),HL
+	LD	HL,(_SPR2)
 	LD	(IY+$70),L
 	LD	(IY+$71),H
-	LD	HL,(X)
+	LD	HL,(_X)
 	LD	(IY+$72),L
 	LD	(IY+$73),H
-	LD	HL,(Y)
+	LD	HL,(_Y)
 	LD	(IY+$74),L
 	LD	(IY+$75),H
 	CALL	SGL_SPRMOVE
-	LD	HL,(SPR3)
+	LD	HL,(_SPR3)
 	LD	(IY+$70),L
 	LD	(IY+$71),H
-	LD	HL,(X)
+	LD	HL,(_X)
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	LD	HL,$6E00
@@ -430,22 +438,23 @@ _L14:
 	LD	(IY+$75),H
 	CALL	SGL_SPRMOVE
 	LD	HL,$9600
-	LD	(Y2),HL
+	LD	(_Y2),HL
 	LD	HL,$0001
-	LD	HL,SPRDAT
+	PUSH	HL
+	LD	HL,_SPRDAT
 	LD	DE,$0000
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	LD	HL,$0002
-	LD	HL,SPRDAT
+	PUSH	HL
+	LD	HL,_SPRDAT
 	INC	HL
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	LD	HL,$3200
-	LD	HL,(SPRDAT)
+	PUSH	HL
+	LD	HL,(_SPRDAT)
 	LD	DE,$0003
 	ADD	HL,DE
 	POP	DE
@@ -453,8 +462,9 @@ _L14:
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
-	LD	HL,(Y2)
-	LD	HL,(SPRDAT)
+	LD	HL,(_Y2)
+	PUSH	HL
+	LD	HL,(_SPRDAT)
 	LD	DE,$0006
 	ADD	HL,DE
 	POP	DE
@@ -462,10 +472,10 @@ _L14:
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
-	LD	HL,(SPR2)
+	LD	HL,(_SPR2)
 	LD	(IY+$70),L
 	LD	(IY+$71),H
-	LD	HL,(SPRDAT)
+	LD	HL,(_SPRDAT)
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	CALL	SGL_SPRSET
@@ -473,37 +483,37 @@ _L14:
 	LD	(IY+$70),L
 	LD	(IY+$71),H
 	CALL	PSG_INIT
-	LD	HL,(MUSADR)
+	LD	HL,(_MUSADR)
 	LD	(IY+$70),L
 	LD	(IY+$71),H
 	CALL	PSG_PLAY
 _L15:
-	LD	HL,(SPR1)
+	LD	HL,(_SPR1)
 	LD	(IY+$70),L
 	LD	(IY+$71),H
-	LD	HL,(X)
+	LD	HL,(_X)
 	LD	(IY+$72),L
 	LD	(IY+$73),H
-	LD	HL,(Y)
+	LD	HL,(_Y)
 	LD	(IY+$74),L
 	LD	(IY+$75),H
 	CALL	SGL_SPRMOVE
-	LD	HL,(SPR2)
+	LD	HL,(_SPR2)
 	LD	(IY+$70),L
 	LD	(IY+$71),H
 	LD	HL,$3200
 	LD	(IY+$72),L
 	LD	(IY+$73),H
-	LD	HL,(Y2)
+	LD	HL,(_Y2)
 	LD	(IY+$74),L
 	LD	(IY+$75),H
 	CALL	SGL_SPRMOVE
-	LD	HL,(SPR1)
+	LD	HL,(_SPR1)
 	LD	(IY+$70),L
 	LD	(IY+$71),H
 	LD	HL,$0001
 	PUSH	HL
-	LD	HL,(X)
+	LD	HL,(_X)
 	LD	DE,$000A
 	CALL	SHR16
 	LD	HL,$0001
@@ -520,10 +530,10 @@ _L15:
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	CALL	SGL_SPRPAT
-	LD	HL,(SPR3)
+	LD	HL,(_SPR3)
 	LD	(IY+$70),L
 	LD	(IY+$71),H
-	LD	HL,(X)
+	LD	HL,(_X)
 	LD	DE,$000B
 	CALL	SHR16
 	LD	HL,$0001
@@ -537,29 +547,29 @@ _L15:
 	LD	(IY+$72),L
 	LD	(IY+$73),H
 	CALL	SGL_SPRDISP
-	LD	HL,(X)
+	LD	HL,(_X)
 	LD	DE,$0080
 	ADD	HL,DE
-	LD	(X),HL
-	LD	HL,(X)
+	LD	(_X),HL
+	LD	HL,(_X)
 	LD	DE,$A000
 	OR	A
 	SBC	HL,DE
 	JP	C,_L17
 	LD	HL,$0000
-	LD	(X),HL
+	LD	(_X),HL
 _L17:
-	LD	HL,(Y2)
+	LD	HL,(_Y2)
 	LD	DE,$0300
 	ADD	HL,DE
-	LD	(Y2),HL
-	LD	HL,(Y2)
+	LD	(_Y2),HL
+	LD	HL,(_Y2)
 	LD	DE,$C800
 	OR	A
 	SBC	HL,DE
 	JP	C,_L18
 	LD	HL,$0000
-	LD	(Y2),HL
+	LD	(_Y2),HL
 _L18:
 	CALL	SGL_VSYNC
 	JP	_L15

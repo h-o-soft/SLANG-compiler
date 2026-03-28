@@ -7,78 +7,114 @@ MAIN:
 ; function MAIN
 	PUSH	IY
 	LD	HL,$0000
-	LD	(Y),HL
+	LD	(_Y),HL
 _L0:
 	LD	HL,$0000
-	LD	(X),HL
+	LD	(_X),HL
 _L3:
-	LD	HL,(X)
+	LD	HL,(_X)
 	LD	DE,$0027
 	OR	A
 	SBC	HL,DE
-	LD	(FX),HL
-	LD	HL,(Y)
+	LD	(_FX),HL
+	LD	(_FX+2),A
+	LD	HL,(_Y)
 	LD	DE,$000C
 	OR	A
 	SBC	HL,DE
-	LD	(FY),HL
-	LD	HL,(FX)
-	LD	DE,$4817
+	LD	(_FY),HL
+	LD	(_FY+2),A
+	LD	HL,(_FX)
+	LD	A,(_FX+2)
+	PUSH	HL
+	LD	HL,$4817
+	CALL	i16tof24
+	POP	DE
+	EX	DE,HL
 	CALL	MUL16
-	LD	(CA),HL
-	LD	HL,(FY)
-	LD	DE,$92F7
+	LD	(_CA),HL
+	LD	(_CA+2),A
+	LD	HL,(_FY)
+	LD	A,(_FY+2)
+	PUSH	HL
+	LD	HL,$92F7
+	CALL	i16tof24
+	POP	DE
+	EX	DE,HL
 	CALL	MUL16
-	LD	(CB),HL
-	LD	HL,(CA)
-	LD	(A),HL
-	LD	HL,(CB)
-	LD	(B),HL
+	LD	(_CB),HL
+	LD	(_CB+2),A
+	LD	HL,(_CA)
+	LD	A,(_CA+2)
+	LD	(_A),HL
+	LD	(_A+2),A
+	LD	HL,(_CB)
+	LD	A,(_CB+2)
+	LD	(_B),HL
+	LD	(_B+2),A
 	LD	HL,$0000
-	LD	(I),HL
+	LD	(_I),HL
 _L6:
-	LD	HL,(A)
-	LD	DE,(A)
-	CALL	MUL16
-	LD	HL,(B)
-	LD	DE,(B)
-	CALL	MUL16
+	LD	HL,(_A)
+	LD	A,(_A+2)
+	LD	DE,(_A)
+	CALL	f24mul
+	LD	HL,(_B)
+	LD	A,(_B+2)
+	LD	DE,(_B)
+	CALL	f24mul
 	POP	DE
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	PUSH	HL
-	LD	HL,(CA)
+	LD	HL,(_CA)
+	LD	A,(_CA+2)
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	LD	(T),HL
+	LD	(_T),HL
+	LD	(_T+2),A
 	LD	HL,$0002
-	LD	DE,(A)
-	CALL	MUL16
-	LD	HL,(B)
+	LD	HL,(_A)
+	LD	A,(_A+2)
+	CALL	i16tof24
+	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	CALL	MUL16
 	PUSH	HL
-	LD	HL,(CB)
+	LD	HL,(_B)
+	LD	A,(_B+2)
+	POP	DE
+	EX	DE,HL
+	CALL	MUL16
+	PUSH	HL
+	LD	HL,(_CB)
+	LD	A,(_CB+2)
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	LD	(B),HL
-	LD	HL,(T)
-	LD	(A),HL
-	LD	HL,(A)
-	LD	DE,(A)
-	CALL	MUL16
-	LD	HL,(B)
-	LD	DE,(B)
-	CALL	MUL16
+	LD	(_B),HL
+	LD	(_B+2),A
+	LD	HL,(_T)
+	LD	A,(_T+2)
+	LD	(_A),HL
+	LD	(_A+2),A
+	LD	HL,(_A)
+	LD	A,(_A+2)
+	LD	DE,(_A)
+	CALL	f24mul
+	LD	HL,(_B)
+	LD	A,(_B+2)
+	LD	DE,(_B)
+	CALL	f24mul
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
 	PUSH	HL
 	LD	HL,$0000
+	CALL	i16tof24
 	POP	DE
 	OR	A
 	SBC	HL,DE
@@ -91,9 +127,9 @@ _L6:
 	JP	_L8
 _L9:
 _L7:
-	LD	HL,(I)
+	LD	HL,(_I)
 	INC	HL
-	LD	(I),HL
+	LD	(_I),HL
 	LD	HL,$000F
 	POP	DE
 	OR	A
@@ -104,30 +140,30 @@ _L7:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t47 != 0 goto _L6
+; if t51 != 0 goto _L6
 	LD	A,H
 	OR	L
 	JP	NZ,_L6
 _L8:
-	LD	HL,(I)
+	LD	HL,(_I)
 	LD	DE,$000F
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	JP	C,_L11
-	LD	HL,(I)
+	LD	HL,(_I)
 	LD	DE,$0009
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
 	JP	NC,_L12
-	LD	HL,(I)
+	LD	HL,(_I)
 	LD	DE,$0007
 	ADD	HL,DE
-	LD	(I),HL
+	LD	(_I),HL
 _L12:
 	LD	HL,$0030
-	LD	DE,(I)
+	LD	DE,(_I)
 	ADD	HL,DE
 	CALL	PCHR
 	JP	_L10
@@ -136,9 +172,9 @@ _L11:
 	CALL	PSTR
 _L10:
 _L4:
-	LD	HL,(X)
+	LD	HL,(_X)
 	INC	HL
-	LD	(X),HL
+	LD	(_X),HL
 	LD	HL,$004E
 	POP	DE
 	OR	A
@@ -149,16 +185,16 @@ _L4:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t65 != 0 goto _L3
+; if t69 != 0 goto _L3
 	LD	A,H
 	OR	L
 	JP	NZ,_L3
 _L5:
 	CALL	PCRONE
 _L1:
-	LD	HL,(Y)
+	LD	HL,(_Y)
 	INC	HL
-	LD	(Y),HL
+	LD	(_Y),HL
 	LD	HL,$0018
 	POP	DE
 	OR	A
@@ -169,7 +205,7 @@ _L1:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t70 != 0 goto _L0
+; if t74 != 0 goto _L0
 	LD	A,H
 	OR	L
 	JP	NZ,_L0
@@ -208,6 +244,39 @@ _T:
 	DS	3
 
 ; === Runtime Functions ===
+u16tof24:
+i16tof24_pos:
+ld b,$3F+16    ;Initial exponent and sign
+;Check if HL is 0, if so return AHL == 0x000000
+ld a,h
+or l
+ret z
+; HL is non-zero
+; shift HL left until there is an overflow (the implicit bit)
+; meanwhile, decrement B, the exponent each iteration
+dec b
+add hl,hl
+jr nc,$-2
+ld a,b
+ret
+
+i16tof24:
+;Inputs:
+;   HL holds a 16-bit signed integer, (-32768 to 32767)
+;Outputs:
+;   Converts to an f24 float in AHL
+;   returns z flag set if zero, nz otherwise :)
+bit 7,h
+jr z,i16tof24_pos
+xor a
+sub l
+ld l,a
+sbc a,a
+sub h
+ld h,a
+ld b,$BF+16
+db $11     ;start of `ld de,**`, eats the next two bytes
+
 PRT:
 PUSH HL
 PUSH DE
