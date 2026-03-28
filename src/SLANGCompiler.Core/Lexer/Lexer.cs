@@ -421,7 +421,7 @@ public class Lexer
         text = _source[startPos.._pos];
         kind = text.ToUpperInvariant() switch
         {
-            ".*."|".*." => TokenKind.SignedMul,
+            ".*." => TokenKind.SignedMul,
             "./." => TokenKind.SignedDiv,
             ".MOD." => TokenKind.SignedMod,
             ".<<." => TokenKind.SignedShl,
