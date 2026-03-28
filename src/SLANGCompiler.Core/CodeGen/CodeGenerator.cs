@@ -327,7 +327,8 @@ public class CodeGenerator
         // 直接ロード最適化: 二項演算の両src が単純ロードなら、
         // 元のLoad命令をスキップし、演算時にHL/DEに直接ロードする
         var skipEmit = new HashSet<int>();
-        var directBinaryOps = new HashSet<int>(); // 二項演算命令のインデックス
+        var directBinaryOps = new HashSet<int>(); // 両src単純ロード
+        var halfDirectOps = new HashSet<int>();  // src2のみ単純ロード
 
         for (int i = 0; i < insts.Count; i++)
         {
@@ -336,12 +337,21 @@ public class CodeGenerator
                 && inst.Src1.Kind == IrOperandKind.Temp
                 && inst.Src2.Kind == IrOperandKind.Temp
                 && tempDef.TryGetValue(inst.Src1.TempIndex, out int s1)
-                && tempDef.TryGetValue(inst.Src2.TempIndex, out int s2)
-                && IsSimpleLoad(insts[s1]) && IsSimpleLoad(insts[s2]))
+                && tempDef.TryGetValue(inst.Src2.TempIndex, out int s2))
             {
-                skipEmit.Add(s1);
-                skipEmit.Add(s2);
-                directBinaryOps.Add(i);
+                if (IsSimpleLoad(insts[s1]) && IsSimpleLoad(insts[s2]))
+                {
+                    // 両方単純ロード → HL/DE直接ロード
+                    skipEmit.Add(s1);
+                    skipEmit.Add(s2);
+                    directBinaryOps.Add(i);
+                }
+                else if (IsSimpleLoad(insts[s2]) && !IsSimpleLoad(insts[s1]))
+                {
+                    // src2のみ単純ロード → src1はHLに残っている、src2をDE直接ロード
+                    skipEmit.Add(s2);
+                    halfDirectOps.Add(i);
+                }
             }
         }
 
@@ -371,6 +381,11 @@ public class CodeGenerator
                 }
             }
         }
+
+        // NeedsPushAfterで参照するためフィールドにセット
+        _currentDirectBinaryOps = directBinaryOps;
+        _currentHalfDirectOps = halfDirectOps;
+        _currentSkipEmit = skipEmit;
 
         // Pass 2: 出力
         for (int i = 0; i < insts.Count; i++)
@@ -418,6 +433,33 @@ public class CodeGenerator
                 // 通常の直接ロード最適化
                 EmitInstruction(s1);
                 EmitLoadToDE(s2);
+                EmitBinaryDirect(inst);
+                continue;
+            }
+
+            // src2のみ単純ロード: src1の結果がHL、src2をDE直接ロード
+            if (halfDirectOps.Contains(i))
+            {
+                var s2Inst = insts[tempDef[inst.Src2.TempIndex]];
+
+                if (fusedCompareJumps.TryGetValue(i, out int hJumpIdx))
+                {
+                    var jumpInst = insts[hJumpIdx];
+                    EmitLoadToDE(s2Inst);
+                    EmitFusedCompareJump(inst, jumpInst.Dest.Name!);
+                    continue;
+                }
+
+                // INC/DEC最適化
+                if ((inst.Op == IrOp.Add || inst.Op == IrOp.Sub)
+                    && s2Inst.Op == IrOp.LoadConst && s2Inst.Src1.Kind == IrOperandKind.Immediate)
+                {
+                    int cv = (int)(s2Inst.Src1.ImmediateValue & 0xFFFF);
+                    if (cv == 1) { _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL"); continue; }
+                    if (cv == 2) { _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL"); _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL"); continue; }
+                }
+
+                EmitLoadToDE(s2Inst);
                 EmitBinaryDirect(inst);
                 continue;
             }
@@ -652,15 +694,26 @@ public class CodeGenerator
     /// destTempが後続の二項演算等のsrc1として使われ、
     /// その演算のsrc2が別のtemp（=HLを使う）場合にPUSHが必要。
     /// </summary>
+    // 最適化パスの結果（NeedsPushAfterで参照）
+    private HashSet<int> _currentDirectBinaryOps = new();
+    private HashSet<int> _currentHalfDirectOps = new();
+    private HashSet<int> _currentSkipEmit = new();
+
     private bool NeedsPushAfter(List<IrInstruction> insts, int currentIdx, int destTemp)
     {
         for (int j = currentIdx + 1; j < insts.Count; j++)
         {
+            if (_currentSkipEmit.Contains(j)) continue; // スキップされる命令は無視
+
             var next = insts[j];
 
             // この temp が src1 で、src2 が別の temp → PUSH 必要
             if (next.Src1.Kind == IrOperandKind.Temp && next.Src1.TempIndex == destTemp)
             {
+                // directBinaryOps/halfDirectOps → src2は直接DEロードされるのでPUSH不要
+                if (_currentDirectBinaryOps.Contains(j) || _currentHalfDirectOps.Contains(j))
+                    return false;
+
                 // 二項演算でsrc2もtempなら
                 if (IsBinaryOp(next.Op) && next.Src2.Kind == IrOperandKind.Temp)
                     return true;
