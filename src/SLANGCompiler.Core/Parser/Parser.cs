@@ -5,596 +5,569 @@ namespace SLANGCompiler.Parser;
 
 /// <summary>
 /// SLANG再帰下降パーサー。
-/// トークン列からASTを構築する。
+/// SLANGTEST.SLの全構文をカバーする。
 /// </summary>
 public class Parser
 {
     private readonly List<Token> _tokens;
     private readonly DiagnosticBag _diagnostics;
     private int _pos;
+    private int _argListDepth;
 
     public Parser(List<Token> tokens, DiagnosticBag diagnostics)
     {
         _tokens = tokens;
         _diagnostics = diagnostics;
-        _pos = 0;
     }
 
-    // ---- Token access ----
+    // ==== Token access ====
 
     private Token Current => _pos < _tokens.Count ? _tokens[_pos] : new Token(TokenKind.EOF, "", SourceSpan.Unknown);
     private Token Peek(int offset = 0)
     {
-        int idx = _pos + offset;
-        return idx < _tokens.Count ? _tokens[idx] : new Token(TokenKind.EOF, "", SourceSpan.Unknown);
+        int i = _pos + offset;
+        return i < _tokens.Count ? _tokens[i] : new Token(TokenKind.EOF, "", SourceSpan.Unknown);
     }
-
-    private Token Advance()
+    private Token Advance() { var t = Current; _pos++; return t; }
+    private bool Check(TokenKind k) => Current.Kind == k;
+    private bool CheckAny(params TokenKind[] ks) => ks.Contains(Current.Kind);
+    private bool Match(TokenKind k) { if (Check(k)) { Advance(); return true; } return false; }
+    private Token Expect(TokenKind k, string? msg = null)
     {
-        var token = Current;
-        _pos++;
-        return token;
+        if (Check(k)) return Advance();
+        Error(msg ?? $"Expected {k}, got {Current.Kind}");
+        return Current;
     }
+    private void Error(string msg) => _diagnostics.Error(msg, Current.Span);
 
-    private bool Check(TokenKind kind) => Current.Kind == kind;
-    private bool CheckAny(params TokenKind[] kinds) => kinds.Contains(Current.Kind);
-
-    private bool Match(TokenKind kind)
-    {
-        if (Current.Kind == kind) { Advance(); return true; }
-        return false;
-    }
-
-    private Token Expect(TokenKind kind, string? message = null)
-    {
-        if (Current.Kind == kind) return Advance();
-        var msg = message ?? $"Expected {kind}, got {Current.Kind}";
-        _diagnostics.Error(msg, Current.Span);
-        return Current; // error recovery: don't advance
-    }
-
-    private void ExpectSemicolon() => Expect(TokenKind.Semicolon, "Expected ';'");
-
-    // ---- Top-level ----
+    // ==== Top-level ====
 
     public CompilationUnit ParseCompilationUnit()
     {
-        var start = Current.Span;
-        var definitions = new List<AstNode>();
-
+        var defs = new List<AstNode>();
         while (!Check(TokenKind.EOF))
         {
-            // Skip stray semicolons
             if (Match(TokenKind.Semicolon)) continue;
-
-            var def = ParseDefinition();
-            if (def != null)
-                definitions.Add(def);
-            else
-                Advance(); // error recovery
+            int before = _pos;
+            var def = ParseTopLevel();
+            if (def != null) defs.Add(def);
+            // Safety: if parser didn't advance, skip token to avoid infinite loop
+            if (_pos == before) Advance();
         }
-
-        return new CompilationUnit(definitions, start);
+        return new CompilationUnit(defs, SourceSpan.Unknown);
     }
 
-    private AstNode? ParseDefinition()
+    private AstNode? ParseTopLevel()
     {
         switch (Current.Kind)
         {
-            case TokenKind.Org:
-                return ParseOrgDirective();
-            case TokenKind.Work:
-                return ParseWorkDirective();
-            case TokenKind.Offset:
-                return ParseOffsetDirective();
-            case TokenKind.Module:
-                return ParseModuleBlock();
-            case TokenKind.Plain:
-                return ParsePlainAsm();
-            case TokenKind.Var:
+            case TokenKind.Org: return ParseOrg();
+            case TokenKind.Work: return ParseWork();
+            case TokenKind.Offset: return ParseOffset();
+            case TokenKind.Plain: return new PlainAsm(Advance().StringValue, Current.Span);
+            case TokenKind.PreprocIf: return ParsePreprocIf();
+            case TokenKind.PreprocEnd: Advance(); return null; // stray #END
+            case TokenKind.Const: return ParseConstDecl();
+            case TokenKind.Var: return ParseVarDeclList();
+            case TokenKind.Array: return ParseArrayDeclList();
+            case TokenKind.Machine: return ParseMachineDeclList();
             case TokenKind.Byte:
             case TokenKind.Word:
             case TokenKind.Float:
-                return ParseVarDeclaration();
-            case TokenKind.Array:
-                return ParseArrayDeclaration();
-            case TokenKind.Const:
-                return ParseConstDeclaration();
-            case TokenKind.Machine:
-                return ParseMachineDeclaration();
+            case TokenKind.Exclamation:
+                return ParseVarDeclList();
+            case TokenKind.Identifier:
+                // Function definition: IDENT '(' ...
+                if (IsFuncDefStart())
+                    return ParseFuncDef();
+                Error($"Unexpected identifier at top level: {Current.Text}");
+                return null;
+            case TokenKind.Module:
+                // Skip #MODULE for now
+                Advance();
+                return null;
             default:
-                // Could be a function definition or expression
-                if (Current.Kind == TokenKind.Identifier)
-                {
-                    return ParseFuncDefOrDecl();
-                }
-                _diagnostics.Error($"Unexpected token: {Current.Kind}", Current.Span);
+                Error($"Unexpected token at top level: {Current.Kind} '{Current.Text}'");
                 return null;
         }
     }
 
-    // ---- Directives ----
-
-    private OrgDirective ParseOrgDirective()
+    private bool IsFuncDefStart()
     {
-        var start = Advance().Span; // ORG
-        var value = ParseExpression();
-        return new OrgDirective(value, start);
+        // identifier [: expr] '('
+        int i = 1;
+        if (Peek(i).Kind == TokenKind.Colon) i += 2; // skip : expr (simplified)
+        return Peek(i).Kind == TokenKind.LParen;
     }
 
-    private WorkDirective ParseWorkDirective()
+    // ==== Preprocessor ====
+
+    private AstNode? ParsePreprocIf()
     {
-        var start = Advance().Span; // WORK
-        var value = ParseExpression();
-        return new WorkDirective(value, start);
+        var token = Advance(); // #IF
+        var expr = token.StringValue;
+        // Simple: if the expression is "FALSE" or "0", skip until #END/#ELSE
+        // For now, just skip the conditional block entirely
+        if (expr.Equals("FALSE", StringComparison.OrdinalIgnoreCase) || expr == "0")
+        {
+            SkipPreprocBlock();
+            return null;
+        }
+        // TRUE: parse normally until #END
+        return null;
     }
 
-    private OffsetDirective ParseOffsetDirective()
+    private void SkipPreprocBlock()
     {
-        var start = Advance().Span; // OFFSET
-        var value = ParseExpression();
-        return new OffsetDirective(value, start);
+        int depth = 1;
+        while (!Check(TokenKind.EOF) && depth > 0)
+        {
+            if (Check(TokenKind.PreprocIf)) { depth++; Advance(); continue; }
+            if (Check(TokenKind.PreprocEnd)) { depth--; Advance(); continue; }
+            if (Check(TokenKind.PreprocElse) && depth == 1) { Advance(); return; }
+            Advance();
+        }
     }
 
-    private ModuleBlock ParseModuleBlock()
+    // ==== Directives ====
+
+    private OrgDirective ParseOrg()
     {
-        var start = Advance().Span; // MODULE
-        var name = ParseExpression();
-        var defs = new List<AstNode>();
-        // Module ends at MODULEEND (which the lexer produces from #MODULE...#END)
-        // For now, treat as simple directive
-        return new ModuleBlock(name, defs, start);
+        var s = Advance().Span;
+        return new OrgDirective(ParseNcExpr(), s);
+    }
+    private WorkDirective ParseWork()
+    {
+        var s = Advance().Span;
+        return new WorkDirective(ParseNcExpr(), s);
+    }
+    private OffsetDirective ParseOffset()
+    {
+        var s = Advance().Span;
+        return new OffsetDirective(ParseNcExpr(), s);
     }
 
-    private PlainAsm ParsePlainAsm()
+    // ==== CONST declaration ====
+
+    private AstNode ParseConstDecl()
     {
-        var token = Advance();
-        return new PlainAsm(token.StringValue, token.Span);
+        var start = Advance().Span; // CONST
+        var decls = new List<AstNode>();
+        do
+        {
+            bool isAsm = Match(TokenKind.Machine); // ASM keyword before const
+            var name = Expect(TokenKind.Identifier, "Expected constant name").StringValue;
+            Expect(TokenKind.Eq, "Expected '='");
+            Expression value;
+            if (IsBlockOpen())
+            {
+                var codes = ParseCodeBlock();
+                value = new CodeExpr(codes, start);
+            }
+            else
+            {
+                value = ParseNcExpr();
+            }
+            decls.Add(new ConstDecl(name, value, isAsm, start));
+        } while (Match(TokenKind.Comma));
+        Match(TokenKind.Semicolon);
+
+        return decls.Count == 1 ? decls[0] : new Block(decls, start);
     }
 
-    // ---- Declarations ----
+    // ==== VAR declaration (supports comma-separated, mixed types) ====
 
-    private AstNode ParseVarDeclaration()
+    private AstNode ParseVarDeclList()
     {
         var start = Current.Span;
-        DataSize size = DataSize.Word;
+        bool hadVarKeyword = Match(TokenKind.Var);
+        var decls = new List<AstNode>();
 
-        // Optional type prefix (VAR keyword is also optional before BYTE/WORD/FLOAT)
-        if (Match(TokenKind.Var))
+        do
         {
-            // Check for type specifier after VAR
-            size = ParseOptionalDataSize();
-        }
-        else
-        {
-            size = ParseDataSize();
-        }
+            decls.Add(ParseSingleVarOrArray(hadVarKeyword));
+        } while (Match(TokenKind.Comma));
 
+        Match(TokenKind.Semicolon);
+        return decls.Count == 1 ? decls[0] : new Block(decls, start);
+    }
+
+    private AstNode ParseSingleVarOrArray(bool afterVarKeyword)
+    {
+        var start = Current.Span;
+        DataSize size = ParseOptionalDataSize();
         var name = Expect(TokenKind.Identifier, "Expected variable name").StringValue;
         Expression? address = null;
-        Expression? initValue = null;
-        List<Expression>? initCode = null;
 
-        // :address
-        if (Match(TokenKind.Colon))
-        {
-            address = ParseExpression();
-        }
-
-        // Check for array dimensions
+        // Array dimensions
         var dims = new List<Expression?>();
         while (Check(TokenKind.ArrayBracketOpen))
         {
             Advance();
             if (Check(TokenKind.RBracket))
-            {
-                dims.Add(null); // unsized
-            }
+                dims.Add(null); // indirect / unsized
             else
-            {
-                dims.Add(ParseExpression());
-            }
+                dims.Add(ParseNcExpr());
             Expect(TokenKind.RBracket, "Expected ']'");
         }
 
+        // :address
+        if (Match(TokenKind.Colon))
+            address = ParseNcExpr();
+
         // = initializer
+        Expression? initValue = null;
+        List<Expression>? initCode = null;
         if (Match(TokenKind.Eq))
         {
             if (IsBlockOpen())
-            {
                 initCode = ParseCodeBlock();
-            }
             else
-            {
-                initValue = ParseExpression();
-            }
+                initValue = ParseNcExpr();
         }
-
-        ExpectSemicolon();
 
         if (dims.Count > 0)
-        {
             return new ArrayDecl(name, size, address, dims, initValue, initCode, start);
-        }
         return new VarDecl(name, size, address, initValue, initCode, start);
     }
 
-    private AstNode ParseArrayDeclaration()
+    // ==== ARRAY declaration ====
+
+    private AstNode ParseArrayDeclList()
     {
         var start = Advance().Span; // ARRAY
-        DataSize size = ParseOptionalDataSize();
+        var decls = new List<AstNode>();
 
-        var name = Expect(TokenKind.Identifier, "Expected array name").StringValue;
-        Expression? address = null;
-
-        // :address
-        if (Match(TokenKind.Colon))
+        do
         {
-            address = ParseExpression();
-        }
+            var s = Current.Span;
+            DataSize size = ParseOptionalDataSize();
+            var name = Expect(TokenKind.Identifier, "Expected array name").StringValue;
 
-        // Dimensions
-        var dims = new List<Expression?>();
-        while (Check(TokenKind.ArrayBracketOpen))
-        {
-            Advance();
-            if (Check(TokenKind.RBracket))
+            var dims = new List<Expression?>();
+            while (Check(TokenKind.ArrayBracketOpen))
             {
-                dims.Add(null);
+                Advance();
+                if (Check(TokenKind.RBracket))
+                    dims.Add(null);
+                else
+                    dims.Add(ParseNcExpr());
+                Expect(TokenKind.RBracket, "Expected ']'");
             }
-            else
-            {
-                dims.Add(ParseExpression());
-            }
-            Expect(TokenKind.RBracket, "Expected ']'");
-        }
 
-        Expression? initValue = null;
-        List<Expression>? initCode = null;
+            Expression? address = null;
+            if (Match(TokenKind.Colon))
+                address = ParseNcExpr();
 
-        if (Match(TokenKind.Eq))
-        {
-            if (IsBlockOpen())
+            Expression? initValue = null;
+            List<Expression>? initCode = null;
+            if (Match(TokenKind.Eq))
             {
-                initCode = ParseCodeBlock();
+                if (IsBlockOpen())
+                    initCode = ParseCodeBlock();
+                else
+                    initValue = ParseNcExpr();
             }
-            else
-            {
-                initValue = ParseExpression();
-            }
-        }
 
-        ExpectSemicolon();
-        return new ArrayDecl(name, size, address, dims, initValue, initCode, start);
+            decls.Add(new ArrayDecl(name, size, address, dims, initValue, initCode, s));
+        } while (Match(TokenKind.Comma));
+
+        Match(TokenKind.Semicolon);
+        return decls.Count == 1 ? decls[0] : new Block(decls, start);
     }
 
-    private AstNode ParseConstDeclaration()
-    {
-        var start = Advance().Span; // CONST
-        bool isAsm = Match(TokenKind.Machine); // ASM CONST → uses EQU
-        // Actually, check for ASM keyword before identifier
-        // In original: ASM IDENTIFIER = expr
+    // ==== MACHINE declaration ====
 
-        var name = Expect(TokenKind.Identifier, "Expected constant name").StringValue;
-        Expect(TokenKind.Eq, "Expected '='");
-
-        Expression value;
-        if (IsBlockOpen())
-        {
-            var codes = ParseCodeBlock();
-            value = new CodeExpr(codes, start);
-        }
-        else
-        {
-            value = ParseExpression();
-        }
-
-        ExpectSemicolon();
-        return new ConstDecl(name, value, isAsm, start);
-    }
-
-    private AstNode ParseMachineDeclaration()
+    private AstNode ParseMachineDeclList()
     {
         var start = Advance().Span; // MACHINE
-        var name = Expect(TokenKind.Identifier, "Expected function name").StringValue;
-        Expression? address = null;
-        int? paramCount = null;
+        var decls = new List<AstNode>();
 
-        if (Match(TokenKind.Colon))
+        do
         {
-            address = ParseExpression();
-        }
+            var name = Expect(TokenKind.Identifier, "Expected function name").StringValue;
+            Expression? address = null;
+            int? paramCount = null;
 
-        if (Match(TokenKind.LParen))
-        {
-            if (Check(TokenKind.IntegerLiteral))
+            if (Match(TokenKind.Colon))
+                address = ParseNcExpr();
+
+            if (Match(TokenKind.LParen))
             {
-                paramCount = Current.IntValue;
-                Advance();
+                if (Check(TokenKind.IntegerLiteral))
+                {
+                    paramCount = Current.IntValue;
+                    Advance();
+                }
+                Expect(TokenKind.RParen, "Expected ')'");
             }
-            Expect(TokenKind.RParen, "Expected ')'");
-        }
 
-        ExpectSemicolon();
-        return new MachineDecl(name, address, paramCount, start);
+            decls.Add(new MachineDecl(name, address, paramCount, start));
+        } while (Match(TokenKind.Comma));
+
+        Match(TokenKind.Semicolon);
+        return decls.Count == 1 ? decls[0] : new Block(decls, start);
     }
 
-    // ---- Function definitions ----
+    // ==== Function definition ====
 
-    private AstNode ParseFuncDefOrDecl()
+    private FuncDef ParseFuncDef()
     {
-        // Look ahead to determine if this is a function definition
-        // func_head: identifier ['[' ... ']'] '(' ... ')'
-        // If followed by a block, it's a function definition
         var start = Current.Span;
-        var name = Expect(TokenKind.Identifier).StringValue;
+        var name = Advance().StringValue; // identifier
         Expression? address = null;
 
         if (Match(TokenKind.Colon))
-        {
-            address = ParseExpression();
-        }
+            address = ParseNcExpr();
 
-        if (!Check(TokenKind.LParen))
-        {
-            // Not a function - treat as expression statement
-            // Rewind and parse as expression
-            // For now, simple error
-            _diagnostics.Error($"Unexpected identifier at top level: {name}", start);
-            return new PlainAsm("", start);
-        }
-
-        Advance(); // (
-        var parameters = new List<ParamDecl>();
+        Expect(TokenKind.LParen, "Expected '('");
+        var parms = new List<ParamDecl>();
         if (!Check(TokenKind.RParen))
         {
-            parameters = ParseParameterList();
+            do
+            {
+                var ps = Current.Span;
+                DataSize psz = ParseOptionalDataSize();
+                var pn = Expect(TokenKind.Identifier, "Expected parameter name").StringValue;
+                bool isArr = false;
+                if (Check(TokenKind.ArrayBracketOpen)) { Advance(); Expect(TokenKind.RBracket); isArr = true; }
+                parms.Add(new ParamDecl(pn, psz, isArr, ps));
+            } while (Match(TokenKind.Comma));
         }
         Expect(TokenKind.RParen, "Expected ')'");
 
         // Static declarations (before BEGIN)
         var staticDecls = new List<AstNode>();
-        while (IsDeclarationStart())
+        while (IsDeclStart() && !IsBlockOpen())
         {
-            var decl = ParseLocalDeclaration();
-            if (decl != null) staticDecls.Add(decl);
+            staticDecls.Add(ParseLocalDecl());
         }
 
         // BEGIN
-        ExpectBlockOpen();
+        ExpectBlockOpen("Expected BEGIN/[/{/( for function body");
 
-        // Local declarations (after BEGIN)
+        // Local declarations (after BEGIN, before statements)
         var localDecls = new List<AstNode>();
-        while (IsDeclarationStart())
+        while (IsDeclStart())
         {
-            var decl = ParseLocalDeclaration();
-            if (decl != null) localDecls.Add(decl);
+            localDecls.Add(ParseLocalDecl());
         }
 
-        // Statement list
-        var stmts = ParseStatementList();
+        // Statements
+        var stmts = ParseStmtList();
         var body = new Block(stmts, start);
 
         // END with optional return value
-        Expression? returnValue = null;
-        ExpectBlockClose();
+        Expression? retVal = null;
+        ExpectBlockClose("Expected END/]");
 
         if (Match(TokenKind.LParen))
         {
-            returnValue = ParseExpression();
+            retVal = ParseExpr();
             Expect(TokenKind.RParen, "Expected ')'");
         }
-
         Match(TokenKind.Semicolon);
 
-        return new FuncDef(name, address, parameters, staticDecls, localDecls, body, returnValue, start);
+        return new FuncDef(name, address, parms, staticDecls, localDecls, body, retVal, start);
     }
 
-    private List<ParamDecl> ParseParameterList()
+    private AstNode ParseLocalDecl()
     {
-        var parms = new List<ParamDecl>();
-        do
-        {
-            var parm = ParseParamDecl();
-            parms.Add(parm);
-        } while (Match(TokenKind.Comma));
-        return parms;
+        if (Check(TokenKind.Array)) return ParseArrayDeclList();
+        return ParseVarDeclList(); // handles VAR, BYTE, WORD, FLOAT
     }
 
-    private ParamDecl ParseParamDecl()
-    {
-        var start = Current.Span;
-        DataSize size = ParseOptionalDataSize();
-        var name = Expect(TokenKind.Identifier, "Expected parameter name").StringValue;
-        bool isArray = false;
+    // ==== Statements ====
 
-        // Check for [] indicating array/pointer parameter
-        if (Check(TokenKind.ArrayBracketOpen))
-        {
-            Advance();
-            Expect(TokenKind.RBracket, "Expected ']'");
-            isArray = true;
-        }
-
-        return new ParamDecl(name, size, isArray, start);
-    }
-
-    // ---- Statements ----
-
-    private List<AstNode> ParseStatementList()
+    private List<AstNode> ParseStmtList()
     {
         var stmts = new List<AstNode>();
-        while (!IsBlockClose() && !Check(TokenKind.EOF))
+        while (!IsBlockClose() && !Check(TokenKind.EOF) && !Check(TokenKind.Until)
+               && !Check(TokenKind.Wend))
         {
             if (Match(TokenKind.Semicolon)) continue;
-
-            var stmt = ParseStatement();
-            if (stmt != null)
-                stmts.Add(stmt);
-            else
-                Advance(); // error recovery
+            int before = _pos;
+            var stmt = ParseStmt();
+            if (stmt != null) stmts.Add(stmt);
+            if (_pos == before) Advance(); // safety
         }
         return stmts;
     }
 
-    private AstNode? ParseStatement()
+    private AstNode? ParseStmt()
     {
         switch (Current.Kind)
         {
-            case TokenKind.If: return ParseIfStatement();
-            case TokenKind.While: return ParseWhileStatement();
-            case TokenKind.Repeat: return ParseRepeatStatement();
-            case TokenKind.Loop: return ParseLoopStatement();
-            case TokenKind.For: return ParseForStatement();
-            case TokenKind.Case: return ParseCaseStatement();
-            case TokenKind.Exit: return ParseExitStatement();
-            case TokenKind.Continue: return ParseContinueStatement();
-            case TokenKind.Return: return ParseReturnStatement();
-            case TokenKind.Goto: return ParseGotoStatement();
-            case TokenKind.Print: return ParsePrintStatement();
-            case TokenKind.Plain: return ParsePlainAsm();
-            case var k when IsBlockOpen():
-                return ParseCompoundStatement();
+            case TokenKind.If: return ParseIf();
+            case TokenKind.While: return ParseWhile();
+            case TokenKind.Repeat: return ParseRepeat();
+            case TokenKind.Loop: return ParseLoop();
+            case TokenKind.For: return ParseFor();
+            case TokenKind.Case: return ParseCase();
+            case TokenKind.Exit: return ParseExit();
+            case TokenKind.Continue: Advance(); Match(TokenKind.Semicolon); return new ContinueStmt(Current.Span);
+            case TokenKind.Return: return ParseReturn();
+            case TokenKind.Goto: return ParseGoto();
+            case TokenKind.Print: return ParsePrint();
+            case TokenKind.Plain: return new PlainAsm(Advance().StringValue, Current.Span);
+            case TokenKind.Var:
+            case TokenKind.Array:
+            case TokenKind.Byte:
+            case TokenKind.Word:
+            case TokenKind.Float:
+                return ParseLocalDecl();
+            case TokenKind.PreprocIf: return ParsePreprocIf();
+            case TokenKind.PreprocEnd: Advance(); return null;
             default:
-                // Label or expression
-                if (Current.Kind == TokenKind.Identifier && Peek(1).Kind == TokenKind.Colon)
+                if (IsBlockOpen())
+                    return ParseCompound();
+                // Label: IDENT ':'
+                if (Check(TokenKind.Identifier) && Peek(1).Kind == TokenKind.Colon)
                 {
-                    var label = Advance().StringValue;
+                    var lbl = Advance().StringValue;
                     Advance(); // :
-                    return new LabelStmt(label, Current.Span);
+                    return new LabelStmt(lbl, Current.Span);
                 }
-                return ParseExpressionStatement();
+                return ParseExprStmt();
         }
     }
 
-    private Block ParseCompoundStatement()
+    private Block ParseCompound()
     {
-        var start = Current.Span;
+        var s = Current.Span;
         ExpectBlockOpen();
-        var stmts = ParseStatementList();
+        var stmts = ParseStmtList();
         ExpectBlockClose();
-        return new Block(stmts, start);
+        return new Block(stmts, s);
     }
 
-    private IfStmt ParseIfStatement()
+    private ExpressionStmt ParseExprStmt()
     {
-        var start = Advance().Span; // IF
-        var branches = new List<(Expression Condition, AstNode Body)>();
-
-        // First branch
-        var cond = ParseExpression();
-        Match(TokenKind.Then);
-        var body = ParseStatementOrBlock();
+        var s = Current.Span;
+        var expr = ParseExpr();
         Match(TokenKind.Semicolon);
+        return new ExpressionStmt(expr, s);
+    }
+
+    // ---- IF ----
+    private IfStmt ParseIf()
+    {
+        var s = Advance().Span; // IF
+        var branches = new List<(Expression, AstNode)>();
+
+        var cond = ParseExpr();
+        Match(TokenKind.Then);
+        var body = ParseIfBody();
         branches.Add((cond, body));
 
-        // ELIF branches
         while (Check(TokenKind.Elif) || (Check(TokenKind.Else) && Peek(1).Kind == TokenKind.If))
         {
-            if (Match(TokenKind.Elif))
-            {
-                // ELIF
-            }
-            else
-            {
-                Advance(); // ELSE
-                Advance(); // IF
-            }
-            cond = ParseExpression();
+            if (Match(TokenKind.Elif)) { }
+            else { Advance(); Advance(); } // ELSE IF
+            cond = ParseExpr();
             Match(TokenKind.Then);
-            body = ParseStatementOrBlock();
-            Match(TokenKind.Semicolon);
+            body = ParseIfBody();
             branches.Add((cond, body));
         }
 
-        // ELSE
-        AstNode? elseBody = null;
+        AstNode? elsePart = null;
         if (Match(TokenKind.Else))
-        {
-            elseBody = ParseStatementOrBlock();
-        }
+            elsePart = ParseIfBody();
 
         Match(TokenKind.EndIf);
-
-        return new IfStmt(branches, elseBody, start);
+        return new IfStmt(branches, elsePart, s);
     }
 
-    private WhileStmt ParseWhileStatement()
+    private AstNode ParseIfBody()
     {
-        var start = Advance().Span; // WHILE
-        var cond = ParseExpression();
-        var body = ParseWhileBody();
-        return new WhileStmt(cond, body, start);
-    }
-
-    private AstNode ParseWhileBody()
-    {
-        if (Match(TokenKind.Do) || IsBlockOpen())
-        {
-            if (Current.Kind != TokenKind.Do) { /* block open already consumed in IsBlockOpen check */ }
-            var stmts = ParseStatementList();
-            if (Check(TokenKind.Wend))
-                Advance();
-            else
-                ExpectBlockClose();
-            return new Block(stmts, Current.Span);
-        }
-        return ParseStatementOrBlock();
-    }
-
-    private RepeatStmt ParseRepeatStatement()
-    {
-        var start = Advance().Span; // REPEAT
-        var body = ParseStatementOrBlock();
-        Expect(TokenKind.Until, "Expected 'UNTIL'");
-        var cond = ParseExpression();
-        ExpectSemicolon();
-        return new RepeatStmt(body, cond, start);
-    }
-
-    private LoopStmt ParseLoopStatement()
-    {
-        var start = Advance().Span; // LOOP
-        var body = ParseStatementOrBlock();
-        return new LoopStmt(body, start);
-    }
-
-    private ForStmt ParseForStatement()
-    {
-        var start = Advance().Span; // FOR
-        var varName = Expect(TokenKind.Identifier, "Expected variable").StringValue;
-        Expect(TokenKind.Eq, "Expected '='");
-        var from = ParseExpression();
-        bool isDownTo = false;
-        if (Match(TokenKind.DownTo))
-            isDownTo = true;
-        else
-            Expect(TokenKind.To, "Expected 'TO' or 'DOWNTO'");
-        var to = ParseExpression();
-        var body = ParseForBody();
-        return new ForStmt(varName, from, to, isDownTo, body, start);
-    }
-
-    private AstNode ParseForBody()
-    {
-        if (Match(TokenKind.Do) || IsBlockOpen())
-        {
-            var stmts = ParseStatementList();
-            ExpectBlockClose();
-            Match(TokenKind.Next);
-            Match(TokenKind.Semicolon);
-            return new Block(stmts, Current.Span);
-        }
-        var stmt = ParseStatementOrBlock();
-        Match(TokenKind.Next);
+        if (IsBlockOpen()) return ParseCompound();
+        var stmt = ParseStmt();
         Match(TokenKind.Semicolon);
-        return stmt;
+        return stmt ?? new Block(new List<AstNode>(), Current.Span);
     }
 
-    private CaseStmt ParseCaseStatement()
+    // ---- WHILE ----
+    private WhileStmt ParseWhile()
     {
-        var start = Advance().Span; // CASE
-        var expr = ParseExpression();
+        var s = Advance().Span;
+        // WHILE expr or WHILE(expr)
+        var cond = ParseExpr();
+
+        AstNode body;
+        if (Match(TokenKind.Do) || IsBlockOpen())
+        {
+            if (IsBlockOpen())
+            {
+                body = ParseCompound();
+            }
+            else
+            {
+                var stmts = ParseStmtList();
+                if (Match(TokenKind.Wend)) { }
+                else ExpectBlockClose();
+                body = new Block(stmts, s);
+            }
+        }
+        else
+        {
+            body = ParseStmt() ?? new Block(new List<AstNode>(), s);
+        }
+        return new WhileStmt(cond, body, s);
+    }
+
+    // ---- REPEAT ----
+    private RepeatStmt ParseRepeat()
+    {
+        var s = Advance().Span;
+        AstNode body;
+        if (IsBlockOpen())
+            body = ParseCompound();
+        else
+            body = ParseStmt() ?? new Block(new List<AstNode>(), s);
+        Expect(TokenKind.Until, "Expected UNTIL");
+        var cond = ParseExpr();
+        Match(TokenKind.Semicolon);
+        return new RepeatStmt(body, cond, s);
+    }
+
+    // ---- LOOP ----
+    private LoopStmt ParseLoop()
+    {
+        var s = Advance().Span;
+        var body = IsBlockOpen() ? (AstNode)ParseCompound() : ParseStmt()!;
+        return new LoopStmt(body, s);
+    }
+
+    // ---- FOR ----
+    private ForStmt ParseFor()
+    {
+        var s = Advance().Span;
+        var v = Expect(TokenKind.Identifier).StringValue;
+        Expect(TokenKind.Eq, "Expected '='");
+        var from = ParseNcExpr();
+        bool down = Match(TokenKind.DownTo);
+        if (!down) Expect(TokenKind.To, "Expected TO or DOWNTO");
+        var to = ParseNcExpr();
+
+        AstNode body;
+        if (Match(TokenKind.Do) || IsBlockOpen())
+        {
+            body = ParseCompound();
+            Match(TokenKind.Next); Match(TokenKind.Semicolon);
+        }
+        else
+        {
+            body = ParseStmt() ?? new Block(new List<AstNode>(), s);
+            Match(TokenKind.Next); Match(TokenKind.Semicolon);
+        }
+        return new ForStmt(v, from, to, down, body, s);
+    }
+
+    // ---- CASE ----
+    private CaseStmt ParseCase()
+    {
+        var s = Advance().Span;
+        var expr = ParseExpr();
         Match(TokenKind.Of);
         ExpectBlockOpen();
 
@@ -602,170 +575,174 @@ public class Parser
         while (!IsBlockClose() && !Check(TokenKind.EOF))
         {
             if (Match(TokenKind.Semicolon)) continue;
-
-            if (Match(TokenKind.Others))
+            if (Check(TokenKind.Others))
             {
+                Advance();
                 Match(TokenKind.Colon);
-                var body = ParseStatementOrBlock();
+                var body = ParseStmt()!;
                 branches.Add(new CaseBranch(null, null, body));
             }
             else
             {
-                var val = ParseExpression();
+                // value [, value]* [TO value] ':' stmt
+                var val = ParseNcExpr();
                 Expression? rangeEnd = null;
-                if (Match(TokenKind.To))
+
+                // Handle comma-separated case values: 6,7,8:
+                while (Match(TokenKind.Comma))
                 {
-                    rangeEnd = ParseExpression();
+                    // For now, treat comma-separated as individual branches
+                    // The last one gets the body
+                    Match(TokenKind.Colon);
+                    if (!Check(TokenKind.IntegerLiteral) && !Check(TokenKind.Identifier))
+                    {
+                        var body = ParseStmt()!;
+                        branches.Add(new CaseBranch(val, rangeEnd, body));
+                        goto nextBranch;
+                    }
+                    branches.Add(new CaseBranch(val, null, new Block(new List<AstNode>(), s)));
+                    val = ParseNcExpr();
                 }
+
+                if (Match(TokenKind.To))
+                    rangeEnd = ParseNcExpr();
                 Match(TokenKind.Colon);
-                var body = ParseStatementOrBlock();
-                branches.Add(new CaseBranch(val, rangeEnd, body));
+                {
+                    var body = ParseStmt()!;
+                    branches.Add(new CaseBranch(val, rangeEnd, body));
+                }
+                nextBranch:;
             }
         }
-
         ExpectBlockClose();
-        return new CaseStmt(expr, branches, start);
+        return new CaseStmt(expr, branches, s);
     }
 
-    private ExitStmt ParseExitStatement()
+    // ---- EXIT ----
+    private ExitStmt ParseExit()
     {
-        var start = Advance().Span; // EXIT
+        var s = Advance().Span;
         Expression? level = null;
-        string? targetLabel = null;
+        string? label = null;
 
         if (Match(TokenKind.To))
-        {
-            targetLabel = Expect(TokenKind.Identifier, "Expected label").StringValue;
-        }
+            label = Expect(TokenKind.Identifier).StringValue;
         else if (Match(TokenKind.LParen))
         {
-            level = ParseExpression();
-            Expect(TokenKind.RParen, "Expected ')'");
+            level = ParseExpr();
+            Expect(TokenKind.RParen);
         }
-
-        ExpectSemicolon();
-        return new ExitStmt(level, targetLabel, start);
+        Match(TokenKind.Semicolon);
+        return new ExitStmt(level, label, s);
     }
 
-    private ContinueStmt ParseContinueStatement()
+    // ---- RETURN ----
+    private ReturnStmt ParseReturn()
     {
-        var start = Advance().Span; // CONTINUE
-        ExpectSemicolon();
-        return new ContinueStmt(start);
-    }
-
-    private ReturnStmt ParseReturnStatement()
-    {
-        var start = Advance().Span; // RETURN
-        Expression? value = null;
-        if (!Check(TokenKind.Semicolon) && !IsBlockClose())
+        var s = Advance().Span;
+        Expression? val = null;
+        if (Match(TokenKind.LParen))
         {
-            value = ParseExpression();
+            val = ParseExpr();
+            Expect(TokenKind.RParen);
         }
-        ExpectSemicolon();
-        return new ReturnStmt(value, start);
+        else if (!Check(TokenKind.Semicolon) && !IsBlockClose() && !Check(TokenKind.EOF))
+        {
+            val = ParseExpr();
+        }
+        Match(TokenKind.Semicolon);
+        return new ReturnStmt(val, s);
     }
 
-    private GotoStmt ParseGotoStatement()
+    // ---- GOTO ----
+    private GotoStmt ParseGoto()
     {
-        var start = Advance().Span; // GOTO
-        var label = Expect(TokenKind.Identifier, "Expected label").StringValue;
-        return new GotoStmt(label, start);
+        var s = Advance().Span;
+        var lbl = Expect(TokenKind.Identifier).StringValue;
+        Match(TokenKind.Semicolon);
+        return new GotoStmt(lbl, s);
     }
 
-    private PrintStmt ParsePrintStatement()
+    // ---- PRINT ----
+    private PrintStmt ParsePrint()
     {
-        var start = Advance().Span; // PRINT
+        var s = Advance().Span;
         Expect(TokenKind.LParen, "Expected '('");
         var args = new List<Expression>();
-        if (!Check(TokenKind.RParen))
+        _argListDepth++;
+        while (!Check(TokenKind.RParen) && !Check(TokenKind.EOF))
         {
-            do
-            {
-                args.Add(ParsePrintArgument());
-            } while (Match(TokenKind.Comma));
+            args.Add(ParsePrintArg());
+            if (!Match(TokenKind.Comma)) break;
         }
+        _argListDepth--;
         Expect(TokenKind.RParen, "Expected ')'");
-        return new PrintStmt(args, start);
+        Match(TokenKind.Semicolon);
+        return new PrintStmt(args, s);
     }
 
-    private Expression ParsePrintArgument()
+    private Expression ParsePrintArg()
     {
-        // String functions like /, !, FORM$(...), etc.
-        if (Current.Kind == TokenKind.Slash)
-        {
-            var span = Advance().Span;
-            return new StringFuncExpr("/", new List<Expression>(), span);
-        }
-        if (Current.Kind == TokenKind.StringFunc)
-        {
-            var token = Advance();
-            Expect(TokenKind.LParen, "Expected '('");
-            var args = ParseExpressionList();
-            Expect(TokenKind.RParen, "Expected ')'");
-            return new StringFuncExpr(token.StringValue, args, token.Span);
-        }
-        if (Current.Kind == TokenKind.Exclamation)
-        {
-            var token = Advance();
-            Expect(TokenKind.LParen, "Expected '('");
-            var args = ParseExpressionList();
-            Expect(TokenKind.RParen, "Expected ')'");
-            return new StringFuncExpr("!", args, token.Span);
-        }
-        if (Current.Kind == TokenKind.Percent)
-        {
-            var token = Advance();
-            Expect(TokenKind.LParen, "Expected '('");
-            var args = ParseExpressionList();
-            Expect(TokenKind.RParen, "Expected ')'");
-            return new StringFuncExpr("%", args, token.Span);
-        }
-        return ParseExpression();
-    }
-
-    private ExpressionStmt ParseExpressionStatement()
-    {
-        var start = Current.Span;
-        var expr = ParseExpression();
-        ExpectSemicolon();
-        return new ExpressionStmt(expr, start);
-    }
-
-    // ---- Expressions (Pratt parser / precedence climbing) ----
-
-    public Expression ParseExpression()
-    {
-        var expr = ParseAssignment();
-
-        // Comma expression
-        if (Check(TokenKind.Comma) && !IsInArgList())
-        {
-            while (Match(TokenKind.Comma))
-            {
-                var right = ParseAssignment();
-                expr = new CommaExpr(expr, right, expr.Span);
-            }
-        }
-
-        return expr;
-    }
-
-    // Track whether we're inside an argument list (to avoid comma as operator)
-    private int _argListDepth;
-    private bool IsInArgList() => _argListDepth > 0;
-
-    private Expression ParseAssignment()
-    {
-        var expr = ParseConditional();
-
-        if (Check(TokenKind.Eq))
+        var s = Current.Span;
+        // / = newline
+        if (Check(TokenKind.Slash))
         {
             Advance();
-            var value = ParseAssignment();
-            return new AssignExpr(expr, value, expr.Span);
+            return new StringFuncExpr("/", new List<Expression>(), s);
         }
+        // String functions
+        if (Check(TokenKind.StringFunc))
+        {
+            var fn = Advance().StringValue;
+            Expect(TokenKind.LParen);
+            var args = ParseArgList();
+            Expect(TokenKind.RParen);
+            return new StringFuncExpr(fn, args, s);
+        }
+        if (Check(TokenKind.Exclamation) && Peek(1).Kind == TokenKind.LParen)
+        {
+            Advance();
+            Expect(TokenKind.LParen);
+            var args = ParseArgList();
+            Expect(TokenKind.RParen);
+            return new StringFuncExpr("!", args, s);
+        }
+        if (Check(TokenKind.Percent) && Peek(1).Kind == TokenKind.LParen)
+        {
+            Advance();
+            Expect(TokenKind.LParen);
+            var args = ParseArgList();
+            Expect(TokenKind.RParen);
+            return new StringFuncExpr("%", args, s);
+        }
+        return ParseNcExpr();
+    }
 
+    // ==== Expression parsing (precedence climbing) ====
+
+    /// <summary>ParseExpr: full expression including comma operator (outside arg lists)</summary>
+    public Expression ParseExpr()
+    {
+        var e = ParseAssign();
+        while (_argListDepth == 0 && Match(TokenKind.Comma))
+        {
+            var r = ParseAssign();
+            e = new CommaExpr(e, r, e.Span);
+        }
+        return e;
+    }
+
+    /// <summary>ParseNcExpr: no-comma expression (used in most places)</summary>
+    private Expression ParseNcExpr() => ParseAssign();
+
+    private Expression ParseAssign()
+    {
+        var e = ParseConditional();
+        if (Match(TokenKind.Eq))
+        {
+            var v = ParseAssign();
+            return new AssignExpr(e, v, e.Span);
+        }
         if (CheckAny(TokenKind.PlusEq, TokenKind.MinusEq, TokenKind.StarEq, TokenKind.SlashEq))
         {
             var op = Current.Kind switch
@@ -773,123 +750,105 @@ public class Parser
                 TokenKind.PlusEq => CompoundAssignOp.AddAssign,
                 TokenKind.MinusEq => CompoundAssignOp.SubAssign,
                 TokenKind.StarEq => CompoundAssignOp.MulAssign,
-                TokenKind.SlashEq => CompoundAssignOp.DivAssign,
-                _ => CompoundAssignOp.AddAssign,
+                _ => CompoundAssignOp.DivAssign,
             };
             Advance();
-            var value = ParseAssignment();
-            return new CompoundAssignExpr(op, expr, value, expr.Span);
+            return new CompoundAssignExpr(op, e, ParseAssign(), e.Span);
         }
-
-        return expr;
+        return e;
     }
 
     private Expression ParseConditional()
     {
-        var expr = ParseLogOr();
-
+        var e = ParseLogOr();
         if (Match(TokenKind.Question))
         {
-            var trueExpr = ParseExpression();
-            Expect(TokenKind.Colon, "Expected ':' in conditional expression");
-            var falseExpr = ParseConditional();
-            return new ConditionalExpr(expr, trueExpr, falseExpr, expr.Span);
+            var t = ParseNcExpr();
+            Expect(TokenKind.Colon, "Expected ':' in ?:");
+            var f = ParseConditional();
+            return new ConditionalExpr(e, t, f, e.Span);
         }
-
-        return expr;
+        return e;
     }
 
     private Expression ParseLogOr()
     {
-        var left = ParseLogAnd();
+        var e = ParseLogAnd();
         while (Match(TokenKind.LogOr))
         {
-            var right = ParseLogAnd();
-            left = new BinaryExpr(BinaryOp.LogOr, left, right, left.Span);
+            e = new BinaryExpr(BinaryOp.LogOr, e, ParseLogAnd(), e.Span);
         }
-        return left;
+        return e;
     }
 
     private Expression ParseLogAnd()
     {
-        var left = ParseBitOr();
+        var e = ParseBitOr();
         while (Match(TokenKind.LogAnd))
         {
-            var right = ParseBitOr();
-            left = new BinaryExpr(BinaryOp.LogAnd, left, right, left.Span);
+            e = new BinaryExpr(BinaryOp.LogAnd, e, ParseBitOr(), e.Span);
         }
-        return left;
+        return e;
     }
 
     private Expression ParseBitOr()
     {
-        var left = ParseBitXor();
+        var e = ParseBitXor();
         while (Match(TokenKind.Pipe))
-        {
-            var right = ParseBitXor();
-            left = new BinaryExpr(BinaryOp.Or, left, right, left.Span);
-        }
-        return left;
+            e = new BinaryExpr(BinaryOp.Or, e, ParseBitXor(), e.Span);
+        return e;
     }
 
     private Expression ParseBitXor()
     {
-        // XOR is not in current SLANG? Skip for now, fall through
-        return ParseBitAnd();
+        return ParseBitAnd(); // XOR: TODO if needed
     }
 
     private Expression ParseBitAnd()
     {
-        var left = ParseEquality();
-        while (Match(TokenKind.Ampersand))
-        {
-            var right = ParseEquality();
-            left = new BinaryExpr(BinaryOp.And, left, right, left.Span);
-        }
-        return left;
+        var e = ParseEquality();
+        // SLANG uses AND keyword for bitwise AND
+        while (Match(TokenKind.Ampersand) || MatchIdent("AND"))
+            e = new BinaryExpr(BinaryOp.And, e, ParseEquality(), e.Span);
+        return e;
     }
 
     private Expression ParseEquality()
     {
-        var left = ParseComparison();
+        var e = ParseComparison();
         while (CheckAny(TokenKind.EqEq, TokenKind.NotEq))
         {
             var op = Current.Kind == TokenKind.EqEq ? BinaryOp.Eq : BinaryOp.Neq;
             Advance();
-            var right = ParseComparison();
-            left = new BinaryExpr(op, left, right, left.Span);
+            e = new BinaryExpr(op, e, ParseComparison(), e.Span);
         }
-        return left;
+        return e;
     }
 
     private Expression ParseComparison()
     {
-        var left = ParseShift();
-        while (CheckAny(TokenKind.Lt, TokenKind.Gt, TokenKind.Le, TokenKind.Ge,
-                         TokenKind.SignedLt, TokenKind.SignedGt, TokenKind.SignedLe, TokenKind.SignedGe))
+        var e = ParseShift();
+        while (true)
         {
-            var op = Current.Kind switch
-            {
-                TokenKind.Lt => BinaryOp.Lt,
-                TokenKind.Gt => BinaryOp.Gt,
-                TokenKind.Le => BinaryOp.Le,
-                TokenKind.Ge => BinaryOp.Ge,
-                TokenKind.SignedLt => BinaryOp.SLt,
-                TokenKind.SignedGt => BinaryOp.SGt,
-                TokenKind.SignedLe => BinaryOp.SLe,
-                TokenKind.SignedGe => BinaryOp.SGe,
-                _ => BinaryOp.Lt,
-            };
+            BinaryOp op;
+            if (Check(TokenKind.Lt)) op = BinaryOp.Lt;
+            else if (Check(TokenKind.Gt)) op = BinaryOp.Gt;
+            else if (Check(TokenKind.Le)) op = BinaryOp.Le;
+            else if (Check(TokenKind.Ge)) op = BinaryOp.Ge;
+            else if (Check(TokenKind.SignedLt)) op = BinaryOp.SLt;
+            else if (Check(TokenKind.SignedGt)) op = BinaryOp.SGt;
+            else if (Check(TokenKind.SignedLe)) op = BinaryOp.SLe;
+            else if (Check(TokenKind.SignedGe)) op = BinaryOp.SGe;
+            else break;
             Advance();
-            var right = ParseShift();
-            left = new BinaryExpr(op, left, right, left.Span);
+            e = new BinaryExpr(op, e, ParseShift(), e.Span);
         }
-        return left;
+        return e;
     }
 
     private Expression ParseShift()
     {
-        var left = ParseAddSub();
+        var e = ParseAdd();
         while (CheckAny(TokenKind.Shl, TokenKind.Shr, TokenKind.SignedShl, TokenKind.SignedShr))
         {
             var op = Current.Kind switch
@@ -897,98 +856,75 @@ public class Parser
                 TokenKind.Shl => BinaryOp.Shl,
                 TokenKind.Shr => BinaryOp.Shr,
                 TokenKind.SignedShl => BinaryOp.SShl,
-                TokenKind.SignedShr => BinaryOp.SShr,
-                _ => BinaryOp.Shl,
+                _ => BinaryOp.SShr,
             };
             Advance();
-            var right = ParseAddSub();
-            left = new BinaryExpr(op, left, right, left.Span);
+            e = new BinaryExpr(op, e, ParseAdd(), e.Span);
         }
-        return left;
+        return e;
     }
 
-    private Expression ParseAddSub()
+    private Expression ParseAdd()
     {
-        var left = ParseMulDiv();
+        var e = ParseMul();
         while (CheckAny(TokenKind.Plus, TokenKind.Minus))
         {
             var op = Current.Kind == TokenKind.Plus ? BinaryOp.Add : BinaryOp.Sub;
             Advance();
-            var right = ParseMulDiv();
-            left = new BinaryExpr(op, left, right, left.Span);
+            e = new BinaryExpr(op, e, ParseMul(), e.Span);
         }
-        return left;
+        return e;
     }
 
-    private Expression ParseMulDiv()
+    private Expression ParseMul()
     {
-        var left = ParseUnary();
-        while (CheckAny(TokenKind.Star, TokenKind.Slash,
-                         TokenKind.SignedMul, TokenKind.SignedDiv, TokenKind.SignedMod))
+        var e = ParseUnary();
+        while (true)
         {
-            var op = Current.Kind switch
-            {
-                TokenKind.Star => BinaryOp.Mul,
-                TokenKind.Slash => BinaryOp.Div,
-                TokenKind.SignedMul => BinaryOp.SMul,
-                TokenKind.SignedDiv => BinaryOp.SDiv,
-                TokenKind.SignedMod => BinaryOp.SMod,
-                _ => BinaryOp.Mul,
-            };
+            BinaryOp op;
+            if (Check(TokenKind.Star)) op = BinaryOp.Mul;
+            else if (Check(TokenKind.Slash)) op = BinaryOp.Div;
+            else if (Check(TokenKind.SignedMul)) op = BinaryOp.SMul;
+            else if (Check(TokenKind.SignedDiv)) op = BinaryOp.SDiv;
+            else if (Check(TokenKind.SignedMod)) op = BinaryOp.SMod;
+            else break;
             Advance();
-            var right = ParseUnary();
-            left = new BinaryExpr(op, left, right, left.Span);
+            e = new BinaryExpr(op, e, ParseUnary(), e.Span);
         }
-        return left;
+        return e;
     }
 
     private Expression ParseUnary()
     {
-        var start = Current.Span;
+        var s = Current.Span;
 
-        // Prefix increment/decrement
         if (CheckAny(TokenKind.PlusPlus, TokenKind.MinusMinus))
         {
-            bool isInc = Current.Kind == TokenKind.PlusPlus;
+            bool inc = Current.Kind == TokenKind.PlusPlus;
             Advance();
-            var operand = ParseUnary();
-            return new IncrementExpr(operand, isInc, isPrefix: true, start);
+            return new IncrementExpr(ParseUnary(), inc, true, s);
         }
-
-        // Unary operators
         if (Match(TokenKind.Minus))
-            return new UnaryExpr(UnaryOp.Negate, ParseUnary(), start);
+            return new UnaryExpr(UnaryOp.Negate, ParseUnary(), s);
         if (Match(TokenKind.Plus))
-            return new UnaryExpr(UnaryOp.Plus, ParseUnary(), start);
+            return new UnaryExpr(UnaryOp.Plus, ParseUnary(), s);
         if (Match(TokenKind.Not))
-            return new UnaryExpr(UnaryOp.Not, ParseUnary(), start);
+            return new UnaryExpr(UnaryOp.Not, ParseUnary(), s);
         if (Match(TokenKind.Cpl))
-            return new UnaryExpr(UnaryOp.Cpl, ParseUnary(), start);
-
-        // Address-of
+            return new UnaryExpr(UnaryOp.Cpl, ParseUnary(), s);
         if (Match(TokenKind.Ampersand))
-            return new AddressOfExpr(ParseUnary(), start);
-
-        // HIGH / LOW
-        if (Check(TokenKind.High) || Check(TokenKind.Low))
-        {
-            bool isHigh = Current.Kind == TokenKind.High;
-            Advance();
-            return new HighLowExpr(isHigh, ParseUnary(), start);
-        }
-
-        // % (word cast)
+            return new AddressOfExpr(ParseUnary(), s);
+        if (Check(TokenKind.High)) { Advance(); return new HighLowExpr(true, ParseUnary(), s); }
+        if (Check(TokenKind.Low)) { Advance(); return new HighLowExpr(false, ParseUnary(), s); }
         if (Match(TokenKind.Percent))
-            return new CastExpr(DataSize.Word, ParseUnary(), start);
-
-        // CODE expression
+            return new CastExpr(DataSize.Word, ParseUnary(), s);
         if (Check(TokenKind.Code))
         {
             Advance();
-            Expect(TokenKind.LParen, "Expected '('");
+            Expect(TokenKind.LParen);
             var codes = ParseCodeExprList();
-            Expect(TokenKind.RParen, "Expected ')'");
-            return new CodeExpr(codes, start);
+            Expect(TokenKind.RParen);
+            return new CodeExpr(codes, s);
         }
 
         return ParsePostfix();
@@ -996,174 +932,98 @@ public class Parser
 
     private Expression ParsePostfix()
     {
-        var expr = ParsePrimary();
-
+        var e = ParsePrimary();
         while (true)
         {
             if (CheckAny(TokenKind.PlusPlus, TokenKind.MinusMinus))
             {
-                bool isInc = Current.Kind == TokenKind.PlusPlus;
+                bool inc = Current.Kind == TokenKind.PlusPlus;
                 Advance();
-                expr = new IncrementExpr(expr, isInc, isPrefix: false, expr.Span);
+                e = new IncrementExpr(e, inc, false, e.Span);
             }
             else if (Check(TokenKind.ArrayBracketOpen))
             {
-                // Array access - collect all dimensions
                 var indices = new List<Expression>();
                 while (Check(TokenKind.ArrayBracketOpen))
                 {
                     Advance();
-                    indices.Add(ParseExpression());
+                    indices.Add(ParseNcExpr());
                     Expect(TokenKind.RBracket, "Expected ']'");
                 }
-                expr = new ArrayAccessExpr(expr, indices, expr.Span);
+                e = new ArrayAccessExpr(e, indices, e.Span);
             }
             else if (Check(TokenKind.LParen))
             {
-                // Function call
                 Advance();
                 var args = new List<Expression>();
                 if (!Check(TokenKind.RParen))
                 {
                     _argListDepth++;
-                    args = ParseExpressionList();
+                    args = ParseArgList();
                     _argListDepth--;
                 }
                 Expect(TokenKind.RParen, "Expected ')'");
-                expr = new CallExpr(expr, args, expr.Span);
+                e = new CallExpr(e, args, e.Span);
             }
-            else
-            {
-                break;
-            }
+            else break;
         }
-
-        return expr;
+        return e;
     }
 
     private Expression ParsePrimary()
     {
-        var start = Current.Span;
+        var s = Current.Span;
 
-        switch (Current.Kind)
+        if (Check(TokenKind.IntegerLiteral) || Check(TokenKind.CharLiteral))
         {
-            case TokenKind.IntegerLiteral:
-            case TokenKind.CharLiteral:
-            {
-                var token = Advance();
-                return new IntegerLiteral(token.IntValue, token.Span);
-            }
-            case TokenKind.FloatLiteral:
-            {
-                var token = Advance();
-                return new FloatLiteral(token.FloatValue, token.Span);
-            }
-            case TokenKind.StringLiteral:
-            {
-                var token = Advance();
-                return new StringLiteral(token.StringValue, token.Span);
-            }
-            case TokenKind.Identifier:
-            {
-                var token = Advance();
-                return new IdentifierExpr(token.StringValue, token.Span);
-            }
-            case TokenKind.LParen:
-            {
-                Advance();
-                var expr = ParseExpression();
-                Expect(TokenKind.RParen, "Expected ')'");
-                return expr;
-            }
-            default:
-                _diagnostics.Error($"Expected expression, got {Current.Kind}", Current.Span);
-                return new IntegerLiteral(0, start); // error recovery
+            var t = Advance();
+            return new IntegerLiteral(t.IntValue, t.Span);
         }
+        if (Check(TokenKind.FloatLiteral))
+        {
+            var t = Advance();
+            return new FloatLiteral(t.FloatValue, t.Span);
+        }
+        if (Check(TokenKind.StringLiteral))
+        {
+            var t = Advance();
+            return new StringLiteral(t.StringValue, t.Span);
+        }
+        if (Check(TokenKind.Identifier))
+        {
+            var t = Advance();
+            // Handle TRUE/FALSE as constants
+            if (t.Text.Equals("TRUE", StringComparison.OrdinalIgnoreCase))
+                return new IntegerLiteral(1, t.Span);
+            if (t.Text.Equals("FALSE", StringComparison.OrdinalIgnoreCase))
+                return new IntegerLiteral(0, t.Span);
+            return new IdentifierExpr(t.StringValue, t.Span);
+        }
+        if (Match(TokenKind.LParen))
+        {
+            var e = ParseExpr();
+            Expect(TokenKind.RParen, "Expected ')'");
+            return e;
+        }
+
+        Error($"Expected expression, got {Current.Kind} '{Current.Text}'");
+        return new IntegerLiteral(0, s);
     }
 
-    private List<Expression> ParseExpressionList()
+    // ==== Helpers ====
+
+    private List<Expression> ParseArgList()
     {
         var list = new List<Expression>();
-        do
-        {
-            list.Add(ParseAssignment()); // single expression, not comma
-        } while (Match(TokenKind.Comma));
+        do { list.Add(ParseNcExpr()); } while (Match(TokenKind.Comma));
         return list;
     }
 
     private List<Expression> ParseCodeExprList()
     {
         var list = new List<Expression>();
-        do
-        {
-            list.Add(ParseAssignment());
-        } while (Match(TokenKind.Comma));
+        do { list.Add(ParseNcExpr()); } while (Match(TokenKind.Comma));
         return list;
-    }
-
-    // ---- Helpers ----
-
-    private DataSize ParseDataSize()
-    {
-        if (Match(TokenKind.Byte) || Match(TokenKind.Exclamation)) return DataSize.Byte;
-        if (Match(TokenKind.Word)) return DataSize.Word;
-        if (Match(TokenKind.Float)) return DataSize.Float;
-        return DataSize.Word; // default
-    }
-
-    private DataSize ParseOptionalDataSize()
-    {
-        if (Check(TokenKind.Byte) || Check(TokenKind.Exclamation)) { Advance(); return DataSize.Byte; }
-        if (Check(TokenKind.Word)) { Advance(); return DataSize.Word; }
-        if (Check(TokenKind.Float)) { Advance(); return DataSize.Float; }
-        return DataSize.Word;
-    }
-
-    private bool IsBlockOpen() =>
-        CheckAny(TokenKind.Begin, TokenKind.LBracket, TokenKind.LBrace,
-                 TokenKind.LAngleBracket, TokenKind.LParen);
-
-    private bool IsBlockClose() =>
-        CheckAny(TokenKind.End, TokenKind.RBracket, TokenKind.RBrace,
-                 TokenKind.RAngleBracket, TokenKind.RParen, TokenKind.Wend);
-
-    private void ExpectBlockOpen()
-    {
-        if (IsBlockOpen())
-            Advance();
-        else
-            _diagnostics.Error("Expected block open (BEGIN, [, {, (, ｢)", Current.Span);
-    }
-
-    private void ExpectBlockClose()
-    {
-        if (IsBlockClose())
-            Advance();
-        else
-            _diagnostics.Error("Expected block close (END, ], }, ), ｣)", Current.Span);
-    }
-
-    private bool IsDeclarationStart() =>
-        CheckAny(TokenKind.Var, TokenKind.Array, TokenKind.Const, TokenKind.Machine);
-
-    private AstNode? ParseLocalDeclaration()
-    {
-        switch (Current.Kind)
-        {
-            case TokenKind.Var: return ParseVarDeclaration();
-            case TokenKind.Array: return ParseArrayDeclaration();
-            case TokenKind.Const: return ParseConstDeclaration();
-            case TokenKind.Machine: return ParseMachineDeclaration();
-            default: return null;
-        }
-    }
-
-    private AstNode ParseStatementOrBlock()
-    {
-        if (IsBlockOpen())
-            return ParseCompoundStatement();
-        var stmt = ParseStatement();
-        return stmt ?? new Block(new List<AstNode>(), Current.Span);
     }
 
     private List<Expression> ParseCodeBlock()
@@ -1172,5 +1032,42 @@ public class Parser
         var list = ParseCodeExprList();
         ExpectBlockClose();
         return list;
+    }
+
+    private DataSize ParseOptionalDataSize()
+    {
+        if (Match(TokenKind.Byte) || Match(TokenKind.Exclamation)) return DataSize.Byte;
+        if (Match(TokenKind.Word)) return DataSize.Word;
+        if (Check(TokenKind.Float) && Peek(1).Kind != TokenKind.Identifier)
+        { Advance(); return DataSize.Float; }
+        return DataSize.Word;
+    }
+
+    private bool IsBlockOpen() => CheckAny(TokenKind.Begin, TokenKind.LBracket, TokenKind.LBrace, TokenKind.LAngleBracket);
+    private bool IsBlockClose() => CheckAny(TokenKind.End, TokenKind.RBracket, TokenKind.RBrace, TokenKind.RAngleBracket);
+
+    private void ExpectBlockOpen(string? msg = null)
+    {
+        if (IsBlockOpen()) { Advance(); return; }
+        Error(msg ?? "Expected block open");
+    }
+    private void ExpectBlockClose(string? msg = null)
+    {
+        if (IsBlockClose()) { Advance(); return; }
+        Error(msg ?? "Expected block close");
+    }
+
+    private bool IsDeclStart() => CheckAny(TokenKind.Var, TokenKind.Array, TokenKind.Const, TokenKind.Machine,
+                                            TokenKind.Byte, TokenKind.Word);
+
+    /// <summary>Match an identifier used as keyword (like AND, OR)</summary>
+    private bool MatchIdent(string name)
+    {
+        if (Check(TokenKind.Identifier) && Current.Text.Equals(name, StringComparison.OrdinalIgnoreCase))
+        {
+            Advance();
+            return true;
+        }
+        return false;
     }
 }

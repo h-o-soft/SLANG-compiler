@@ -405,35 +405,40 @@ public class Lexer
         text = null;
         kind = TokenKind.Error;
 
+        // Try to match known .op. patterns by looking ahead
         int startPos = _pos;
-        Advance(); // skip first .
 
-        // Read until next .
-        int innerStart = _pos;
-        while (!IsAtEnd && Peek() != '.')
+        // Known patterns: .*. ./. .MOD. .<<. .>>. .<. .>. .<=. .>=.
+        // Match by trying each pattern
+        var patterns = new (string Pat, TokenKind Kind)[]
         {
-            if (Peek() == '\n' || Peek() == ' ') { return false; }
-            Advance();
-        }
-        if (IsAtEnd) return false;
-        Advance(); // skip closing .
-
-        text = _source[startPos.._pos];
-        kind = text.ToUpperInvariant() switch
-        {
-            ".*." => TokenKind.SignedMul,
-            "./." => TokenKind.SignedDiv,
-            ".MOD." => TokenKind.SignedMod,
-            ".<<." => TokenKind.SignedShl,
-            ".>>." => TokenKind.SignedShr,
-            ".<." => TokenKind.SignedLt,
-            ".>." => TokenKind.SignedGt,
-            ".<=." => TokenKind.SignedLe,
-            ".>=." => TokenKind.SignedGe,
-            _ => TokenKind.Error,
+            (".>=.", TokenKind.SignedGe),
+            (".<=.", TokenKind.SignedLe),
+            (".>>.", TokenKind.SignedShr),
+            (".<<.", TokenKind.SignedShl),
+            (".>.", TokenKind.SignedGt),
+            (".<.", TokenKind.SignedLt),
+            (".MOD.", TokenKind.SignedMod),
+            (".*.", TokenKind.SignedMul),
+            ("./.", TokenKind.SignedDiv),
         };
 
-        return kind != TokenKind.Error;
+        foreach (var (pat, k) in patterns)
+        {
+            if (_pos + pat.Length <= _source.Length)
+            {
+                var slice = _source.Substring(_pos, pat.Length);
+                if (slice.Equals(pat, StringComparison.OrdinalIgnoreCase))
+                {
+                    text = slice;
+                    kind = k;
+                    for (int i = 0; i < pat.Length; i++) Advance();
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private Token ReadOperator(SourceLocation start)
