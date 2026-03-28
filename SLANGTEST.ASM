@@ -89,10 +89,12 @@ _L4:
 	LD	HL,$7000
 	LD	(IVAL),HL
 	LD	HL,(IVAL)
+	PUSH	HL
 	LD	HL,$0000
-; array load [WORD]
-	ADD	HL,HL
+	LD	DE,$0000
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -127,6 +129,7 @@ _L6:
 	INC	HL
 	LD	(TNUM),HL
 	LD	HL,$01C8
+	PUSH	HL
 	LD	HL,(IVAL)
 	PUSH	HL
 	LD	HL,$0000
@@ -136,7 +139,6 @@ _L6:
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
@@ -164,10 +166,12 @@ _L8:
 	LD	HL,$7000
 	LD	(AIVAL),HL
 	LD	HL,(AIVAL)
+	PUSH	HL
 	LD	HL,$0000
-; array load [WORD]
-	ADD	HL,HL
+	LD	DE,$0000
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -202,6 +206,7 @@ _L10:
 	INC	HL
 	LD	(TNUM),HL
 	LD	HL,$000A
+	PUSH	HL
 	LD	HL,AR
 	PUSH	HL
 	LD	HL,$0003
@@ -211,11 +216,11 @@ _L10:
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,$0014
+	PUSH	HL
 	LD	HL,AR
 	PUSH	HL
 	LD	HL,$0004
@@ -225,7 +230,6 @@ _L10:
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
@@ -279,7 +283,7 @@ _L10:
 	LD	A,E
 	AND	L
 	LD	L,A
-; if t99 == 0 goto _L13
+; if t103 == 0 goto _L13
 	LD	A,H
 	OR	L
 	JP	Z,_L13
@@ -344,6 +348,7 @@ _L14:
 	LD	HL,$0001
 	LD	(NUM),HL
 	LD	HL,$0064
+	PUSH	HL
 	LD	HL,(IVAL)
 	PUSH	HL
 	LD	HL,(NUM)
@@ -353,15 +358,16 @@ _L14:
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,(IVAL)
+	PUSH	HL
 	LD	HL,(NUM)
-; array load [WORD]
-	ADD	HL,HL
+	LD	DE,(NUM)
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -374,10 +380,12 @@ _L14:
 	CALL	MUL16
 	PUSH	HL
 	LD	HL,(IVAL)
+	PUSH	HL
 	LD	HL,(NUM)
-; array load [WORD]
-	ADD	HL,HL
+	LD	DE,(NUM)
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -385,10 +393,12 @@ _L14:
 	EX	DE,HL
 	PUSH	HL
 	LD	HL,(IVAL)
+	PUSH	HL
 	LD	HL,(NUM)
-; array load [WORD]
-	ADD	HL,HL
+	LD	DE,(NUM)
+	ADD	HL,DE
 	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -432,6 +442,7 @@ _L16:
 	LD	HL,$0000
 	LD	(NUM),HL
 	LD	HL,$0064
+	PUSH	HL
 	LD	HL,(IVAL)
 	PUSH	HL
 	LD	HL,(NUM)
@@ -443,16 +454,18 @@ _L16:
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,(IVAL)
+	PUSH	HL
 	LD	HL,(NUM)
 	INC	HL
-; array load [WORD]
-	ADD	HL,HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -465,11 +478,14 @@ _L16:
 	CALL	MUL16
 	PUSH	HL
 	LD	HL,(IVAL)
+	PUSH	HL
 	LD	HL,(NUM)
 	INC	HL
-; array load [WORD]
-	ADD	HL,HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -477,11 +493,14 @@ _L16:
 	EX	DE,HL
 	PUSH	HL
 	LD	HL,(IVAL)
+	PUSH	HL
 	LD	HL,(NUM)
 	INC	HL
-; array load [WORD]
-	ADD	HL,HL
 	POP	DE
+	EX	DE,HL
+	ADD	HL,DE
+	POP	DE
+	EX	DE,HL
 	ADD	HL,DE
 	LD	E,(HL)
 	INC	HL
@@ -649,7 +668,7 @@ _L20:
 	LD	A,E
 	AND	L
 	LD	L,A
-; if t236 == 0 goto _L23
+; if t252 == 0 goto _L23
 	LD	A,H
 	OR	L
 	JP	Z,_L23
@@ -726,7 +745,7 @@ _L22:
 	LD	A,E
 	AND	L
 	LD	L,A
-; if t260 == 0 goto _L25
+; if t276 == 0 goto _L25
 	LD	A,H
 	OR	L
 	JP	Z,_L25
@@ -1130,7 +1149,7 @@ _L61:
 	LD	A,L
 	XOR	$01
 	LD	L,A
-; if t440 != 0 goto _L60
+; if t456 != 0 goto _L60
 	LD	A,H
 	OR	L
 	JP	NZ,_L60
@@ -1176,7 +1195,7 @@ _L66:
 	LD	HL,$0000
 	JR	NC,$+3
 	INC	HL
-; if t458 != 0 goto _L65
+; if t474 != 0 goto _L65
 	LD	A,H
 	OR	L
 	JP	NZ,_L65
@@ -1265,7 +1284,7 @@ LABEL1:
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t485 == 0 goto _L71
+; if t501 == 0 goto _L71
 	LD	A,H
 	OR	L
 	JP	Z,_L71
@@ -1338,7 +1357,7 @@ _L74:
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t507 == 0 goto _L75
+; if t523 == 0 goto _L75
 	LD	A,H
 	OR	L
 	JP	Z,_L75
@@ -1399,7 +1418,7 @@ _L77:
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t525 == 0 goto _L78
+; if t541 == 0 goto _L78
 	LD	A,H
 	OR	L
 	JP	Z,_L78
@@ -1460,7 +1479,7 @@ _L80:
 	OR	E
 	JR	Z,$+3
 	INC	HL
-; if t543 == 0 goto _L81
+; if t559 == 0 goto _L81
 	LD	A,H
 	OR	L
 	JP	Z,_L81
@@ -1691,7 +1710,7 @@ _L93:
 	LD	A,E
 	AND	L
 	LD	L,A
-; if t634 == 0 goto _L96
+; if t650 == 0 goto _L96
 	LD	A,H
 	OR	L
 	JP	Z,_L96
@@ -1712,6 +1731,7 @@ _L95:
 	INC	HL
 	LD	(TNUM),HL
 	LD	HL,$8000
+	PUSH	HL
 	LD	HL,$8000
 	POP	DE
 	EX	DE,HL
@@ -1745,6 +1765,7 @@ _L97:
 	INC	HL
 	LD	(TNUM),HL
 	LD	HL,$0002
+	PUSH	HL
 	LD	HL,(VAL)
 	POP	DE
 	EX	DE,HL
@@ -1778,6 +1799,7 @@ _L99:
 	INC	HL
 	LD	(TNUM),HL
 	LD	HL,$0064
+	PUSH	HL
 	LD	HL,(VAL)
 	LD	DE,(NUM)
 	ADD	HL,DE
@@ -1787,6 +1809,7 @@ _L99:
 	INC	HL
 	LD	(HL),D
 	LD	HL,$0017
+	PUSH	HL
 	LD	HL,(VAL)
 	LD	DE,(NUM)
 	ADD	HL,DE
@@ -1843,11 +1866,13 @@ _L101:
 	INC	HL
 	LD	(TNUM),HL
 	LD	HL,$0001
+	PUSH	HL
 	LD	HL,$8000
 	POP	DE
 	EX	DE,HL
 	LD	(HL),E
 	LD	HL,$0064
+	PUSH	HL
 	LD	HL,$8001
 	POP	DE
 	EX	DE,HL
@@ -1903,6 +1928,7 @@ _L105:
 	INC	HL
 	LD	(TNUM),HL
 	LD	HL,$007B
+	PUSH	HL
 	LD	HL,(VAL)
 	POP	DE
 	EX	DE,HL
@@ -1966,11 +1992,13 @@ _L109:
 	LD	HL,$0001
 	LD	(NUM),HL
 	LD	HL,$001E
+	PUSH	HL
 	LD	HL,$8001
 	POP	DE
 	EX	DE,HL
 	LD	(HL),E
 	LD	HL,$0019
+	PUSH	HL
 	LD	HL,$8003
 	POP	DE
 	EX	DE,HL
@@ -2023,6 +2051,7 @@ _L111:
 	LD	HL,$0005
 	LD	(NUM),HL
 	LD	HL,$000A
+	PUSH	HL
 	LD	HL,AR2
 	PUSH	HL
 	LD	HL,$0001
@@ -2039,7 +2068,6 @@ _L111:
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
@@ -2091,6 +2119,7 @@ _L113:
 	INC	HL
 	LD	(TNUM),HL
 	LD	HL,$000A
+	PUSH	HL
 	LD	HL,ARB2
 	PUSH	HL
 	LD	HL,$0001
@@ -2105,7 +2134,6 @@ _L113:
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	LD	HL,ARB2
 	PUSH	HL
@@ -2361,6 +2389,7 @@ _L123:
 	LD	HL,$0003
 	LD	(NUM),HL
 	LD	HL,$000A
+	PUSH	HL
 	LD	HL,LAR
 	PUSH	HL
 	LD	HL,$0001
@@ -2376,11 +2405,11 @@ _L123:
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D
 	LD	HL,$000A
+	PUSH	HL
 	LD	HL,LARB
 	PUSH	HL
 	LD	HL,$0001
@@ -2396,7 +2425,6 @@ _L123:
 	EX	DE,HL
 	ADD	HL,DE
 	POP	DE
-	EX	DE,HL
 	LD	(HL),E
 	INC	HL
 	LD	(HL),D

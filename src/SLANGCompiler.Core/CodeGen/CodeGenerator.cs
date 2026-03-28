@@ -645,10 +645,14 @@ public class CodeGenerator
                 if (IsBinaryOp(next.Op) && next.Src2.Kind == IrOperandKind.Temp)
                     return true;
 
-                // StoreVar/StoreLocal のsrc（Src1）は値であり、Destがアドレス → PUSH不要
+                // IndirStore/MemStore/PortOut: Src1=value, Dest=addr
+                // addrが別tempならvalue退避が必要（addr計算でHLが上書きされるため）
+                if (next.Op is IrOp.IndirStore or IrOp.MemStore or IrOp.PortOut
+                    && next.Dest.Kind == IrOperandKind.Temp && next.Dest.TempIndex != destTemp)
+                    return true;
+
                 // ArrayStore: Dest=base, Src1=value, Src2=index → 全部tempの場合PUSH要
-                if ((next.Op == IrOp.ArrayStore || next.Op == IrOp.MemStore || next.Op == IrOp.IndirStore)
-                    && next.Src2.Kind == IrOperandKind.Temp)
+                if (next.Op == IrOp.ArrayStore && next.Src2.Kind == IrOperandKind.Temp)
                     return true;
 
                 return false; // 使われるが、PUSH不要
@@ -1256,10 +1260,10 @@ public class CodeGenerator
 
     private void EmitIndirStore(IrInstruction inst)
     {
-        // *HL = DE
+        // HL=addr (最後に評価された値), スタック上にvalue
+        // POP DE(=value) → *(HL) = DE
         bool isByte = inst.DataSize == 1;
         _e.Instruction("POP", "DE");
-        _e.Instruction("EX", "DE,HL");
         if (isByte)
         {
             _e.Instruction("LD", "(HL),E");

@@ -793,10 +793,32 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
         // 間接変数判定 (VAR x[])
         bool isIndirect = arraySym?.Type is PointerType;
+        // 間接変数/配列のBYTE判定
+        bool isIndirectByte = arraySym?.Type is PointerType pt && pt.ElementType == SlangType.Byte;
+        bool isArrayByte = arraySym?.Type is ArrayType aty && aty.ElementType == SlangType.Byte;
 
-        if (isMemArray)
+        // PORT/PORTW判定
+        bool isPortArray = arrayName != null &&
+            (arrayName.Equals("PORT", StringComparison.OrdinalIgnoreCase) ||
+             arrayName.Equals("PORTW", StringComparison.OrdinalIgnoreCase));
+        bool isPortByte = arrayName != null && arrayName.Equals("PORT", StringComparison.OrdinalIgnoreCase);
+
+        // SOS/SOSW判定
+        bool isSosArray = arrayName != null &&
+            (arrayName.Equals("SOS", StringComparison.OrdinalIgnoreCase) ||
+             arrayName.Equals("SOSW", StringComparison.OrdinalIgnoreCase));
+
+        if (isPortArray)
         {
-            // MEM[addr] / MEMW[addr]: インデックスがそのままアドレス
+            // PORT[addr] / PORTW[addr]: I/Oポートアクセス
+            var addr = node.Indices[0].Accept(this);
+            var dest = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.PortIn, dest, addr, dataSize: isPortByte ? 1 : 2);
+            return dest;
+        }
+        else if (isMemArray || isSosArray)
+        {
+            // MEM[addr] / MEMW[addr] / SOS[addr] / SOSW[addr]: 直接メモリアクセス
             var addr = node.Indices[0].Accept(this);
             var dest = IrOperand.Temp(AllocTemp());
             Emit(IrOp.MemLoad, dest, addr, dataSize: isByteAccess ? 1 : 2);
@@ -807,9 +829,25 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // 間接変数: IVAL[i] → *(IVAL + i * elemSize)
             var baseAddr = node.Array.Accept(this); // IVALの値(アドレス)をロード
             var idx = node.Indices[0].Accept(this);
+
+            // base + idx * elemSize のアドレスを計算
+            int elemSize = isIndirectByte ? 1 : 2;
+            IrOperand scaledIdx;
+            if (elemSize == 1)
+            {
+                scaledIdx = idx;
+            }
+            else
+            {
+                scaledIdx = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.Add, scaledIdx, idx, idx); // ×2
+            }
+            var addr = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.Add, addr, baseAddr, scaledIdx);
+
+            // アドレスから値を読む
             var dest = IrOperand.Temp(AllocTemp());
-            int elemSize = isByteAccess ? 1 : 2;
-            Emit(IrOp.ArrayLoad, dest, baseAddr, idx, dataSize: elemSize);
+            Emit(IrOp.IndirLoad, dest, addr, dataSize: elemSize);
             return dest;
         }
         else
@@ -1050,12 +1088,49 @@ public class IrGenerator : IAstVisitor<IrOperand>
             var arraySym = arrayName != null ? _globalSymbols?.Resolve(arrayName) : null;
             bool isMemArray = arraySym?.Type is MemoryArrayType;
             bool isByteAccess = arraySym?.Type is MemoryArrayType mt && mt.ElementType == SlangType.Byte;
+            bool isIndirect = arraySym?.Type is PointerType;
+            bool isIndirectByte = arraySym?.Type is PointerType pt2 && pt2.ElementType == SlangType.Byte;
 
-            if (isMemArray)
+            // PORT/PORTW判定
+            bool isPortArray = arrayName != null &&
+                (arrayName.Equals("PORT", StringComparison.OrdinalIgnoreCase) ||
+                 arrayName.Equals("PORTW", StringComparison.OrdinalIgnoreCase));
+            bool isPortByte = arrayName != null && arrayName.Equals("PORT", StringComparison.OrdinalIgnoreCase);
+
+            if (isPortArray)
             {
-                // MEM[addr] = value / MEMW[addr] = value
+                // PORT[addr] = value
+                var addr = arr.Indices[0].Accept(this);
+                Emit(IrOp.PortOut, addr, value, dataSize: isPortByte ? 1 : 2);
+            }
+            else if (isMemArray)
+            {
                 var addr = arr.Indices[0].Accept(this);
                 Emit(IrOp.MemStore, addr, value, dataSize: isByteAccess ? 1 : 2);
+            }
+            else if (isIndirect)
+            {
+                // 間接変数ストア: *(base + idx * elemSize) = value
+                var baseAddr = IrOperand.Temp(AllocTemp());
+                if (_localVars != null && _localVars.TryGetValue(arrayName!, out var li))
+                    Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(li.Offset));
+                else
+                    Emit(IrOp.LoadVar, baseAddr, IrOperand.Sym(arrayName!));
+
+                var idx = arr.Indices[0].Accept(this);
+                int elemSize = isIndirectByte ? 1 : 2;
+
+                IrOperand scaledIdx;
+                if (elemSize == 1)
+                    scaledIdx = idx;
+                else
+                {
+                    scaledIdx = IrOperand.Temp(AllocTemp());
+                    Emit(IrOp.Add, scaledIdx, idx, idx);
+                }
+                var addr = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.Add, addr, baseAddr, scaledIdx);
+                Emit(IrOp.IndirStore, addr, value, dataSize: elemSize);
             }
             else
             {
