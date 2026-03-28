@@ -182,12 +182,100 @@ public class CodeGenerator
         _currentFunction = func;
         _e.Label(func.Name);
 
-        foreach (var inst in func.Instructions)
+        // スタックマシンモデル: 各命令の結果はHLに残る。
+        // 二項演算(src1, src2)では src1 の結果をPUSHしてから src2 を評価。
+        // 演算時に POP DE して HL op DE → HL。
+        //
+        // PUSH挿入判定: 「次の命令がこのtempを第2オペランド以降として使う前に、
+        // 別の命令がHLを上書きする」場合にPUSHが必要。
+        //
+        // 簡略化: 二項演算/ストア/コールの直前の2命令がsrc1/src2なら、
+        // src1の結果の後にPUSH HLを挿入。
+
+        var insts = func.Instructions;
+        for (int i = 0; i < insts.Count; i++)
         {
+            var inst = insts[i];
+
+            // 二項演算: src1とsrc2が両方tempの場合、src1の結果後にPUSH必要
+            if (IsBinaryOp(inst.Op) && inst.Src1.Kind == IrOperandKind.Temp && inst.Src2.Kind == IrOperandKind.Temp)
+            {
+                // src1のtemp結果（前にHLにある）をPUSHし、src2を評価してからPOP DEで取り出す
+                // ただしIR命令列ではsrc1が先に評価済みでHLにあり、
+                // src2の評価でHLが上書きされるのが問題。
+                //
+                // IR命令列を逆走査して、src1のtemp生成命令とsrc2のtemp生成命令の間に
+                // PUSH HLを挿入する必要があるが、CodeGen段階でやるのは複雑。
+                //
+                // 代替策: 二項演算の手前でスタック上にsrc1がありsrc2がHLにある前提で
+                // コードを生成する。つまり各temp生成命令の後、
+                // そのtempが二項演算のsrc1として使われるなら PUSH HL する。
+            }
+
             EmitInstruction(inst);
+
+            // 結果がtempの場合、このtempが後続の二項演算等のsrc1として使われるか確認
+            if (inst.Dest.Kind == IrOperandKind.Temp)
+            {
+                int destTemp = inst.Dest.TempIndex;
+                // 後続命令でこのtempがsrc1として使われ、かつsrc2も別のtempである場合
+                if (NeedsPushAfter(insts, i, destTemp))
+                {
+                    _e.Instruction("PUSH", "HL");
+                }
+            }
         }
         _currentFunction = null;
     }
+
+    /// <summary>
+    /// destTempが後続の二項演算等のsrc1として使われ、
+    /// その演算のsrc2が別のtemp（=HLを使う）場合にPUSHが必要。
+    /// </summary>
+    private bool NeedsPushAfter(List<IrInstruction> insts, int currentIdx, int destTemp)
+    {
+        for (int j = currentIdx + 1; j < insts.Count; j++)
+        {
+            var next = insts[j];
+
+            // この temp が src1 で、src2 が別の temp → PUSH 必要
+            if (next.Src1.Kind == IrOperandKind.Temp && next.Src1.TempIndex == destTemp)
+            {
+                // 二項演算でsrc2もtempなら
+                if (IsBinaryOp(next.Op) && next.Src2.Kind == IrOperandKind.Temp)
+                    return true;
+
+                // StoreVar/StoreLocal のsrc（Src1）は値であり、Destがアドレス → PUSH不要
+                // ArrayStore: Dest=base, Src1=value, Src2=index → 全部tempの場合PUSH要
+                if ((next.Op == IrOp.ArrayStore || next.Op == IrOp.MemStore || next.Op == IrOp.IndirStore)
+                    && next.Src2.Kind == IrOperandKind.Temp)
+                    return true;
+
+                return false; // 使われるが、PUSH不要
+            }
+
+            // この temp が src2 として使われる → 直前のsrc1がPUSHされるべき → ここではPUSH不要
+            if (next.Src2.Kind == IrOperandKind.Temp && next.Src2.TempIndex == destTemp)
+                return false;
+
+            // Dest として使われる（上書き）→ もう使われない
+            if (next.Dest.Kind == IrOperandKind.Temp && next.Dest.TempIndex == destTemp)
+                return false;
+        }
+        return false;
+    }
+
+    private static bool IsBinaryOp(IrOp op) => op switch
+    {
+        IrOp.Add or IrOp.Sub or IrOp.Mul or IrOp.Div or IrOp.Mod
+        or IrOp.SMul or IrOp.SDiv or IrOp.SMod
+        or IrOp.And or IrOp.Or or IrOp.Xor
+        or IrOp.Shl or IrOp.Shr or IrOp.SShl or IrOp.SShr
+        or IrOp.CmpEq or IrOp.CmpNeq or IrOp.CmpLt or IrOp.CmpGt or IrOp.CmpLe or IrOp.CmpGe
+        or IrOp.CmpSLt or IrOp.CmpSGt or IrOp.CmpSLe or IrOp.CmpSGe
+        or IrOp.LogAnd or IrOp.LogOr => true,
+        _ => false,
+    };
 
     private void EmitInstruction(IrInstruction inst)
     {
@@ -448,28 +536,24 @@ public class CodeGenerator
         _e.Instruction("LD", $"HL,{name}");
     }
 
+    // 二項演算: スタック上にsrc1(PUSH済み)、HLにsrc2
+    // → POP DE(=src1) → EX DE,HL → HL=src1, DE=src2 → 演算
+
     private void EmitArith(IrInstruction inst, string op)
     {
-        // HL = src1 op src2
-        // src1 should be in HL, src2 in DE
-        _e.Instruction("PUSH", "HL"); // save src1
-        // src2 is evaluated and in HL
-        _e.Instruction("POP", "DE"); // DE = src1
-        _e.Instruction("EX", "DE,HL"); // HL = src1, DE = src2
+        _e.Instruction("POP", "DE");
+        _e.Instruction("EX", "DE,HL");
         if (op == "ADD")
-        {
             _e.Instruction("ADD", "HL,DE");
-        }
-        else // SUB
+        else
         {
-            _e.Instruction("OR", "A"); // clear carry
+            _e.Instruction("OR", "A");
             _e.Instruction("SBC", "HL,DE");
         }
     }
 
     private void EmitMul(IrInstruction inst)
     {
-        _e.Instruction("PUSH", "HL");
         _e.Instruction("POP", "DE");
         _e.Instruction("EX", "DE,HL");
         _e.Instruction("CALL", "MUL16");
@@ -477,7 +561,6 @@ public class CodeGenerator
 
     private void EmitDiv(IrInstruction inst, bool signed)
     {
-        _e.Instruction("PUSH", "HL");
         _e.Instruction("POP", "DE");
         _e.Instruction("EX", "DE,HL");
         _e.Instruction("CALL", signed ? "SDIV16" : "DIV16");
@@ -485,7 +568,6 @@ public class CodeGenerator
 
     private void EmitMod(IrInstruction inst, bool signed)
     {
-        _e.Instruction("PUSH", "HL");
         _e.Instruction("POP", "DE");
         _e.Instruction("EX", "DE,HL");
         _e.Instruction("CALL", signed ? "SMOD16" : "MOD16");
@@ -505,15 +587,13 @@ public class CodeGenerator
 
     private void EmitBitwise(IrInstruction inst, string op)
     {
-        // HL = HL op DE (byte-by-byte)
-        _e.Instruction("PUSH", "HL");
+        // src1(stack) op src2(HL)
         _e.Instruction("POP", "DE");
-        _e.Instruction("EX", "DE,HL");
-        _e.Instruction("LD", "A,H");
-        _e.Instruction(op, "D");
+        _e.Instruction("LD", "A,D");
+        _e.Instruction(op, "H");
         _e.Instruction("LD", "H,A");
-        _e.Instruction("LD", "A,L");
-        _e.Instruction(op, "E");
+        _e.Instruction("LD", "A,E");
+        _e.Instruction(op, "L");
         _e.Instruction("LD", "L,A");
     }
 
@@ -529,45 +609,40 @@ public class CodeGenerator
 
     private void EmitShift(IrInstruction inst, bool left)
     {
-        // Shift HL by DE amount
-        _e.Instruction("PUSH", "HL");
+        // src1(stack)をHLに, src2(HL)をDEに → CALL SHL/SHR
         _e.Instruction("POP", "DE");
-        _e.Instruction("EX", "DE,HL");
+        _e.Instruction("EX", "DE,HL"); // HL=src1(被シフト値), DE=src2(シフト量)
         _e.Instruction("CALL", left ? "SHL16" : "SHR16");
     }
 
     private void EmitCompare(IrInstruction inst, string cond)
     {
-        // Compare: HL op DE → result in HL (0 or 1)
-        _e.Instruction("PUSH", "HL");
-        _e.Instruction("POP", "DE");
-        _e.Instruction("EX", "DE,HL");
+        // src1(stack) cmp src2(HL) → 0 or 1
+        _e.Instruction("POP", "DE");     // DE = src1
+        _e.Instruction("EX", "DE,HL");   // HL = src1, DE = src2
         _e.Instruction("OR", "A");
-        _e.Instruction("SBC", "HL,DE");
+        _e.Instruction("SBC", "HL,DE");  // src1 - src2
         _e.Instruction("LD", "HL,$0000");
-        _e.Instruction($"JR", $"{cond},$+3");
+        _e.Instruction("JR", $"{cond},$+3");
         _e.Instruction("INC", "HL");
     }
 
     private void EmitCompareGt(IrInstruction inst)
     {
-        // HL > DE : swap and use C flag
-        _e.Instruction("PUSH", "HL");
-        _e.Instruction("POP", "DE");
-        _e.Instruction("EX", "DE,HL");
-        _e.Instruction("EX", "DE,HL"); // DE = left, HL = right
+        // src1 > src2 → swap and use C: src2 - src1 で C=1 なら src1 > src2
+        _e.Instruction("POP", "DE");     // DE = src1
+        // HL = src2, DE = src1 → src2 - src1
         _e.Instruction("OR", "A");
-        _e.Instruction("SBC", "HL,DE"); // right - left
+        _e.Instruction("SBC", "HL,DE");  // src2 - src1
         _e.Instruction("LD", "HL,$0000");
-        _e.Instruction("JR", "C,$+3");
+        _e.Instruction("JR", "C,$+3");   // C=1 → src1 > src2
         _e.Instruction("INC", "HL");
     }
 
     private void EmitCompareLe(IrInstruction inst)
     {
-        // HL <= DE : !(HL > DE)
+        // src1 <= src2 → !(src1 > src2)
         EmitCompareGt(inst);
-        // Invert
         _e.Instruction("LD", "A,L");
         _e.Instruction("XOR", "$01");
         _e.Instruction("LD", "L,A");
@@ -575,8 +650,6 @@ public class CodeGenerator
 
     private void EmitSignedCompare(IrInstruction inst, string kind)
     {
-        // Signed comparison using runtime helper
-        _e.Instruction("PUSH", "HL");
         _e.Instruction("POP", "DE");
         _e.Instruction("EX", "DE,HL");
         _e.Instruction("CALL", $"SCMP_{kind}");
@@ -584,26 +657,27 @@ public class CodeGenerator
 
     private void EmitLogAnd(IrInstruction inst)
     {
-        // HL = (src1 != 0) && (src2 != 0)
-        _e.Instruction("PUSH", "HL");
+        // (src1 != 0) && (src2 != 0)
+        // DE=src1(stack), HL=src2
         _e.Instruction("POP", "DE");
-        _e.Instruction("EX", "DE,HL");
-        _e.Instruction("LD", "A,H");
-        _e.Instruction("OR", "L");
-        _e.Instruction("LD", "H,$00");
-        _e.Instruction("LD", "L,$00");
-        _e.Instruction("JR", "Z,$+7");
+        // src1をチェック
         _e.Instruction("LD", "A,D");
         _e.Instruction("OR", "E");
-        _e.Instruction("JR", "Z,$+3");
+        _e.Instruction("LD", "D,H");  // save src2
+        _e.Instruction("LD", "E,L");
+        _e.Instruction("LD", "HL,$0000");
+        _e.Instruction("JR", "Z,$+7"); // src1==0 → false
+        // src2をチェック
+        _e.Instruction("LD", "A,D");
+        _e.Instruction("OR", "E");
+        _e.Instruction("JR", "Z,$+3"); // src2==0 → false
         _e.Instruction("INC", "HL");
     }
 
     private void EmitLogOr(IrInstruction inst)
     {
-        _e.Instruction("PUSH", "HL");
+        // (src1 != 0) || (src2 != 0)
         _e.Instruction("POP", "DE");
-        _e.Instruction("EX", "DE,HL");
         _e.Instruction("LD", "A,H");
         _e.Instruction("OR", "L");
         _e.Instruction("OR", "D");
