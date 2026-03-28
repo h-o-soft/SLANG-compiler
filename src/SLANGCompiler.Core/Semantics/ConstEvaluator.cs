@@ -27,6 +27,10 @@ public class ConstEvaluator
             UnaryExpr unary => EvaluateUnary(unary),
             BinaryExpr binary => EvaluateBinary(binary),
             HighLowExpr hl => EvaluateHighLow(hl),
+            CastExpr cast => Evaluate(cast.Operand),         // %expr → 値はそのまま
+            ConditionalExpr cond => EvaluateConditional(cond),
+            AddressOfExpr addr => null,                       // &var は実行時
+            StringLiteral => null,                            // 文字列は定数式不可
             _ => null,
         };
     }
@@ -100,5 +104,12 @@ public class ConstEvaluator
         var operand = Evaluate(expr.Operand);
         if (operand == null) return null;
         return expr.IsHigh ? (operand.Value >> 8) & 0xFF : operand.Value & 0xFF;
+    }
+
+    private int? EvaluateConditional(ConditionalExpr expr)
+    {
+        var cond = Evaluate(expr.Condition);
+        if (cond == null) return null;
+        return cond.Value != 0 ? Evaluate(expr.TrueExpr) : Evaluate(expr.FalseExpr);
     }
 }
