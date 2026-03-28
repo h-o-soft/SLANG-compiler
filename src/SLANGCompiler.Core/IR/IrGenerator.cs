@@ -9,14 +9,22 @@ namespace SLANGCompiler.IR;
 public class IrGenerator : IAstVisitor<IrOperand>
 {
     private readonly DiagnosticBag _diagnostics;
+    private readonly SymbolTable? _globalSymbols;
     private readonly IrModule _module = new();
     private IrFunction? _currentFunction;
     private int _labelCount;
 
-    public IrGenerator(DiagnosticBag diagnostics)
+    // 関数内ローカルシンボル（IrGenerator自身が管理）
+    private Dictionary<string, LocalVarInfo>? _localVars;
+
+    public IrGenerator(DiagnosticBag diagnostics, SymbolTable? symbols = null)
     {
         _diagnostics = diagnostics;
+        _globalSymbols = symbols;
     }
+
+    private record LocalVarInfo(int Offset, int ByteSize);
+    private int _localOffset;
 
     public IrModule Generate(CompilationUnit unit)
     {
@@ -56,31 +64,76 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitVarDecl(VarDecl node)
     {
-        int ds = node.Size == DataSize.Byte ? 1 : 2;
-        if (node.Address != null)
+        int ds = node.Size == DataSize.Byte ? 1 : (node.Size == DataSize.Float ? 3 : 2);
+
+        // グローバルスコープ（関数外）ならGlobalVarsに登録
+        if (_currentFunction == null)
         {
-            // address-assigned variable: emit EQU-like definition
-            var addr = node.Address.Accept(this);
-            Emit(IrOp.Comment, IrOperand.Asm($"VAR {node.Name} : {addr}"));
+            int? fixedAddr = null;
+            if (node.Address is IntegerLiteral addrLit)
+                fixedAddr = (int)addrLit.Value;
+
+            _module.GlobalVars.Add(new GlobalVarInfo
+            {
+                Name = node.Name,
+                AsmLabel = $"_{node.Name}",
+                ByteSize = ds,
+                FixedAddress = fixedAddr,
+            });
+
+            // 初期値付きグローバル変数
+            if (node.InitialValue != null)
+            {
+                var val = node.InitialValue.Accept(this);
+                Emit(IrOp.StoreVar, IrOperand.Sym(node.Name), val, dataSize: ds);
+            }
         }
-        if (node.InitialValue != null)
+        else
         {
-            var val = node.InitialValue.Accept(this);
-            Emit(IrOp.StoreVar, IrOperand.Sym(node.Name), val, dataSize: ds);
-        }
-        else if (node.InitialCode != null)
-        {
-            Emit(IrOp.Comment, IrOperand.Asm($"VAR {node.Name} = {{code}}"));
+            // ローカル変数: オフセット割り当て
+            AllocLocalVar(node.Name, ds);
+
+            if (node.InitialValue != null)
+            {
+                var val = node.InitialValue.Accept(this);
+                // ローカルストア
+                var info = _localVars![node.Name];
+                Emit(IrOp.StoreLocal, IrOperand.Imm(info.Offset), val, dataSize: ds);
+            }
         }
         return IrOperand.None;
     }
 
     public IrOperand VisitArrayDecl(ArrayDecl node)
     {
-        Emit(IrOp.Comment, IrOperand.Asm($"ARRAY {node.Name}[{string.Join(",", node.Dimensions)}]"));
-        if (node.InitialCode != null)
+        int elemSize = node.Size == DataSize.Byte ? 1 : 2;
+
+        // グローバルスコープなら登録
+        if (_currentFunction == null)
         {
-            Emit(IrOp.Comment, IrOperand.Asm($"  = {{initial code}}"));
+            int totalSize = elemSize;
+            foreach (var dim in node.Dimensions)
+            {
+                if (dim is IntegerLiteral lit)
+                    totalSize *= ((int)lit.Value + 1); // 仕様: +1個分
+                else if (dim == null)
+                    totalSize = 2; // 間接配列 = ポインタ(2byte)
+            }
+
+            int? fixedAddr = null;
+            if (node.Address is IntegerLiteral addrLit)
+                fixedAddr = (int)addrLit.Value;
+
+            _module.GlobalVars.Add(new GlobalVarInfo
+            {
+                Name = node.Name,
+                AsmLabel = $"_{node.Name}",
+                ByteSize = totalSize,
+                FixedAddress = fixedAddr,
+                IsArray = true,
+            });
+
+            // 初期値付き配列: TODO - 初期値データをInitialDataに設定
         }
         return IrOperand.None;
     }
@@ -104,9 +157,24 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitFuncDef(FuncDef node)
     {
         _currentFunction = new IrFunction { Name = node.Name };
+
+        // ローカルシンボルテーブルを構築
+        var prevLocalVars = _localVars;
+        var prevOffset = _localOffset;
+        _localVars = new Dictionary<string, LocalVarInfo>(StringComparer.OrdinalIgnoreCase);
+        _localOffset = 0;
+
+        // 仮引数を登録 (IY+$70から上方向)
+        int argOffset = 0x70;
+        foreach (var p in node.Parameters)
+        {
+            _localVars[p.Name] = new LocalVarInfo(argOffset, 2);
+            argOffset += 2;
+        }
+
         Emit(IrOp.FuncBegin, IrOperand.Sym(node.Name));
 
-        // Static/local declarations
+        // Static/local declarations (静的宣言 → グローバルメモリ、局所宣言 → 動的)
         foreach (var d in node.StaticDeclarations) d.Accept(this);
         foreach (var d in node.LocalDeclarations) d.Accept(this);
 
@@ -123,7 +191,20 @@ public class IrGenerator : IAstVisitor<IrOperand>
         Emit(IrOp.FuncEnd);
         _module.Functions.Add(_currentFunction);
         _currentFunction = null;
+        _localVars = prevLocalVars;
+        _localOffset = prevOffset;
         return IrOperand.None;
+    }
+
+    /// <summary>ローカル変数のオフセットを割り当て</summary>
+    private int AllocLocalVar(string name, int byteSize)
+    {
+        // BYTE/WORDとも2バイト確保（仕様準拠）
+        int allocSize = byteSize <= 2 ? 2 : byteSize;
+        _localOffset += allocSize;
+        int offset = 0x70 - _localOffset;
+        _localVars![name] = new LocalVarInfo(offset, allocSize);
+        return offset;
     }
 
     // ==== Statements ====
@@ -406,7 +487,26 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitIdentifier(IdentifierExpr node)
     {
         var t = IrOperand.Temp(AllocTemp());
-        Emit(IrOp.LoadVar, t, IrOperand.Sym(node.Name));
+
+        // 1. ローカル変数テーブルをまず検索
+        if (_localVars != null && _localVars.TryGetValue(node.Name, out var localInfo))
+        {
+            Emit(IrOp.LoadLocal, t, IrOperand.Imm(localInfo.Offset), dataSize: localInfo.ByteSize);
+            return t;
+        }
+
+        // 2. グローバルシンボルテーブルを検索
+        var sym = _globalSymbols?.Resolve(node.Name);
+        if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstValue is int constVal)
+        {
+            // 定数 → 即値ロード
+            Emit(IrOp.LoadConst, t, IrOperand.Imm(constVal));
+        }
+        else
+        {
+            // グローバル変数 or 未解決 → ラベルアクセス
+            Emit(IrOp.LoadVar, t, IrOperand.Sym(node.Name));
+        }
         return t;
     }
 
@@ -643,7 +743,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         if (target is IdentifierExpr id)
         {
-            Emit(IrOp.StoreVar, IrOperand.Sym(id.Name), value);
+            // ローカル変数優先
+            if (_localVars != null && _localVars.TryGetValue(id.Name, out var localInfo))
+            {
+                Emit(IrOp.StoreLocal, IrOperand.Imm(localInfo.Offset), value, dataSize: localInfo.ByteSize);
+            }
+            else
+            {
+                Emit(IrOp.StoreVar, IrOperand.Sym(id.Name), value);
+            }
         }
         else if (target is ArrayAccessExpr arr)
         {

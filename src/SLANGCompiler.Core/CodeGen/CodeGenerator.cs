@@ -53,6 +53,37 @@ public class CodeGenerator
             }
         }
 
+        // Global variable work area
+        if (_module.GlobalVars.Count > 0)
+        {
+            _e.Blank();
+            _e.Comment("=== Global Variables (Work Area) ===");
+
+            // アドレス固定変数: EQUで定義
+            foreach (var gv in _module.GlobalVars.Where(v => v.FixedAddress.HasValue))
+            {
+                _e.Raw($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress!.Value:X4}");
+            }
+
+            // 通常変数: DS(Define Storage)で領域確保
+            foreach (var gv in _module.GlobalVars.Where(v => !v.FixedAddress.HasValue))
+            {
+                if (gv.InitialData != null)
+                {
+                    // 初期値付き → コード領域に埋め込み
+                    _e.Label(gv.AsmLabel);
+                    var bytes = string.Join(",", gv.InitialData.Select(b => $"${b:X2}"));
+                    _e.Raw($"\tDB\t{bytes}");
+                }
+                else
+                {
+                    // 初期値なし → ワーク領域にDS
+                    _e.Label(gv.AsmLabel);
+                    _e.Raw($"\tDS\t{gv.ByteSize}");
+                }
+            }
+        }
+
         return _e.ToAssembly();
     }
 
@@ -115,6 +146,12 @@ public class CodeGenerator
                 break;
             case IrOp.StoreVar:
                 EmitStoreVar(inst);
+                break;
+            case IrOp.LoadLocal:
+                EmitLoadLocal(inst);
+                break;
+            case IrOp.StoreLocal:
+                EmitStoreLocal(inst);
                 break;
             case IrOp.LoadAddr:
                 EmitLoadAddr(inst);
@@ -265,6 +302,39 @@ public class CodeGenerator
     {
         var name = inst.Dest.Name!;
         _e.Instruction("LD", $"({name}),HL");
+    }
+
+    private void EmitLoadLocal(IrInstruction inst)
+    {
+        int offset = (int)inst.Src1.ImmediateValue;
+        if (inst.DataSize == 1)
+        {
+            // BYTE: (IY+offset) → L, H=0
+            _e.Instruction("LD", $"L,(IY+${offset:X2})");
+            _e.Instruction("LD", "H,$00");
+        }
+        else
+        {
+            // WORD: (IY+offset) → L, (IY+offset+1) → H
+            _e.Instruction("LD", $"L,(IY+${offset:X2})");
+            _e.Instruction("LD", $"H,(IY+${offset + 1:X2})");
+        }
+    }
+
+    private void EmitStoreLocal(IrInstruction inst)
+    {
+        int offset = (int)inst.Dest.ImmediateValue;
+        if (inst.DataSize == 1)
+        {
+            // BYTE: L → (IY+offset)
+            _e.Instruction("LD", $"(IY+${offset:X2}),L");
+        }
+        else
+        {
+            // WORD: L → (IY+offset), H → (IY+offset+1)
+            _e.Instruction("LD", $"(IY+${offset:X2}),L");
+            _e.Instruction("LD", $"(IY+${offset + 1:X2}),H");
+        }
     }
 
     private void EmitLoadAddr(IrInstruction inst)

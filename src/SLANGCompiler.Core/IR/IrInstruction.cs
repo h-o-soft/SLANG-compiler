@@ -8,8 +8,10 @@ public enum IrOp
 {
     // -- Data movement --
     LoadConst,          // dest = immediate value
-    LoadVar,            // dest = variable (by symbol)
-    StoreVar,           // variable = src
+    LoadVar,            // dest = variable (by symbol, global)
+    StoreVar,           // variable = src (global)
+    LoadLocal,          // dest = (IY+offset), offset in Src1.ImmediateValue
+    StoreLocal,         // (IY+offset) = src, offset in Dest.ImmediateValue
     LoadAddr,           // dest = address of variable
     LoadIndirect,       // dest = mem[src]
     StoreIndirect,      // mem[dest] = src
@@ -192,6 +194,7 @@ public class IrModule
     public List<IrFunction> Functions { get; } = new();
     public List<IrInstruction> GlobalData { get; } = new();
     public Dictionary<string, string> StringTable { get; } = new(); // label → string content
+    public List<GlobalVarInfo> GlobalVars { get; } = new(); // グローバル変数一覧
 
     public override string ToString()
     {
@@ -204,4 +207,17 @@ public class IrModule
         parts.AddRange(Functions.Select(f => f.ToString()));
         return string.Join("\n", parts);
     }
+}
+
+/// <summary>
+/// グローバル変数情報（ワークエリア生成用）
+/// </summary>
+public class GlobalVarInfo
+{
+    public string Name { get; set; } = "";
+    public string AsmLabel { get; set; } = "";
+    public int ByteSize { get; set; } = 2;
+    public int? FixedAddress { get; set; }      // :アドレス指定
+    public List<byte>? InitialData { get; set; } // 初期値データ
+    public bool IsArray { get; set; }
 }

@@ -112,7 +112,7 @@ class Program
             }
 
             // Phase 4: IR Generation
-            var irGen = new IrGenerator(diagnostics);
+            var irGen = new IrGenerator(diagnostics, analyzer.Symbols);
             var irModule = irGen.Generate(ast);
 
             if (diagnostics.HasErrors)
