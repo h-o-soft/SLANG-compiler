@@ -1,3 +1,5 @@
+	ORG	$0100
+
 ; === Entry Point ===
 	LD	IY,__IYWORK
 	LD	HL,$000E
