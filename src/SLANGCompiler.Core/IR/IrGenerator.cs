@@ -981,8 +981,44 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitModuleBlock(ModuleBlock node)
     {
+        // オーバーレイモジュール: 別のコンテキストに切り替えてIR生成
+        // シンボルテーブルは共有のまま（メイン部と相互参照可能）
+
+        int orgAddr = 0;
+        if (node.Name is IntegerLiteral lit)
+            orgAddr = (int)lit.Value;
+        else
+        {
+            var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+            var val = constEval?.Evaluate(node.Name);
+            if (val.HasValue) orgAddr = val.Value;
+        }
+
+        var overlay = new OverlayModule
+        {
+            Index = _module.Overlays.Count,
+            OrgAddress = orgAddr,
+        };
+
+        // メイン部のFunctionsリストを退避して、オーバーレイ用に切り替え
+        var savedFunctions = _module.Functions;
+        var overlayFunctions = overlay.Functions;
+
+        // モジュール内の定義をIR化（関数はoverlayのリストに追加される）
         foreach (var def in node.Definitions)
+        {
+            var prevCount = _module.Functions.Count;
             def.Accept(this);
+            // 新たに追加された関数をoverlayに移動
+            while (_module.Functions.Count > prevCount)
+            {
+                var func = _module.Functions[^1];
+                _module.Functions.RemoveAt(_module.Functions.Count - 1);
+                overlayFunctions.Add(func);
+            }
+        }
+
+        _module.Overlays.Add(overlay);
         return IrOperand.None;
     }
 

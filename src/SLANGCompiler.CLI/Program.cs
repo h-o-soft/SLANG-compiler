@@ -132,12 +132,20 @@ class Program
             LoadRuntimeLibraries(runtimeManager, baseDir);
 
             var codeGen = new CodeGenerator(irModule, runtimeManager);
-            var asmOutput = codeGen.Generate();
+            var (mainAsm, overlays) = codeGen.GenerateAll();
 
-            // Output
+            // Output main
             var outPath = outputPath ?? Path.ChangeExtension(filePath, ".ASM");
-            File.WriteAllText(outPath, asmOutput);
+            File.WriteAllText(outPath, mainAsm);
             Console.Error.WriteLine($"; Output: {outPath}");
+
+            // Output overlay modules
+            foreach (var (name, asm) in overlays)
+            {
+                var overlayPath = Path.ChangeExtension(outPath, $"{name}.ASM");
+                File.WriteAllText(overlayPath, asm);
+                Console.Error.WriteLine($"; Output: {overlayPath} (overlay)");
+            }
         }
 
         if (diagnostics.HasErrors)

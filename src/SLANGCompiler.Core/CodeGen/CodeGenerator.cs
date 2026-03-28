@@ -29,6 +29,64 @@ public class CodeGenerator
         _e = new Z80Emitter();
     }
 
+    /// <summary>
+    /// オーバーレイモジュール付きの場合、(メインASM, [(モジュール名, ASM)]...) を返す
+    /// </summary>
+    public (string MainAsm, List<(string Name, string Asm)> Overlays) GenerateAll()
+    {
+        var mainAsm = Generate();
+        var overlays = new List<(string, string)>();
+
+        foreach (var overlay in _module.Overlays)
+        {
+            overlays.Add(($"_m{overlay.Index}", GenerateOverlay(overlay)));
+        }
+
+        return (mainAsm, overlays);
+    }
+
+    private string GenerateOverlay(OverlayModule overlay)
+    {
+        var oe = new Z80Emitter();
+
+        oe.Comment($"=== Overlay Module {overlay.Index} ===");
+        oe.Instruction("ORG", $"${overlay.OrgAddress:X4}");
+        oe.Blank();
+
+        // モジュール内の関数
+        foreach (var func in overlay.Functions)
+        {
+            oe.Label(func.Name);
+            // 簡易的にIR命令をテキストとして出力
+            // TODO: EmitFunctionと同じ処理をoverlay用emitterで行う
+            oe.Comment($"function {func.Name} ({func.Instructions.Count} IR instructions)");
+            oe.Comment("TODO: full code generation for overlay functions");
+            oe.Instruction("RET");
+            oe.Blank();
+        }
+
+        // モジュール内の文字列テーブル
+        foreach (var (label, text) in overlay.StringTable)
+        {
+            oe.Label(label);
+            var bytes = text.Select(ch => $"${(int)ch:X2}").Append("$00");
+            oe.Raw($"\tDB\t{string.Join(",", bytes)}");
+        }
+
+        // 共有シンボル参照（メイン部のグローバル変数をEXTERNとして宣言）
+        oe.Blank();
+        oe.Comment("=== Shared Symbols (from main) ===");
+        foreach (var gv in _module.GlobalVars)
+        {
+            if (gv.FixedAddress.HasValue)
+                oe.Raw($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress.Value:X4}");
+            else
+                oe.Comment($"EXTERN {gv.AsmLabel}  ; defined in main");
+        }
+
+        return oe.ToAssembly();
+    }
+
     public string Generate()
     {
         // ORG宣言

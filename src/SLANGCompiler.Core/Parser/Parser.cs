@@ -85,9 +85,7 @@ public class Parser
                 Error($"Unexpected identifier at top level: {Current.Text}");
                 return null;
             case TokenKind.Module:
-                // Skip #MODULE for now
-                Advance();
-                return null;
+                return ParseModuleBlock();
             default:
                 Error($"Unexpected token at top level: {Current.Kind} '{Current.Text}'");
                 return null;
@@ -147,6 +145,34 @@ public class Parser
     {
         var s = Advance().Span;
         return new OffsetDirective(ParseNcExpr(), s);
+    }
+
+    // ==== MODULE (overlay) ====
+
+    private ModuleBlock ParseModuleBlock()
+    {
+        var start = Advance().Span; // MODULE token
+        // アドレス式（#MODULE $8000）
+        var addr = ParseNcExpr();
+
+        // #END まで定義を収集
+        var defs = new List<AstNode>();
+        while (!Check(TokenKind.EOF))
+        {
+            // #END / #ENDIF でモジュール終了
+            if (Check(TokenKind.PreprocEnd))
+            {
+                Advance();
+                break;
+            }
+            if (Match(TokenKind.Semicolon)) continue;
+            int before = _pos;
+            var def = ParseTopLevel();
+            if (def != null) defs.Add(def);
+            if (_pos == before) Advance();
+        }
+
+        return new ModuleBlock(addr, defs, start);
     }
 
     // ==== CONST declaration ====

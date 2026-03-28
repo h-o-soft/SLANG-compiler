@@ -210,6 +210,7 @@ public class IrModule
     public int? OrgAddress { get; set; }
     public int? WorkAddress { get; set; }
     public int? OffsetAddress { get; set; }
+    public List<OverlayModule> Overlays { get; } = new();
 
     public override string ToString()
     {
@@ -235,4 +236,17 @@ public class GlobalVarInfo
     public int? FixedAddress { get; set; }      // :アドレス指定
     public List<byte>? InitialData { get; set; } // 初期値データ
     public bool IsArray { get; set; }
+}
+
+/// <summary>
+/// オーバーレイモジュール: 別アドレス空間に配置されるコードブロック。
+/// メイン部とシンボルテーブルを共有するが、別ASMファイルとして出力される。
+/// </summary>
+public class OverlayModule
+{
+    public int Index { get; set; }
+    public int OrgAddress { get; set; }
+    public List<IrFunction> Functions { get; } = new();
+    public List<GlobalVarInfo> LocalVars { get; } = new();
+    public Dictionary<string, string> StringTable { get; } = new();
 }
