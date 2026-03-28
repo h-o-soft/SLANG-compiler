@@ -152,7 +152,7 @@ public class CodeGenerator
                 else if (inst.Op == IrOp.StoreVar && pendingConstVal.HasValue)
                 {
                     _e.Instruction("LD", $"HL,${pendingConstVal.Value:X4}");
-                    _e.Instruction("LD", $"({inst.Dest.Name}),HL");
+                    _e.Instruction("LD", $"({AsmLabel(inst.Dest.Name!)}),HL");
                     pendingConstVal = null;
                 }
                 else
@@ -467,7 +467,7 @@ public class CodeGenerator
                 }
                 break;
             case IrOp.LoadVar:
-                _e.Instruction("LD", $"DE,({inst.Src1.Name})");
+                _e.Instruction("LD", $"DE,({AsmLabel(inst.Src1.Name!)})");
                 break;
             case IrOp.LoadLocal:
                 int offset = (int)inst.Src1.ImmediateValue;
@@ -475,8 +475,11 @@ public class CodeGenerator
                 _e.Instruction("LD", $"D,(IY+${offset + 1:X2})");
                 break;
             case IrOp.LoadAddr:
-                _e.Instruction("LD", $"DE,{inst.Src1.Name}");
+            {
+                var addrName = inst.Src1.Kind == IrOperandKind.Symbol ? AsmLabel(inst.Src1.Name!) : inst.Src1.Name!;
+                _e.Instruction("LD", $"DE,{addrName}");
                 break;
+            }
         }
     }
 
@@ -917,20 +920,23 @@ public class CodeGenerator
         }
     }
 
+    /// <summary>シンボル名→ASMラベル名。Z80レジスタ名との衝突を回避。</summary>
+    private static string AsmLabel(string name) => $"_{name}";
+
     private void EmitLoadVar(IrInstruction inst)
     {
-        var name = inst.Src1.Name!;
-        _e.Instruction("LD", $"HL,({name})");
-        if (inst.DataSize == 3) // FLOAT: 3バイト目をAレジスタに
-            _e.Instruction("LD", $"A,({name}+2)");
+        var label = AsmLabel(inst.Src1.Name!);
+        _e.Instruction("LD", $"HL,({label})");
+        if (inst.DataSize == 3)
+            _e.Instruction("LD", $"A,({label}+2)");
     }
 
     private void EmitStoreVar(IrInstruction inst)
     {
-        var name = inst.Dest.Name!;
-        _e.Instruction("LD", $"({name}),HL");
-        if (inst.DataSize == 3) // FLOAT: 3バイト目
-            _e.Instruction("LD", $"({name}+2),A");
+        var label = AsmLabel(inst.Dest.Name!);
+        _e.Instruction("LD", $"({label}),HL");
+        if (inst.DataSize == 3)
+            _e.Instruction("LD", $"({label}+2),A");
     }
 
     private void EmitLoadLocal(IrInstruction inst)
@@ -970,7 +976,9 @@ public class CodeGenerator
     private void EmitLoadAddr(IrInstruction inst)
     {
         var name = inst.Src1.Name!;
-        _e.Instruction("LD", $"HL,{name}");
+        // Symbol(変数名)はプレフィックス付き、Label(文字列等)はそのまま
+        var label = inst.Src1.Kind == IrOperandKind.Symbol ? AsmLabel(name) : name;
+        _e.Instruction("LD", $"HL,{label}");
     }
 
     // 二項演算: スタック上にsrc1(PUSH済み)、HLにsrc2

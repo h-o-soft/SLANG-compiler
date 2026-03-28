@@ -36,8 +36,8 @@ public class CodeGenTests
     {
         var asm = Compile("VAR X,Y,Z; MAIN() BEGIN Z=X+Y; END;");
         // 直接ロード最適化: PUSH/POP なし
-        Assert.Contains("LD\tHL,(X)", asm);
-        Assert.Contains("LD\tDE,(Y)", asm);
+        Assert.Contains("LD\tHL,(_X)", asm);
+        Assert.Contains("LD\tDE,(_Y)", asm);
         Assert.Contains("ADD\tHL,DE", asm);
         Assert.DoesNotContain("PUSH\tHL", asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0]);
     }
@@ -73,7 +73,7 @@ public class CodeGenTests
         // エントリポイントでグローバル初期化
         var entry = asm.Split("MAIN:")[0];
         Assert.Contains("$002A", entry); // 42
-        Assert.Contains("(X)", entry);
+        Assert.Contains("(_X)", entry);
     }
 
     [Fact]
