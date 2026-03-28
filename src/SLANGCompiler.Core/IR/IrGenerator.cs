@@ -23,7 +23,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _globalSymbols = symbols;
     }
 
-    private record LocalVarInfo(int Offset, int ByteSize);
+    private record LocalVarInfo(int Offset, int ByteSize, bool IsArray = false, bool IsByte = false, List<int>? Dims = null);
     private int _localOffset;
 
     // 各tempのデータサイズを追跡（FLOAT判定用）
@@ -110,19 +110,31 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitArrayDecl(ArrayDecl node)
     {
         int elemSize = node.Size == DataSize.Byte ? 1 : 2;
+        bool isByte = node.Size == DataSize.Byte;
 
-        // グローバルスコープなら登録
+        // 次元情報を計算
+        var dims = new List<int>();
+        int totalSize = elemSize;
+        foreach (var dim in node.Dimensions)
+        {
+            int dimSize;
+            if (dim is IntegerLiteral lit)
+                dimSize = (int)lit.Value + 1; // 仕様: +1個分
+            else if (dim == null)
+                dimSize = 0; // 間接配列
+            else
+            {
+                var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+                var val = constEval?.Evaluate(dim);
+                dimSize = val.HasValue ? val.Value + 1 : 1;
+            }
+            dims.Add(dimSize);
+            if (dimSize > 0) totalSize *= dimSize;
+        }
+
         if (_currentFunction == null)
         {
-            int totalSize = elemSize;
-            foreach (var dim in node.Dimensions)
-            {
-                if (dim is IntegerLiteral lit)
-                    totalSize *= ((int)lit.Value + 1); // 仕様: +1個分
-                else if (dim == null)
-                    totalSize = 2; // 間接配列 = ポインタ(2byte)
-            }
-
+            // グローバル配列（totalSizeは上で計算済み）
             int? fixedAddr = null;
             if (node.Address is IntegerLiteral addrLit)
                 fixedAddr = (int)addrLit.Value;
@@ -169,6 +181,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 IsArray = true,
                 InitialData = initData,
             });
+        }
+        else
+        {
+            // ローカル配列: IYオフセットに動的確保
+            _localOffset += totalSize;
+            int offset = 0x70 - _localOffset;
+            _localVars![node.Name] = new LocalVarInfo(offset, totalSize, IsArray: true, IsByte: isByte, Dims: dims);
         }
         return IrOperand.None;
     }
@@ -898,11 +917,22 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (arrayName != null)
             {
                 baseAddr = IrOperand.Temp(AllocTemp());
-                // ローカル配列チェック
-                if (_localVars != null && _localVars.TryGetValue(arrayName, out var localInfo))
+                // ローカル配列: IY+offsetのアドレスを計算
+                if (_localVars != null && _localVars.TryGetValue(arrayName, out var localArrInfo) && localArrInfo.IsArray)
+                {
+                    // PUSH IY; POP HL; LD DE,offset; ADD HL,DE → HL = &(IY+offset)
+                    Emit(IrOp.Comment, IrOperand.Asm($"local array {arrayName} addr"));
+                    Emit(IrOp.InlineAsm, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${localArrInfo.Offset:X4}\n\tADD\tHL,DE"));
+                    isArrayByte = localArrInfo.IsByte;
+                }
+                else if (_localVars != null && _localVars.TryGetValue(arrayName, out var localInfo))
+                {
                     Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(localInfo.Offset));
+                }
                 else
+                {
                     Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(arrayName));
+                }
             }
             else
             {
@@ -910,7 +940,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
 
             // 各次元のストライドを計算
-            var strides = ComputeStrides(arraySym, node.Indices.Count);
+            List<int> strides;
+            if (_localVars != null && arrayName != null
+                && _localVars.TryGetValue(arrayName, out var arrInfo) && arrInfo.Dims != null)
+            {
+                // ローカル配列: LocalVarInfoのDimsからストライド計算
+                strides = ComputeStridesFromDims(arrInfo.Dims, arrInfo.IsByte ? 1 : 2, node.Indices.Count);
+            }
+            else
+            {
+                strides = ComputeStrides(arraySym, node.Indices.Count);
+            }
 
             // 各次元のインデックス×ストライドを加算
             // base + idx0*stride0 + idx1*stride1 + ...
@@ -946,7 +986,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
             // 最終アドレスから値をロード
             var result = IrOperand.Temp(AllocTemp());
-            bool isByte = arraySym?.Type is ArrayType at && at.ElementType == SlangType.Byte;
+            bool isByte = isArrayByte || (arraySym?.Type is ArrayType at && at.ElementType == SlangType.Byte);
             Emit(IrOp.IndirLoad, result, addr, dataSize: isByte ? 1 : 2);
             return result;
         }
@@ -1210,13 +1250,20 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
             else
             {
-                // 通常配列/間接変数のストア（多次元対応）
+                // 通常配列のストア（多次元対応）
+                bool storeIsByte = arraySym?.Type is ArrayType stAt && stAt.ElementType == SlangType.Byte;
                 IrOperand baseAddr;
                 if (arrayName != null)
                 {
                     baseAddr = IrOperand.Temp(AllocTemp());
-                    if (_localVars != null && _localVars.TryGetValue(arrayName, out var li))
-                        Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(li.Offset));
+                    // ローカル配列: IY+offsetのアドレスを計算
+                    if (_localVars != null && _localVars.TryGetValue(arrayName, out var li) && li.IsArray)
+                    {
+                        Emit(IrOp.InlineAsm, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${li.Offset:X4}\n\tADD\tHL,DE"));
+                        storeIsByte = li.IsByte;
+                    }
+                    else if (_localVars != null && _localVars.TryGetValue(arrayName, out var li2))
+                        Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(li2.Offset));
                     else if (arraySym?.Type is PointerType)
                         Emit(IrOp.LoadVar, baseAddr, IrOperand.Sym(arrayName));
                     else
@@ -1227,8 +1274,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     baseAddr = arr.Array.Accept(this);
                 }
 
-                // 多次元ストライド計算してアドレスを算出
-                var strides = ComputeStrides(arraySym, arr.Indices.Count);
+                // 多次元ストライド計算
+                List<int> strides;
+                if (_localVars != null && arrayName != null
+                    && _localVars.TryGetValue(arrayName, out var stArrInfo) && stArrInfo.Dims != null)
+                {
+                    strides = ComputeStridesFromDims(stArrInfo.Dims, stArrInfo.IsByte ? 1 : 2, arr.Indices.Count);
+                }
+                else
+                {
+                    strides = ComputeStrides(arraySym, arr.Indices.Count);
+                }
                 var addr = baseAddr;
                 for (int i = 0; i < arr.Indices.Count; i++)
                 {
@@ -1253,8 +1309,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 }
 
                 // 最終アドレスに値を書き込み
-                bool isByte = arraySym?.Type is ArrayType at && at.ElementType == SlangType.Byte;
-                Emit(IrOp.IndirStore, addr, value, dataSize: isByte ? 1 : 2);
+                Emit(IrOp.IndirStore, addr, value, dataSize: storeIsByte ? 1 : 2);
             }
         }
         else
@@ -1288,6 +1343,20 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // 型情報なし: WORD(2バイト)デフォルト
             for (int i = 0; i < indexCount; i++)
                 strides.Add(2);
+        }
+        return strides;
+    }
+
+    /// <summary>次元リストとelemSizeからストライドを計算</summary>
+    private List<int> ComputeStridesFromDims(List<int> dims, int elemSize, int indexCount)
+    {
+        var strides = new List<int>();
+        for (int i = 0; i < indexCount && i < dims.Count; i++)
+        {
+            int stride = elemSize;
+            for (int j = dims.Count - 1; j > i; j--)
+                stride *= dims[j];
+            strides.Add(stride);
         }
         return strides;
     }
