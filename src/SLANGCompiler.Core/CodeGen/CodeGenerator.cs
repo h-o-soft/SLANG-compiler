@@ -247,6 +247,33 @@ public class CodeGenerator
             }
         }
 
+        // 比較+JumpIfZero融合: CmpXx → JumpIfZero を直接条件分岐に変換
+        // CmpEq t5 t3 t4 → JumpIfZero label t5 を
+        // SBC HL,DE → JP NZ,label に融合（0/1変換不要）
+        var fusedCompareJumps = new Dictionary<int, int>(); // compareIdx → jumpIdx
+        for (int i = 0; i < insts.Count - 1; i++)
+        {
+            if (IsCompareOp(insts[i].Op) && insts[i].Dest.Kind == IrOperandKind.Temp)
+            {
+                int cmpTemp = insts[i].Dest.TempIndex;
+                // 次の命令(skipを飛ばして)がJumpIfZeroでこのtempを参照するか
+                for (int j = i + 1; j < insts.Count; j++)
+                {
+                    if (skipEmit.Contains(j)) continue;
+                    if (insts[j].Op == IrOp.JumpIfZero
+                        && insts[j].Src1.Kind == IrOperandKind.Temp
+                        && insts[j].Src1.TempIndex == cmpTemp)
+                    {
+                        fusedCompareJumps[i] = j;
+                        skipEmit.Add(j); // JumpIfZeroは融合先で処理
+                        break;
+                    }
+                    // このtempが他で使われるなら融合不可
+                    if (UsesTemp(insts[j], cmpTemp)) break;
+                }
+            }
+        }
+
         // Pass 2: 出力
         for (int i = 0; i < insts.Count; i++)
         {
@@ -256,12 +283,38 @@ public class CodeGenerator
 
             if (directBinaryOps.Contains(i))
             {
-                // 直接ロード最適化: src1→HL, src2→DE, 演算
                 var s1 = insts[tempDef[inst.Src1.TempIndex]];
                 var s2 = insts[tempDef[inst.Src2.TempIndex]];
-                EmitInstruction(s1); // src1 → HL
-                EmitLoadToDE(s2);    // src2 → DE
+
+                // 融合比較+ジャンプ: 比較してフラグから直接分岐
+                if (fusedCompareJumps.TryGetValue(i, out int jumpIdx))
+                {
+                    var jumpInst = insts[jumpIdx];
+                    var label = jumpInst.Dest.Name!;
+                    EmitInstruction(s1);
+                    EmitLoadToDE(s2);
+                    EmitFusedCompareJump(inst, label);
+                    continue;
+                }
+
+                // 通常の直接ロード最適化
+                EmitInstruction(s1);
+                EmitLoadToDE(s2);
                 EmitBinaryDirect(inst);
+                continue;
+            }
+
+            // 非直接ロードだが融合比較ジャンプの場合
+            if (fusedCompareJumps.TryGetValue(i, out int jumpIdx2))
+            {
+                var jumpInst = insts[jumpIdx2];
+                var label = jumpInst.Dest.Name!;
+                // 比較のsrc1/src2はスタック経由
+                EmitInstruction(inst); // 比較(0/1生成)は不要だが... フォールバック
+                // TODO: スタック経由の融合比較
+                _e.Instruction("LD", "A,H");
+                _e.Instruction("OR", "L");
+                _e.Instruction("JP", $"Z,{label}");
                 continue;
             }
 
@@ -305,6 +358,64 @@ public class CodeGenerator
                 break;
             case IrOp.LoadAddr:
                 _e.Instruction("LD", $"DE,{inst.Src1.Name}");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 比較+分岐の融合: 比較結果を0/1にせず、フラグから直接JP。
+    /// HL=src1, DE=src2 がセット済み。JumpIfZero→条件が偽なら分岐。
+    /// </summary>
+    private void EmitFusedCompareJump(IrInstruction cmpInst, string label)
+    {
+        // CmpEq + JumpIfZero = 「等しくなければジャンプ」→ JP NZ
+        // CmpNeq + JumpIfZero = 「等しければジャンプ」→ JP Z
+        // CmpLt + JumpIfZero = 「小さくなければジャンプ」→ JP NC
+        // CmpGe + JumpIfZero = 「以上でなければジャンプ」→ JP C
+        // CmpGt + JumpIfZero = src2-src1してCで判定
+
+        switch (cmpInst.Op)
+        {
+            case IrOp.CmpEq:
+                _e.Instruction("OR", "A");
+                _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("JP", $"NZ,{label}");
+                break;
+            case IrOp.CmpNeq:
+                _e.Instruction("OR", "A");
+                _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("JP", $"Z,{label}");
+                break;
+            case IrOp.CmpLt:
+                _e.Instruction("OR", "A");
+                _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("JP", $"NC,{label}");
+                break;
+            case IrOp.CmpGe:
+                _e.Instruction("OR", "A");
+                _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("JP", $"C,{label}");
+                break;
+            case IrOp.CmpGt:
+                // src1 > src2 → src2 - src1 で C判定
+                _e.Instruction("EX", "DE,HL");
+                _e.Instruction("OR", "A");
+                _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("JP", $"NC,{label}");
+                break;
+            case IrOp.CmpLe:
+                // src1 <= src2 → !(src1 > src2) → src2-src1でC判定
+                _e.Instruction("EX", "DE,HL");
+                _e.Instruction("OR", "A");
+                _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("JP", $"C,{label}");
+                break;
+            default:
+                // フォールバック: 0/1生成 + JP Z
+                EmitBinaryDirect(cmpInst);
+                _e.Instruction("LD", "A,H");
+                _e.Instruction("OR", "L");
+                _e.Instruction("JP", $"Z,{label}");
                 break;
         }
     }
@@ -447,6 +558,17 @@ public class CodeGenerator
         or IrOp.LogAnd or IrOp.LogOr => true,
         _ => false,
     };
+
+    private static bool IsCompareOp(IrOp op) => op is
+        IrOp.CmpEq or IrOp.CmpNeq or IrOp.CmpLt or IrOp.CmpGt or IrOp.CmpLe or IrOp.CmpGe
+        or IrOp.CmpSLt or IrOp.CmpSGt or IrOp.CmpSLe or IrOp.CmpSGe;
+
+    private static bool UsesTemp(IrInstruction inst, int tempIdx)
+    {
+        return (inst.Src1.Kind == IrOperandKind.Temp && inst.Src1.TempIndex == tempIdx)
+            || (inst.Src2.Kind == IrOperandKind.Temp && inst.Src2.TempIndex == tempIdx)
+            || (inst.Dest.Kind == IrOperandKind.Temp && inst.Dest.TempIndex == tempIdx);
+    }
 
     private void EmitInstruction(IrInstruction inst)
     {

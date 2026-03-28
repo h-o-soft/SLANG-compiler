@@ -17,13 +17,7 @@ MAIN:
 	LD	DE,$007B
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t4 == 0 goto _L1
-	LD	A,H
-	OR	L
-	JP	Z,_L1
+	JP	NZ,_L1
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S1
@@ -50,13 +44,7 @@ _L0:
 	LD	DE,$007B
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t16 == 0 goto _L3
-	LD	A,H
-	OR	L
-	JP	Z,_L3
+	JP	NZ,_L3
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S4
@@ -80,13 +68,7 @@ _L2:
 	LD	DE,$007B
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t27 == 0 goto _L5
-	LD	A,H
-	OR	L
-	JP	Z,_L5
+	JP	NZ,_L5
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S6
@@ -128,7 +110,6 @@ _L4:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t41 == 0 goto _L7
 	LD	A,H
 	OR	L
 	JP	Z,_L7
@@ -167,13 +148,7 @@ _L6:
 	LD	DE,$01C8
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t56 == 0 goto _L9
-	LD	A,H
-	OR	L
-	JP	Z,_L9
+	JP	NZ,_L9
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S11
@@ -212,7 +187,6 @@ _L8:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t69 == 0 goto _L11
 	LD	A,H
 	OR	L
 	JP	Z,_L11
@@ -355,13 +329,7 @@ _L12:
 	LD	DE,$0514
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t122 == 0 goto _L15
-	LD	A,H
-	OR	L
-	JP	Z,_L15
+	JP	NZ,_L15
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S18
@@ -450,13 +418,7 @@ _L14:
 	LD	DE,$0514
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t154 == 0 goto _L17
-	LD	A,H
-	OR	L
-	JP	Z,_L17
+	JP	NZ,_L17
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S20
@@ -554,13 +516,7 @@ _L16:
 	LD	DE,$0514
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t194 == 0 goto _L19
-	LD	A,H
-	OR	L
-	JP	Z,_L19
+	JP	NZ,_L19
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S22
@@ -610,7 +566,6 @@ _L18:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t211 == 0 goto _L21
 	LD	A,H
 	OR	L
 	JP	Z,_L21
@@ -820,13 +775,7 @@ _L24:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t275 == 0 goto _L27
-	LD	A,H
-	OR	L
-	JP	Z,_L27
+	JP	NC,_L27
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S31
@@ -839,13 +788,7 @@ _L27:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t280 == 0 goto _L26
-	LD	A,H
-	OR	L
-	JP	Z,_L26
+	JP	NC,_L26
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S32
@@ -863,13 +806,7 @@ _L26:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t289 == 0 goto _L29
-	LD	A,H
-	OR	L
-	JP	Z,_L29
+	JP	NC,_L29
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S33
@@ -882,13 +819,7 @@ _L29:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t294 == 0 goto _L30
-	LD	A,H
-	OR	L
-	JP	Z,_L30
+	JP	NC,_L30
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S34
@@ -907,13 +838,7 @@ _L28:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t301 == 0 goto _L32
-	LD	A,H
-	OR	L
-	JP	Z,_L32
+	JP	NC,_L32
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S36
@@ -926,13 +851,7 @@ _L32:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t306 == 0 goto _L33
-	LD	A,H
-	OR	L
-	JP	Z,_L33
+	JP	NC,_L33
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S37
@@ -951,13 +870,7 @@ _L31:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t313 == 0 goto _L35
-	LD	A,H
-	OR	L
-	JP	Z,_L35
+	JP	NC,_L35
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S39
@@ -969,13 +882,7 @@ _L35:
 	LD	DE,$0033
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t318 == 0 goto _L36
-	LD	A,H
-	OR	L
-	JP	Z,_L36
+	JP	NC,_L36
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S40
@@ -997,25 +904,13 @@ _L34:
 	LD	DE,$0032
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t328 == 0 goto _L38
-	LD	A,H
-	OR	L
-	JP	Z,_L38
+	JP	NZ,_L38
 	LD	HL,(VAL)
 	LD	DE,$0032
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t331 == 0 goto _L40
-	LD	A,H
-	OR	L
-	JP	Z,_L40
+	JP	NC,_L40
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S42
@@ -1057,13 +952,7 @@ _L41:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t347 == 0 goto _L42
-	LD	A,H
-	OR	L
-	JP	Z,_L42
+	JP	NC,_L42
 	LD	HL,(VAL)
 	CALL	PRT
 	LD	HL,_S48
@@ -1080,13 +969,7 @@ _L42:
 	LD	DE,$000A
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t355 == 0 goto _L44
-	LD	A,H
-	OR	L
-	JP	Z,_L44
+	JP	NZ,_L44
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S49
@@ -1111,24 +994,12 @@ _L45:
 	LD	DE,$0000
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	NC,$+3
-	INC	HL
-; if t366 == 0 goto _L46
-	LD	A,H
-	OR	L
-	JP	Z,_L46
+	JP	C,_L46
 	LD	HL,(VAL)
 	LD	DE,$0005
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t369 == 0 goto _L47
-	LD	A,H
-	OR	L
-	JP	Z,_L47
+	JP	NZ,_L47
 	JP	_L46
 _L47:
 	LD	HL,(VAL)
@@ -1142,13 +1013,7 @@ _L46:
 	LD	DE,$0005
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t375 == 0 goto _L49
-	LD	A,H
-	OR	L
-	JP	Z,_L49
+	JP	NZ,_L49
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S51
@@ -1176,37 +1041,19 @@ _L50:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t387 == 0 goto _L51
-	LD	A,H
-	OR	L
-	JP	Z,_L51
+	JP	NC,_L51
 _L52:
 	LD	HL,(VAL)
 	LD	DE,$0005
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t390 == 0 goto _L53
-	LD	A,H
-	OR	L
-	JP	Z,_L53
+	JP	NC,_L53
 	LD	HL,(VAL)
 	LD	DE,$0007
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t393 == 0 goto _L54
-	LD	A,H
-	OR	L
-	JP	Z,_L54
+	JP	NZ,_L54
 	JP	_L53
 _L54:
 	LD	HL,_S54
@@ -1238,13 +1085,7 @@ _L51:
 	LD	DE,$0000
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t407 == 0 goto _L55
-	LD	A,H
-	OR	L
-	JP	Z,_L55
+	JP	NZ,_L55
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S57
@@ -1272,13 +1113,7 @@ _L56:
 	LD	DE,$000A
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t422 == 0 goto _L56
-	LD	A,H
-	OR	L
-	JP	Z,_L56
+	JP	NZ,_L56
 _L57:
 	LD	HL,(VAL)
 	CALL	PRT
@@ -1287,13 +1122,7 @@ _L57:
 	LD	DE,$000A
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t426 == 0 goto _L59
-	LD	A,H
-	OR	L
-	JP	Z,_L59
+	JP	NZ,_L59
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S60
@@ -1345,13 +1174,7 @@ _L62:
 	LD	DE,$000B
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t445 == 0 goto _L64
-	LD	A,H
-	OR	L
-	JP	Z,_L64
+	JP	NZ,_L64
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S64
@@ -1413,7 +1236,6 @@ _L67:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t464 == 0 goto _L69
 	LD	A,H
 	OR	L
 	JP	Z,_L69
@@ -1497,13 +1319,7 @@ _L71:
 	LD	DE,$0005
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t491 == 0 goto _L72
-	LD	A,H
-	OR	L
-	JP	Z,_L72
+	JP	NZ,_L72
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S74
@@ -1528,13 +1344,7 @@ _L70:
 	LD	DE,$0000
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t502 == 0 goto _L74
-	LD	A,H
-	OR	L
-	JP	Z,_L74
+	JP	NZ,_L74
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S76
@@ -1596,13 +1406,7 @@ _L73:
 	LD	DE,$0000
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t520 == 0 goto _L77
-	LD	A,H
-	OR	L
-	JP	Z,_L77
+	JP	NZ,_L77
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S79
@@ -1664,13 +1468,7 @@ _L76:
 	LD	DE,$0000
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t538 == 0 goto _L80
-	LD	A,H
-	OR	L
-	JP	Z,_L80
+	JP	NZ,_L80
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S82
@@ -1719,39 +1517,21 @@ _L81:
 	LD	DE,$0006
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t549 == 0 goto _L82
-	LD	A,H
-	OR	L
-	JP	Z,_L82
+	JP	NZ,_L82
 	JP	_L79
 _L82:
 	LD	HL,(VAL)
 	LD	DE,$0007
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t551 == 0 goto _L83
-	LD	A,H
-	OR	L
-	JP	Z,_L83
+	JP	NZ,_L83
 	JP	_L79
 _L83:
 	LD	HL,(VAL)
 	LD	DE,$0008
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t553 == 0 goto _L84
-	LD	A,H
-	OR	L
-	JP	Z,_L84
+	JP	NZ,_L84
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S84
@@ -1791,13 +1571,7 @@ _L79:
 	LD	DE,$0005
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t570 == 0 goto _L86
-	LD	A,H
-	OR	L
-	JP	Z,_L86
+	JP	NZ,_L86
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S88
@@ -1819,13 +1593,7 @@ _L85:
 	LD	DE,$00E4
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t580 == 0 goto _L88
-	LD	A,H
-	OR	L
-	JP	Z,_L88
+	JP	NZ,_L88
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S90
@@ -1854,13 +1622,7 @@ _L87:
 	LD	DE,$0001
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t593 == 0 goto _L90
-	LD	A,H
-	OR	L
-	JP	Z,_L90
+	JP	NZ,_L90
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S93
@@ -1887,13 +1649,7 @@ _L89:
 	LD	DE,$000A
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t605 == 0 goto _L92
-	LD	A,H
-	OR	L
-	JP	Z,_L92
+	JP	NZ,_L92
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S95
@@ -1929,7 +1685,6 @@ _L91:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t618 == 0 goto _L94
 	LD	A,H
 	OR	L
 	JP	Z,_L94
@@ -2022,13 +1777,7 @@ _L95:
 	LD	DE,$8000
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t650 == 0 goto _L98
-	LD	A,H
-	OR	L
-	JP	Z,_L98
+	JP	NZ,_L98
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S102
@@ -2062,13 +1811,7 @@ _L97:
 	LD	DE,$0002
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t664 == 0 goto _L100
-	LD	A,H
-	OR	L
-	JP	Z,_L100
+	JP	NZ,_L100
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S104
@@ -2134,13 +1877,7 @@ _L99:
 	LD	DE,$007B
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t695 == 0 goto _L102
-	LD	A,H
-	OR	L
-	JP	Z,_L102
+	JP	NZ,_L102
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S106
@@ -2175,13 +1912,7 @@ _L101:
 	LD	DE,$0001
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t711 == 0 goto _L104
-	LD	A,H
-	OR	L
-	JP	Z,_L104
+	JP	NZ,_L104
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S108
@@ -2208,13 +1939,7 @@ _L103:
 	LD	DE,$0001
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t724 == 0 goto _L106
-	LD	A,H
-	OR	L
-	JP	Z,_L106
+	JP	NZ,_L106
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S110
@@ -2248,7 +1973,6 @@ _L105:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t737 == 0 goto _L108
 	LD	A,H
 	OR	L
 	JP	Z,_L108
@@ -2276,13 +2000,7 @@ _L107:
 	LD	DE,$007B
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t749 == 0 goto _L110
-	LD	A,H
-	OR	L
-	JP	Z,_L110
+	JP	NZ,_L110
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S114
@@ -2336,13 +2054,7 @@ _L109:
 	LD	DE,$0037
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t776 == 0 goto _L112
-	LD	A,H
-	OR	L
-	JP	Z,_L112
+	JP	NZ,_L112
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S116
@@ -2416,7 +2128,6 @@ _L111:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t806 == 0 goto _L114
 	LD	A,H
 	OR	L
 	JP	Z,_L114
@@ -2478,7 +2189,6 @@ _L113:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t833 == 0 goto _L116
 	LD	A,H
 	OR	L
 	JP	Z,_L116
@@ -2527,7 +2237,6 @@ _L115:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t851 == 0 goto _L118
 	LD	A,H
 	OR	L
 	JP	Z,_L118
@@ -2572,7 +2281,6 @@ _L117:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t869 == 0 goto _L120
 	LD	A,H
 	OR	L
 	JP	Z,_L120
@@ -2639,7 +2347,6 @@ _L119:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t895 == 0 goto _L122
 	LD	A,H
 	OR	L
 	JP	Z,_L122
@@ -2696,7 +2403,6 @@ _L121:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t919 == 0 goto _L124
 	LD	A,H
 	OR	L
 	JP	Z,_L124
@@ -2791,7 +2497,6 @@ _L123:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t954 == 0 goto _L126
 	LD	A,H
 	OR	L
 	JP	Z,_L126
@@ -2840,7 +2545,6 @@ _L125:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t971 == 0 goto _L128
 	LD	A,H
 	OR	L
 	JP	Z,_L128
@@ -2889,7 +2593,6 @@ _L127:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t988 == 0 goto _L130
 	LD	A,H
 	OR	L
 	JP	Z,_L130
@@ -2938,7 +2641,6 @@ _L129:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1005 == 0 goto _L132
 	LD	A,H
 	OR	L
 	JP	Z,_L132
@@ -3004,7 +2706,6 @@ _L131:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1030 == 0 goto _L134
 	LD	A,H
 	OR	L
 	JP	Z,_L134
@@ -3066,7 +2767,6 @@ _L133:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1053 == 0 goto _L136
 	LD	A,H
 	OR	L
 	JP	Z,_L136
@@ -3109,7 +2809,6 @@ _L135:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t1068 == 0 goto _L138
 	LD	A,H
 	OR	L
 	JP	Z,_L138
@@ -3169,12 +2868,6 @@ _L139:
 	LD	DE,$0000
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	NZ,$+3
-	INC	HL
-; if t10 == 0 goto _L141
-	LD	A,H
-	OR	L
 	JP	Z,_L141
 	LD	L,(IY+$6A)
 	LD	H,(IY+$6B)
@@ -3194,7 +2887,6 @@ _L141:
 	LD	HL,$0000
 	JR	Z,$+3
 	INC	HL
-; if t15 == 0 goto _L142
 	LD	A,H
 	OR	L
 	JP	Z,_L142
@@ -3269,13 +2961,7 @@ FUNC1:
 	LD	DE,$00E4
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	Z,$+3
-	INC	HL
-; if t16 == 0 goto _L144
-	LD	A,H
-	OR	L
-	JP	Z,_L144
+	JP	NZ,_L144
 	LD	HL,(TNUM)
 	CALL	PRT
 	LD	HL,_S150
@@ -3324,13 +3010,7 @@ FUNC2:
 	LD	DE,$0064
 	OR	A
 	SBC	HL,DE
-	LD	HL,$0000
-	JR	C,$+3
-	INC	HL
-; if t2 == 0 goto _L145
-	LD	A,H
-	OR	L
-	JP	Z,_L145
+	JP	NC,_L145
 	LD	HL,$0001
 ; return value in HL
 	JP	_FUNC2_EXIT
