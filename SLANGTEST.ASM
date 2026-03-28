@@ -1,33 +1,18 @@
 ; CONST CONV
 ; CONST CONV2
-; global: LoadConst t0 #28672
-; VAR AVAL : t0
-; ARRAY IVAL[]
-; ARRAY AIVAL[]
-; ARRAY AR[SLANGCompiler.Parser.Ast.IntegerLiteral]
-; ARRAY ARB[SLANGCompiler.Parser.Ast.IntegerLiteral]
-; ARRAY AR2[SLANGCompiler.Parser.Ast.IntegerLiteral,SLANGCompiler.Parser.Ast.IntegerLiteral]
-; ARRAY ARB2[SLANGCompiler.Parser.Ast.IntegerLiteral,SLANGCompiler.Parser.Ast.IntegerLiteral]
-; ARRAY AAR[SLANGCompiler.Parser.Ast.IntegerLiteral]
-; ARRAY AARB[SLANGCompiler.Parser.Ast.IntegerLiteral]
-; ARRAY A2[SLANGCompiler.Parser.Ast.IntegerLiteral,SLANGCompiler.Parser.Ast.IntegerLiteral]
-; ARRAY ARI[SLANGCompiler.Parser.Ast.IntegerLiteral]
-;   = {initial code}
 ; global: LoadConst t0 #14
 ; global init: IVV = t0
 
 MAIN:
 ; function MAIN
 	PUSH	IY
-; ARRAY LAR[SLANGCompiler.Parser.Ast.IntegerLiteral,SLANGCompiler.Parser.Ast.IntegerLiteral]
-; ARRAY LARB[SLANGCompiler.Parser.Ast.IntegerLiteral,SLANGCompiler.Parser.Ast.IntegerLiteral]
 	LD	HL,$0001
 	LD	(TNUM),HL
 	LD	HL,_S0
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
-	LD	HL,(CONV)
+	LD	HL,$007B
 	LD	HL,$007B
 	PUSH	HL
 	POP	DE
@@ -67,7 +52,7 @@ _L0:
 	CALL	__print_str
 	CALL	__strfunc_/
 	CALL	__print_newline
-	LD	HL,(CONV)
+	LD	HL,$007B
 	LD	(VAL),HL
 	LD	HL,(VAL)
 	LD	HL,$007B
@@ -2145,9 +2130,11 @@ _L79:
 	LD	HL,$0005
 	LD	(VAL),HL
 	LD	HL,(VAL)
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,$000A
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	FUNC1
 	LD	(NUM),HL
 	LD	HL,_S87
@@ -2231,7 +2218,8 @@ _L87:
 	LD	HL,_S92
 	CALL	__print_str
 	LD	HL,$000A
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	FUNC2
 	LD	(NUM),HL
 	LD	HL,(NUM)
@@ -2271,7 +2259,8 @@ _L89:
 	ADD	HL,DE
 	LD	(TNUM),HL
 	LD	HL,$0064
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	FUNC2
 	LD	(NUM),HL
 	LD	HL,(NUM)
@@ -3846,12 +3835,15 @@ _L135:
 	LD	HL,_S143
 	CALL	__print_str
 	LD	HL,(AARB)
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	CALL	GETL
 	LD	HL,(AARB)
-	PUSH	HL
+	LD	(IY+$70),L
+	LD	(IY+$71),H
 	LD	HL,_S144
-	PUSH	HL
+	LD	(IY+$72),L
+	LD	(IY+$73),H
 	CALL	STRCMP
 	LD	HL,$0000
 	PUSH	HL
@@ -3881,17 +3873,23 @@ _L138:
 	CALL	__strfunc_/
 	CALL	__print_newline
 _L137:
-_EXIT:
+_MAIN_EXIT:
 	POP	IY
 	RET
 
 STRCMP:
 ; function STRCMP
 	PUSH	IY
-	LD	HL,(A)
-	LD	(I),HL
-	LD	HL,(B)
-	LD	(J),HL
+	LD	BC,$0006
+	ADD	IY,BC
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
+	LD	(IY+$6E),L
+	LD	(IY+$6F),H
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
+	LD	(IY+$6C),L
+	LD	(IY+$6D),H
 _L139:
 	LD	HL,$0001
 ; if t2 == 0 goto _L140
@@ -3899,7 +3897,8 @@ _L139:
 	OR	L
 	JP	Z,_L140
 	LD	HL,(MEM)
-	LD	HL,(I)
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
 ; array load: t6 = t3[t5]
 	PUSH	HL
 	POP	DE
@@ -3911,7 +3910,8 @@ _L139:
 	LD	D,(HL)
 	EX	DE,HL
 	LD	HL,(MEM)
-	LD	HL,(J)
+	LD	L,(IY+$6C)
+	LD	H,(IY+$6D)
 ; array load: t10 = t7[t9]
 	PUSH	HL
 	POP	DE
@@ -3927,8 +3927,10 @@ _L139:
 	EX	DE,HL
 	OR	A
 	SBC	HL,DE
-	LD	(D),HL
-	LD	HL,(D)
+	LD	(IY+$6A),L
+	LD	(IY+$6B),H
+	LD	L,(IY+$6A)
+	LD	H,(IY+$6B)
 	LD	HL,$0000
 	PUSH	HL
 	POP	DE
@@ -3942,12 +3944,14 @@ _L139:
 	LD	A,H
 	OR	L
 	JP	Z,_L141
-	LD	HL,(D)
-; return t15
-	JP	_EXIT
+	LD	L,(IY+$6A)
+	LD	H,(IY+$6B)
+; return value in HL
+	JP	_STRCMP_EXIT
 _L141:
 	LD	HL,(MEM)
-	LD	HL,(I)
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
 ; array load: t19 = t16[t18]
 	PUSH	HL
 	POP	DE
@@ -3972,69 +3976,86 @@ _L141:
 	OR	L
 	JP	Z,_L142
 	LD	HL,$0000
-; return t22
-	JP	_EXIT
+; return value in HL
+	JP	_STRCMP_EXIT
 _L142:
-	LD	HL,(I)
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
 	LD	HL,$0001
 	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	LD	(I),HL
-	LD	HL,(J)
+	LD	(IY+$6E),L
+	LD	(IY+$6F),H
+	LD	L,(IY+$6C)
+	LD	H,(IY+$6D)
 	LD	HL,$0001
 	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	LD	(J),HL
+	LD	(IY+$6C),L
+	LD	(IY+$6D),H
 	JP	_L139
 _L140:
-_EXIT:
+_STRCMP_EXIT:
 	POP	IY
 	RET
 
 FUNC1:
 ; function FUNC1
 	PUSH	IY
+	LD	BC,$0004
+	ADD	IY,BC
 	LD	HL,$007B
-	LD	(LOCAL),HL
-	LD	HL,(I)
+	LD	(IY+$6C),L
+	LD	(IY+$6D),H
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
 	CALL	__print_num
 	LD	HL,_S147
 	CALL	__print_str
-	LD	HL,(J)
+	LD	L,(IY+$72)
+	LD	H,(IY+$73)
 	CALL	__print_num
 	CALL	__strfunc_/
 	CALL	__print_newline
 	LD	HL,$0064
-	LD	(VAL),HL
+	LD	(IY+$6E),L
+	LD	(IY+$6F),H
 	LD	HL,_S148
 	CALL	__print_str
-	LD	HL,(VAL)
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
 	CALL	__print_num
 	CALL	__strfunc_/
 	CALL	__print_newline
 	LD	HL,_S149
 	CALL	__print_str
-	LD	HL,(I)
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
 	CALL	__print_num
 	CALL	__strfunc_/
 	CALL	__print_newline
-	LD	HL,(I)
-	LD	HL,(LOCAL)
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
+	LD	L,(IY+$6C)
+	LD	H,(IY+$6D)
 	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	LD	HL,(VAL)
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
 	PUSH	HL
 	POP	DE
 	EX	DE,HL
 	ADD	HL,DE
-	LD	(I),HL
-	LD	HL,(I)
+	LD	(IY+$70),L
+	LD	(IY+$71),H
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
 	LD	HL,$00E4
 	PUSH	HL
 	POP	DE
@@ -4060,19 +4081,22 @@ _L144:
 	CALL	__print_num
 	LD	HL,_S151
 	CALL	__print_str
-	LD	HL,(I)
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
 	CALL	__print_num
 	CALL	__strfunc_/
 	CALL	__print_newline
 	LD	HL,_S152
 	CALL	__print_str
-	LD	HL,(LOCAL)
+	LD	L,(IY+$6C)
+	LD	H,(IY+$6D)
 	CALL	__print_num
 	CALL	__strfunc_/
 	CALL	__print_newline
 	LD	HL,_S153
 	CALL	__print_str
-	LD	HL,(VAL)
+	LD	L,(IY+$6E)
+	LD	H,(IY+$6F)
 	CALL	__print_num
 	CALL	__strfunc_/
 	CALL	__print_newline
@@ -4084,17 +4108,19 @@ _L143:
 	EX	DE,HL
 	ADD	HL,DE
 	LD	(TNUM),HL
-	LD	HL,(I)
-; return t36
-	JP	_EXIT
-_EXIT:
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
+; return value in HL
+	JP	_FUNC1_EXIT
+_FUNC1_EXIT:
 	POP	IY
 	RET
 
 FUNC2:
 ; function FUNC2
 	PUSH	IY
-	LD	HL,(I)
+	LD	L,(IY+$70)
+	LD	H,(IY+$71)
 	LD	HL,$0064
 	PUSH	HL
 	POP	DE
@@ -4109,13 +4135,13 @@ FUNC2:
 	OR	L
 	JP	Z,_L145
 	LD	HL,$0001
-; return t3
-	JP	_EXIT
+; return value in HL
+	JP	_FUNC2_EXIT
 _L145:
 	LD	HL,$000A
-; return t4
-	JP	_EXIT
-_EXIT:
+; return value in HL
+	JP	_FUNC2_EXIT
+_FUNC2_EXIT:
 	POP	IY
 	RET
 
@@ -4429,3 +4455,31 @@ _S152:
 	DB	$4C,$4F,$43,$41,$4C,$3A,$00
 _S153:
 	DB	$56,$41,$4C,$3A,$00
+
+; === Global Variables (Work Area) ===
+_AVAL	EQU	$7000
+_AIVAL	EQU	$8000
+_AAR	EQU	$8100
+_AARB	EQU	$8000
+_VAL:
+	DS	2
+_NUM:
+	DS	2
+_IVAL:
+	DS	2
+_AR:
+	DS	66
+_ARB:
+	DS	33
+_AR2:
+	DS	132
+_ARB2:
+	DS	341
+_A2:
+	DS	462
+_ARI:
+	DS	66
+_IVV:
+	DS	2
+_TNUM:
+	DS	2

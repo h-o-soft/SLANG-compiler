@@ -595,22 +595,47 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitCallExpr(CallExpr node)
     {
-        // Push arguments in order
-        foreach (var arg in node.Arguments)
-        {
-            var argVal = arg.Accept(this);
-            Emit(IrOp.PushArg, argVal);
-        }
+        var funcName = (node.Function as IdentifierExpr)?.Name;
+        var funcSym = funcName != null ? _globalSymbols?.Resolve(funcName) : null;
 
-        var dest = IrOperand.Temp(AllocTemp());
-        if (node.Function is IdentifierExpr func)
-            Emit(IrOp.Call, dest, IrOperand.Sym(func.Name));
+        // MACHINE関数判定
+        bool isMachine = funcSym?.Kind == SymbolKind.MachineFunction;
+        int? machineParamCount = null;
+        if (isMachine && funcSym!.Type is FunctionType ft)
+            machineParamCount = ft.ParameterTypes.Count;
+
+        if (isMachine && machineParamCount.HasValue)
+        {
+            // MACHINE関数: レジスタ渡し (0:CALL, 1:HL, 2:HL+DE, 3:HL+DE+BC, 4+:スタック)
+            var args = new List<IrOperand>();
+            foreach (var arg in node.Arguments)
+                args.Add(arg.Accept(this));
+
+            var dest = IrOperand.Temp(AllocTemp());
+            // 引数数に応じた渡し方をIR命令に埋め込む
+            // Src2にMACHINEの引数数を渡す
+            for (int i = 0; i < args.Count; i++)
+                Emit(IrOp.PushArg, args[i], IrOperand.Imm(i));
+
+            Emit(IrOp.Call, dest, IrOperand.Sym(funcName!), IrOperand.Imm(machineParamCount.Value));
+            return dest;
+        }
         else
         {
-            var funcAddr = node.Function.Accept(this);
-            Emit(IrOp.Call, dest, funcAddr);
+            // ユーザー関数: (IY+$70)～に引数を格納してCALL
+            int argOffset = 0x70;
+            foreach (var arg in node.Arguments)
+            {
+                var argVal = arg.Accept(this);
+                // (IY+argOffset) に書き込み
+                Emit(IrOp.StoreLocal, IrOperand.Imm(argOffset), argVal);
+                argOffset += 2;
+            }
+
+            var dest = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.Call, dest, IrOperand.Sym(funcName ?? "__indirect_call"));
+            return dest;
         }
-        return dest;
     }
 
     public IrOperand VisitArrayAccessExpr(ArrayAccessExpr node)

@@ -17,6 +17,8 @@ public class CodeGenerator
 {
     private readonly IrModule _module;
     private readonly Z80Emitter _e;
+    private string _currentFuncExitLabel = "_EXIT";
+    private int _currentFuncLocalSize;
 
     public CodeGenerator(IrModule module)
     {
@@ -119,12 +121,14 @@ public class CodeGenerator
 
     private void EmitFunction(IrFunction func)
     {
+        _currentFunction = func;
         _e.Label(func.Name);
 
         foreach (var inst in func.Instructions)
         {
             EmitInstruction(inst);
         }
+        _currentFunction = null;
     }
 
     private void EmitInstruction(IrInstruction inst)
@@ -221,10 +225,9 @@ public class CodeGenerator
             case IrOp.Return:
                 if (inst.Dest.Kind != IrOperandKind.None)
                 {
-                    _e.Comment($"return {inst.Dest}");
-                    // value should be in HL already
+                    _e.Comment($"return value in HL");
                 }
-                _e.Instruction("JP", "_EXIT");
+                _e.Instruction("JP", _currentFuncExitLabel);
                 break;
 
             case IrOp.PushArg:
@@ -253,21 +256,59 @@ public class CodeGenerator
 
     private void EmitFuncBegin(IrInstruction inst)
     {
-        // 仕様: IYレジスタでローカル変数を管理
-        // 動的変数: (IY+$00)～(IY+$6F) 最大240バイト
-        // 引数:     (IY+$70)～(IY+$7F) 最大8個
-        _e.Comment($"function {inst.Dest.Name}");
-        _e.Instruction("PUSH", "IY");
-        // TODO: 動的変数サイズに応じてIYを調整
-        // LD BC, n ; ADD IY, BC
+        var funcName = inst.Dest.Name ?? "UNKNOWN";
+        _currentFuncExitLabel = $"_{funcName}_EXIT";
+
+        // ローカル変数のサイズを事前計算するため、後続のStoreLocal命令を走査
+        _currentFuncLocalSize = ComputeLocalSize(inst);
+
+        _e.Comment($"function {funcName}");
+        if (_currentFuncLocalSize > 0)
+        {
+            // 動的変数あり → IY退避＆調整
+            _e.Instruction("PUSH", "IY");
+            _e.Instruction("LD", $"BC,${_currentFuncLocalSize:X4}");
+            _e.Instruction("ADD", "IY,BC");
+        }
+        else
+        {
+            // 動的変数なし → 引数だけならIYはそのまま
+            _e.Instruction("PUSH", "IY");
+        }
     }
 
     private void EmitFuncEnd()
     {
-        _e.Label("_EXIT");
+        _e.Label(_currentFuncExitLabel);
         _e.Instruction("POP", "IY");
         _e.Instruction("RET");
     }
+
+    /// <summary>
+    /// 関数内のローカル変数合計サイズを計算（StoreLocal命令のオフセットから推定）
+    /// </summary>
+    private int ComputeLocalSize(IrInstruction funcBeginInst)
+    {
+        // 現在の関数のIR命令を走査して、最小のIYオフセット（$70未満）を見つける
+        if (_currentFunction == null) return 0;
+
+        int minOffset = 0x70;
+        foreach (var inst in _currentFunction.Instructions)
+        {
+            if (inst.Op == IrOp.StoreLocal || inst.Op == IrOp.LoadLocal)
+            {
+                var offset = inst.Op == IrOp.StoreLocal
+                    ? (int)inst.Dest.ImmediateValue
+                    : (int)inst.Src1.ImmediateValue;
+                if (offset < 0x70 && offset < minOffset)
+                    minOffset = offset;
+            }
+        }
+        return 0x70 - minOffset;
+    }
+
+    // 現在処理中の関数IR
+    private IrFunction? _currentFunction;
 
     private void EmitLoadConst(IrInstruction inst)
     {
@@ -565,6 +606,34 @@ public class CodeGenerator
     private void EmitCall(IrInstruction inst)
     {
         var funcName = inst.Src1.Name ?? inst.Src1.ToString();
+        int machineArgs = (int)inst.Src2.ImmediateValue;
+
+        if (machineArgs > 0)
+        {
+            // MACHINE関数: スタック上の引数をレジスタに移す
+            // 引数はPushArgで逆順にスタックに積まれている
+            // 仕様: 1個→HL, 2個→HL,DE, 3個→HL,DE,BC
+            switch (machineArgs)
+            {
+                case 1:
+                    // HLに既に入っている（最後のPushArgの値）
+                    _e.Instruction("POP", "HL");
+                    break;
+                case 2:
+                    _e.Instruction("POP", "DE");
+                    _e.Instruction("POP", "HL");
+                    break;
+                case 3:
+                    _e.Instruction("POP", "BC");
+                    _e.Instruction("POP", "DE");
+                    _e.Instruction("POP", "HL");
+                    break;
+                default:
+                    // 4個以上: スタック渡し（そのまま）
+                    break;
+            }
+        }
+
         _e.Instruction("CALL", funcName);
     }
 }

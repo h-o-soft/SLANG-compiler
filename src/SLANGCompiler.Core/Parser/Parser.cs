@@ -291,9 +291,7 @@ public class Parser
             Expression? address = null;
             int? paramCount = null;
 
-            if (Match(TokenKind.Colon))
-                address = ParseNcExpr();
-
+            // (引数数) が先
             if (Match(TokenKind.LParen))
             {
                 if (Check(TokenKind.IntegerLiteral))
@@ -303,6 +301,10 @@ public class Parser
                 }
                 Expect(TokenKind.RParen, "Expected ')'");
             }
+
+            // :アドレス が後
+            if (Match(TokenKind.Colon))
+                address = ParseNcExpr();
 
             decls.Add(new MachineDecl(name, address, paramCount, start));
         } while (Match(TokenKind.Comma));
