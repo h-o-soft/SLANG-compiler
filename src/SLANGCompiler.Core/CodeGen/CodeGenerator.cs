@@ -17,7 +17,8 @@ public class CodeGenerator
 {
     private readonly IrModule _module;
     private readonly Runtime.RuntimeManager? _runtimeManager;
-    private readonly Z80Emitter _e;
+    private Z80Emitter _e;  // メイン or オーバーレイのエミッタ（切替可能）
+    private readonly Z80Emitter _mainEmitter;
     private string _currentFuncExitLabel = "_EXIT";
     private int _currentFuncLocalSize;
     private readonly HashSet<string> _calledFunctions = new(StringComparer.OrdinalIgnoreCase);
@@ -26,7 +27,8 @@ public class CodeGenerator
     {
         _module = module;
         _runtimeManager = runtimeManager;
-        _e = new Z80Emitter();
+        _mainEmitter = new Z80Emitter();
+        _e = _mainEmitter;
     }
 
     /// <summary>
@@ -47,44 +49,82 @@ public class CodeGenerator
 
     private string GenerateOverlay(OverlayModule overlay)
     {
-        var oe = new Z80Emitter();
+        // エミッタをオーバーレイ用に切り替え
+        var savedEmitter = _e;
+        var savedCalled = new HashSet<string>(_calledFunctions);
+        _calledFunctions.Clear();
+        _e = new Z80Emitter();
 
-        oe.Comment($"=== Overlay Module {overlay.Index} ===");
-        oe.Instruction("ORG", $"${overlay.OrgAddress:X4}");
-        oe.Blank();
+        _e.Comment($"=== Overlay Module {overlay.Index} ===");
+        _e.Instruction("ORG", $"${overlay.OrgAddress:X4}");
+        _e.Blank();
 
-        // モジュール内の関数
+        // モジュール内の関数（メイン部と同じEmitFunctionロジックでフル生成）
         foreach (var func in overlay.Functions)
         {
-            oe.Label(func.Name);
-            // 簡易的にIR命令をテキストとして出力
-            // TODO: EmitFunctionと同じ処理をoverlay用emitterで行う
-            oe.Comment($"function {func.Name} ({func.Instructions.Count} IR instructions)");
-            oe.Comment("TODO: full code generation for overlay functions");
-            oe.Instruction("RET");
-            oe.Blank();
+            EmitFunction(func);
+            _e.Blank();
         }
 
-        // モジュール内の文字列テーブル
-        foreach (var (label, text) in overlay.StringTable)
+        // モジュール内で使われた文字列（メイン部StringTableから該当分を抽出）
+        // 現在は全文字列がメイン部に入るので、オーバーレイからはメイン部の文字列を参照
+        // TODO: オーバーレイ固有の文字列テーブル分離
+
+        // ランタイム関数の結合（このモジュールで使用されたもの）
+        if (_runtimeManager != null)
         {
-            oe.Label(label);
-            var bytes = text.Select(ch => $"${(int)ch:X2}").Append("$00");
-            oe.Raw($"\tDB\t{string.Join(",", bytes)}");
+            var userFuncs = new HashSet<string>(overlay.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
+            foreach (var name in _calledFunctions)
+            {
+                if (!userFuncs.Contains(name))
+                    _runtimeManager.MarkUsed(name);
+            }
+
+            var usedRuntime = _runtimeManager.GetUsedFunctions().ToList();
+            if (usedRuntime.Count > 0)
+            {
+                _e.Blank();
+                _e.Comment("=== Runtime Functions ===");
+                foreach (var func in usedRuntime)
+                {
+                    _e.Label(func.Name);
+                    foreach (var line in func.Code.Split('\n'))
+                    {
+                        if (!string.IsNullOrWhiteSpace(line))
+                            _e.Raw(line);
+                    }
+                    _e.Blank();
+                }
+            }
         }
 
-        // 共有シンボル参照（メイン部のグローバル変数をEXTERNとして宣言）
-        oe.Blank();
-        oe.Comment("=== Shared Symbols (from main) ===");
+        // 共有シンボル: メイン部のグローバル変数をEQUまたはEXTERN宣言
+        _e.Blank();
+        _e.Comment("=== Shared Symbols (from main) ===");
         foreach (var gv in _module.GlobalVars)
         {
             if (gv.FixedAddress.HasValue)
-                oe.Raw($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress.Value:X4}");
+                _e.Raw($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress.Value:X4}");
             else
-                oe.Comment($"EXTERN {gv.AsmLabel}  ; defined in main");
+                _e.Raw($"; EXTERN {gv.AsmLabel}  ; address resolved at link time");
         }
 
-        return oe.ToAssembly();
+        // 文字列テーブル参照（メイン部の文字列ラベルをEXTERN）
+        if (_module.StringTable.Count > 0)
+        {
+            _e.Comment("=== String references (from main) ===");
+            foreach (var label in _module.StringTable.Keys)
+                _e.Raw($"; EXTERN {label}");
+        }
+
+        var result = _e.ToAssembly();
+
+        // エミッタを復元
+        _e = savedEmitter;
+        _calledFunctions.Clear();
+        foreach (var name in savedCalled) _calledFunctions.Add(name);
+
+        return result;
     }
 
     public string Generate()

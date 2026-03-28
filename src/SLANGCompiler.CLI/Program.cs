@@ -140,11 +140,19 @@ class Program
             Console.Error.WriteLine($"; Output: {outPath}");
 
             // Output overlay modules
-            foreach (var (name, asm) in overlays)
+            if (overlays.Count > 0)
             {
-                var overlayPath = Path.ChangeExtension(outPath, $"{name}.ASM");
-                File.WriteAllText(overlayPath, asm);
-                Console.Error.WriteLine($"; Output: {overlayPath} (overlay)");
+                foreach (var (name, asm) in overlays)
+                {
+                    var overlayPath = Path.ChangeExtension(outPath, $"{name}.ASM");
+                    File.WriteAllText(overlayPath, asm);
+                    Console.Error.WriteLine($"; Output: {overlayPath} (overlay)");
+                }
+
+                // 共有シンボルの.incファイル生成
+                var incPath = Path.ChangeExtension(outPath, ".inc");
+                GenerateSharedSymbolsInc(incPath, irModule);
+                Console.Error.WriteLine($"; Output: {incPath} (shared symbols)");
             }
         }
 
@@ -160,6 +168,54 @@ class Program
     /// <summary>
     /// ランタイムライブラリファイル（新形式.asm）を探して読み込む
     /// </summary>
+    /// <summary>
+    /// 共有シンボル定義の.incファイル生成。
+    /// メイン部とオーバーレイの両方からINCLUDEして使う。
+    /// </summary>
+    static void GenerateSharedSymbolsInc(string incPath, IR.IrModule module)
+    {
+        using var writer = new StreamWriter(incPath);
+        writer.WriteLine("; SLANG Shared Symbols (auto-generated)");
+        writer.WriteLine("; Include this file from both main and overlay ASM files.");
+        writer.WriteLine();
+
+        // グローバル変数
+        writer.WriteLine("; --- Global Variables ---");
+        foreach (var gv in module.GlobalVars)
+        {
+            if (gv.FixedAddress.HasValue)
+                writer.WriteLine($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress.Value:X4}");
+            else
+                writer.WriteLine($"; {gv.AsmLabel}\t; address assigned by linker/assembler");
+        }
+
+        // メイン部の関数
+        writer.WriteLine();
+        writer.WriteLine("; --- Functions ---");
+        foreach (var func in module.Functions)
+        {
+            writer.WriteLine($"; {func.Name}\t; defined in main");
+        }
+
+        // オーバーレイの関数
+        foreach (var overlay in module.Overlays)
+        {
+            foreach (var func in overlay.Functions)
+            {
+                writer.WriteLine($"; {func.Name}\t; defined in overlay {overlay.Index}");
+            }
+        }
+
+        // 文字列テーブル
+        if (module.StringTable.Count > 0)
+        {
+            writer.WriteLine();
+            writer.WriteLine("; --- String Labels ---");
+            foreach (var label in module.StringTable.Keys)
+                writer.WriteLine($"; {label}\t; string data in main");
+        }
+    }
+
     static void LoadRuntimeLibraries(Runtime.RuntimeManager manager, string baseDir)
     {
         // 新形式の.asmランタイムファイルを探す
