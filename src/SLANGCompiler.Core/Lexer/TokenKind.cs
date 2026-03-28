@@ -64,6 +64,13 @@ public enum TokenKind
     Low,
     Not,
     Cpl,
+    Mod,                // MOD (算術剰余)
+
+    // Keywords - bitwise (SLANG uses keywords, not symbols)
+    And,                // AND
+    Or,                 // OR
+    Xor,                // XOR
+    Ef,                 // EF (ELSE IF の略)
 
     // -- Operators --
     Plus,               // +

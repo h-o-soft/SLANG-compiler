@@ -18,9 +18,7 @@
 
 MAIN:
 ; function MAIN
-	PUSH	IX
-	LD	IX,0
-	ADD	IX,SP
+	PUSH	IY
 ; ARRAY LAR[SLANGCompiler.Parser.Ast.IntegerLiteral,SLANGCompiler.Parser.Ast.IntegerLiteral]
 ; ARRAY LARB[SLANGCompiler.Parser.Ast.IntegerLiteral,SLANGCompiler.Parser.Ast.IntegerLiteral]
 	LD	HL,$0001
@@ -4031,15 +4029,12 @@ _L138:
 	CALL	__print_newline
 _L137:
 _EXIT:
-	LD	SP,IX
-	POP	IX
+	POP	IY
 	RET
 
 STRCMP:
 ; function STRCMP
-	PUSH	IX
-	LD	IX,0
-	ADD	IX,SP
+	PUSH	IY
 	LD	HL,(A)
 	LD	(I),HL
 	LD	HL,(B)
@@ -4144,15 +4139,12 @@ _L142:
 	JP	_L139
 _L140:
 _EXIT:
-	LD	SP,IX
-	POP	IX
+	POP	IY
 	RET
 
 FUNC1:
 ; function FUNC1
-	PUSH	IX
-	LD	IX,0
-	ADD	IX,SP
+	PUSH	IY
 	LD	HL,$007B
 	LD	(LOCAL),HL
 	LD	HL,(I)
@@ -4250,15 +4242,12 @@ _L143:
 ; return t36
 	JP	_EXIT
 _EXIT:
-	LD	SP,IX
-	POP	IX
+	POP	IY
 	RET
 
 FUNC2:
 ; function FUNC2
-	PUSH	IX
-	LD	IX,0
-	ADD	IX,SP
+	PUSH	IY
 	LD	HL,(I)
 	LD	HL,$0064
 	PUSH	HL
@@ -4281,6 +4270,5 @@ _L145:
 ; return t4
 	JP	_EXIT
 _EXIT:
-	LD	SP,IX
-	POP	IX
+	POP	IY
 	RET

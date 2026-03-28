@@ -460,9 +460,9 @@ public class Parser
         var body = ParseIfBody();
         branches.Add((cond, body));
 
-        while (Check(TokenKind.Elif) || (Check(TokenKind.Else) && Peek(1).Kind == TokenKind.If))
+        while (Check(TokenKind.Elif) || Check(TokenKind.Ef) || (Check(TokenKind.Else) && Peek(1).Kind == TokenKind.If))
         {
-            if (Match(TokenKind.Elif)) { }
+            if (Match(TokenKind.Elif) || Match(TokenKind.Ef)) { }
             else { Advance(); Advance(); } // ELSE IF
             cond = ParseExpr();
             Match(TokenKind.Then);
@@ -783,33 +783,28 @@ public class Parser
 
     private Expression ParseLogAnd()
     {
-        var e = ParseBitOr();
+        var e = ParseBitOps();
         while (Match(TokenKind.LogAnd))
         {
-            e = new BinaryExpr(BinaryOp.LogAnd, e, ParseBitOr(), e.Span);
+            e = new BinaryExpr(BinaryOp.LogAnd, e, ParseBitOps(), e.Span);
         }
         return e;
     }
 
-    private Expression ParseBitOr()
-    {
-        var e = ParseBitXor();
-        while (Match(TokenKind.Pipe))
-            e = new BinaryExpr(BinaryOp.Or, e, ParseBitXor(), e.Span);
-        return e;
-    }
-
-    private Expression ParseBitXor()
-    {
-        return ParseBitAnd(); // XOR: TODO if needed
-    }
-
-    private Expression ParseBitAnd()
+    // 仕様: AND OR XOR は同一優先度、関係演算子より低い
+    private Expression ParseBitOps()
     {
         var e = ParseEquality();
-        // SLANG uses AND keyword for bitwise AND
-        while (Match(TokenKind.Ampersand) || MatchIdent("AND"))
-            e = new BinaryExpr(BinaryOp.And, e, ParseEquality(), e.Span);
+        while (true)
+        {
+            if (Match(TokenKind.And) || Match(TokenKind.Ampersand))
+                e = new BinaryExpr(BinaryOp.And, e, ParseEquality(), e.Span);
+            else if (Match(TokenKind.Or) || Match(TokenKind.Pipe))
+                e = new BinaryExpr(BinaryOp.Or, e, ParseEquality(), e.Span);
+            else if (Match(TokenKind.Xor))
+                e = new BinaryExpr(BinaryOp.Xor, e, ParseEquality(), e.Span);
+            else break;
+        }
         return e;
     }
 
@@ -827,7 +822,7 @@ public class Parser
 
     private Expression ParseComparison()
     {
-        var e = ParseShift();
+        var e = ParseAdd();
         while (true)
         {
             BinaryOp op;
@@ -840,24 +835,6 @@ public class Parser
             else if (Check(TokenKind.SignedLe)) op = BinaryOp.SLe;
             else if (Check(TokenKind.SignedGe)) op = BinaryOp.SGe;
             else break;
-            Advance();
-            e = new BinaryExpr(op, e, ParseShift(), e.Span);
-        }
-        return e;
-    }
-
-    private Expression ParseShift()
-    {
-        var e = ParseAdd();
-        while (CheckAny(TokenKind.Shl, TokenKind.Shr, TokenKind.SignedShl, TokenKind.SignedShr))
-        {
-            var op = Current.Kind switch
-            {
-                TokenKind.Shl => BinaryOp.Shl,
-                TokenKind.Shr => BinaryOp.Shr,
-                TokenKind.SignedShl => BinaryOp.SShl,
-                _ => BinaryOp.SShr,
-            };
             Advance();
             e = new BinaryExpr(op, e, ParseAdd(), e.Span);
         }
@@ -876,6 +853,7 @@ public class Parser
         return e;
     }
 
+    // 仕様: * / MOD << >> .*. ./. .MOD. .<<. .>>. は同一優先順位
     private Expression ParseMul()
     {
         var e = ParseUnary();
@@ -884,9 +862,14 @@ public class Parser
             BinaryOp op;
             if (Check(TokenKind.Star)) op = BinaryOp.Mul;
             else if (Check(TokenKind.Slash)) op = BinaryOp.Div;
+            else if (Check(TokenKind.Mod)) op = BinaryOp.Mod;
+            else if (Check(TokenKind.Shl)) op = BinaryOp.Shl;
+            else if (Check(TokenKind.Shr)) op = BinaryOp.Shr;
             else if (Check(TokenKind.SignedMul)) op = BinaryOp.SMul;
             else if (Check(TokenKind.SignedDiv)) op = BinaryOp.SDiv;
             else if (Check(TokenKind.SignedMod)) op = BinaryOp.SMod;
+            else if (Check(TokenKind.SignedShl)) op = BinaryOp.SShl;
+            else if (Check(TokenKind.SignedShr)) op = BinaryOp.SShr;
             else break;
             Advance();
             e = new BinaryExpr(op, e, ParseUnary(), e.Span);

@@ -55,6 +55,11 @@ public class Lexer
         ["LOW"] = TokenKind.Low,
         ["NOT"] = TokenKind.Not,
         ["CPL"] = TokenKind.Cpl,
+        ["MOD"] = TokenKind.Mod,
+        ["AND"] = TokenKind.And,
+        ["OR"] = TokenKind.Or,
+        ["XOR"] = TokenKind.Xor,
+        ["EF"] = TokenKind.Ef,
     };
 
     // 文字列関数名 (case-insensitive)

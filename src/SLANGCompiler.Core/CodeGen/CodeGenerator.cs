@@ -192,17 +192,19 @@ public class CodeGenerator
 
     private void EmitFuncBegin(IrInstruction inst)
     {
+        // 仕様: IYレジスタでローカル変数を管理
+        // 動的変数: (IY+$00)～(IY+$6F) 最大240バイト
+        // 引数:     (IY+$70)～(IY+$7F) 最大8個
         _e.Comment($"function {inst.Dest.Name}");
-        _e.Instruction("PUSH", "IX");
-        _e.Instruction("LD", "IX,0");
-        _e.Instruction("ADD", "IX,SP");
+        _e.Instruction("PUSH", "IY");
+        // TODO: 動的変数サイズに応じてIYを調整
+        // LD BC, n ; ADD IY, BC
     }
 
     private void EmitFuncEnd()
     {
         _e.Label("_EXIT");
-        _e.Instruction("LD", "SP,IX");
-        _e.Instruction("POP", "IX");
+        _e.Instruction("POP", "IY");
         _e.Instruction("RET");
     }
 
