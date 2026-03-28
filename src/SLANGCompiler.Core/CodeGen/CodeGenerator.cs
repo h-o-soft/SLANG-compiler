@@ -16,13 +16,16 @@ namespace SLANGCompiler.CodeGen;
 public class CodeGenerator
 {
     private readonly IrModule _module;
+    private readonly Runtime.RuntimeManager? _runtimeManager;
     private readonly Z80Emitter _e;
     private string _currentFuncExitLabel = "_EXIT";
     private int _currentFuncLocalSize;
+    private readonly HashSet<string> _calledFunctions = new(StringComparer.OrdinalIgnoreCase);
 
-    public CodeGenerator(IrModule module)
+    public CodeGenerator(IrModule module, Runtime.RuntimeManager? runtimeManager = null)
     {
         _module = module;
+        _runtimeManager = runtimeManager;
         _e = new Z80Emitter();
     }
 
@@ -98,6 +101,37 @@ public class CodeGenerator
         {
             _e.Blank();
             _e.Comment($"=== WORK at ${_module.WorkAddress.Value:X4} ===");
+        }
+
+        // ランタイム関数の結合（使用されたもののみ）
+        if (_runtimeManager != null)
+        {
+            // ユーザー定義関数名を収集（ランタイムとの区別用）
+            var userFuncs = new HashSet<string>(_module.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
+
+            foreach (var name in _calledFunctions)
+            {
+                if (!userFuncs.Contains(name))
+                    _runtimeManager.MarkUsed(name);
+            }
+
+            var usedRuntime = _runtimeManager.GetUsedFunctions().ToList();
+            if (usedRuntime.Count > 0)
+            {
+                _e.Blank();
+                _e.Comment("=== Runtime Functions ===");
+                foreach (var func in usedRuntime)
+                {
+                    _e.Label(func.Name);
+                    // ランタイムのコードをそのまま出力
+                    foreach (var line in func.Code.Split('\n'))
+                    {
+                        if (!string.IsNullOrWhiteSpace(line))
+                            _e.Raw(line);
+                    }
+                    _e.Blank();
+                }
+            }
         }
 
         // IYワーク領域 (256バイト)
@@ -798,6 +832,7 @@ public class CodeGenerator
     private void EmitCall(IrInstruction inst)
     {
         var funcName = inst.Src1.Name ?? inst.Src1.ToString();
+        _calledFunctions.Add(funcName);
         int machineArgs = (int)inst.Src2.ImmediateValue;
 
         if (machineArgs > 0)

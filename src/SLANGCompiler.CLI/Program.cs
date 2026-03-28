@@ -127,7 +127,11 @@ class Program
             }
 
             // Phase 5: Code Generation
-            var codeGen = new CodeGenerator(irModule);
+            // ランタイムマネージャ（存在するlibdefからランタイムを読み込み）
+            var runtimeManager = new Runtime.RuntimeManager();
+            LoadRuntimeLibraries(runtimeManager, baseDir);
+
+            var codeGen = new CodeGenerator(irModule, runtimeManager);
             var asmOutput = codeGen.Generate();
 
             // Output
@@ -143,5 +147,35 @@ class Program
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// ランタイムライブラリファイル（新形式.asm）を探して読み込む
+    /// </summary>
+    static void LoadRuntimeLibraries(Runtime.RuntimeManager manager, string baseDir)
+    {
+        // 新形式の.asmランタイムファイルを探す
+        var searchDirs = new[] {
+            Path.Combine(baseDir, "lib", "runtime"),
+            Path.Combine(baseDir, "runtime"),
+            "lib/runtime",
+            "runtime",
+        };
+
+        foreach (var dir in searchDirs)
+        {
+            if (!Directory.Exists(dir)) continue;
+            foreach (var file in Directory.GetFiles(dir, "*.asm"))
+            {
+                try
+                {
+                    manager.LoadFromFile(file);
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"; Warning: Failed to load runtime {file}: {ex.Message}");
+                }
+            }
+        }
     }
 }
