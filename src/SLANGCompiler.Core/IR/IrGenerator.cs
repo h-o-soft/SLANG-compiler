@@ -26,6 +26,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private record LocalVarInfo(int Offset, int ByteSize);
     private int _localOffset;
 
+    // 各tempのデータサイズを追跡（FLOAT判定用）
+    private readonly Dictionary<int, int> _tempDataSize = new();
+
     public IrModule Generate(CompilationUnit unit)
     {
         unit.Accept(this);
@@ -623,6 +626,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (_localVars != null && _localVars.TryGetValue(node.Name, out var localInfo))
         {
             Emit(IrOp.LoadLocal, t, IrOperand.Imm(localInfo.Offset), dataSize: localInfo.ByteSize);
+            _tempDataSize[t.TempIndex] = localInfo.ByteSize;
             return t;
         }
 
@@ -630,13 +634,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var sym = _globalSymbols?.Resolve(node.Name);
         if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstValue is int constVal)
         {
-            // 定数 → 即値ロード
             Emit(IrOp.LoadConst, t, IrOperand.Imm(constVal));
         }
         else
         {
-            // グローバル変数 or 未解決 → ラベルアクセス
-            Emit(IrOp.LoadVar, t, IrOperand.Sym(node.Name));
+            int ds = sym?.Type?.ByteSize ?? 2;
+            Emit(IrOp.LoadVar, t, IrOperand.Sym(node.Name), dataSize: ds);
+            _tempDataSize[t.TempIndex] = ds;
         }
         return t;
     }
@@ -677,7 +681,32 @@ public class IrGenerator : IAstVisitor<IrOperand>
             _ => IrOp.Nop,
         };
 
-        Emit(op, dest, left, right);
+        // FLOAT判定: いずれかのオペランドがFLOAT(3byte)なら演算もFLOAT
+        int leftDs = left.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(left.TempIndex, out int lds) ? lds : 2;
+        int rightDs = right.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(right.TempIndex, out int rds) ? rds : 2;
+        int resultDs = (leftDs == 3 || rightDs == 3) ? 3 : 2;
+
+        // Word→Float型変換が必要な場合
+        if (resultDs == 3)
+        {
+            if (leftDs != 3)
+            {
+                var conv = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.Call, conv, IrOperand.Sym("i16tof24"));
+                _tempDataSize[conv.TempIndex] = 3;
+                left = conv;
+            }
+            if (rightDs != 3)
+            {
+                var conv = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.Call, conv, IrOperand.Sym("i16tof24"));
+                _tempDataSize[conv.TempIndex] = 3;
+                right = conv;
+            }
+        }
+
+        Emit(op, dest, left, right, dataSize: resultDs);
+        _tempDataSize[dest.TempIndex] = resultDs;
         return dest;
     }
 
@@ -1079,7 +1108,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
             else
             {
-                Emit(IrOp.StoreVar, IrOperand.Sym(id.Name), value);
+                var sym = _globalSymbols?.Resolve(id.Name);
+                int ds = sym?.Type?.ByteSize ?? 2;
+                Emit(IrOp.StoreVar, IrOperand.Sym(id.Name), value, dataSize: ds);
             }
         }
         else if (target is ArrayAccessExpr arr)

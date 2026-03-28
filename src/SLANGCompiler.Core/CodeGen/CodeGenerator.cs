@@ -544,14 +544,28 @@ public class CodeGenerator
     /// </summary>
     private void EmitBinaryDirect(IrInstruction inst)
     {
+        // FLOAT判定: DataSize==3 の場合はf24ランタイムを使用
+        bool isFloat = inst.DataSize == 3;
+
         switch (inst.Op)
         {
             // 算術
-            case IrOp.Add: _e.Instruction("ADD", "HL,DE"); break;
-            case IrOp.Sub: _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE"); break;
-            case IrOp.Mul or IrOp.SMul: _e.Instruction("CALL", "MUL16"); break;
-            case IrOp.Div: _e.Instruction("CALL", "DIV16"); break;
-            case IrOp.SDiv: _e.Instruction("CALL", "SDIV16"); break;
+            case IrOp.Add:
+                if (isFloat) _e.Instruction("CALL", "f24add");
+                else _e.Instruction("ADD", "HL,DE");
+                break;
+            case IrOp.Sub:
+                if (isFloat) _e.Instruction("CALL", "f24sub");
+                else { _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE"); }
+                break;
+            case IrOp.Mul or IrOp.SMul:
+                if (isFloat) _e.Instruction("CALL", "f24mul");
+                else _e.Instruction("CALL", "MUL16");
+                break;
+            case IrOp.Div or IrOp.SDiv:
+                if (isFloat) _e.Instruction("CALL", "f24div");
+                else _e.Instruction("CALL", inst.Op == IrOp.SDiv ? "SDIV16" : "DIV16");
+                break;
             case IrOp.Mod: _e.Instruction("CALL", "MOD16"); break;
             case IrOp.SMod: _e.Instruction("CALL", "SMOD16"); break;
 
@@ -575,8 +589,11 @@ public class CodeGenerator
             case IrOp.SShl: _e.Instruction("CALL", "SHL16"); break;
             case IrOp.SShr: _e.Instruction("CALL", "SSHR16"); break;
 
-            // 比較 (HL=src1, DE=src2 → src1 - src2 のフラグで判定)
+            // 比較
+            // FLOAT: f24cmpを呼んでフラグで判定 (Z=等、C=小)
             case IrOp.CmpEq:
+                if (isFloat) { _e.Instruction("CALL", "f24cmp"); }
+                else { _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE"); }
                 _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
                 _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "Z,$+3"); _e.Instruction("INC", "HL");
                 break;
@@ -904,12 +921,16 @@ public class CodeGenerator
     {
         var name = inst.Src1.Name!;
         _e.Instruction("LD", $"HL,({name})");
+        if (inst.DataSize == 3) // FLOAT: 3バイト目をAレジスタに
+            _e.Instruction("LD", $"A,({name}+2)");
     }
 
     private void EmitStoreVar(IrInstruction inst)
     {
         var name = inst.Dest.Name!;
         _e.Instruction("LD", $"({name}),HL");
+        if (inst.DataSize == 3) // FLOAT: 3バイト目
+            _e.Instruction("LD", $"({name}+2),A");
     }
 
     private void EmitLoadLocal(IrInstruction inst)
@@ -917,15 +938,15 @@ public class CodeGenerator
         int offset = (int)inst.Src1.ImmediateValue;
         if (inst.DataSize == 1)
         {
-            // BYTE: (IY+offset) → L, H=0
             _e.Instruction("LD", $"L,(IY+${offset:X2})");
             _e.Instruction("LD", "H,$00");
         }
         else
         {
-            // WORD: (IY+offset) → L, (IY+offset+1) → H
             _e.Instruction("LD", $"L,(IY+${offset:X2})");
             _e.Instruction("LD", $"H,(IY+${offset + 1:X2})");
+            if (inst.DataSize == 3) // FLOAT: 3バイト目
+                _e.Instruction("LD", $"A,(IY+${offset + 2:X2})");
         }
     }
 
@@ -939,9 +960,10 @@ public class CodeGenerator
         }
         else
         {
-            // WORD: L → (IY+offset), H → (IY+offset+1)
             _e.Instruction("LD", $"(IY+${offset:X2}),L");
             _e.Instruction("LD", $"(IY+${offset + 1:X2}),H");
+            if (inst.DataSize == 3) // FLOAT: 3バイト目
+                _e.Instruction("LD", $"(IY+${offset + 2:X2}),A");
         }
     }
 
