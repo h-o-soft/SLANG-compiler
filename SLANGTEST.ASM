@@ -3681,6 +3681,102 @@ _IVV:
 _TNUM:
 	DS	2
 
+; === Runtime Functions ===
+PRT:
+PUSH HL
+PUSH DE
+PUSH BC
+PUSH IY
+LD E,A
+LD C,$06
+CALL $0005
+POP IY
+POP BC
+POP DE
+POP HL
+RET
+WORK10:
+DB  "12345",0
+DS  4
+
+PSTR:
+.pstr1
+LD A,D
+OR E
+RET Z
+LD A,L
+CALL PRT
+DEC DE
+JR .pstr1
+
+PCHR:
+LD A, H
+CALL PRT
+LD A, L
+JR PRT
+
+PSTR2:
+.pstr1
+LD A,D
+OR E
+RET Z
+CALL PCHR
+DEC DE
+JR .pstr1
+
+PCR:
+EX DE,HL
+LD HL,$0D0A
+JR PSTR2
+
+PCRONE:
+LD HL,1
+
+GETLIN:
+LD D,0
+GETLPROC:
+PUSH DE
+LD DE,sKBFAD
+CALL sGETL
+POP BC
+LD A,(DE)
+CP $1B
+JR NZ, .getlin1
+LD (HL),A
+LD HL,$FFFF
+RET
+.getlin1
+INC B
+DEC B
+JR Z,.getlin2
+LD A,(DE)
+OR A
+JR Z,.getlin2
+INC DE
+DEC B
+JR .getlin1
+.getlin2
+LD B,0
+.getlin4
+LD A,(DE)
+INC DE
+OR A
+JR Z,.getlin3
+LD (HL),A
+INC HL
+INC B
+DEC C
+JR NZ,.getlin4
+.getlin3
+LD (HL),0
+LD L,B
+LD H,0
+RET
+
+GETL:
+LD E,0
+
+
 ; === IY Work Area (256 bytes) ===
 __IYWORK:
 	DS	256
