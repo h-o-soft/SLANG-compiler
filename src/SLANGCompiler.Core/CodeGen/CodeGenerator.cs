@@ -945,25 +945,26 @@ public class CodeGenerator
             case IrOp.CmpEq:
                 if (isFloat) { CallRuntime("f24cmp"); }
                 else { _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE"); }
-                _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
-                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "Z,$+3"); _e.Instruction("INC", "HL");
+                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "NZ,$+3"); _e.Instruction("INC", "HL");
                 break;
             case IrOp.CmpNeq:
                 _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
-                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "NZ,$+3"); _e.Instruction("INC", "HL");
+                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "Z,$+3"); _e.Instruction("INC", "HL");
                 break;
             case IrOp.CmpLt:
-                _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
-                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "C,$+3"); _e.Instruction("INC", "HL");
-                break;
-            case IrOp.CmpGe:
+                // src1 < src2 → src1-src2: C=true → JR NC(false)でスキップ
                 _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
                 _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "NC,$+3"); _e.Instruction("INC", "HL");
                 break;
-            case IrOp.CmpGt:
-                // src1 > src2 → src2 - src1 で C
-                _e.Instruction("EX", "DE,HL"); _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+            case IrOp.CmpGe:
+                // src1 >= src2 → src1-src2: NC=true → JR C(false)でスキップ
+                _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
                 _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "C,$+3"); _e.Instruction("INC", "HL");
+                break;
+            case IrOp.CmpGt:
+                // src1 > src2 → src2-src1: C=true → JR NC(false)でスキップ
+                _e.Instruction("EX", "DE,HL"); _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "NC,$+3"); _e.Instruction("INC", "HL");
                 break;
             case IrOp.CmpLe:
                 // src1 <= src2 → src2 - src1: carryならsrc1>src2(false)
@@ -1441,15 +1442,21 @@ public class CodeGenerator
         CallRuntime(left ? "LSHIFTHLDE" : "RSHIFTHLDE");
     }
 
-    private void EmitCompare(IrInstruction inst, string cond)
+    private static readonly Dictionary<string, string> InvertCond = new()
+    {
+        ["Z"] = "NZ", ["NZ"] = "Z", ["C"] = "NC", ["NC"] = "C",
+    };
+
+    private void EmitCompare(IrInstruction inst, string trueCond)
     {
         // src1(stack) cmp src2(HL) → 0 or 1
+        // trueCond: 条件成立時のフラグ。INCをスキップする条件はその反転。
         _e.Instruction("POP", "DE");     // DE = src1
         _e.Instruction("EX", "DE,HL");   // HL = src1, DE = src2
         _e.Instruction("OR", "A");
         _e.Instruction("SBC", "HL,DE");  // src1 - src2
         _e.Instruction("LD", "HL,$0000");
-        _e.Instruction("JR", $"{cond},$+3");
+        _e.Instruction("JR", $"{InvertCond[trueCond]},$+3"); // false時にINCスキップ
         _e.Instruction("INC", "HL");
     }
 
