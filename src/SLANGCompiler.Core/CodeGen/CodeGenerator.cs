@@ -1731,13 +1731,14 @@ public class CodeGenerator
 
     private void EmitPortOut(IrInstruction inst)
     {
-        // HL = port address, DE = value
+        // IR: PortOut dest=addr, src1=value
+        // 実行順: value→PUSH, addr→HL
+        // POP DE → DE=value, HL=addr
         bool isByte = inst.DataSize == 1;
-        _e.Instruction("POP", "DE"); // value
-        _e.Instruction("EX", "DE,HL");
+        _e.Instruction("POP", "DE"); // DE = value, HL = addr
         _e.Instruction("LD", "B,H");
-        _e.Instruction("LD", "C,L");
-        _e.Instruction("EX", "DE,HL");
+        _e.Instruction("LD", "C,L"); // BC = addr (port)
+        _e.Instruction("EX", "DE,HL"); // HL = value
         if (isByte)
         {
             _e.Instruction("OUT", "(C),L");

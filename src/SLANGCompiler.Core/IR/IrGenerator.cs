@@ -942,25 +942,32 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var funcName = (node.Function as IdentifierExpr)?.Name;
         var funcSym = funcName != null ? _globalSymbols?.Resolve(funcName) : null;
 
-        // MACHINE関数判定
-        bool isMachine = funcSym?.Kind == SymbolKind.MachineFunction;
+        // MACHINE関数判定:
+        // - SymbolKind.MachineFunction（MACHINE宣言、ビルトイン関数）
+        // - シンボル未登録（ランタイム関数）→ 引数個数は呼び出し側の引数数を使用
+        // - SymbolKind.Function（ユーザー定義関数）→ IYオフセット渡し
+        bool isUserFunc = funcSym?.Kind == SymbolKind.Function;
+        bool isMachine = !isUserFunc;
         int? machineParamCount = null;
-        if (isMachine && funcSym!.Type is FunctionType ft)
-            machineParamCount = ft.ParameterTypes.Count;
+        if (isMachine)
+        {
+            if (funcSym?.Type is FunctionType ft)
+                machineParamCount = ft.ParameterTypes.Count;
+            else
+                machineParamCount = node.Arguments.Count; // ランタイム関数: 呼び出し側の引数数
+        }
 
         if (isMachine && machineParamCount.HasValue)
         {
-            // MACHINE関数: レジスタ渡し (0:CALL, 1:HL, 2:HL+DE, 3:HL+DE+BC, 4+:スタック)
-            var args = new List<IrOperand>();
-            foreach (var arg in node.Arguments)
-                args.Add(arg.Accept(this));
+            // MACHINE関数: レジスタ渡し (0:CALL, 1:HL, 2:HL+DE, 3:HL+DE+BC)
+            // 各引数を評価した直後にPushArgしてスタックに退避
+            for (int i = 0; i < node.Arguments.Count; i++)
+            {
+                var argVal = node.Arguments[i].Accept(this);
+                Emit(IrOp.PushArg, argVal, IrOperand.Imm(i));
+            }
 
             var dest = IrOperand.Temp(AllocTemp());
-            // 引数数に応じた渡し方をIR命令に埋め込む
-            // Src2にMACHINEの引数数を渡す
-            for (int i = 0; i < args.Count; i++)
-                Emit(IrOp.PushArg, args[i], IrOperand.Imm(i));
-
             Emit(IrOp.Call, dest, IrOperand.Sym(funcName!), IrOperand.Imm(machineParamCount.Value));
             return dest;
         }

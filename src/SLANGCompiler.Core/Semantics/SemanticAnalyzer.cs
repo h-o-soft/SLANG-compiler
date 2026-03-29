@@ -88,7 +88,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         {
             var paramTypes = Enumerable.Repeat(SlangType.Word, pc).ToList();
             var funcType = new FunctionType(SlangType.Word, paramTypes);
-            var sym = _symbols.Define(name, SymbolKind.Function, funcType);
+            // ビルトイン関数はMACHINE関数（レジスタ渡し: HL, DE, BC）
+            var sym = _symbols.Define(name, SymbolKind.MachineFunction, funcType);
             sym.IsGlobal = true;
             sym.AsmLabel = name;
         }

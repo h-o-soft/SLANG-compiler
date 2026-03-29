@@ -84,6 +84,9 @@ wine ~/projects/SLANG-compiler/tools/cpm.exe examples/PROG.COM
 | 全比較非融合版 | 条件判定が反転 | JR cond,$+3のcondが逆 | InvertCond辞書で統一 |
 | ローカル2D配列 | 書き込み値が反映されない | InlineAsmのDestにtemp未紐付 | Dest=tempでPUSH判定を有効化 |
 | StoreVar後のPUSH漏れ | FOR文の終了条件でスタック破壊 | NeedsPushAfterがStoreVarで打ち切り | StoreVar/StoreLocal後はスキャン続行 |
+| ビルトイン/ランタイム関数の呼出規約 | LOCATE等がIY渡しになりレジスタ渡しでない | SymbolKind.FunctionでなくMachineFunctionが必要 | ユーザー定義関数以外は全てMACHINE（レジスタ渡し）に |
+| MACHINE引数評価順序 | 2引数で1番目が上書きされる | 全引数Accept後にPushArg | Accept直後にPushArgに変更 |
+| PortOut addr/value逆転 | PORT書込みでaddr/valueが逆 | EX DE,HL不要 | MemStoreと同じ修正 |
 
 ---
 
@@ -97,3 +100,5 @@ wine ~/projects/SLANG-compiler/tools/cpm.exe examples/PROG.COM
 | examples/STARS_X1.SL | OK | 未確認（X1エミュ必要） |
 | SLANGTEST.SL | OK | テスト1-54全通過（旧コンパイラと一致） |
 | examples/FURUI.SL | OK | OK（素数一覧出力、正常終了） |
+| examples/STARS.SL | OK | OK（LSX-Dodgers） |
+| examples/STARS_X1.SL | OK | OK（X1エミュ） |
