@@ -12,4 +12,5 @@ public class EnvironmentConfig
     public int DefaultWork { get; set; }
     public List<string> Libraries { get; set; } = new();
     public string? OptimizeRules { get; set; }
+    public bool CodeReadonly { get; set; }
 }

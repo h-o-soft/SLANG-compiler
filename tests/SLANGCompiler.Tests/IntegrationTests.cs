@@ -196,4 +196,30 @@ SUB() BEGIN PRINT(""X""); END;
             Assert.DoesNotContain("BEEP:", asm);
         }
     }
+
+    [Fact]
+    public void MsxRomEnvironment_TemplateInit()
+    {
+        var asm = CompileWithCli(
+            "VAR X; ARRAY ARI[4]={1,2,3,4,5}; MAIN() BEGIN ARI[0]=99; END;",
+            env: "msxrom");
+        // ROM環境: テンプレートとLDIRが出力される
+        Assert.Contains("__INIT_TEMPLATE:", asm);
+        Assert.Contains("__INIT_TEMPLATE_END:", asm);
+        Assert.Contains("LD HL,__INIT_TEMPLATE", asm);
+        Assert.Contains("LD DE,__WORK__", asm);
+        Assert.Contains("LD BC,__INIT_TEMPLATE_END-__INIT_TEMPLATE", asm);
+        // 配列はWORK内にEQU配置
+        Assert.Contains("__ARI EQU (__WORK__", asm);
+    }
+
+    [Fact]
+    public void LsxEnvironment_ArrayInlineDB()
+    {
+        // RAM環境: 配列はコード領域にDB直接配置、テンプレートなし
+        var asm = CompileWithCli(
+            "ARRAY ARI[4]={1,2,3}; MAIN() BEGIN END;");
+        Assert.Contains("__ARI:", asm);
+        Assert.DoesNotContain("__INIT_TEMPLATE", asm);
+    }
 }

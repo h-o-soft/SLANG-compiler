@@ -35,6 +35,9 @@ public class EnvironmentLoader
         if (!string.IsNullOrEmpty(raw.DefaultWork))
             config.DefaultWork = ParseAddress(raw.DefaultWork);
 
+        // コード領域の読取専用フラグ（ROM環境）
+        config.CodeReadonly = raw.CodeReadonly;
+
         // ライブラリリスト（.yml → .asm に変換）
         if (raw.Libraries != null)
         {
@@ -76,6 +79,9 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "libraries")]
         public List<string>? Libraries { get; set; }
+
+        [YamlMember(Alias = "code_readonly")]
+        public bool CodeReadonly { get; set; }
 
         [YamlMember(Alias = "optimize")]
         public string? Optimize { get; set; }

@@ -82,11 +82,11 @@
 
 ### 優先度: 中
 
-#### T5. メモリレイアウトの統一 (docs/memory-layout-design.md)
-- 変数: 実行時コピー方式 (DS + LD) vs コード内埋込み方式 (DB)
-- Phase 1: 全部実行時コピーで統一
-- Phase 2: env_type別戦略
-- Phase 3: text/rodata/data/bssセクション分離
+#### ~~T5. メモリレイアウトの統一~~ ✅完了 (Phase 1+2)
+- code_readonlyフラグをenv追加（msxrom.env: true）
+- RAM環境: 現行維持（コード領域にDB直接配置）
+- ROM環境: テンプレート(__INIT_TEMPLATE)+WORK配置+起動時LDIRコピー
+- Phase 3（明示的セクション管理）は将来タスク
 
 #### ~~T6. 定数条件IF文の最適化~~ ✅完了
 - 定数TRUE: 条件チェック省略、bodyのみ出力、残りブランチ/else省略
@@ -152,6 +152,7 @@
 - [x] T6: 定数条件IF文の最適化 (TRUE→チェック省略、FALSE→ブランチ省略)
 - [x] T6b: 符号付き比較のcompare+jump特殊化 (IF文でインライン展開、CALL不要)
 - [x] T7: エラーリカバリ (3種同期+MaxErrors=30+5ループ対応)
+- [x] T5: メモリレイアウト統一 Phase1+2 (code_readonly, テンプレートLDIR)
 
 ---
 

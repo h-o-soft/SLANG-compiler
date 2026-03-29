@@ -24,6 +24,7 @@ public class CodeGenerator
     private int _currentFuncLocalSize;
     private readonly HashSet<string> _calledFunctions = new(StringComparer.OrdinalIgnoreCase);
     private int _genLabelCount;
+    private bool IsCodeReadonly => _envConfig?.CodeReadonly == true;
 
     public CodeGenerator(IrModule module, Runtime.RuntimeManager? runtimeManager = null,
         Runtime.EnvironmentConfig? envConfig = null)
@@ -174,7 +175,8 @@ public class CodeGenerator
             var code = _runtimeManager.GetAndExclude("SLANGINIT");
             if (code != null)
             {
-                code = code.Replace("<<CALLINITIALIZER>>", " CALL RUNTIME_INIT");
+                var callinitReplacement = BuildCallInitializerCode();
+                code = code.Replace("<<CALLINITIALIZER>>", callinitReplacement);
                 // 行単位でSLANGINITを処理し、CALL MAIN直前にグローバル初期化を挿入
                 foreach (var line in code.Split('\n'))
                 {
@@ -195,6 +197,14 @@ public class CodeGenerator
             // フォールバック: SLANGINITなし環境
             _e.Comment("=== Entry Point ===");
             _e.Instruction("LD", "IY,__IYWORK");
+            // ROM環境: テンプレートコピー
+            if (IsCodeReadonly && HasInitDataArrays())
+            {
+                _e.Instruction("LD", "HL,__INIT_TEMPLATE");
+                _e.Instruction("LD", "DE,__WORK__");
+                _e.Instruction("LD", "BC,__INIT_TEMPLATE_END-__INIT_TEMPLATE");
+                _e.Instruction("LDIR");
+            }
             if (HasRuntimeInitializers())
                 _e.Instruction("CALL", "RUNTIME_INIT");
             EmitGlobalInit();
@@ -218,19 +228,40 @@ public class CodeGenerator
             }
         }
 
-        // === Phase 7: 初期値付きグローバル変数（コード領域に配置） ===
+        // === Phase 7: 初期値付きグローバル変数 ===
         // アドレス固定変数: EQUで定義
         foreach (var gv in _module.GlobalVars.Where(v => v.FixedAddress.HasValue))
         {
             _e.Raw($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress!.Value:X4}");
         }
 
-        // 初期値付き変数: コード領域にDBで配置
-        foreach (var gv in _module.GlobalVars.Where(v => !v.FixedAddress.HasValue && v.InitialData != null))
+        var initDataArrays = _module.GlobalVars
+            .Where(v => v.InitialData != null && !v.FixedAddress.HasValue).ToList();
+
+        if (IsCodeReadonly)
         {
-            _e.Label(gv.AsmLabel);
-            var bytes = string.Join(",", gv.InitialData!.Select(b => $"${b:X2}"));
-            _e.Raw($"\tDB\t{bytes}");
+            // ROM環境: テンプレートとしてrodata領域に出力（ラベルなし）
+            if (initDataArrays.Count > 0)
+            {
+                _e.Label("__INIT_TEMPLATE");
+                foreach (var gv in initDataArrays)
+                {
+                    _e.Comment(gv.AsmLabel);
+                    var bytes = string.Join(",", gv.InitialData!.Select(b => $"${b:X2}"));
+                    _e.Raw($"\tDB\t{bytes}");
+                }
+                _e.Label("__INIT_TEMPLATE_END");
+            }
+        }
+        else
+        {
+            // RAM環境: コード領域にラベル付きDBで直接配置（現行維持）
+            foreach (var gv in initDataArrays)
+            {
+                _e.Label(gv.AsmLabel);
+                var bytes = string.Join(",", gv.InitialData!.Select(b => $"${b:X2}"));
+                _e.Raw($"\tDB\t{bytes}");
+            }
         }
 
         // === Phase 8: ランタイム関数出力 + RUNTIME_INIT ===
@@ -292,6 +323,25 @@ public class CodeGenerator
                 pendingConstVal = null;
             }
         }
+    }
+
+    /// <summary>初期値付き配列（固定アドレスなし）が存在するか</summary>
+    private bool HasInitDataArrays() =>
+        _module.GlobalVars.Any(v => v.InitialData != null && !v.FixedAddress.HasValue);
+
+    /// <summary><<CALLINITIALIZER>>の置換コードを生成</summary>
+    private string BuildCallInitializerCode()
+    {
+        var sb = new System.Text.StringBuilder();
+        if (IsCodeReadonly && HasInitDataArrays())
+        {
+            sb.AppendLine(" LD HL,__INIT_TEMPLATE");
+            sb.AppendLine(" LD DE,__WORK__");
+            sb.AppendLine(" LD BC,__INIT_TEMPLATE_END-__INIT_TEMPLATE");
+            sb.AppendLine(" LDIR");
+        }
+        sb.AppendLine(" CALL RUNTIME_INIT");
+        return sb.ToString();
     }
 
     /// <summary>
@@ -364,7 +414,17 @@ public class CodeGenerator
         _e.Label("__WORK__");
         int workOffset = 0;
 
-        // 1. ユーザーグローバル変数（固定アドレスなし、初期値なし）→ EQU
+        // ROM環境: 初期値付き配列を__WORK__先頭に連続配置（テンプレートLDIRのコピー先）
+        if (IsCodeReadonly)
+        {
+            foreach (var gv in _module.GlobalVars.Where(v => v.InitialData != null && !v.FixedAddress.HasValue))
+            {
+                _e.Raw($"{gv.AsmLabel} EQU (__WORK__ + {workOffset})");
+                workOffset += gv.ByteSize;
+            }
+        }
+
+        // ユーザーグローバル変数（固定アドレスなし、初期値なし）→ EQU
         foreach (var gv in _module.GlobalVars.Where(v => !v.FixedAddress.HasValue && v.InitialData == null))
         {
             _e.Raw($"{gv.AsmLabel} EQU (__WORK__ + {workOffset})");
