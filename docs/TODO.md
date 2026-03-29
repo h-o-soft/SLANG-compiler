@@ -1,82 +1,82 @@
 # SLANG新コンパイラ 残タスク一覧
 
+最終更新: 2026-03-29
+
 ## 実装状況サマリ
 
 - **Lexer**: 完成
-- **Preprocessor**: 完成
-- **Parser**: 完成 (14/15 examples, SLANGTEST.SL全パース)
-- **SemanticAnalyzer**: 完成
-- **IrGenerator**: 完成 (最適化4種含む)
-- **CodeGenerator**: 完成 (直接ロード/比較融合/INC最適化)
-- **MODULE/オーバーレイ**: 完成
+- **Preprocessor**: 完成 (#INCLUDE再帰展開, #IF/#ELSE/#ENDIF)
+- **Parser**: 完成 (15/15 examples, SLANGTEST.SL全パース)
+- **SemanticAnalyzer**: 完成 (ビルトイン登録, IYオフセット, 定数式評価)
+- **IrGenerator**: 完成 (全制御フロー, FLOAT追跡, 定数畳み込み)
+- **CodeGenerator**: 完成 (直接ロード/比較融合/INC最適化/halfDirect/ピープホール)
+- **MODULE/オーバーレイ**: 完成 (フルZ80コード生成, .incファイル)
+- **ランタイム**: 全48ファイル新形式変換済み
+- **プラットフォーム**: 全8環境対応 (.env読込み)
 - **テスト**: 30件全パス
 - **仕様書**: docs/SLANG-spec.md
 
----
+### 完了済みタスク (本セッション34コミット)
 
-## 優先度: 最高
-
-### H0. 間接変数の完全対応
-- `VAR BYTE POINT[]` — 変数+配列の二面性を持つ型
-- `POINT = $C000; I = POINT[3];` → *(POINT + 3*elemSize)
-- 二次元間接変数 `VAR F[][15]`
-- 基本仕様に含まれる必須機能
-
-## 優先度: 高
-
-### H1. FLOAT型の完全対応
-- 24bit浮動小数の演算コード生成 (f24add/sub/mul/div/cmp/neg)
-- Word↔Float型変換コード (i16tof24/FTOI)
-- FLOAT定数リテラル
-- ランタイム libfloat.yml の変換
-- `%%` / `FLOAT` で宣言、3バイト確保
-
-### H2. PORT[]/PORTW[] のIR接続
-- CodeGeneratorのEmitPortIn/EmitPortOutは実装済み
-- IrGeneratorからPortIn/PortOut IR命令への変換が未接続
-- SOS[]/SOSW[]も同パターンで対応
-
-### H3. CODE関数の完全対応
-- `CODE(式)` — 直接データをオブジェクトに埋め込む関数
-- CODEリスト: `"文字列"`, `[式]`(HLにロードするコード), `<ラベル名>`(2バイトアドレス), `型,定数式`
-- 配列初期化 `ARRAY DT[4]={0,1,2,3,4}` で既に部分対応
-- 式中で使用した場合、マシン語実行後のHLの値が値となる
-
-### H4. SOROBAN.LIBの特殊構文
-- `@` プレフィックス関数名 (`@CVFTU`, `@MOVE` 等)
-- `@@@+$offset` 形式のアドレス相対参照
-- `[CODE(...)]` 形式の関数本体定義
-- 影響: MANDEL.SL (唯一の失敗example)
+- [x] H0: 間接変数の完全対応 (BYTE/WORDスケーリング)
+- [x] H1: FLOAT型 (24bit演算, f24ランタイム, 3バイトLD/ST)
+- [x] H2: PORT[]/PORTW[]/SOS[]/SOSW[] のIR接続
+- [x] H3: CODE関数 (DB/DW/[式]/<ラベル>/型指定)
+- [x] H4: SOROBAN.LIB対応 (MACHINE関数の(定数)パターン)
+- [x] M1: ピープホール最適化の実適用 (5ルール)
+- [x] M2: src2のみ単純ロード時のDE直接化
+- [x] M3: ローカル配列のIYオフセットアドレス計算
+- [x] M4: 全48ランタイム新形式変換
+- [x] M5: 定数式評価拡張 (CastExpr, ConditionalExpr)
+- [x] L2: 全8プラットフォーム .env読込み対応
 
 ---
 
-## 優先度: 中
+## 残タスク
 
-### M1. ピープホール最適化の実適用
-- PeepholeOptimizer.cs 骨格あり、CLI未組込み
-- PUSH HL/POP DE/EX DE,HL パターン最適化
+### 優先度: 高
 
-### M2. src2のみ単純ロード時のDE直接化
-- 現在PUSH/POP経由が156回残存
+#### CODEリスト内 %定数 のバグ修正
+- `ARRAY ARI[32]={1,2,3,%5,%6,...}` の `%5` が0になる
+- ParseCodeItemのCastExpr → IrGeneratorの定数評価パスに問題
 
-### M3. ローカル配列のアドレス計算
-- `ARRAY LAR[3][5]` のIYオフセット計算
+#### 静的宣言 vs 局所宣言の区別
+- 仕様: BEGIN前のVAR(静的宣言)は静的メモリに配置
+- 現状: 全てローカル変数(IYオフセット)として扱われている
+- SemanticAnalyzer/IrGeneratorで区別が必要
 
-### M4. 他プラットフォーム向けランタイム変換
-- MSX, X1, PC-8001, PC-8801, ZX Next, VGS0
+### 優先度: 中
 
-### M5. 定数式評価の拡張 (`$` アドレス等)
+#### メモリレイアウトの統一 (docs/memory-layout-design.md)
+- 変数: 実行時コピー方式 (DS + LD)
+- 配列: コード内埋込み方式 (DB)
+- 方式が不統一。ROM環境での配列書き換え不可問題
+- Phase 1: 全部実行時コピーで統一
+- Phase 2: env_type別戦略
+- Phase 3: text/rodata/data/bssセクション分離
 
-### M6. エラーメッセージの改善
+#### 定数条件IF文の最適化
+- `IF CONV==123` (CONST同士) が定数畳み込みされて常にTRUEだが
+  条件チェックコード(LD A,H; OR L; JP Z)が残る
+- WHILE(TRUE)と同様にIrGeneratorで条件が定数の場合を処理
 
----
+#### エラーメッセージの改善
+- 行番号/列番号の精度向上
+- エラーリカバリ（連鎖エラー抑制）
+- 仕様書記載のエラーメッセージに準拠
 
-## 優先度: 低
+### 優先度: 低
 
-### L1. AILZ80ASM出力フォーマット準拠
-### L2. 他プラットフォーム対応 (.env読み込み)
-### L3. テスト拡充
-### L4. 元コンパイラとの出力比較ツール
+#### AILZ80ASM出力フォーマット準拠
+- ラベル命名規則 (__L番号形式)
+- ネームスペース記法 ([NAMESPACE])
+- __WORK__ベース相対配置
+
+#### テスト拡充
+- 制御フロー、多次元配列、MEM/MEMW/PORT、オーバーレイ
+- エッジケース（空関数、深いネスト、大きな配列等）
+
+#### 元コンパイラとの出力比較ツール
 
 ---
 
