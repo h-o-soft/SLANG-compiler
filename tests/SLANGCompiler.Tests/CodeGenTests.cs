@@ -102,6 +102,14 @@ public class CodeGenTests
     }
 
     [Fact]
+    public void ArrayInit_PercentCast()
+    {
+        // %はWORD型指定: BYTE配列でも%5は2バイト($05,$00)で出力される
+        var asm = Compile("ARRAY ARI[4]={1,%5,7}; MAIN() BEGIN END;");
+        Assert.Contains("$01,$00,$05,$00,$07,$00", asm);
+    }
+
+    [Fact]
     public void EntryPoint()
     {
         var asm = Compile("MAIN() BEGIN END;");
