@@ -45,4 +45,61 @@ internal static class LabelUtils
 
     /// <summary>ユーザー定義ラベル(LABEL/GOTO)のASMラベル</summary>
     public static string UserLabel(string name) => $"_LBL_{SanitizeLabel(name)}";
+
+    /// <summary>
+    /// AST Expressionをアセンブラ式文字列に変換。ConstEvaluatorとは別で、整数評価ではなく文字列化。
+    /// 戻り値のDepsはランタイム依存解決に使う基底ラベル名リスト。
+    /// </summary>
+    public static (string Expr, List<string> Deps)? ExprToAsmString(
+        Parser.Ast.Expression expr, Semantics.SymbolTable? symbols, DiagnosticBag? diag = null)
+    {
+        var deps = new List<string>();
+
+        string? Convert(Parser.Ast.Expression e)
+        {
+            switch (e)
+            {
+                case Parser.Ast.IntegerLiteral lit:
+                    return $"${lit.Value:X4}";
+
+                case Parser.Ast.IdentifierExpr id:
+                    var sym = symbols?.Resolve(id.Name);
+                    if (sym != null)
+                    {
+                        if (sym.ConstValue is int cv) return $"${cv:X4}";
+                        if (sym.ConstAsmExpr != null)
+                        {
+                            deps.AddRange(sym.ConstAsmDeps ?? []);
+                            return sym.ConstAsmExpr;
+                        }
+                        if (sym.IsCodeBlock || sym.Kind == Semantics.SymbolKind.Function
+                            || sym.Kind == Semantics.SymbolKind.MachineFunction)
+                        {
+                            var label = sym.AsmLabel ?? SanitizeLabel(id.Name);
+                            deps.Add(label);
+                            return label;
+                        }
+                        diag?.Error($"'{id.Name}' cannot be used in MACHINE/CONST address expression", e.Span);
+                        return null;
+                    }
+                    // シンボル未登録: ランタイム等の外部ラベル
+                    var extLabel = SanitizeLabel(id.Name);
+                    deps.Add(extLabel);
+                    return extLabel;
+
+                case Parser.Ast.BinaryExpr bin when bin.Op is Parser.Ast.BinaryOp.Add or Parser.Ast.BinaryOp.Sub:
+                    var left = Convert(bin.Left);
+                    var right = Convert(bin.Right);
+                    if (left == null || right == null) return null;
+                    return $"{left}{(bin.Op == Parser.Ast.BinaryOp.Add ? "+" : "-")}{right}";
+
+                default:
+                    diag?.Error($"Unsupported expression in MACHINE/CONST address: {e.GetType().Name}", e.Span);
+                    return null;
+            }
+        }
+
+        var result = Convert(expr);
+        return result != null ? (result, deps) : null;
+    }
 }

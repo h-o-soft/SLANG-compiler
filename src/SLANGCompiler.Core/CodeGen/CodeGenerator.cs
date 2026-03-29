@@ -156,6 +156,12 @@ public class CodeGenerator
                 if (!userFuncs.Contains(name))
                     _runtimeManager.MarkUsed(name);
             }
+            // アドレス式の依存シンボルもランタイムリンク
+            foreach (var dep in _module.AddressSymbolDeps)
+            {
+                if (_runtimeManager.Functions.ContainsKey(dep))
+                    _runtimeManager.MarkUsed(dep);
+            }
         }
 
         // === Phase 3: ORG + ENV_TYPE/OS_TYPE ===

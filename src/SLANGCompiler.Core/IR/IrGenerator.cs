@@ -802,10 +802,26 @@ public class IrGenerator : IAstVisitor<IrOperand>
         {
             Emit(IrOp.LoadConst, t, IrOperand.Imm(constVal));
         }
-        else if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstLabel != null)
+        else if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstAst != null)
         {
-            // ラベル値定数: CONST X=SOROBAN → LD HL,SOROBAN
-            Emit(IrOp.LoadAddr, t, IrOperand.Sym(sym.ConstLabel));
+            // アセンブラ式定数: CONST X=SOROBAN, CONST X=LABEL+$14
+            // 初回解決時にキャッシュ
+            if (sym.ConstAsmExpr == null)
+            {
+                var result = LabelUtils.ExprToAsmString(sym.ConstAst, _globalSymbols, _diagnostics);
+                if (result.HasValue)
+                {
+                    sym.ConstAsmExpr = result.Value.Expr;
+                    sym.ConstAsmDeps = result.Value.Deps;
+                }
+            }
+            if (sym.ConstAsmExpr != null)
+            {
+                Emit(IrOp.LoadAddr, t, IrOperand.Sym(sym.ConstAsmExpr));
+                if (sym.ConstAsmDeps != null)
+                    foreach (var dep in sym.ConstAsmDeps)
+                        _module.AddressSymbolDeps.Add(dep);
+            }
         }
         else if (sym != null && sym.IsCodeBlock)
         {
@@ -973,7 +989,28 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
 
             var dest = IrOperand.Temp(AllocTemp());
-            var asmName = funcSym?.AsmLabel ?? LabelUtils.SanitizeLabel(funcName!);
+            // MACHINE:式のアドレスを優先（初回解決時にキャッシュ）
+            string asmName;
+            if (funcSym?.AddressAst != null)
+            {
+                if (funcSym.AddressExpr == null)
+                {
+                    var result = LabelUtils.ExprToAsmString(funcSym.AddressAst, _globalSymbols, _diagnostics);
+                    if (result.HasValue)
+                    {
+                        funcSym.AddressExpr = result.Value.Expr;
+                        funcSym.AddressExprDeps = result.Value.Deps;
+                    }
+                }
+                asmName = funcSym.AddressExpr ?? funcSym.AsmLabel ?? LabelUtils.SanitizeLabel(funcName!);
+                if (funcSym.AddressExprDeps != null)
+                    foreach (var dep in funcSym.AddressExprDeps)
+                        _module.AddressSymbolDeps.Add(dep);
+            }
+            else
+            {
+                asmName = funcSym?.AsmLabel ?? LabelUtils.SanitizeLabel(funcName!);
+            }
             Emit(IrOp.Call, dest, IrOperand.Sym(asmName), IrOperand.Imm(machineParamCount.Value));
             return dest;
         }

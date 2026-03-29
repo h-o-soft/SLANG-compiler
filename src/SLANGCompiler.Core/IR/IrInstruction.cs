@@ -212,6 +212,7 @@ public class IrModule
     public int? WorkAddress { get; set; }
     public int? OffsetAddress { get; set; }
     public List<OverlayModule> Overlays { get; } = new();
+    public HashSet<string> AddressSymbolDeps { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public override string ToString()
     {

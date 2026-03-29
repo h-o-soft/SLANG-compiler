@@ -1,3 +1,5 @@
+using SLANGCompiler.Parser.Ast;
+
 namespace SLANGCompiler.Semantics;
 
 /// <summary>
@@ -23,11 +25,20 @@ public class Symbol
     public SlangType Type { get; set; }
     public int? Address { get; set; }       // 固定アドレス指定
     public int Offset { get; set; }         // ローカル変数のスタックオフセット
-    public object? ConstValue { get; set; } // 定数値(int)
-    public string? ConstLabel { get; set; } // ラベル値定数(CONST X=SOROBAN)
+    public object? ConstValue { get; set; }  // 定数値(int)
     public bool IsGlobal { get; set; }
-    public bool IsCodeBlock { get; set; }   // CODEブロック定数（アドレス参照）
-    public string? AsmLabel { get; set; }   // アセンブリラベル名
+    public bool IsCodeBlock { get; set; }    // CODEブロック定数（アドレス参照）
+    public string? AsmLabel { get; set; }    // アセンブリラベル名
+
+    // AST保持（semantic段階で設定、IR段階で文字列化）
+    public Expression? ConstAst { get; set; }          // CONST値のAST（非整数の場合）
+    public Expression? AddressAst { get; set; }        // MACHINE:式のAST
+
+    // キャッシュ（IR段階で初回解決時に設定）
+    public string? ConstAsmExpr { get; set; }          // CONST値の文字列化済みアセンブラ式
+    public List<string>? ConstAsmDeps { get; set; }    // CONST式の依存シンボル
+    public string? AddressExpr { get; set; }           // MACHINE:式の文字列化済みアセンブラ式
+    public List<string>? AddressExprDeps { get; set; } // MACHINE:式の依存シンボル
 
     public Symbol(string name, SymbolKind kind, SlangType type)
     {

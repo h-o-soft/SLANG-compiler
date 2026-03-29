@@ -233,10 +233,11 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             {
                 sym.ConstValue = val.Value;
             }
-            else if (node.Value is IdentifierExpr idExpr)
+            else
             {
-                // ラベル値定数: CONST X = SOROBAN（ランタイムラベル参照）
-                sym.ConstLabel = LabelUtils.SanitizeLabel(idExpr.Name);
+                // アセンブラ式定数: CONST X=SOROBAN, CONST X=LABEL+$14等
+                // AST保持のみ。文字列化はIR段階で（前方参照対応）
+                sym.ConstAst = node.Value;
             }
         }
         return null;
@@ -251,6 +252,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         var sym = _symbols.Define(node.Name, SymbolKind.MachineFunction, funcType);
         sym.IsGlobal = true;
         sym.AsmLabel = $"_{LabelUtils.SanitizeLabel(node.Name)}";
+        if (node.Address != null)
+            sym.AddressAst = node.Address;  // AST保持、文字列化はIR段階で
         return null;
     }
 
