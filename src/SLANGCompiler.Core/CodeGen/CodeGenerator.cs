@@ -23,6 +23,7 @@ public class CodeGenerator
     private string _currentFuncExitLabel = "_EXIT";
     private int _currentFuncLocalSize;
     private readonly HashSet<string> _calledFunctions = new(StringComparer.OrdinalIgnoreCase);
+    private int _genLabelCount;
 
     public CodeGenerator(IrModule module, Runtime.RuntimeManager? runtimeManager = null,
         Runtime.EnvironmentConfig? envConfig = null)
@@ -727,6 +728,27 @@ public class CodeGenerator
                 _e.Instruction("SBC", "HL,DE");
                 _e.Instruction("JP", $"C,{label}");
                 break;
+
+            // 符号付き比較: BIT 7テストで符号判定後、同符号ならunsigned比較
+            case IrOp.CmpSLt:
+                // HL .<. DE → false(not less)ならlabelへジャンプ
+                EmitSignedFusedJump(label, lessThan: true);
+                break;
+            case IrOp.CmpSGe:
+                // HL .>=. DE → false(less than)ならlabelへジャンプ
+                EmitSignedFusedJump(label, lessThan: false);
+                break;
+            case IrOp.CmpSGt:
+                // HL .>. DE → EX DE,HL して .<. 判定
+                _e.Instruction("EX", "DE,HL");
+                EmitSignedFusedJump(label, lessThan: true);
+                break;
+            case IrOp.CmpSLe:
+                // HL .<=. DE → EX DE,HL して .>=. 判定
+                _e.Instruction("EX", "DE,HL");
+                EmitSignedFusedJump(label, lessThan: false);
+                break;
+
             default:
                 // フォールバック: 0/1生成 + JP Z
                 EmitBinaryDirect(cmpInst);
@@ -735,6 +757,39 @@ public class CodeGenerator
                 _e.Instruction("JP", $"Z,{label}");
                 break;
         }
+    }
+
+    /// <summary>
+    /// 符号付き比較+ジャンプ融合。HL=src1, DE=src2セット済み。
+    /// lessThan=true: src1 &lt; src2でなければlabelへ（CmpSLt + JumpIfZero）
+    /// lessThan=false: src1 &gt;= src2でなければlabelへ（CmpSGe + JumpIfZero）
+    /// </summary>
+    private void EmitSignedFusedJump(string label, bool lessThan)
+    {
+        // 符号ビット比較: HL(bit7) vs DE(bit7)
+        // 符号が異なる → HL負&DE正ならHL<DE(true), HL正&DE負ならHL>=DE
+        // 符号が同じ → unsigned compare (SBC HL,DE)
+        var sameSign = $"_SC{_genLabelCount++}";
+        _e.Instruction("LD", "A,H");
+        _e.Instruction("XOR", "D");          // bit7が異なれば符号が異なる
+        _e.Instruction("JP", $"P,{sameSign}"); // bit7=0(同符号)ならsameSignへ
+        // 異符号: HLのbit7で判定（HL負→HL<DE）
+        _e.Instruction("BIT", "7,H");
+        if (lessThan)
+            _e.Instruction("JP", $"Z,{label}");  // HL正(bit7=0)→HL>=DE→not less→jump
+        else
+            _e.Instruction("JP", $"NZ,{label}"); // HL負(bit7=1)→HL<DE→not ge→jump
+        var done = $"_SC{_genLabelCount++}";
+        _e.Instruction("JP", done);
+        _e.Label(sameSign);
+        // 同符号: unsigned compare
+        _e.Instruction("OR", "A");
+        _e.Instruction("SBC", "HL,DE");
+        if (lessThan)
+            _e.Instruction("JP", $"NC,{label}"); // not carry→HL>=DE→not less→jump
+        else
+            _e.Instruction("JP", $"C,{label}");  // carry→HL<DE→not ge→jump
+        _e.Label(done);
     }
 
     /// <summary>

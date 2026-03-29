@@ -173,9 +173,21 @@ public class CodeGenTests
     }
 
     [Fact]
-    public void SignedCompare_CallsOPSLTHLDE()
+    public void SignedCompare_InlineFused()
     {
+        // IF文での符号付き比較はインライン展開（CALL OPS*不要）
         var asm = Compile("VAR X,Y,Z; MAIN() BEGIN IF X.<.Y THEN Z=1; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Contains("XOR\tD", body);    // 符号ビット比較
+        Assert.Contains("BIT\t7,H", body);  // 符号判定
+        Assert.DoesNotContain("CALL\tOPSLTHLDE", body);
+    }
+
+    [Fact]
+    public void SignedCompare_NonFused_CallsRuntime()
+    {
+        // IF文以外（代入等）ではCALL OPS*が使われる
+        var asm = Compile("VAR X,Y,Z; MAIN() BEGIN Z=(X.<.Y); END;");
         Assert.Contains("CALL\tOPSLTHLDE", asm);
     }
 
