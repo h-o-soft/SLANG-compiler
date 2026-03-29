@@ -17,13 +17,16 @@ DOTNET = dotnet
 SLANGC_NEW = $(DOTNET) run --project src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj -c Release --
 SLANGC_OLD = $(DOTNET) run --project SLANGCompiler.csproj -c Release --
 ASM = AILZ80ASM
-CPM = cpm
+NDC = ndc
+HUDISK = HuDisk
+MODSPLIT = ModuleSplitter
 
 # ファイル
 SRC = $(TARGET).SL
 ASM_NEW = $(TARGET).ASM
 ASM_OLD = $(TARGET).OLD.ASM
-BIN = $(dir $(TARGET))PROG.bin
+BIN_EXT = .bin
+OUTPROG = $(dir $(TARGET))PROG.bin
 LST = $(TARGET).lst
 SYM = $(TARGET).sym
 
@@ -34,11 +37,47 @@ else
   SLANGENV = $(ENV)
 endif
 
-# ASMオプション
+# ASMオプション、エミュレータ、ディスクイメージを環境に応じて設定
 ASM_OPT =
-ifeq ($(findstring pc80mk2,$(ENV)),pc80mk2)
+BIN_EXT_ENV = $(BIN_EXT)
+
+ifeq ($(ENV), lsx)
+  EMU = cpm
+  DISK_IMAGE = $(OUTPROG)
+  BIN_EXT_ENV = .com
+else ifeq ($(ENV), cpm)
+  EMU = cpm
+  DISK_IMAGE = $(OUTPROG)
+  BIN_EXT_ENV = .com
+else ifeq ($(ENV), x1)
+  # EMU = ~/emu/X1/X1.exe
+  EMU = @echo "X1 emulator not configured. Set EMU in Makefile.test" \#
+  DISK_IMAGE = images/LSXPROG.D88
+  BIN_EXT_ENV = .com
+else ifeq ($(ENV), sos)
+  # EMU = ~/emu/X1/X1.exe
+  EMU = @echo "S-OS emulator not configured. Set EMU in Makefile.test" \#
+  DISK_IMAGE = images/SOSPROG.D88
+else ifeq ($(ENV), msxrom)
+  # EMU = /Applications/openMSX.app/Contents/MacOS/openmsx
+  EMU = @echo "MSX emulator not configured. Set EMU in Makefile.test" \#
+  EMUOPT = -cart
+  DISK_IMAGE = $(OUTPROG)
+else ifeq ($(ENV), msx2)
+  # EMU = /Applications/openMSX.app/Contents/MacOS/openmsx
+  EMU = @echo "MSX emulator not configured. Set EMU in Makefile.test" \#
+  DISK_IMAGE = images/dosformsx.dsk
+  BIN_EXT_ENV = .com
+  EMUOPT = -diska
+else ifeq ($(findstring $(ENV),pc80mk2 pc80mk2x),$(ENV))
+  # EMU = ~/emu/PC8001mkII/pc8001mk2.exe
+  EMU = @echo "PC-8001 emulator not configured. Set EMU in Makefile.test" \#
+  BIN_EXT = .cmt
+  BIN_EXT_ENV = .cmt
   ASM_OPT = -cmt -gap 0
 endif
+
+IMGPROG = $(basename $(OUTPROG))$(BIN_EXT_ENV)
 
 .PHONY: all compile asm run compare clean help old-compile
 
@@ -51,20 +90,43 @@ $(ASM_NEW): $(SRC)
 	$(SLANGC_NEW) -E $(SLANGENV) -o $@ $<
 
 # === AILZ80ASMでアセンブル ===
-asm: $(BIN)
+asm: $(OUTPROG)
 
-$(BIN): $(ASM_NEW)
+$(OUTPROG): $(ASM_NEW)
 	$(ASM) $< -f -o $@ -bin -sym -lst $(ASM_OPT)
 	@echo "=== Assemble OK: $@ ==="
 	@ls -la $@
 
-# === CPMエミュで実行 (LSX/CPM環境のみ) ===
-run: $(BIN)
-ifeq ($(ENV),$(filter $(ENV),lsx x1 cpm))
-	$(CPM) $<
+# === バイナリ拡張子変換（.bin→.com等） ===
+ifneq ($(BIN_EXT),$(BIN_EXT_ENV))
+$(IMGPROG): $(OUTPROG)
+	mv $< $@
+endif
+
+# === ディスクイメージ作成+エミュレータ実行 ===
+ifeq ($(ENV),$(filter $(ENV),lsx cpm))
+# LSX/CPM: cpmエミュで直接実行
+run: $(OUTPROG)
+	cpm $<
+else ifeq ($(ENV), msxrom)
+# MSX ROM: カートリッジとして実行
+run: $(OUTPROG)
+	$(EMU) $(EMUOPT) $(DISK_IMAGE)
+else ifeq ($(ENV), sos)
+# S-OS: HuDiskでD88イメージに格納
+run: $(IMGPROG)
+	$(HUDISK) -d $(DISK_IMAGE) PROG.bin
+	$(HUDISK) -a $(DISK_IMAGE) $(IMGPROG) -r 3000 -g 3000
+	$(EMU) $(DISK_IMAGE)
+else ifeq ($(ENV),$(filter $(ENV),x1 msx2 msxlsx))
+# X1/MSX: ndcでディスクイメージに格納
+run: $(IMGPROG)
+	- $(NDC) D $(DISK_IMAGE) 0 PROG$(BIN_EXT_ENV)
+	$(NDC) P $(DISK_IMAGE) 0 $(IMGPROG)
+	$(EMU) $(EMUOPT) $(DISK_IMAGE)
 else
-	@echo "Run not supported for ENV=$(ENV) in this Makefile."
-	@echo "Use appropriate emulator manually."
+run: $(OUTPROG)
+	@echo "Run: ENV=$(ENV) — use appropriate emulator manually with $(OUTPROG)"
 endif
 
 # === 旧コンパイラでコンパイル（比較用） ===
@@ -95,8 +157,8 @@ check-symbols: $(ASM_NEW)
 
 # === クリーンアップ ===
 clean:
-	rm -f $(ASM_NEW) $(ASM_OLD) $(BIN) $(LST) $(SYM)
-	rm -f $(dir $(TARGET))PROG.bin $(dir $(TARGET))PROG.com
+	rm -f $(ASM_NEW) $(ASM_OLD) $(OUTPROG) $(IMGPROG) $(LST) $(SYM)
+	rm -f $(dir $(TARGET))PROG.bin $(dir $(TARGET))PROG.com $(dir $(TARGET))PROG.cmt
 	rm -f $(TARGET).lst $(TARGET).sym
 
 # === ヘルプ ===
