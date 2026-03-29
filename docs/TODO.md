@@ -88,9 +88,10 @@
 - Phase 2: env_type別戦略
 - Phase 3: text/rodata/data/bssセクション分離
 
-#### T6. 定数条件IF文の最適化
-- CONST同士の比較で条件チェックコードが残る
-- IrGeneratorで条件が定数の場合を処理
+#### ~~T6. 定数条件IF文の最適化~~ ✅完了
+- 定数TRUE: 条件チェック省略、bodyのみ出力、残りブランチ/else省略
+- 定数FALSE: ブランチ完全スキップ
+- WHILEの既存最適化と同じConstEvaluatorパターン
 
 #### T6b. 符号付き比較のcompare+jump特殊化
 - 現状: CALL OPS*HLDEでHL=0/1を作ってから条件分岐
@@ -146,6 +147,7 @@
 - [x] T2b追加: システム変数アクセスのAsmLabel解決修正 (ResolveAsmLabel導入)
 - [x] T3: CODEリスト内 %定数バグ修正 (CastExprアンラップ + %をWORD型指定に追加)
 - [x] T4: 静的宣言 vs 局所宣言の区別 (_inStaticDecl/_emitToGlobalData、__WORKEND__一致)
+- [x] T6: 定数条件IF文の最適化 (TRUE→チェック省略、FALSE→ブランチ省略)
 
 ---
 

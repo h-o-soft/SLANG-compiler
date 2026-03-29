@@ -245,4 +245,24 @@ public class CodeGenTests
         var asm = Compile("MAIN() BEGIN PRINT(/); END;");
         Assert.Contains("CALL\tPCRONE", asm);
     }
+
+    [Fact]
+    public void ConstantIf_TrueEliminated()
+    {
+        // 定数TRUE条件: 条件チェックコードが生成されないこと
+        var asm = Compile("CONST C=1; MAIN() BEGIN IF C==1 THEN PRINT(\"Y\",/); END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Contains("CALL\tPMSX", body);
+        Assert.DoesNotContain("JP\tZ,", body);
+    }
+
+    [Fact]
+    public void ConstantIf_FalseEliminated()
+    {
+        // 定数FALSE条件: thenブランチが省略されELSEのみ残ること
+        var asm = Compile("CONST C=1; MAIN() BEGIN IF C==999 THEN PRINT(\"N\",/) ELSE PRINT(\"E\",/); END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        // "E"のPMSXはあるが"N"のPMSXに対応する条件分岐はない
+        Assert.DoesNotContain("JP\tZ,", body);
+    }
 }

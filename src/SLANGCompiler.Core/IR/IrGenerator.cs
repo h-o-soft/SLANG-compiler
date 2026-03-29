@@ -317,11 +317,29 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitIfStmt(IfStmt node)
     {
         var endLabel = NewLabel();
+        var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
 
         for (int i = 0; i < node.Branches.Count; i++)
         {
             var (cond, body) = node.Branches[i];
             var nextLabel = (i < node.Branches.Count - 1 || node.ElseBody != null) ? NewLabel() : endLabel;
+
+            // 定数条件の最適化
+            var constCond = constEval?.Evaluate(cond);
+            if (constCond.HasValue && constCond.Value != 0)
+            {
+                // 常にTRUE: 条件チェック不要、bodyを出力して残りのブランチ/elseは省略
+                body.Accept(this);
+                Emit(IrOp.Label, IrOperand.Lbl(endLabel));
+                return IrOperand.None;
+            }
+            else if (constCond.HasValue && constCond.Value == 0)
+            {
+                // 常にFALSE: このブランチを完全にスキップ
+                if (nextLabel != endLabel)
+                    Emit(IrOp.Label, IrOperand.Lbl(nextLabel));
+                continue;
+            }
 
             var condVal = cond.Accept(this);
             Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), condVal);
