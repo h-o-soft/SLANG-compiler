@@ -165,13 +165,11 @@ class Program
             }
         }
 
-        if (diagnostics.HasErrors)
-        {
+        // エラーがなくてもwarning等があれば出力
+        if (diagnostics.Diagnostics.Count > 0)
             diagnostics.WriteTo(Console.Error);
-            return 1;
-        }
 
-        return 0;
+        return diagnostics.HasErrors ? 1 : 0;
     }
 
     /// <summary>
