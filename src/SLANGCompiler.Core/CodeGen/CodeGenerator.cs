@@ -248,8 +248,7 @@ public class CodeGenerator
         foreach (var gv in _module.GlobalVars.Where(v => v.FixedAddress.HasValue))
         {
             _e.Raw($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress!.Value:X4}");
-            // ROM環境で固定アドレス+初期値配列はエラー（LDIRコピー対象外のため初期値が失われる）
-            if (IsCodeReadonly && gv.InitialData != null)
+            if (IsCodeReadonly && gv.HasInitializer)
             {
                 _diagnostics?.Error(
                     $"Fixed-address array '{gv.Name}' with initializer is not supported in code_readonly environment",
@@ -257,32 +256,36 @@ public class CodeGenerator
             }
         }
 
-        var initDataArrays = _module.GlobalVars
-            .Where(v => v.InitialData != null && !v.FixedAddress.HasValue).ToList();
+        // CodeConst: 常にコード領域に直接配置（ROM/RAM問わず）
+        foreach (var gv in _module.GlobalVars.Where(v => v.StorageKind == VarStorageKind.CodeConst))
+        {
+            _e.Label(gv.AsmLabel);
+            EmitInitialItems(gv.InitialItems!);
+        }
+
+        // InitArray: RAM/ROM分岐
+        var initArrays = _module.GlobalVars
+            .Where(v => v.StorageKind == VarStorageKind.InitArray && !v.FixedAddress.HasValue).ToList();
 
         if (IsCodeReadonly)
         {
-            // ROM環境: テンプレートとしてrodata領域に出力（ラベルなし）
-            if (initDataArrays.Count > 0)
+            if (initArrays.Count > 0)
             {
                 _e.Label("__INIT_TEMPLATE");
-                foreach (var gv in initDataArrays)
+                foreach (var gv in initArrays)
                 {
                     _e.Comment(gv.AsmLabel);
-                    var bytes = string.Join(",", gv.InitialData!.Select(b => $"${b:X2}"));
-                    _e.Raw($"\tDB\t{bytes}");
+                    EmitInitialItems(gv.InitialItems!);
                 }
                 _e.Label("__INIT_TEMPLATE_END");
             }
         }
         else
         {
-            // RAM環境: コード領域にラベル付きDBで直接配置（現行維持）
-            foreach (var gv in initDataArrays)
+            foreach (var gv in initArrays)
             {
                 _e.Label(gv.AsmLabel);
-                var bytes = string.Join(",", gv.InitialData!.Select(b => $"${b:X2}"));
-                _e.Raw($"\tDB\t{bytes}");
+                EmitInitialItems(gv.InitialItems!);
             }
         }
 
@@ -347,9 +350,35 @@ public class CodeGenerator
         }
     }
 
-    /// <summary>初期値付き配列（固定アドレスなし）が存在するか</summary>
+    /// <summary>InitArray（テンプレートコピー対象）が存在するか</summary>
     private bool HasInitDataArrays() =>
-        _module.GlobalVars.Any(v => v.InitialData != null && !v.FixedAddress.HasValue);
+        _module.GlobalVars.Any(v => v.StorageKind == VarStorageKind.InitArray && !v.FixedAddress.HasValue);
+
+    /// <summary>InitialItems（DB/DW混在）を出力</summary>
+    private void EmitInitialItems(List<InitItem> items)
+    {
+        // 連続するDB値をまとめて出力
+        var byteRun = new List<byte>();
+        foreach (var item in items)
+        {
+            if (item.ByteValue.HasValue)
+            {
+                byteRun.Add(item.ByteValue.Value);
+            }
+            else
+            {
+                // DWの前にバイト列をflush
+                if (byteRun.Count > 0)
+                {
+                    _e.Raw($"\tDB\t{string.Join(",", byteRun.Select(b => $"${b:X2}"))}");
+                    byteRun.Clear();
+                }
+                _e.Raw($"\tDW\t{item.AsmExpr}");
+            }
+        }
+        if (byteRun.Count > 0)
+            _e.Raw($"\tDB\t{string.Join(",", byteRun.Select(b => $"${b:X2}"))}");
+    }
 
     /// <summary><<CALLINITIALIZER>>の置換コードを生成</summary>
     private string BuildCallInitializerCode()
@@ -436,18 +465,18 @@ public class CodeGenerator
         _e.Label("__WORK__");
         int workOffset = 0;
 
-        // ROM環境: 初期値付き配列を__WORK__先頭に連続配置（テンプレートLDIRのコピー先）
+        // ROM環境: InitArray(初期値付き配列)を__WORK__先頭に連続配置
         if (IsCodeReadonly)
         {
-            foreach (var gv in _module.GlobalVars.Where(v => v.InitialData != null && !v.FixedAddress.HasValue))
+            foreach (var gv in _module.GlobalVars.Where(v => v.StorageKind == VarStorageKind.InitArray && !v.FixedAddress.HasValue))
             {
                 _e.Raw($"{gv.AsmLabel} EQU (__WORK__ + {workOffset})");
                 workOffset += gv.ByteSize;
             }
         }
 
-        // ユーザーグローバル変数（固定アドレスなし、初期値なし）→ EQU
-        foreach (var gv in _module.GlobalVars.Where(v => !v.FixedAddress.HasValue && v.InitialData == null))
+        // Bss変数（固定アドレスなし、初期値なし）→ EQU
+        foreach (var gv in _module.GlobalVars.Where(v => !v.FixedAddress.HasValue && v.StorageKind == VarStorageKind.Bss))
         {
             _e.Raw($"{gv.AsmLabel} EQU (__WORK__ + {workOffset})");
             workOffset += gv.ByteSize;

@@ -83,7 +83,8 @@ internal static class LabelUtils
                             deps.AddRange(sym.ConstAsmDeps ?? []);
                             return sym.ConstAsmExpr;
                         }
-                        if (sym.IsCodeBlock || sym.Kind == Semantics.SymbolKind.Function
+                        if (sym.IsCodeBlock || sym.IsGlobal
+                            || sym.Kind == Semantics.SymbolKind.Function
                             || sym.Kind == Semantics.SymbolKind.MachineFunction)
                         {
                             var label = sym.AsmLabel ?? SanitizeLabel(id.Name);

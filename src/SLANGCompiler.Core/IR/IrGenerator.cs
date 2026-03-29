@@ -171,14 +171,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (node.Address is IntegerLiteral addrLit)
                 fixedAddr = (int)addrLit.Value;
 
-            // 初期値付き配列: CODEリストの定数値をバイト列に変換
-            List<byte>? initData = null;
+            // 初期値付き配列: CODEリストをInitialItemsに変換
+            List<InitItem>? initItems = null;
             if (node.InitialCode != null)
             {
-                initData = new List<byte>();
+                initItems = new List<InitItem>();
                 foreach (var expr in node.InitialCode)
                 {
-                    // CastExprの場合は内側の式とサイズを取得
                     var initExpr = expr;
                     int itemSize = elemSize;
                     if (initExpr is CastExpr cast)
@@ -190,33 +189,48 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     if (initExpr is IntegerLiteral ilit)
                     {
                         if (itemSize == 1)
-                            initData.Add((byte)(ilit.Value & 0xFF));
+                            initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
                         else if (itemSize == 3)
                         {
-                            initData.Add((byte)(ilit.Value & 0xFF));
-                            initData.Add((byte)((ilit.Value >> 8) & 0xFF));
-                            initData.Add((byte)((ilit.Value >> 16) & 0xFF));
+                            initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
+                            initItems.Add(InitItem.Byte((byte)((ilit.Value >> 8) & 0xFF)));
+                            initItems.Add(InitItem.Byte((byte)((ilit.Value >> 16) & 0xFF)));
                         }
                         else
                         {
-                            initData.Add((byte)(ilit.Value & 0xFF));
-                            initData.Add((byte)((ilit.Value >> 8) & 0xFF));
+                            initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
+                            initItems.Add(InitItem.Byte((byte)((ilit.Value >> 8) & 0xFF)));
                         }
                     }
                     else if (initExpr is StringLiteral slit)
                     {
                         foreach (var ch in slit.Value)
-                            initData.Add((byte)ch);
+                            initItems.Add(InitItem.Byte((byte)ch));
                     }
                     else
                     {
-                        // 非定数式: プレースホルダ
-                        for (int j = 0; j < itemSize; j++) initData.Add(0);
+                        // 非定数式: ExprToAsmStringでアセンブラ式に変換
+                        var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics);
+                        if (asmResult.HasValue && itemSize == 2)
+                        {
+                            initItems.Add(InitItem.Word(asmResult.Value.Expr));
+                            foreach (var dep in asmResult.Value.Deps)
+                                _module.AddressSymbolDeps.Add(dep);
+                        }
+                        else if (itemSize == 1)
+                        {
+                            _diagnostics?.Error("Non-constant BYTE expression in CODE block not supported",
+                                initExpr.Span);
+                        }
                     }
                 }
                 // totalSizeに満たない場合は0で埋める
-                while (initData.Count < totalSize)
-                    initData.Add(0);
+                int currentSize = initItems.Sum(i => i.ByteSize);
+                while (currentSize < totalSize)
+                {
+                    initItems.Add(InitItem.Byte(0));
+                    currentSize++;
+                }
             }
 
             var label = (_inStaticDecl && _currentFuncName != null)
@@ -233,7 +247,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 ByteSize = totalSize,
                 FixedAddress = fixedAddr,
                 IsArray = true,
-                InitialData = initData,
+                InitialItems = initItems,
+                StorageKind = initItems != null ? VarStorageKind.InitArray : VarStorageKind.Bss,
             });
         }
         else
@@ -258,7 +273,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (_inStaticDecl && _currentFuncName != null)
                 _staticVarLabels![node.Name] = label;
 
-            var initData = new List<byte>();
+            var initItems = new List<InitItem>();
             foreach (var expr in codeExpr.Values)
             {
                 var initExpr = expr;
@@ -271,21 +286,33 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 if (initExpr is IntegerLiteral ilit)
                 {
                     if (itemSize == 1)
-                        initData.Add((byte)(ilit.Value & 0xFF));
+                        initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
                     else
                     {
-                        initData.Add((byte)(ilit.Value & 0xFF));
-                        initData.Add((byte)((ilit.Value >> 8) & 0xFF));
+                        initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
+                        initItems.Add(InitItem.Byte((byte)((ilit.Value >> 8) & 0xFF)));
                     }
                 }
                 else if (initExpr is StringLiteral slit)
                 {
                     foreach (var ch in slit.Value)
-                        initData.Add((byte)ch);
+                        initItems.Add(InitItem.Byte((byte)ch));
                 }
                 else
                 {
-                    initData.Add(0);
+                    // 非定数式: アセンブラ式に変換
+                    var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics);
+                    if (asmResult.HasValue && itemSize == 2)
+                    {
+                        initItems.Add(InitItem.Word(asmResult.Value.Expr));
+                        foreach (var dep in asmResult.Value.Deps)
+                            _module.AddressSymbolDeps.Add(dep);
+                    }
+                    else if (itemSize == 1)
+                    {
+                        _diagnostics?.Error("Non-constant BYTE expression in CODE block not supported",
+                            initExpr.Span);
+                    }
                 }
             }
 
@@ -293,8 +320,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
             {
                 Name = node.Name,
                 AsmLabel = label,
-                ByteSize = initData.Count,
-                InitialData = initData,
+                ByteSize = initItems.Sum(i => i.ByteSize),
+                InitialItems = initItems,
+                StorageKind = VarStorageKind.CodeConst,
             });
         }
         else

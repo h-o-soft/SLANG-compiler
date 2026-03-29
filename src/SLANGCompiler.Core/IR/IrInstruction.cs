@@ -230,14 +230,26 @@ public class IrModule
 /// <summary>
 /// グローバル変数情報（ワークエリア生成用）
 /// </summary>
+public enum VarStorageKind { Bss, InitArray, CodeConst }
+
+/// <summary>初期化データの1要素: バイト値 or アセンブラ式DW</summary>
+public record struct InitItem(byte? ByteValue, string? AsmExpr)
+{
+    public static InitItem Byte(byte v) => new(v, null);
+    public static InitItem Word(string expr) => new(null, expr);
+    public int ByteSize => AsmExpr != null ? 2 : 1;
+}
+
 public class GlobalVarInfo
 {
     public string Name { get; set; } = "";
     public string AsmLabel { get; set; } = "";
     public int ByteSize { get; set; } = 2;
-    public int? FixedAddress { get; set; }      // :アドレス指定
-    public List<byte>? InitialData { get; set; } // 初期値データ
+    public int? FixedAddress { get; set; }
+    public List<InitItem>? InitialItems { get; set; }
+    public bool HasInitializer => InitialItems != null && InitialItems.Count > 0;
     public bool IsArray { get; set; }
+    public VarStorageKind StorageKind { get; set; } = VarStorageKind.Bss;
 }
 
 /// <summary>

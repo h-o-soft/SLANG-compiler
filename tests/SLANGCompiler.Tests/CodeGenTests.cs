@@ -110,6 +110,16 @@ public class CodeGenTests
     }
 
     [Fact]
+    public void CodeConst_NotInWorkArea()
+    {
+        // CODEブロック定数はWORK内ではなくコード領域に配置
+        var asm = Compile("CONST D=[1,2,3]; MAIN() BEGIN END;");
+        Assert.Contains("_V_D:", asm);              // コード領域にラベル
+        Assert.Contains("DB\t$01,$02,$03", asm);    // DB出力
+        Assert.DoesNotContain("_V_D EQU (__WORK__", asm); // WORKには入らない
+    }
+
+    [Fact]
     public void EntryPoint()
     {
         var asm = Compile("MAIN() BEGIN END;");
