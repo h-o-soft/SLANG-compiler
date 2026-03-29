@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libpc80mk2xbios_input.yml
+; Converted from lib/libdef/libpc80mk2xbios_input.yml
 ; SLANG Runtime Library (new format)
 
 ; @name INKEY

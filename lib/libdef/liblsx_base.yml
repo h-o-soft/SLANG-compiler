@@ -809,13 +809,13 @@ sWORK:
   code: |
     sCRTCD: DB $6F
   works:
-    sXYADR:	2
-    sKBFAD:	128
+    sXYADR: 2
+    sKBFAD: 128
     sKBFAD0: 1
     sKBFAD1: 1
     sKBFADX: 81
-    sPRBF:	80
-    sSUBPS:	2
+    sPRBF: 80
+    sSUBPS: 2
     sSUBBF: 256
     sSPBK: 2
     WBOOTBK: 2

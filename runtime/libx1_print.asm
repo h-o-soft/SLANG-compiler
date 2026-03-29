@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libx1_print.yml
+; Converted from lib/libdef/libx1_print.yml
 ; SLANG Runtime Library (new format)
 
 ; @name WIDTH

@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libsos_base.yml
+; Converted from lib/libdef/libsos_base.yml
 ; SLANG Runtime Library (new format)
 
 ; @name SLANGINIT
@@ -188,6 +188,7 @@ JP RRET
 
 
 ; @name SOSCALLS
+; @works AT_WIDTH:1,_CTC:2,_CTCVEC:2,_ISRADR:2,_ISRHANDLER:2,_WK1FD0:1
 sLPTOF  EQU 1FD6H
 sLPTON  EQU 1FD9H
 sLPRNT  EQU 1FDCH

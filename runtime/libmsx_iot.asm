@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libmsx_iot.yml
+; Converted from lib/libdef/libmsx_iot.yml
 ; SLANG Runtime Library (new format)
 
 ; @name IOT_COMMON

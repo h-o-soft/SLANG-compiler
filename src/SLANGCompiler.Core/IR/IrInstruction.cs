@@ -183,6 +183,7 @@ public class IrFunction
     public string Name { get; set; } = "";
     public List<IrInstruction> Instructions { get; } = new();
     public int TempCount { get; set; }
+    public int LocalSize { get; set; }
 
     public int AllocTemp() => TempCount++;
 

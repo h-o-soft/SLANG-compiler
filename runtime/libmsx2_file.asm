@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libmsx2_file.yml
+; Converted from lib/libdef/libmsx2_file.yml
 ; SLANG Runtime Library (new format)
 
 ; @name LSXFILE

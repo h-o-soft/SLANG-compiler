@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/liblsx_print.yml
+; Converted from lib/libdef/liblsx_print.yml
 ; SLANG Runtime Library (new format)
 
 ; @name WIDTH

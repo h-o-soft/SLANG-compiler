@@ -1,55 +1,78 @@
-Traceback (most recent call last):
-  File "/home/user/SLANG-compiler/tools/convert_runtime.py", line 68, in <module>
-    convert_yaml_to_asm(path)
-  File "/home/user/SLANG-compiler/tools/convert_runtime.py", line 15, in convert_yaml_to_asm
-    data = yaml.safe_load(f)
-           ^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/__init__.py", line 125, in safe_load
-    return load(stream, SafeLoader)
-           ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/__init__.py", line 81, in load
-    return loader.get_single_data()
-           ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/constructor.py", line 49, in get_single_data
-    node = self.get_single_node()
-           ^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/composer.py", line 36, in get_single_node
-    document = self.compose_document()
-               ^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/composer.py", line 55, in compose_document
-    node = self.compose_node(None, None)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/composer.py", line 84, in compose_node
-    node = self.compose_mapping_node(anchor)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/composer.py", line 133, in compose_mapping_node
-    item_value = self.compose_node(node, item_key)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/composer.py", line 84, in compose_node
-    node = self.compose_mapping_node(anchor)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/composer.py", line 133, in compose_mapping_node
-    item_value = self.compose_node(node, item_key)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/composer.py", line 84, in compose_node
-    node = self.compose_mapping_node(anchor)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/composer.py", line 133, in compose_mapping_node
-    item_value = self.compose_node(node, item_key)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/composer.py", line 64, in compose_node
-    if self.check_event(AliasEvent):
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/parser.py", line 98, in check_event
-    self.current_event = self.state()
-                         ^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/parser.py", line 449, in parse_block_mapping_value
-    if not self.check_token(KeyToken, ValueToken, BlockEndToken):
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/usr/lib/python3/dist-packages/yaml/scanner.py", line 116, in check_token
-    self.fetch_more_tokens()
-  File "/usr/lib/python3/dist-packages/yaml/scanner.py", line 258, in fetch_more_tokens
-    raise ScannerError("while scanning for the next token", None,
-yaml.scanner.ScannerError: while scanning for the next token
-found character '\t' that cannot start any token
-  in "/home/user/SLANG-compiler/lib/libdef/libmsxrom_base.yml", line 79, column 12
+; Converted from lib/libdef/libmsxrom_base.yml
+; SLANG Runtime Library (new format)
+
+; @name MSXCALLS
+CHPUT   EQU $00A2
+EXPTBL  EQU $FCC1
+ENASLT  EQU $0024
+INIT32  EQU $006F
+RSLREG  EQU $0138
+CHGMOD  EQU $005F
+LINL40  EQU $F3AE
+POSIT   EQU $00C6
+GTSTCK  EQU $00D5
+
+
+; @name SLANGINIT
+; @calls MSXWORK,MSXCALLS
+; MSX 32k ROM
+
+; ### ROM header ###
+db "AB"   ; ID for auto-executable ROM
+dw INIT   ; Main program execution address.
+dw 0      ; STATEMENT
+dw 0      ; DEVICE
+dw 0      ; TEXT
+dw 0,0,0  ; Reserved
+
+INIT:
+call RSLREG
+rrca
+rrca
+and 3
+ld c,a
+ld b,0
+ld hl,EXPTBL
+add hl,bc
+ld a,(hl)
+and 80h
+or c
+ld c,a
+inc hl
+inc hl
+inc hl
+inc hl
+ld a,(hl)
+and 0Ch
+or c
+ld h,080h
+call ENASLT
+
+; WORK ZERO CLEAR
+XOR A
+LD HL,__WORK__
+LD DE,__WORK__+1
+LD BC,__WORKEND__-__WORK__-1
+LD (HL),A
+LDIR
+
+<<CALLINITIALIZER>>
+
+LD IY,__IYWORK
+
+CALL MAIN
+INFLOOP:
+JP INFLOOP
+
+
+; @name STOP
+; @param_count 0
+JP INFLOOP
+
+
+; @name MSXWORK
+; @param_count 0
+; @works sXYADR:2,sKBFAD:128,sKBFAD0:1,sKBFAD1:1,sKBFADX:81,sPRBF:80,sSUBPS:2,sSUBBF:256,sSPBK:2,WBOOTBK:2,WORK10:10
+sCRTCD: DB $6F
+
+

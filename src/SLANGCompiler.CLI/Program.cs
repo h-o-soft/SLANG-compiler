@@ -140,7 +140,7 @@ class Program
                     irModule.WorkAddress = envConfig.DefaultWork;
             }
 
-            var codeGen = new CodeGenerator(irModule, runtimeManager);
+            var codeGen = new CodeGenerator(irModule, runtimeManager, envConfig);
             var (mainAsm, overlays) = codeGen.GenerateAll();
 
             // Output main

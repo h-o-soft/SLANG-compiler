@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libfloat.yml
+; Converted from lib/libdef/libfloat.yml
 ; SLANG Runtime Library (new format)
 
 ; @name mul16
@@ -825,6 +825,7 @@ ret
 
 ; @name PFLOAT
 ; @calls f24toa,PMSX
+; @works FSTRBUFF:12
 LD DE,FSTRBUFF
 CALL f24toa
 JP PMSX
@@ -2601,6 +2602,7 @@ jp f24exp
 
 
 ; @name z80rand
+; @works seed0:2,seed1:4
 ; Output is in HL
 ; This rand routine combines Patrik Rak's fantastic 32-bit xorshift
 ; (https://gist.github.com/raxoft/c074743ea3f926db0037) with a simple lcg for
@@ -2645,6 +2647,31 @@ ret
 
 ; @name FRAND
 ; @calls z80rand
+; @init_code
+PUSH AF
+PUSH HL
+LD HL,seed0
+LD A,R
+LD (HL),A
+INC HL
+LD A,R
+LD (HL),A
+LD HL,seed1
+LD A,R
+LD (HL),A
+INC HL
+LD A,R
+LD (HL),A
+INC HL
+LD A,R
+LD (HL),A
+INC HL
+LD A,R
+LD (HL),A
+POP HL
+POP AF
+RET
+; @end_init
 f24rand:
 ;Generates a pseudo-random number on [0,1) with uniform distribution.
 

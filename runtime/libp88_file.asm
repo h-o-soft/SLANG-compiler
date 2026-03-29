@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libp88_file.yml
+; Converted from lib/libdef/libp88_file.yml
 ; SLANG Runtime Library (new format)
 
 ; @name Disk_Load

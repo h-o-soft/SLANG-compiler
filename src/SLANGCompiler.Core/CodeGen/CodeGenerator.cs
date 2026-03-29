@@ -17,16 +17,19 @@ public class CodeGenerator
 {
     private readonly IrModule _module;
     private readonly Runtime.RuntimeManager? _runtimeManager;
+    private readonly Runtime.EnvironmentConfig? _envConfig;
     private Z80Emitter _e;  // メイン or オーバーレイのエミッタ（切替可能）
     private readonly Z80Emitter _mainEmitter;
     private string _currentFuncExitLabel = "_EXIT";
     private int _currentFuncLocalSize;
     private readonly HashSet<string> _calledFunctions = new(StringComparer.OrdinalIgnoreCase);
 
-    public CodeGenerator(IrModule module, Runtime.RuntimeManager? runtimeManager = null)
+    public CodeGenerator(IrModule module, Runtime.RuntimeManager? runtimeManager = null,
+        Runtime.EnvironmentConfig? envConfig = null)
     {
         _module = module;
         _runtimeManager = runtimeManager;
+        _envConfig = envConfig;
         _mainEmitter = new Z80Emitter();
         _e = _mainEmitter;
     }
@@ -70,22 +73,20 @@ public class CodeGenerator
         // 現在は全文字列がメイン部に入るので、オーバーレイからはメイン部の文字列を参照
         // TODO: オーバーレイ固有の文字列テーブル分離
 
-        // ランタイム関数の結合（このモジュールで使用されたもの）
+        // ランタイム関数の結合（このモジュール固有の呼び出しのみ解決）
         if (_runtimeManager != null)
         {
             var userFuncs = new HashSet<string>(overlay.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
-            foreach (var name in _calledFunctions)
-            {
-                if (!userFuncs.Contains(name))
-                    _runtimeManager.MarkUsed(name);
-            }
+            // メイン部のユーザー関数も除外対象に加える
+            foreach (var f in _module.Functions)
+                userFuncs.Add(f.Name);
 
-            var usedRuntime = _runtimeManager.GetUsedFunctions().ToList();
-            if (usedRuntime.Count > 0)
+            var overlayRuntime = _runtimeManager.ResolveForNames(_calledFunctions, userFuncs).ToList();
+            if (overlayRuntime.Count > 0)
             {
                 _e.Blank();
                 _e.Comment("=== Runtime Functions ===");
-                foreach (var func in usedRuntime)
+                foreach (var func in overlayRuntime)
                 {
                     _e.Label(func.Name);
                     foreach (var line in func.Code.Split('\n'))
@@ -129,51 +130,82 @@ public class CodeGenerator
 
     public string Generate()
     {
-        // ORG宣言
-        if (_module.OrgAddress.HasValue)
-        {
-            _e.Instruction("ORG", $"${_module.OrgAddress.Value:X4}");
-            _e.Blank();
-        }
+        // === Phase 1: 関数本体の生成（_calledFunctions収集） ===
+        var funcEmitter = new Z80Emitter();
+        var savedEmitter = _e;
+        _e = funcEmitter;
 
-        // エントリポイント: IYワーク設定 → グローバル初期化 → MAIN呼び出し → STOP
-        _e.Comment("=== Entry Point ===");
-        _e.Instruction("LD", "IY,__IYWORK");
-
-        // グローバル変数の初期化コード (LoadConst + StoreVar のペア)
-        {
-            int? pendingConstVal = null;
-            foreach (var inst in _module.GlobalData)
-            {
-                if (inst.Op == IrOp.LoadConst && inst.Src1.Kind == IrOperandKind.Immediate)
-                {
-                    pendingConstVal = (int)(inst.Src1.ImmediateValue & 0xFFFF);
-                }
-                else if (inst.Op == IrOp.StoreVar && pendingConstVal.HasValue)
-                {
-                    _e.Instruction("LD", $"HL,${pendingConstVal.Value:X4}");
-                    _e.Instruction("LD", $"({AsmLabel(inst.Dest.Name!)}),HL");
-                    pendingConstVal = null;
-                }
-                else
-                {
-                    pendingConstVal = null;
-                }
-            }
-        }
-
-        _e.Instruction("CALL", "MAIN");
-        _e.Instruction("RET");
-        _e.Blank();
-
-        // Functions
         foreach (var func in _module.Functions)
         {
             EmitFunction(func);
             _e.Blank();
         }
 
-        // String table
+        _e = savedEmitter;
+
+        // === Phase 2: ランタイム使用関数の確定 ===
+        if (_runtimeManager != null)
+        {
+            var userFuncs = new HashSet<string>(_module.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
+            foreach (var name in _calledFunctions)
+            {
+                if (!userFuncs.Contains(name))
+                    _runtimeManager.MarkUsed(name);
+            }
+        }
+
+        // === Phase 3: ORG + ENV_TYPE/OS_TYPE ===
+        if (_module.OrgAddress.HasValue)
+        {
+            _e.Instruction("ORG", $"${_module.OrgAddress.Value:X4}");
+        }
+
+        if (_envConfig != null)
+        {
+            _e.Raw($"ENV_TYPE EQU {_envConfig.EnvType} ");
+            _e.Raw($"OS_TYPE EQU {_envConfig.OsType}");
+        }
+
+        // === Phase 4: エントリポイント生成 ===
+        if (_runtimeManager?.Functions.ContainsKey("SLANGINIT") == true)
+        {
+            // SLANGINITをインライン展開し、通常出力から除外
+            var code = _runtimeManager.GetAndExclude("SLANGINIT");
+            if (code != null)
+            {
+                code = code.Replace("<<CALLINITIALIZER>>", " CALL RUNTIME_INIT");
+                // 行単位でSLANGINITを処理し、CALL MAIN直前にグローバル初期化を挿入
+                foreach (var line in code.Split('\n'))
+                {
+                    var tokens = line.Trim().Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (tokens.Length >= 2
+                        && tokens[0].Equals("CALL", StringComparison.OrdinalIgnoreCase)
+                        && tokens[1].Equals("MAIN", StringComparison.OrdinalIgnoreCase))
+                    {
+                        EmitGlobalInit();
+                    }
+                    if (!string.IsNullOrWhiteSpace(line))
+                        _e.Raw(line);
+                }
+            }
+        }
+        else
+        {
+            // フォールバック: SLANGINITなし環境
+            _e.Comment("=== Entry Point ===");
+            _e.Instruction("LD", "IY,__IYWORK");
+            if (HasRuntimeInitializers())
+                _e.Instruction("CALL", "RUNTIME_INIT");
+            EmitGlobalInit();
+            _e.Instruction("CALL", "MAIN");
+            _e.Instruction("RET");
+        }
+        _e.Blank();
+
+        // === Phase 5: 関数本体を挿入 ===
+        _e.AppendFrom(funcEmitter);
+
+        // === Phase 6: 文字列テーブル ===
         if (_module.StringTable.Count > 0)
         {
             _e.Blank();
@@ -185,65 +217,35 @@ public class CodeGenerator
             }
         }
 
-        // Global variable work area
-        if (_module.GlobalVars.Count > 0)
+        // === Phase 7: 初期値付きグローバル変数（コード領域に配置） ===
+        // アドレス固定変数: EQUで定義
+        foreach (var gv in _module.GlobalVars.Where(v => v.FixedAddress.HasValue))
         {
-            _e.Blank();
-            _e.Comment("=== Global Variables (Work Area) ===");
-
-            // アドレス固定変数: EQUで定義
-            foreach (var gv in _module.GlobalVars.Where(v => v.FixedAddress.HasValue))
-            {
-                _e.Raw($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress!.Value:X4}");
-            }
-
-            // 通常変数: DS(Define Storage)で領域確保
-            foreach (var gv in _module.GlobalVars.Where(v => !v.FixedAddress.HasValue))
-            {
-                if (gv.InitialData != null)
-                {
-                    // 初期値付き → コード領域に埋め込み
-                    _e.Label(gv.AsmLabel);
-                    var bytes = string.Join(",", gv.InitialData.Select(b => $"${b:X2}"));
-                    _e.Raw($"\tDB\t{bytes}");
-                }
-                else
-                {
-                    // 初期値なし → ワーク領域にDS
-                    _e.Label(gv.AsmLabel);
-                    _e.Raw($"\tDS\t{gv.ByteSize}");
-                }
-            }
+            _e.Raw($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress!.Value:X4}");
         }
 
-        // WORK宣言がある場合
-        if (_module.WorkAddress.HasValue)
+        // 初期値付き変数: コード領域にDBで配置
+        foreach (var gv in _module.GlobalVars.Where(v => !v.FixedAddress.HasValue && v.InitialData != null))
         {
-            _e.Blank();
-            _e.Comment($"=== WORK at ${_module.WorkAddress.Value:X4} ===");
+            _e.Label(gv.AsmLabel);
+            var bytes = string.Join(",", gv.InitialData!.Select(b => $"${b:X2}"));
+            _e.Raw($"\tDB\t{bytes}");
         }
 
-        // ランタイム関数の結合（使用されたもののみ）
+        // === Phase 8: ランタイム関数出力 + RUNTIME_INIT ===
         if (_runtimeManager != null)
         {
-            // ユーザー定義関数名を収集（ランタイムとの区別用）
-            var userFuncs = new HashSet<string>(_module.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
+            // RUNTIME_INIT（常に出力）
+            EmitRuntimeInit();
 
-            foreach (var name in _calledFunctions)
-            {
-                if (!userFuncs.Contains(name))
-                    _runtimeManager.MarkUsed(name);
-            }
-
-            var usedRuntime = _runtimeManager.GetUsedFunctions().ToList();
-            if (usedRuntime.Count > 0)
+            var outputFuncs = _runtimeManager.GetOutputFunctions().ToList();
+            if (outputFuncs.Count > 0)
             {
                 _e.Blank();
                 _e.Comment("=== Runtime Functions ===");
-                foreach (var func in usedRuntime)
+                foreach (var func in outputFuncs)
                 {
                     _e.Label(func.Name);
-                    // ランタイムのコードをそのまま出力
                     foreach (var line in func.Code.Split('\n'))
                     {
                         if (!string.IsNullOrWhiteSpace(line))
@@ -254,15 +256,11 @@ public class CodeGenerator
             }
         }
 
-        // IYワーク領域 (256バイト)
-        _e.Blank();
-        _e.Comment("=== IY Work Area (256 bytes) ===");
-        _e.Label("__IYWORK");
-        _e.Raw("\tDS\t256");
-
         // プログラム末尾マーカー
-        _e.Blank();
         _e.Label("SLANG_PROG_END");
+
+        // === Phase 9: __WORK__集約レイアウト ===
+        EmitWorkArea();
 
         // ピープホール最適化
         _e.OptimizeWith(new PeepholeOptimizer());
@@ -270,16 +268,169 @@ public class CodeGenerator
         return _e.ToAssembly();
     }
 
+    /// <summary>
+    /// コンパイラ生成グローバル変数初期化コード (VAR X=42等)
+    /// </summary>
+    private void EmitGlobalInit()
+    {
+        int? pendingConstVal = null;
+        foreach (var inst in _module.GlobalData)
+        {
+            if (inst.Op == IrOp.LoadConst && inst.Src1.Kind == IrOperandKind.Immediate)
+            {
+                pendingConstVal = (int)(inst.Src1.ImmediateValue & 0xFFFF);
+            }
+            else if (inst.Op == IrOp.StoreVar && pendingConstVal.HasValue)
+            {
+                _e.Instruction("LD", $"HL,${pendingConstVal.Value:X4}");
+                _e.Instruction("LD", $"({AsmLabel(inst.Dest.Name!)}),HL");
+                pendingConstVal = null;
+            }
+            else
+            {
+                pendingConstVal = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// RUNTIME_INIT関数の出力（常に出力、初期化対象0件でもRETのみ）
+    /// </summary>
+    private void EmitRuntimeInit()
+    {
+        _e.Blank();
+        _e.Label("RUNTIME_INIT");
+        if (_runtimeManager != null)
+        {
+            foreach (var func in _runtimeManager.GetUsedFunctions())
+            {
+                if (!string.IsNullOrEmpty(func.InitCode))
+                    _e.Instruction("CALL", $"{func.Name}_INITIALIZE");
+            }
+        }
+        _e.Instruction("RET");
+
+        // 各initializer本体
+        if (_runtimeManager != null)
+        {
+            foreach (var func in _runtimeManager.GetUsedFunctions())
+            {
+                if (!string.IsNullOrEmpty(func.InitCode))
+                {
+                    _e.Blank();
+                    _e.Label($"{func.Name}_INITIALIZE");
+                    foreach (var line in func.InitCode.Split('\n'))
+                    {
+                        if (!string.IsNullOrWhiteSpace(line))
+                            _e.Raw(line);
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// RUNTIME_INITが必要かどうか
+    /// </summary>
+    private bool HasRuntimeInitializers()
+    {
+        if (_runtimeManager == null) return false;
+        return _runtimeManager.GetUsedFunctions().Any(f => !string.IsNullOrEmpty(f.InitCode));
+    }
+
+    // システムレジスタワーク変数の定義（旧実装準拠の順序）
+    private static readonly (string Label, int Size)[] SystemRegisterWorks =
+    {
+        ("_BC", 2), ("_DE", 2), ("_HL", 2), ("_IX", 2), ("_IY", 2),
+        ("_AF", 2), ("_CARRY", 2), ("_ZERO", 2), ("_SP", 2),
+    };
+
+    /// <summary>
+    /// __WORK__集約レイアウトの出力
+    /// </summary>
+    private void EmitWorkArea()
+    {
+        _e.Blank();
+        _e.Comment("; Variables (works)");
+
+        // WORK指定時は別ORGを出力
+        if (_module.WorkAddress.HasValue)
+        {
+            _e.Instruction("ORG", $"${_module.WorkAddress.Value:X4}");
+            _e.Blank();
+        }
+
+        _e.Label("__WORK__");
+        int workOffset = 0;
+
+        // 1. ユーザーグローバル変数（固定アドレスなし、初期値なし）→ EQU
+        foreach (var gv in _module.GlobalVars.Where(v => !v.FixedAddress.HasValue && v.InitialData == null))
+        {
+            _e.Raw($"{gv.AsmLabel} EQU (__WORK__ + {workOffset})");
+            workOffset += gv.ByteSize;
+        }
+
+        // 3. システムレジスタワーク（_BC, _DE, _HL, _IX, _IY, _AF, _CARRY, _ZERO, _SP）
+        int afOffset = 0;
+        foreach (var (label, size) in SystemRegisterWorks)
+        {
+            if (label == "_AF") afOffset = workOffset;
+            _e.Raw($"{label} EQU (__WORK__ + {workOffset})");
+            workOffset += size;
+        }
+        // _A = _AF + 1 (エイリアス、領域を消費しない)
+        _e.Raw($"_A EQU (_AF + 1)");
+
+        // 4. ランタイムworks変数
+        if (_runtimeManager != null)
+        {
+            foreach (var (label, size) in _runtimeManager.GetUsedWorkVariables())
+            {
+                _e.Raw($"{label} EQU (__WORK__ + {workOffset})");
+                workOffset += size;
+            }
+        }
+
+        // 5. __IYWORK (256バイト)
+        _e.Raw($"__IYWORK EQU (__WORK__ + {workOffset})");
+        _e.Raw($"WORKEND EQU (__WORK__ + {workOffset + 256})");
+        _e.Blank();
+        _e.Raw($"__WORKEND__ EQU (__WORK__ + {workOffset + 256})");
+    }
+
     private void EmitStringData(string text)
     {
-        // 文字列をDBバイト列として出力（末尾$00付き）
-        var bytes = new List<string>();
-        foreach (var ch in text)
+        // 印刷可能ASCII文字のみならDB "text",0形式、それ以外は混在形式
+        if (text.All(ch => ch >= 0x20 && ch < 0x7F && ch != '"'))
         {
-            bytes.Add($"${(int)ch:X2}");
+            _e.Raw($"\tDB\t\"{text}\",0");
         }
-        bytes.Add("$00");
-        _e.Raw($"\tDB\t{string.Join(",", bytes)}");
+        else
+        {
+            // 制御文字を含む場合: 印刷可能部分は文字列、それ以外は$xx
+            var parts = new List<string>();
+            var strBuf = new System.Text.StringBuilder();
+            foreach (var ch in text)
+            {
+                if (ch >= 0x20 && ch < 0x7F && ch != '"')
+                {
+                    strBuf.Append(ch);
+                }
+                else
+                {
+                    if (strBuf.Length > 0)
+                    {
+                        parts.Add($"\"{strBuf}\"");
+                        strBuf.Clear();
+                    }
+                    parts.Add($"${(int)ch:X2}");
+                }
+            }
+            if (strBuf.Length > 0)
+                parts.Add($"\"{strBuf}\"");
+            parts.Add("0");
+            _e.Raw($"\tDB\t{string.Join(",", parts)}");
+        }
     }
 
     private void EmitGlobalData(IrInstruction inst)
@@ -919,8 +1070,10 @@ public class CodeGenerator
         var funcName = inst.Dest.Name ?? "UNKNOWN";
         _currentFuncExitLabel = $"_{funcName}_EXIT";
 
-        // ローカル変数のサイズを事前計算するため、後続のStoreLocal命令を走査
-        _currentFuncLocalSize = ComputeLocalSize(inst);
+        // ローカル変数のサイズ: IR生成時に計算済みの値を優先、フォールバックでStoreLocal走査
+        _currentFuncLocalSize = (_currentFunction?.LocalSize > 0)
+            ? _currentFunction.LocalSize
+            : ComputeLocalSize(inst);
 
         _e.Comment($"function {funcName}");
         if (_currentFuncLocalSize > 0)

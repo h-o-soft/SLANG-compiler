@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/liblsx_file.yml
+; Converted from lib/libdef/liblsx_file.yml
 ; SLANG Runtime Library (new format)
 
 ; @name LSXFILE
@@ -553,6 +553,7 @@ RET
 
 
 ; @name FWORK
+; @works LSXFCBS:296,LSXFCB:2,LSXFMODE:2
 ;
 
 

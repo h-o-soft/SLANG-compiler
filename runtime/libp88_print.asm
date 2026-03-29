@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libp88_print.yml
+; Converted from lib/libdef/libp88_print.yml
 ; SLANG Runtime Library (new format)
 
 ; @name P88PCOMMON

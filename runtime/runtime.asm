@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/runtime.yml
+; Converted from lib/libdef/runtime.yml
 ; SLANG Runtime Library (new format)
 
 ; @name MULHLDE
@@ -397,6 +397,17 @@ RET
 ; @name RND
 ; @param_count 1
 ; @calls MULHLDE,MODHLDE
+; @works RND_SEED1:2,RND_SEED2:2
+; @init_code
+LD HL,$E933
+LD (RND_SEED2),HL
+LD A,R
+LD L,A
+LD (RND_SEED1),A
+XOR H
+LD (RND_SEED1+1),A
+RET
+; @end_init
 PUSH HL
 LD HL,(RND_SEED1)
 LD B,H

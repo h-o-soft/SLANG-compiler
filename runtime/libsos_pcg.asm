@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libsos_pcg.yml
+; Converted from lib/libdef/libsos_pcg.yml
 ; SLANG Runtime Library (new format)
 
 ; @name PCGDEF

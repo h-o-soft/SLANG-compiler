@@ -47,12 +47,24 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         DefineSystemArray("SOS", SlangType.Byte);
         DefineSystemArray("SOSW", SlangType.Word);
 
-        // 登録済み変数
-        foreach (var name in new[] { "^A", "^BC", "^DE", "^HL", "^IX", "^IY", "^AF", "^SP", "^CARRY", "^CY", "^ZERO" })
+        // 登録済み変数（旧実装準拠: ランタイムが_CARRY, _AF等を参照するため）
+        foreach (var name in new[] { "^BC", "^DE", "^HL", "^IX", "^IY", "^AF", "^SP", "^CARRY", "^ZERO" })
         {
             var sym = _symbols.Define(name, SymbolKind.Variable, SlangType.Word);
             sym.IsGlobal = true;
-            sym.AsmLabel = $"_REG_{name[1..].ToUpperInvariant()}";
+            sym.AsmLabel = $"_{name[1..].ToUpperInvariant()}";
+        }
+        // ^A = _AF + 1 のエイリアス（__WORK__で領域を消費しない）
+        {
+            var sym = _symbols.Define("^A", SymbolKind.Variable, SlangType.Word);
+            sym.IsGlobal = true;
+            sym.AsmLabel = "_A";
+        }
+        // ^CY = ^CARRY のエイリアス（同一ラベル _CARRY を共有）
+        {
+            var sym = _symbols.Define("^CY", SymbolKind.Variable, SlangType.Word);
+            sym.IsGlobal = true;
+            sym.AsmLabel = "_CARRY";
         }
         {
             var sym = _symbols.Define("@KBUFF", SymbolKind.Variable, SlangType.Word);

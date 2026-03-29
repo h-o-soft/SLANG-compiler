@@ -8,14 +8,15 @@ namespace SLANGCompiler.Runtime;
 /// ; @name PSTR2
 /// ; @param_count 2
 /// ; @calls PCHR
-/// ; @init_code (initialization code marker)
+/// ; @works sXYADR:2,sKBFAD:128
+/// ; @init_code
+///   LD HL,seed
+///   ...
+///   RET
+/// ; @end_init
 /// .pstr1
 ///   LD A,D
-///   OR E
-///   RET Z
-///   CALL PCHR
-///   DEC DE
-///   JR .pstr1
+///   ...
 /// </summary>
 public class RuntimeFunction
 {
@@ -26,6 +27,7 @@ public class RuntimeFunction
     public string? InitCode { get; set; }                     // @init_code
     public string? LibName { get; set; }                      // @lib
     public string SourceFile { get; set; } = "";
+    public List<(string Label, int Size)>? Works { get; set; }  // @works (順序付き)
 }
 
 /// <summary>
@@ -35,6 +37,7 @@ public class RuntimeManager
 {
     private readonly Dictionary<string, RuntimeFunction> _functions = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _usedFunctions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _excludedFromOutput = new(StringComparer.OrdinalIgnoreCase);
 
     public IReadOnlyDictionary<string, RuntimeFunction> Functions => _functions;
 
@@ -76,7 +79,18 @@ public class RuntimeManager
     }
 
     /// <summary>
-    /// 使用済み関数のコードを取得（依存関係順）
+    /// ランタイム関数のコードを取得し、通常出力から除外する（SLANGINITのインライン展開用）。
+    /// 依存関数はマークされるが、指定関数自体は通常runtime出力から除外される。
+    /// </summary>
+    public string? GetAndExclude(string name)
+    {
+        MarkUsed(name);
+        _excludedFromOutput.Add(name);
+        return _functions.TryGetValue(name, out var func) ? func.Code : null;
+    }
+
+    /// <summary>
+    /// 使用済み関数のコードを取得（依存関係順、除外されたものはスキップ）
     /// </summary>
     public IEnumerable<RuntimeFunction> GetUsedFunctions()
     {
@@ -89,6 +103,47 @@ public class RuntimeManager
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// 使用済みランタイムのworks変数を依存解決順で集約し、重複排除して返す
+    /// </summary>
+    public IEnumerable<(string Label, int Size)> GetUsedWorkVariables()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var func in GetUsedFunctions())
+        {
+            if (func.Works == null) continue;
+            foreach (var (label, size) in func.Works)
+            {
+                if (seen.Add(label))
+                    yield return (label, size);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 通常出力対象の使用済み関数（除外されたものをスキップ）
+    /// </summary>
+    public IEnumerable<RuntimeFunction> GetOutputFunctions()
+    {
+        return GetUsedFunctions().Where(f => !_excludedFromOutput.Contains(f.Name));
+    }
+
+    /// <summary>
+    /// 指定した関数名セットのみを起点に依存解決し、ランタイム関数を返す。
+    /// ユーザー定義関数名は除外する。除外済み関数もスキップ。
+    /// </summary>
+    public IEnumerable<RuntimeFunction> ResolveForNames(IEnumerable<string> names, ISet<string> userFuncs)
+    {
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<RuntimeFunction>();
+        foreach (var name in names)
+        {
+            if (!userFuncs.Contains(name))
+                CollectDependencies(name, visited, result);
+        }
+        return result.Where(f => !_excludedFromOutput.Contains(f.Name));
     }
 
     private void CollectDependencies(string name, HashSet<string> visited, List<RuntimeFunction> result)
@@ -169,12 +224,33 @@ public static class RuntimeParser
                             current.LibName = value;
                         break;
 
+                    case "works":
+                        if (current != null && !string.IsNullOrEmpty(value))
+                        {
+                            current.Works ??= new();
+                            foreach (var item in value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                var colonIdx = item.IndexOf(':');
+                                if (colonIdx > 0)
+                                {
+                                    var label = item[..colonIdx].Trim();
+                                    if (int.TryParse(item[(colonIdx + 1)..].Trim(), out int size))
+                                        current.Works.Add((label, size));
+                                }
+                            }
+                        }
+                        break;
+
                     case "init_code":
                         inInitCode = true;
                         break;
 
                     case "end_init":
                         inInitCode = false;
+                        break;
+
+                    case "function_type":
+                        // function_type is metadata only, no action needed
                         break;
                 }
                 continue;

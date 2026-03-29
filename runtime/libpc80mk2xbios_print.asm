@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libpc80mk2xbios_print.yml
+; Converted from lib/libdef/libpc80mk2xbios_print.yml
 ; SLANG Runtime Library (new format)
 
 ; @name WIDTH

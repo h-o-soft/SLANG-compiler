@@ -243,6 +243,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
 
         Emit(IrOp.FuncEnd);
+        _currentFunction.LocalSize = _localOffset;
         _module.Functions.Add(_currentFunction);
         _currentFunction = null;
         _localVars = prevLocalVars;
@@ -597,13 +598,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 var val = arg.Accept(this);
                 if (arg is StringLiteral)
                 {
-                    // PSTR: HL=文字列アドレス
-                    Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSTR"));
+                    // PMSX: HL=null終端文字列アドレスから出力
+                    Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PMSX"));
                 }
                 else
                 {
-                    // PRT: HL=数値
-                    Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PRT"));
+                    // P10: HL=数値を10進文字列に変換して出力
+                    Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10"));
                 }
             }
         }

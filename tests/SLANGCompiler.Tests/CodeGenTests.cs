@@ -62,8 +62,8 @@ public class CodeGenTests
     public void GlobalVariable_WorkArea()
     {
         var asm = Compile("VAR GLOBAL; MAIN() BEGIN GLOBAL=1; END;");
-        // グローバル変数はDS確保
-        Assert.Contains("DS\t2", asm);
+        // グローバル変数は__WORK__内にEQU配置
+        Assert.Contains("_GLOBAL EQU (__WORK__", asm);
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class CodeGenTests
     {
         var asm = Compile("MAIN() BEGIN PRINT(\"Hello\"); END;");
         Assert.Contains("_S0:", asm);
-        Assert.Contains("DB\t$48,$65,$6C,$6C,$6F,$00", asm); // "Hello" + NUL
+        Assert.Contains("DB\t\"Hello\",0", asm);
     }
 
     [Fact]
@@ -107,8 +107,10 @@ public class CodeGenTests
         var asm = Compile("MAIN() BEGIN END;");
         Assert.Contains("LD\tIY,__IYWORK", asm);
         Assert.Contains("CALL\tMAIN", asm);
-        Assert.Contains("__IYWORK:", asm);
+        Assert.Contains("__IYWORK EQU (__WORK__", asm);
         Assert.Contains("SLANG_PROG_END:", asm);
+        Assert.Contains("__WORK__:", asm);
+        Assert.Contains("__WORKEND__", asm);
     }
 
     [Fact]
@@ -116,5 +118,35 @@ public class CodeGenTests
     {
         var asm = Compile("ORG $8000; MAIN() BEGIN END;");
         Assert.Contains("ORG\t$8000", asm);
+    }
+
+    [Fact]
+    public void PrintString_CallsPMSX()
+    {
+        var asm = Compile("MAIN() BEGIN PRINT(\"Hello\"); END;");
+        Assert.Contains("CALL\tPMSX", asm);
+        Assert.DoesNotContain("CALL\tPSTR", asm);
+    }
+
+    [Fact]
+    public void PrintNumber_CallsP10()
+    {
+        var asm = Compile("VAR X; MAIN() BEGIN PRINT(X); END;");
+        Assert.Contains("CALL\tP10", asm);
+    }
+
+    [Fact]
+    public void LocalArray_IYFrameAdjustment()
+    {
+        var asm = Compile("MAIN() BEGIN ARRAY A[5]; A[0]=1; END;");
+        var mainBody = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Contains("ADD\tIY,BC", mainBody);
+    }
+
+    [Fact]
+    public void PrintNewline_CallsPCRONE()
+    {
+        var asm = Compile("MAIN() BEGIN PRINT(/); END;");
+        Assert.Contains("CALL\tPCRONE", asm);
     }
 }

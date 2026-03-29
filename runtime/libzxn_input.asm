@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libzxn_input.yml
+; Converted from lib/libdef/libzxn_input.yml
 ; SLANG Runtime Library (new format)
 
 ; @name INKEY

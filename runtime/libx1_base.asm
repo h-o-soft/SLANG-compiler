@@ -1,7 +1,8 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libx1_base.yml
+; Converted from lib/libdef/libx1_base.yml
 ; SLANG Runtime Library (new format)
 
 ; @name VSYNC_CHECK
+; @works LASTVSYNCFLAG:1,VSYNCCOUNTER:1
 LD A,1AH
 IN A,(01H)
 
@@ -52,6 +53,7 @@ RET
 
 
 ; @name SETUPCTC
+; @works CTCADR:2
 PUSH	BC
 LD	DE,04703H
 INICTC1:

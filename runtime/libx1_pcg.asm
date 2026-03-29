@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libx1_pcg.yml
+; Converted from lib/libdef/libx1_pcg.yml
 ; SLANG Runtime Library (new format)
 
 ; @name PCGDEF

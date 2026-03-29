@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libp88_base.yml
+; Converted from lib/libdef/libp88_base.yml
 ; SLANG Runtime Library (new format)
 
 ; @name SLANGINIT
@@ -284,6 +284,7 @@ scrinitcode_end:
 
 
 ; @name P88WORK
+; @works IO32H:1
 ;
 
 

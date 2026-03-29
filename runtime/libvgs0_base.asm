@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libvgs0_base.yml
+; Converted from lib/libdef/libvgs0_base.yml
 ; SLANG Runtime Library (new format)
 
 ; @name VGSCALLS
@@ -731,6 +731,7 @@ ret
 
 ; @name VGSWORK
 ; @param_count 0
+; @works LOCX:1,LOCY:1,TXTATR:1,TXTPLANE:1,WORK10:12
 ;
 
 

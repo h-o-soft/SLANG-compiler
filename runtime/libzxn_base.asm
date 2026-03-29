@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libzxn_base.yml
+; Converted from lib/libdef/libzxn_base.yml
 ; SLANG Runtime Library (new format)
 
 ; @name ZXNCALLS
@@ -946,6 +946,7 @@ JP !VSYNC_PROC
 
 ; @name ZXNWORK
 ; @param_count 0
+; @works LOCX:1,LOCY:1,SPL_SYS:1,ULA_CTRL:1,EULA_CTRL:1,L2_ACCESS:1,TILE_CTRL:1,TXTATR:1,TXTPLANE:1,FHEADER:8,SPTMP:2,WORK10:12
 ;
 
 

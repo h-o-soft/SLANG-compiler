@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libzxn_nextdaw.yml
+; Converted from lib/libdef/libzxn_nextdaw.yml
 ; SLANG Runtime Library (new format)
 
 ; @name ZXNDAWCALLS

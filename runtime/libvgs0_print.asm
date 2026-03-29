@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/libvgs0_print.yml
+; Converted from lib/libdef/libvgs0_print.yml
 ; SLANG Runtime Library (new format)
 
 ; @name WIDTH
