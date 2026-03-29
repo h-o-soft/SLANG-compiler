@@ -41,40 +41,17 @@ wine ~/projects/SLANG-compiler/tools/cpm.exe examples/PROG.COM
 ### 新コンパイラ
 **テスト1-35: 全て正常通過**（旧コンパイラと同一出力）
 
-**テスト49: NG後ハング**
+**テスト1-54: 全通過（旧コンパイラと一致）**
 
 ```
-旧: ...43OK 44OK ... 48OK
-    49OK 50OK ... 54OK
-    INPUT 'START'
-
-新: ...43OK 44OK ... 48OK
-    49NG
-    (ここでハング)
+新: ...53OK 54OK
+    INPUT 'START'  (入力待ちで正常停止)
 ```
 
-### ハングの切り分け結果
+### 既知の残課題
 
-| テストケース | 結果 |
-|---|---|
-| テスト49(ローカル2D配列)を単独で実行 | **正常動作** |
-| テスト33-37を単独で実行 | **正常動作** |
-| SLANGTEST.SL全体 | **テスト49でNG後ハング** |
-
-**結論**: テスト49のローカル2D配列アクセスは単独では動作する。SLANGTEST全体の実行でのみNG+ハングする。前のテストの累積的な影響が疑われる。
-
-### 疑われる原因
-
-1. **スタック不整合**: IF文やAND/OR演算でPUSH/POPがバランスしていないケースが蓄積
-2. **レジスタ破壊**: ランタイム関数呼び出し（P10, PMSX等）後にIYレジスタが復元されていない等
-3. **ワーク領域破壊**: ローカル変数やシステムワーク変数のオフセット計算の未発見バグ
-4. **InlineAsmの副作用**: ローカル配列アドレス計算のInlineAsmが他のtemp値を破壊
-
-### 調査方針案
-
-1. SLANGTEST.SLを二分割して、ハングが発生する最小のテスト範囲を特定
-2. SLANGTEST.ASMのPUSH/POP数をカウントし、全体のスタックバランスを確認
-3. Z80デバッガ（z80simやzesarux等）でステップ実行し、ハング箇所を特定
+- examples/STARS.SL, examples/STARS_X1.SL: X1エミュでの動作未確認
+- その他のexamplesの動作確認が未完了
 
 ---
 
@@ -106,6 +83,7 @@ wine ~/projects/SLANG-compiler/tools/cpm.exe examples/PROG.COM
 | CmpEq重複SBC | ==が常にfalse | SBC HL,DEが2回 | 重複削除 |
 | 全比較非融合版 | 条件判定が反転 | JR cond,$+3のcondが逆 | InvertCond辞書で統一 |
 | ローカル2D配列 | 書き込み値が反映されない | InlineAsmのDestにtemp未紐付 | Dest=tempでPUSH判定を有効化 |
+| StoreVar後のPUSH漏れ | FOR文の終了条件でスタック破壊 | NeedsPushAfterがStoreVarで打ち切り | StoreVar/StoreLocal後はスキャン続行 |
 
 ---
 
@@ -117,4 +95,5 @@ wine ~/projects/SLANG-compiler/tools/cpm.exe examples/PROG.COM
 | examples/STARS.SL | OK | 未確認（X1エミュ必要） |
 | examples/FURUI.SL | OK | 未確認 |
 | examples/STARS_X1.SL | OK | 未確認（X1エミュ必要） |
-| SLANGTEST.SL | OK | テスト1-48通過、49NG後ハング |
+| SLANGTEST.SL | OK | テスト1-54全通過（旧コンパイラと一致） |
+| examples/FURUI.SL | OK | OK（素数一覧出力、正常終了） |

@@ -1035,7 +1035,12 @@ public class CodeGenerator
                 if (next.Op == IrOp.ArrayStore && next.Src2.Kind == IrOperandKind.Temp)
                     return true;
 
-                return false; // 使われるが、PUSH不要
+                // StoreVar/StoreLocal: HLの値を書き出すだけでHLを破壊しない
+                // → tempがその後さらに使われるかスキャンを続行
+                if (next.Op is IrOp.StoreVar or IrOp.StoreLocal)
+                    continue;
+
+                return false; // その他: 使われるが、PUSH不要
             }
 
             // この temp が src2 として使われる → 直前のsrc1がPUSHされるべき → ここではPUSH不要
