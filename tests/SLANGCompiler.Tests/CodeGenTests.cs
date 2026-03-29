@@ -185,6 +185,18 @@ public class CodeGenTests
     }
 
     [Fact]
+    public void SystemVar_CorrectLabel()
+    {
+        // ^AF, ^CARRY等のシステム変数は_プレフィックスでアクセスされること
+        var asm = Compile("MAIN() BEGIN ^AF=1; ^CARRY=0; END;");
+        Assert.Contains("(_AF)", asm);
+        Assert.Contains("(_CARRY)", asm);
+        // __プレフィックスが付かないこと
+        Assert.DoesNotContain("(__AF)", asm);
+        Assert.DoesNotContain("(__CARRY)", asm);
+    }
+
+    [Fact]
     public void PrintNewline_CallsPCRONE()
     {
         var asm = Compile("MAIN() BEGIN PRINT(/); END;");

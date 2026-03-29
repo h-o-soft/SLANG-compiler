@@ -1082,7 +1082,7 @@ public class Parser
             // BYTE→1バイト。CastExprで表現
             return new CastExpr(DataSize.Byte, expr, s);
         }
-        if (Check(TokenKind.Word))
+        if (CheckAny(TokenKind.Word, TokenKind.Percent))
         {
             Advance();
             Match(TokenKind.Comma);

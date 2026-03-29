@@ -1146,8 +1146,11 @@ public class CodeGenerator
         }
     }
 
-    /// <summary>シンボル名→ASMラベル名。__プレフィックスでシステム変数名との衝突を回避。</summary>
-    private static string AsmLabel(string name) => $"__{name}";
+    /// <summary>
+    /// IR命令のシンボル名をそのまま返す。
+    /// IrGenerator側でResolveAsmLabel()によりAsmLabelが解決済み。
+    /// </summary>
+    private static string AsmLabel(string name) => name;
 
     private void EmitLoadVar(IrInstruction inst)
     {

@@ -66,11 +66,11 @@
 - ユーザー変数: `__`プレフィックス（例: `__A`, `__VAL`）
 - システムレジスタ変数: `_`プレフィックス（例: `_AF`, `_CARRY`）— ランタイム互換
 - `_A EQU (_AF+1)` はシステムエイリアスとして独立
+- IrGenerator.ResolveAsmLabel()でシンボルのAsmLabelをIR命令に反映（文字列規則依存を排除）
 
-#### T3. CODEリスト内 %定数 のバグ修正
-- `ARRAY ARI[32]={1,2,3,%5,%6,...}` の `%5` が0になる
-- ParseCodeItemのCastExpr → IrGeneratorの定数評価パスに問題
-- 工数: 小
+#### ~~T3. CODEリスト内 %定数 のバグ修正~~ ✅完了
+- Parser: `%`をWORD型指定としてParseCodeItemに追加
+- IrGenerator: 配列初期化子でCastExprをアンラップしてサイズ別にバイト列生成
 
 ### 優先度: 高 (互換性)
 
@@ -143,6 +143,8 @@
 - [x] T2: 符号付き比較ランタイム名修正 (SCMP_*→OPS*HLDE)
 - [x] ランタイムCALLの_calledFunctions追跡漏れ修正 (CallRuntimeヘルパー)
 - [x] T2b: ユーザー変数ラベルを__プレフィックスに変更 (システム変数_との衝突防止)
+- [x] T2b追加: システム変数アクセスのAsmLabel解決修正 (ResolveAsmLabel導入)
+- [x] T3: CODEリスト内 %定数バグ修正 (CastExprアンラップ + %をWORD型指定に追加)
 
 ---
 

@@ -23,6 +23,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _globalSymbols = symbols;
     }
 
+    /// <summary>シンボル名からASMラベルを解決。AsmLabelが設定済みならそれを使い、なければ__プレフィックス。</summary>
+    private string ResolveAsmLabel(string name)
+    {
+        var sym = _globalSymbols?.Resolve(name);
+        return sym?.AsmLabel ?? $"__{name}";
+    }
+
     private record LocalVarInfo(int Offset, int ByteSize, bool IsArray = false, bool IsByte = false, List<int>? Dims = null);
     private int _localOffset;
 
@@ -88,7 +95,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (node.InitialValue != null)
             {
                 var val = node.InitialValue.Accept(this);
-                Emit(IrOp.StoreVar, IrOperand.Sym(node.Name), val, dataSize: ds);
+                Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Name)), val, dataSize: ds);
             }
         }
         else
@@ -146,17 +153,32 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 initData = new List<byte>();
                 foreach (var expr in node.InitialCode)
                 {
-                    if (expr is IntegerLiteral ilit)
+                    // CastExprの場合は内側の式とサイズを取得
+                    var initExpr = expr;
+                    int itemSize = elemSize;
+                    if (initExpr is CastExpr cast)
                     {
-                        if (elemSize == 1)
+                        initExpr = cast.Operand;
+                        itemSize = cast.TargetSize == DataSize.Byte ? 1 : cast.TargetSize == DataSize.Float ? 3 : 2;
+                    }
+
+                    if (initExpr is IntegerLiteral ilit)
+                    {
+                        if (itemSize == 1)
                             initData.Add((byte)(ilit.Value & 0xFF));
+                        else if (itemSize == 3)
+                        {
+                            initData.Add((byte)(ilit.Value & 0xFF));
+                            initData.Add((byte)((ilit.Value >> 8) & 0xFF));
+                            initData.Add((byte)((ilit.Value >> 16) & 0xFF));
+                        }
                         else
                         {
                             initData.Add((byte)(ilit.Value & 0xFF));
                             initData.Add((byte)((ilit.Value >> 8) & 0xFF));
                         }
                     }
-                    else if (expr is StringLiteral slit)
+                    else if (initExpr is StringLiteral slit)
                     {
                         foreach (var ch in slit.Value)
                             initData.Add((byte)ch);
@@ -164,7 +186,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     else
                     {
                         // 非定数式: プレースホルダ
-                        for (int j = 0; j < elemSize; j++) initData.Add(0);
+                        for (int j = 0; j < itemSize; j++) initData.Add(0);
                     }
                 }
                 // totalSizeに満たない場合は0で埋める
@@ -372,7 +394,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
         // Initialize: var = from
         var fromVal = node.From.Accept(this);
-        Emit(IrOp.StoreVar, IrOperand.Sym(node.Variable), fromVal);
+        Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Variable)), fromVal);
 
         PushLoop(contLabel, endLabel);
 
@@ -386,12 +408,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
         // Increment/decrement
         var curVal = IrOperand.Temp(AllocTemp());
-        Emit(IrOp.LoadVar, curVal, IrOperand.Sym(node.Variable));
+        Emit(IrOp.LoadVar, curVal, IrOperand.Sym(ResolveAsmLabel(node.Variable)));
         var one = IrOperand.Temp(AllocTemp());
         Emit(IrOp.LoadConst, one, IrOperand.Imm(1));
         var newVal = IrOperand.Temp(AllocTemp());
         Emit(node.IsDownTo ? IrOp.Sub : IrOp.Add, newVal, curVal, one);
-        Emit(IrOp.StoreVar, IrOperand.Sym(node.Variable), newVal);
+        Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Variable)), newVal);
 
         // Compare with limit
         var limit = node.To.Accept(this);
@@ -659,7 +681,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         else
         {
             int ds = sym?.Type?.ByteSize ?? 2;
-            Emit(IrOp.LoadVar, t, IrOperand.Sym(node.Name), dataSize: ds);
+            Emit(IrOp.LoadVar, t, IrOperand.Sym(ResolveAsmLabel(node.Name)), dataSize: ds);
             _tempDataSize[t.TempIndex] = ds;
         }
         return t;
@@ -932,7 +954,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 }
                 else
                 {
-                    Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(arrayName));
+                    Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(ResolveAsmLabel(arrayName)));
                 }
             }
             else
@@ -1026,7 +1048,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (node.Operand is IdentifierExpr id)
         {
             var t = IrOperand.Temp(AllocTemp());
-            Emit(IrOp.LoadAddr, t, IrOperand.Sym(id.Name));
+            Emit(IrOp.LoadAddr, t, IrOperand.Sym(ResolveAsmLabel(id.Name)));
             return t;
         }
         return node.Operand.Accept(this);
@@ -1196,7 +1218,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             {
                 var sym = _globalSymbols?.Resolve(id.Name);
                 int ds = sym?.Type?.ByteSize ?? 2;
-                Emit(IrOp.StoreVar, IrOperand.Sym(id.Name), value, dataSize: ds);
+                Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(id.Name)), value, dataSize: ds);
             }
         }
         else if (target is ArrayAccessExpr arr)
@@ -1232,7 +1254,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 if (_localVars != null && _localVars.TryGetValue(arrayName!, out var li))
                     Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(li.Offset));
                 else
-                    Emit(IrOp.LoadVar, baseAddr, IrOperand.Sym(arrayName!));
+                    Emit(IrOp.LoadVar, baseAddr, IrOperand.Sym(ResolveAsmLabel(arrayName!)));
 
                 var idx = arr.Indices[0].Accept(this);
                 int elemSize = isIndirectByte ? 1 : 2;
@@ -1266,9 +1288,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     else if (_localVars != null && _localVars.TryGetValue(arrayName, out var li2))
                         Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(li2.Offset));
                     else if (arraySym?.Type is PointerType)
-                        Emit(IrOp.LoadVar, baseAddr, IrOperand.Sym(arrayName));
+                        Emit(IrOp.LoadVar, baseAddr, IrOperand.Sym(ResolveAsmLabel(arrayName)));
                     else
-                        Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(arrayName));
+                        Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(ResolveAsmLabel(arrayName)));
                 }
                 else
                 {
