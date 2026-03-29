@@ -805,9 +805,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
         else if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstAst != null)
         {
             // アセンブラ式定数: CONST X=SOROBAN, CONST X=LABEL+$14
-            // 初回解決時にキャッシュ
-            if (sym.ConstAsmExpr == null)
+            // 初回解決時にキャッシュ（失敗時も再試行しない）
+            if (!sym.ConstAsmResolved)
             {
+                sym.ConstAsmResolved = true;
                 var result = LabelUtils.ExprToAsmString(sym.ConstAst, _globalSymbols, _diagnostics);
                 if (result.HasValue)
                 {
@@ -993,8 +994,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
             string asmName;
             if (funcSym?.AddressAst != null)
             {
-                if (funcSym.AddressExpr == null)
+                if (!funcSym.AddressExprResolved)
                 {
+                    funcSym.AddressExprResolved = true;
                     var result = LabelUtils.ExprToAsmString(funcSym.AddressAst, _globalSymbols, _diagnostics);
                     if (result.HasValue)
                     {

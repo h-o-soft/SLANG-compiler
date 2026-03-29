@@ -67,6 +67,17 @@ internal static class LabelUtils
                     if (sym != null)
                     {
                         if (sym.ConstValue is int cv) return $"${cv:X4}";
+                        // ConstAst未解決なら再帰的に解決・キャッシュ
+                        if (sym.ConstAst != null && !sym.ConstAsmResolved)
+                        {
+                            sym.ConstAsmResolved = true;
+                            var inner = ExprToAsmString(sym.ConstAst, symbols, diag);
+                            if (inner.HasValue)
+                            {
+                                sym.ConstAsmExpr = inner.Value.Expr;
+                                sym.ConstAsmDeps = inner.Value.Deps;
+                            }
+                        }
                         if (sym.ConstAsmExpr != null)
                         {
                             deps.AddRange(sym.ConstAsmDeps ?? []);

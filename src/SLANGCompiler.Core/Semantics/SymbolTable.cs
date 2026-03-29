@@ -37,8 +37,10 @@ public class Symbol
     // キャッシュ（IR段階で初回解決時に設定）
     public string? ConstAsmExpr { get; set; }          // CONST値の文字列化済みアセンブラ式
     public List<string>? ConstAsmDeps { get; set; }    // CONST式の依存シンボル
+    public bool ConstAsmResolved { get; set; }         // 解決試行済みフラグ（失敗時の再試行防止）
     public string? AddressExpr { get; set; }           // MACHINE:式の文字列化済みアセンブラ式
     public List<string>? AddressExprDeps { get; set; } // MACHINE:式の依存シンボル
+    public bool AddressExprResolved { get; set; }      // 解決試行済みフラグ
 
     public Symbol(string name, SymbolKind kind, SlangType type)
     {
