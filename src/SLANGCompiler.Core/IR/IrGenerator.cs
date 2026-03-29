@@ -103,9 +103,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (node.InitialValue != null)
             {
                 _emitToGlobalData = true;
-                var val = node.InitialValue.Accept(this);
-                Emit(IrOp.StoreVar, IrOperand.Sym(label), val, dataSize: ds);
-                _emitToGlobalData = false;
+                try
+                {
+                    var val = node.InitialValue.Accept(this);
+                    Emit(IrOp.StoreVar, IrOperand.Sym(label), val, dataSize: ds);
+                }
+                finally
+                {
+                    _emitToGlobalData = false;
+                }
             }
         }
         else

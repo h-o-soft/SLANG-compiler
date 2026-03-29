@@ -145,7 +145,21 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         }
 
         if (node.InitialValue != null)
+        {
             node.InitialValue.Accept(this);
+
+            // グローバル/静的変数の初期値は定数でなければならない
+            if (sym.IsGlobal && node.InitialValue is not IntegerLiteral)
+            {
+                var constVal = _constEval.Evaluate(node.InitialValue);
+                if (!constVal.HasValue)
+                {
+                    _diagnostics.Report(DiagnosticSeverity.Warning,
+                        $"Non-constant initializer for static/global variable '{node.Name}' may not be initialized at runtime",
+                        node.Span);
+                }
+            }
+        }
 
         return null;
     }
