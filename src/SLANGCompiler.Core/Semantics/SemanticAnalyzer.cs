@@ -230,7 +230,14 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             var sym = _symbols.Define(node.Name, SymbolKind.Constant, SlangType.Word);
             var val = _constEval.Evaluate(node.Value);
             if (val.HasValue)
+            {
                 sym.ConstValue = val.Value;
+            }
+            else if (node.Value is IdentifierExpr idExpr)
+            {
+                // ラベル値定数: CONST X = SOROBAN（ランタイムラベル参照）
+                sym.ConstLabel = LabelUtils.SanitizeLabel(idExpr.Name);
+            }
         }
         return null;
     }

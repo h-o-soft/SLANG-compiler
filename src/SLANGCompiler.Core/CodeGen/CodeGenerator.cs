@@ -1370,6 +1370,9 @@ public class CodeGenerator
         // Symbol(変数名)はプレフィックス付き、Label(文字列等)はそのまま
         var label = inst.Src1.Kind == IrOperandKind.Symbol ? AsmLabel(name) : name;
         _e.Instruction("LD", $"HL,{label}");
+        // ランタイムラベル参照の場合、リンク対象に追加
+        if (inst.Src1.Kind == IrOperandKind.Symbol)
+            _calledFunctions.Add(name);
     }
 
     // 二項演算: スタック上にsrc1(PUSH済み)、HLにsrc2

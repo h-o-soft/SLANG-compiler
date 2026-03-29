@@ -802,6 +802,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
         {
             Emit(IrOp.LoadConst, t, IrOperand.Imm(constVal));
         }
+        else if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstLabel != null)
+        {
+            // ラベル値定数: CONST X=SOROBAN → LD HL,SOROBAN
+            Emit(IrOp.LoadAddr, t, IrOperand.Sym(sym.ConstLabel));
+        }
         else if (sym != null && sym.IsCodeBlock)
         {
             // CODEブロック定数: アドレスをロード（LD HL,label）

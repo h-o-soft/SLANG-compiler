@@ -23,7 +23,8 @@ public class Symbol
     public SlangType Type { get; set; }
     public int? Address { get; set; }       // 固定アドレス指定
     public int Offset { get; set; }         // ローカル変数のスタックオフセット
-    public object? ConstValue { get; set; } // 定数値
+    public object? ConstValue { get; set; } // 定数値(int)
+    public string? ConstLabel { get; set; } // ラベル値定数(CONST X=SOROBAN)
     public bool IsGlobal { get; set; }
     public bool IsCodeBlock { get; set; }   // CODEブロック定数（アドレス参照）
     public string? AsmLabel { get; set; }   // アセンブリラベル名
