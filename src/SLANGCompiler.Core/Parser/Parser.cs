@@ -45,14 +45,17 @@ public class Parser
     public CompilationUnit ParseCompilationUnit()
     {
         var defs = new List<AstNode>();
-        while (!Check(TokenKind.EOF))
+        while (!Check(TokenKind.EOF) && !_diagnostics.HasReachedMaxErrors)
         {
             if (Match(TokenKind.Semicolon)) continue;
+            int errorsBefore = _diagnostics.ErrorCount;
             int before = _pos;
             var def = ParseTopLevel();
             if (def != null) defs.Add(def);
-            // Safety: if parser didn't advance, skip token to avoid infinite loop
-            if (_pos == before) Advance();
+            if (_diagnostics.ErrorCount > errorsBefore)
+                SynchronizeTopLevel();
+            else if (_pos == before)
+                Advance();
         }
         return new CompilationUnit(defs, SourceSpan.Unknown);
     }
@@ -157,7 +160,7 @@ public class Parser
 
         // #END まで定義を収集
         var defs = new List<AstNode>();
-        while (!Check(TokenKind.EOF))
+        while (!Check(TokenKind.EOF) && !_diagnostics.HasReachedMaxErrors)
         {
             // #END / #ENDIF でモジュール終了
             if (Check(TokenKind.PreprocEnd))
@@ -166,10 +169,14 @@ public class Parser
                 break;
             }
             if (Match(TokenKind.Semicolon)) continue;
+            int errorsBefore = _diagnostics.ErrorCount;
             int before = _pos;
             var def = ParseTopLevel();
             if (def != null) defs.Add(def);
-            if (_pos == before) Advance();
+            if (_diagnostics.ErrorCount > errorsBefore)
+                SynchronizeTopLevel();
+            else if (_pos == before)
+                Advance();
         }
 
         return new ModuleBlock(addr, defs, start);
@@ -377,9 +384,15 @@ public class Parser
 
         // Static declarations (before BEGIN)
         var staticDecls = new List<AstNode>();
-        while (IsDeclStart() && !IsBlockOpen())
+        while (IsDeclStart() && !IsBlockOpen() && !_diagnostics.HasReachedMaxErrors)
         {
+            int errorsBefore = _diagnostics.ErrorCount;
+            int before = _pos;
             staticDecls.Add(ParseLocalDecl());
+            if (_diagnostics.ErrorCount > errorsBefore)
+                SynchronizeDeclaration();
+            else if (_pos == before)
+                Advance();
         }
 
         // BEGIN
@@ -387,9 +400,15 @@ public class Parser
 
         // Local declarations (after BEGIN, before statements)
         var localDecls = new List<AstNode>();
-        while (IsDeclStart())
+        while (IsDeclStart() && !_diagnostics.HasReachedMaxErrors)
         {
+            int errorsBefore = _diagnostics.ErrorCount;
+            int before = _pos;
             localDecls.Add(ParseLocalDecl());
+            if (_diagnostics.ErrorCount > errorsBefore)
+                SynchronizeDeclaration();
+            else if (_pos == before)
+                Advance();
         }
 
         // Statements
@@ -422,13 +441,17 @@ public class Parser
     {
         var stmts = new List<AstNode>();
         while (!IsBlockClose() && !Check(TokenKind.EOF) && !Check(TokenKind.Until)
-               && !Check(TokenKind.Wend))
+               && !Check(TokenKind.Wend) && !_diagnostics.HasReachedMaxErrors)
         {
             if (Match(TokenKind.Semicolon)) continue;
+            int errorsBefore = _diagnostics.ErrorCount;
             int before = _pos;
             var stmt = ParseStmt();
             if (stmt != null) stmts.Add(stmt);
-            if (_pos == before) Advance(); // safety
+            if (_diagnostics.ErrorCount > errorsBefore)
+                SynchronizeStatement();
+            else if (_pos == before)
+                Advance();
         }
         return stmts;
     }
@@ -1126,6 +1149,71 @@ public class Parser
 
     private bool IsDeclStart() => CheckAny(TokenKind.Var, TokenKind.Array, TokenKind.Const, TokenKind.Machine,
                                             TokenKind.Byte, TokenKind.Word);
+
+    // === Error Recovery: Synchronization ===
+
+    /// <summary>トップレベル境界まで同期（ParseTopLevel開始トークンに対応）</summary>
+    private void SynchronizeTopLevel()
+    {
+        while (!Check(TokenKind.EOF))
+        {
+            if (Match(TokenKind.Semicolon)) return;
+            switch (Current.Kind)
+            {
+                case TokenKind.Org: case TokenKind.Work: case TokenKind.Offset:
+                case TokenKind.Plain: case TokenKind.PreprocIf: case TokenKind.PreprocElse:
+                case TokenKind.PreprocEnd: case TokenKind.PreprocInclude:
+                case TokenKind.Const: case TokenKind.Var: case TokenKind.Array:
+                case TokenKind.Machine: case TokenKind.Byte: case TokenKind.Word:
+                case TokenKind.Float: case TokenKind.Exclamation:
+                case TokenKind.Module:
+                    return;
+            }
+            if (Check(TokenKind.Identifier) && IsFuncDefStart()) return;
+            Advance();
+        }
+    }
+
+    /// <summary>宣言境界まで同期（IsDeclStart + IsBlockOpen に対応）</summary>
+    private void SynchronizeDeclaration()
+    {
+        while (!Check(TokenKind.EOF))
+        {
+            if (Match(TokenKind.Semicolon)) return;
+            if (IsDeclStart()) return;
+            if (IsBlockOpen()) return;
+            Advance();
+        }
+    }
+
+    /// <summary>ステートメント境界まで同期（ParseStmt開始 + ParseStmtList終了に対応）</summary>
+    private void SynchronizeStatement()
+    {
+        while (!Check(TokenKind.EOF))
+        {
+            if (Match(TokenKind.Semicolon)) return;
+            switch (Current.Kind)
+            {
+                // ParseStmt開始トークン
+                case TokenKind.If: case TokenKind.While: case TokenKind.Repeat:
+                case TokenKind.Loop: case TokenKind.For: case TokenKind.Case:
+                case TokenKind.Exit: case TokenKind.Continue: case TokenKind.Return:
+                case TokenKind.Goto: case TokenKind.Print: case TokenKind.Plain:
+                case TokenKind.Var: case TokenKind.Array: case TokenKind.Byte:
+                case TokenKind.Word: case TokenKind.Float:
+                case TokenKind.PreprocIf: case TokenKind.PreprocEnd:
+                case TokenKind.Identifier:
+                // ParseStmtList終了条件
+                case TokenKind.Until: case TokenKind.Wend:
+                // IF分岐
+                case TokenKind.Else: case TokenKind.Elif: case TokenKind.Ef: case TokenKind.EndIf:
+                    return;
+            }
+            // IsBlockOpen/Close
+            if (IsBlockOpen() || IsBlockClose()) return;
+            Advance();
+        }
+    }
 
     /// <summary>Match an identifier used as keyword (like AND, OR)</summary>
     private bool MatchIdent(string name)

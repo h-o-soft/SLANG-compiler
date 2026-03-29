@@ -98,9 +98,11 @@
 - CALL OPS*HLDEが不要になりコードサイズ・速度両方改善
 - 非融合ケース（代入等）は従来通りCALL OPS*HLDE
 
-#### T7. エラーメッセージの改善
-- 行番号/列番号の精度向上
-- エラーリカバリ（連鎖エラー抑制）
+#### ~~T7. エラーメッセージの改善~~ ✅完了
+- 3種同期リカバリ: SynchronizeTopLevel/Declaration/Statement（停止集合は既存パーサーと完全一致）
+- ErrorCount差分で同期発火（5ループ: CompilationUnit, ModuleBlock, StmtList, staticDecls, localDecls）
+- MaxErrors=30で打ち切り（HasReachedMaxErrors）
+- 行番号追跡は既に正確（Lexer/Preprocessor経由で#INCLUDEファイル名も保持）
 
 ### 優先度: 低
 
@@ -149,6 +151,7 @@
 - [x] T4: 静的宣言 vs 局所宣言の区別 (_inStaticDecl/_emitToGlobalData、__WORKEND__一致)
 - [x] T6: 定数条件IF文の最適化 (TRUE→チェック省略、FALSE→ブランチ省略)
 - [x] T6b: 符号付き比較のcompare+jump特殊化 (IF文でインライン展開、CALL不要)
+- [x] T7: エラーリカバリ (3種同期+MaxErrors=30+5ループ対応)
 
 ---
 

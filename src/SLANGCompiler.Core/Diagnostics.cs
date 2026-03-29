@@ -37,17 +37,23 @@ public class DiagnosticBag
 {
     private readonly List<Diagnostic> _diagnostics = new();
 
+    public const int MaxErrors = 30;
+
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
     public bool HasErrors => _diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error);
     public int ErrorCount => _diagnostics.Count(d => d.Severity == DiagnosticSeverity.Error);
+    public bool HasReachedMaxErrors => ErrorCount >= MaxErrors;
 
     public void Report(DiagnosticSeverity severity, string message, SourceSpan span)
     {
         _diagnostics.Add(new Diagnostic(severity, message, span));
     }
 
-    public void Error(string message, SourceSpan span) =>
+    public void Error(string message, SourceSpan span)
+    {
+        if (HasReachedMaxErrors) return;
         Report(DiagnosticSeverity.Error, message, span);
+    }
 
     public void Warning(string message, SourceSpan span) =>
         Report(DiagnosticSeverity.Warning, message, span);

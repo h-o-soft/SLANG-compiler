@@ -130,4 +130,44 @@ public class ParserTests
         var func = Assert.IsType<FuncDef>(ast.Definitions[0]);
         Assert.Equal(2, func.Body.Statements.Count);
     }
+
+    // === Error Recovery Tests ===
+
+    private (CompilationUnit Ast, DiagnosticBag Diag) ParseWithErrors(string source)
+    {
+        var lexer = new Lexer.Lexer(source);
+        var tokens = lexer.Tokenize();
+        var diag = new DiagnosticBag();
+        var parser = new Parser.Parser(tokens, diag);
+        var ast = parser.ParseCompilationUnit();
+        return (ast, diag);
+    }
+
+    [Fact]
+    public void ErrorRecovery_SuppressesChainErrors()
+    {
+        var (ast, diag) = ParseWithErrors("VAR ; VAR X; MAIN() BEGIN X=; PRINT(\"OK\",/); END;");
+        Assert.True(diag.HasErrors);
+        Assert.True(diag.ErrorCount <= 4, $"Too many errors ({diag.ErrorCount}): chain errors not suppressed");
+    }
+
+    [Fact]
+    public void ErrorRecovery_ContinuesAfterSyntaxError()
+    {
+        var (ast, diag) = ParseWithErrors("MAIN() BEGIN X=; PRINT(\"OK\",/); END;");
+        Assert.True(diag.HasErrors);
+        var main = ast.Definitions.OfType<FuncDef>().FirstOrDefault(f => f.Name == "MAIN");
+        Assert.NotNull(main);
+        // PRINT文がASTに残っていること
+        Assert.Contains(main.Body.Statements, s => s is PrintStmt);
+    }
+
+    [Fact]
+    public void ErrorLimit_StopsAt30()
+    {
+        var diag = new DiagnosticBag();
+        for (int i = 0; i < 50; i++)
+            diag.Error($"error {i}", default);
+        Assert.Equal(DiagnosticBag.MaxErrors, diag.ErrorCount);
+    }
 }
