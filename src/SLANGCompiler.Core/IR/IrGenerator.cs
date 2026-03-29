@@ -326,12 +326,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _staticVarLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         _localOffset = 0;
 
-        // 仮引数を登録 (IY+$70から上方向)
-        int argOffset = 0x70;
+        // 仮引数を仮登録（オフセットはLocalDeclarations走査後に確定）
+        var paramNames = new List<string>();
         foreach (var p in node.Parameters)
         {
-            _localVars[p.Name] = new LocalVarInfo(argOffset, 2);
-            argOffset += 2;
+            _localVars[p.Name] = new LocalVarInfo(0, 2); // 仮オフセット
+            paramNames.Add(p.Name);
         }
 
         Emit(IrOp.FuncBegin, IrOperand.Sym(node.Name));
@@ -342,6 +342,22 @@ public class IrGenerator : IAstVisitor<IrOperand>
         foreach (var d in node.StaticDeclarations) d.Accept(this);
         _inStaticDecl = false;
         foreach (var d in node.LocalDeclarations) d.Accept(this);
+
+        // ローカル変数確定後、引数のオフセットを計算
+        // ADD IY, (localOffset + paramCount*2) でIYがずれるため:
+        // 引数は 0x70 - localOffset - paramCount*2 から配置
+        // ローカル変数は 0x70 - localOffset から 0x70 - 1 まで
+        {
+            int totalFrameSize = _localOffset + paramNames.Count * 2;
+            int argOff = 0x70 - totalFrameSize;
+            foreach (var pn in paramNames)
+            {
+                _localVars[pn] = new LocalVarInfo(argOff, 2);
+                argOff += 2;
+            }
+            // localOffsetに引数分も加算（ADD IY,BCのフレームサイズ）
+            _localOffset = totalFrameSize;
+        }
 
         // Body
         node.Body.Accept(this);
@@ -523,10 +539,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
         Emit(node.IsDownTo ? IrOp.Sub : IrOp.Add, newVal, curVal, one);
         Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Variable)), newVal);
 
-        // Compare with limit
+        // Compare with limit（符号付き比較: 0を跨ぐオーバーフローで終了）
         var limit = node.To.Accept(this);
         var cmp = IrOperand.Temp(AllocTemp());
-        Emit(node.IsDownTo ? IrOp.CmpGe : IrOp.CmpLe, cmp, newVal, limit);
+        Emit(node.IsDownTo ? IrOp.CmpSGe : IrOp.CmpSLe, cmp, newVal, limit);
         Emit(IrOp.JumpIfNonZero, IrOperand.Lbl(startLabel), cmp);
 
         Emit(IrOp.Label, IrOperand.Lbl(endLabel));
