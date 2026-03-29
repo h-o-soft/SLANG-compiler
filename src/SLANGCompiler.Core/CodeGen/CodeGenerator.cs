@@ -1182,8 +1182,12 @@ public class CodeGenerator
                 break;
 
             case IrOp.InlineAsm:
-                if (inst.Dest.Name != null)
-                    _e.Raw(inst.Dest.Name);
+                // Dest=temp: Src1にASMコード。Dest=asm: DestにASMコード
+                var asmCode = inst.Dest.Kind == IrOperandKind.Temp
+                    ? inst.Src1.Name
+                    : inst.Dest.Name;
+                if (asmCode != null)
+                    _e.Raw(asmCode);
                 break;
 
             case IrOp.Comment:

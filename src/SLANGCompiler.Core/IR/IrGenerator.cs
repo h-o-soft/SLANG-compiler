@@ -1072,9 +1072,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 // ローカル配列: IY+offsetのアドレスを計算
                 if (_localVars != null && _localVars.TryGetValue(arrayName, out var localArrInfo) && localArrInfo.IsArray)
                 {
-                    // PUSH IY; POP HL; LD DE,offset; ADD HL,DE → HL = &(IY+offset)
+                    // ローカル配列のベースアドレス計算: HL = IY + offset
                     Emit(IrOp.Comment, IrOperand.Asm($"local array {arrayName} addr"));
-                    Emit(IrOp.InlineAsm, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${localArrInfo.Offset:X4}\n\tADD\tHL,DE"));
+                    Emit(IrOp.InlineAsm, baseAddr, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${localArrInfo.Offset:X4}\n\tADD\tHL,DE"));
                     isArrayByte = localArrInfo.IsByte;
                 }
                 else if (_localVars != null && _localVars.TryGetValue(arrayName, out var localInfo))
@@ -1411,7 +1411,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     // ローカル配列: IY+offsetのアドレスを計算
                     if (_localVars != null && _localVars.TryGetValue(arrayName, out var li) && li.IsArray)
                     {
-                        Emit(IrOp.InlineAsm, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${li.Offset:X4}\n\tADD\tHL,DE"));
+                        Emit(IrOp.InlineAsm, baseAddr, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${li.Offset:X4}\n\tADD\tHL,DE"));
                         storeIsByte = li.IsByte;
                     }
                     else if (_localVars != null && _localVars.TryGetValue(arrayName, out var li2))
