@@ -1636,14 +1636,11 @@ public class CodeGenerator
 
     private void EmitMemStore(IrInstruction inst)
     {
-        // Dest=addr(was in HL, now stack), Src1=value(HL)
+        // IR: MemStore dest=addr, src1=value
+        // 実行順: value→PUSH, addr→HL, MemStore: POP DE→DE=value, HL=addr
         bool isByte = inst.DataSize == 1;
 
-        _e.Instruction("POP", "DE"); // DE = addr (pushed before value)
-        _e.Instruction("EX", "DE,HL"); // HL = addr, DE = value
-
-        // 実際にはaddr→HL, value→DEの順序は呼び出しパターンに依存
-        // TODO: 正確なスタック順序を確認
+        _e.Instruction("POP", "DE"); // DE = value, HL = addr
 
         if (isByte)
         {
