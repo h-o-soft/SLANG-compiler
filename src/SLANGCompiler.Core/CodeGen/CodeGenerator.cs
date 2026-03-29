@@ -750,23 +750,23 @@ public class CodeGenerator
         {
             // 算術
             case IrOp.Add:
-                if (isFloat) _e.Instruction("CALL", "f24add");
+                if (isFloat) CallRuntime("f24add");
                 else _e.Instruction("ADD", "HL,DE");
                 break;
             case IrOp.Sub:
-                if (isFloat) _e.Instruction("CALL", "f24sub");
+                if (isFloat) CallRuntime("f24sub");
                 else { _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE"); }
                 break;
             case IrOp.Mul or IrOp.SMul:
-                if (isFloat) _e.Instruction("CALL", "f24mul");
-                else _e.Instruction("CALL", "MUL16");
+                if (isFloat) CallRuntime("f24mul");
+                else CallRuntime("MULHLDE");
                 break;
             case IrOp.Div or IrOp.SDiv:
-                if (isFloat) _e.Instruction("CALL", "f24div");
-                else _e.Instruction("CALL", inst.Op == IrOp.SDiv ? "SDIV16" : "DIV16");
+                if (isFloat) CallRuntime("f24div");
+                else CallRuntime(inst.Op == IrOp.SDiv ? "SDIVHLDE" : "DIVHLDE");
                 break;
-            case IrOp.Mod: _e.Instruction("CALL", "MOD16"); break;
-            case IrOp.SMod: _e.Instruction("CALL", "SMOD16"); break;
+            case IrOp.Mod: CallRuntime("MODHLDE"); break;
+            case IrOp.SMod: CallRuntime("SMODHLDE"); break;
 
             // ビット演算
             case IrOp.And:
@@ -783,15 +783,15 @@ public class CodeGenerator
                 break;
 
             // シフト
-            case IrOp.Shl: _e.Instruction("CALL", "SHL16"); break;
-            case IrOp.Shr: _e.Instruction("CALL", "SHR16"); break;
-            case IrOp.SShl: _e.Instruction("CALL", "SHL16"); break;
-            case IrOp.SShr: _e.Instruction("CALL", "SSHR16"); break;
+            case IrOp.Shl: CallRuntime("LSHIFTHLDE"); break;
+            case IrOp.Shr: CallRuntime("RSHIFTHLDE"); break;
+            case IrOp.SShl: CallRuntime("LSHIFTHLDE"); break;
+            case IrOp.SShr: CallRuntime("SRSHIFTHLDE"); break;
 
             // 比較
             // FLOAT: f24cmpを呼んでフラグで判定 (Z=等、C=小)
             case IrOp.CmpEq:
-                if (isFloat) { _e.Instruction("CALL", "f24cmp"); }
+                if (isFloat) { CallRuntime("f24cmp"); }
                 else { _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE"); }
                 _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
                 _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "Z,$+3"); _e.Instruction("INC", "HL");
@@ -820,10 +820,10 @@ public class CodeGenerator
                 break;
 
             // 符号付き比較
-            case IrOp.CmpSLt: _e.Instruction("CALL", "SCMP_LT"); break;
-            case IrOp.CmpSGt: _e.Instruction("CALL", "SCMP_GT"); break;
-            case IrOp.CmpSLe: _e.Instruction("CALL", "SCMP_LE"); break;
-            case IrOp.CmpSGe: _e.Instruction("CALL", "SCMP_GE"); break;
+            case IrOp.CmpSLt: CallRuntime("OPSLTHLDE"); break;
+            case IrOp.CmpSGt: CallRuntime("OPSGTHLDE"); break;
+            case IrOp.CmpSLe: CallRuntime("OPSLEHLDE"); break;
+            case IrOp.CmpSGe: CallRuntime("OPSGEHLDE"); break;
 
             // 論理
             case IrOp.LogAnd:
@@ -1227,21 +1227,21 @@ public class CodeGenerator
     {
         _e.Instruction("POP", "DE");
         _e.Instruction("EX", "DE,HL");
-        _e.Instruction("CALL", "MUL16");
+        CallRuntime("MULHLDE");
     }
 
     private void EmitDiv(IrInstruction inst, bool signed)
     {
         _e.Instruction("POP", "DE");
         _e.Instruction("EX", "DE,HL");
-        _e.Instruction("CALL", signed ? "SDIV16" : "DIV16");
+        CallRuntime(signed ? "SDIVHLDE" : "DIVHLDE");
     }
 
     private void EmitMod(IrInstruction inst, bool signed)
     {
         _e.Instruction("POP", "DE");
         _e.Instruction("EX", "DE,HL");
-        _e.Instruction("CALL", signed ? "SMOD16" : "MOD16");
+        CallRuntime(signed ? "SMODHLDE" : "MODHLDE");
     }
 
     private void EmitNeg(IrInstruction inst)
@@ -1283,7 +1283,7 @@ public class CodeGenerator
         // src1(stack)をHLに, src2(HL)をDEに → CALL SHL/SHR
         _e.Instruction("POP", "DE");
         _e.Instruction("EX", "DE,HL"); // HL=src1(被シフト値), DE=src2(シフト量)
-        _e.Instruction("CALL", left ? "SHL16" : "SHR16");
+        CallRuntime(left ? "LSHIFTHLDE" : "RSHIFTHLDE");
     }
 
     private void EmitCompare(IrInstruction inst, string cond)
@@ -1319,11 +1319,19 @@ public class CodeGenerator
         _e.Instruction("LD", "L,A");
     }
 
+    private static readonly Dictionary<string, string> SignedCompareRuntimeNames = new()
+    {
+        ["LT"] = "OPSLTHLDE",
+        ["GT"] = "OPSGTHLDE",
+        ["LE"] = "OPSLEHLDE",
+        ["GE"] = "OPSGEHLDE",
+    };
+
     private void EmitSignedCompare(IrInstruction inst, string kind)
     {
         _e.Instruction("POP", "DE");
         _e.Instruction("EX", "DE,HL");
-        _e.Instruction("CALL", $"SCMP_{kind}");
+        CallRuntime(SignedCompareRuntimeNames[kind]);
     }
 
     private void EmitLogAnd(IrInstruction inst)
@@ -1572,6 +1580,13 @@ public class CodeGenerator
             _e.Instruction("INC", "BC");
             _e.Instruction("OUT", "(C),H");
         }
+    }
+
+    /// <summary>ランタイム関数をCALLし、_calledFunctionsにも追加する</summary>
+    private void CallRuntime(string name)
+    {
+        _calledFunctions.Add(name);
+        _e.Instruction("CALL", name);
     }
 
     private void EmitCall(IrInstruction inst)
