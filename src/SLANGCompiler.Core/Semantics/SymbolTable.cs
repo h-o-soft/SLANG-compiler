@@ -25,6 +25,7 @@ public class Symbol
     public int Offset { get; set; }         // ローカル変数のスタックオフセット
     public object? ConstValue { get; set; } // 定数値
     public bool IsGlobal { get; set; }
+    public bool IsCodeBlock { get; set; }   // CODEブロック定数（アドレス参照）
     public string? AsmLabel { get; set; }   // アセンブリラベル名
 
     public Symbol(string name, SymbolKind kind, SlangType type)

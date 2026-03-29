@@ -248,7 +248,59 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitConstDecl(ConstDecl node)
     {
-        Emit(IrOp.Comment, IrOperand.Asm($"CONST {node.Name}"));
+        // CODEブロック型CONST: CONST X = [...] → ラベル+DBデータとしてコード領域に配置
+        if (node.Value is CodeExpr codeExpr)
+        {
+            var label = (_inStaticDecl && _currentFuncName != null)
+                ? $"__{_currentFuncName}_{node.Name}"
+                : $"__{node.Name}";
+
+            if (_inStaticDecl && _currentFuncName != null)
+                _staticVarLabels![node.Name] = label;
+
+            var initData = new List<byte>();
+            foreach (var expr in codeExpr.Values)
+            {
+                var initExpr = expr;
+                int itemSize = 1; // CODEブロックのデフォルトはBYTE
+                if (initExpr is CastExpr cast)
+                {
+                    initExpr = cast.Operand;
+                    itemSize = cast.TargetSize == DataSize.Byte ? 1 : cast.TargetSize == DataSize.Float ? 3 : 2;
+                }
+                if (initExpr is IntegerLiteral ilit)
+                {
+                    if (itemSize == 1)
+                        initData.Add((byte)(ilit.Value & 0xFF));
+                    else
+                    {
+                        initData.Add((byte)(ilit.Value & 0xFF));
+                        initData.Add((byte)((ilit.Value >> 8) & 0xFF));
+                    }
+                }
+                else if (initExpr is StringLiteral slit)
+                {
+                    foreach (var ch in slit.Value)
+                        initData.Add((byte)ch);
+                }
+                else
+                {
+                    initData.Add(0);
+                }
+            }
+
+            _module.GlobalVars.Add(new GlobalVarInfo
+            {
+                Name = node.Name,
+                AsmLabel = label,
+                ByteSize = initData.Count,
+                InitialData = initData,
+            });
+        }
+        else
+        {
+            Emit(IrOp.Comment, IrOperand.Asm($"CONST {node.Name}"));
+        }
         return IrOperand.None;
     }
 
@@ -733,6 +785,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstValue is int constVal)
         {
             Emit(IrOp.LoadConst, t, IrOperand.Imm(constVal));
+        }
+        else if (sym != null && sym.IsCodeBlock)
+        {
+            // CODEブロック定数: アドレスをロード（LD HL,label）
+            Emit(IrOp.LoadAddr, t, IrOperand.Sym(ResolveAsmLabel(node.Name)));
         }
         else
         {

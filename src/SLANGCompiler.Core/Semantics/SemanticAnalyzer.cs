@@ -213,11 +213,23 @@ public class SemanticAnalyzer : IAstVisitor<object?>
 
     public object? VisitConstDecl(ConstDecl node)
     {
-        var sym = _symbols.Define(node.Name, SymbolKind.Constant, SlangType.Word);
-        // 定数式を評価（他のCONST参照も解決可能）
-        var val = _constEval.Evaluate(node.Value);
-        if (val.HasValue)
-            sym.ConstValue = val.Value;
+        if (node.Value is CodeExpr)
+        {
+            // CODEブロック型CONST: ラベル付きデータブロック（参照時はアドレスが渡される）
+            var sym = _symbols.Define(node.Name, SymbolKind.Variable, SlangType.Word);
+            sym.IsGlobal = true;
+            sym.IsCodeBlock = true;
+            sym.AsmLabel = (_inStaticDecl && _currentFuncName != null)
+                ? $"__{_currentFuncName}_{node.Name}"
+                : $"__{node.Name}";
+        }
+        else
+        {
+            var sym = _symbols.Define(node.Name, SymbolKind.Constant, SlangType.Word);
+            var val = _constEval.Evaluate(node.Value);
+            if (val.HasValue)
+                sym.ConstValue = val.Value;
+        }
         return null;
     }
 
