@@ -140,8 +140,14 @@ class Program
                     irModule.WorkAddress = envConfig.DefaultWork;
             }
 
-            var codeGen = new CodeGenerator(irModule, runtimeManager, envConfig);
+            var codeGen = new CodeGenerator(irModule, runtimeManager, envConfig, diagnostics);
             var (mainAsm, overlays) = codeGen.GenerateAll();
+
+            if (diagnostics.HasErrors)
+            {
+                diagnostics.WriteTo(Console.Error);
+                return 1;
+            }
 
             // Output main
             var outPath = outputPath ?? Path.ChangeExtension(filePath, ".ASM");

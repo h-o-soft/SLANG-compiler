@@ -18,6 +18,7 @@ public class CodeGenerator
     private readonly IrModule _module;
     private readonly Runtime.RuntimeManager? _runtimeManager;
     private readonly Runtime.EnvironmentConfig? _envConfig;
+    private readonly DiagnosticBag? _diagnostics;
     private Z80Emitter _e;  // メイン or オーバーレイのエミッタ（切替可能）
     private readonly Z80Emitter _mainEmitter;
     private string _currentFuncExitLabel = "_EXIT";
@@ -27,11 +28,12 @@ public class CodeGenerator
     private bool IsCodeReadonly => _envConfig?.CodeReadonly == true;
 
     public CodeGenerator(IrModule module, Runtime.RuntimeManager? runtimeManager = null,
-        Runtime.EnvironmentConfig? envConfig = null)
+        Runtime.EnvironmentConfig? envConfig = null, DiagnosticBag? diagnostics = null)
     {
         _module = module;
         _runtimeManager = runtimeManager;
         _envConfig = envConfig;
+        _diagnostics = diagnostics;
         _mainEmitter = new Z80Emitter();
         _e = _mainEmitter;
     }
@@ -196,8 +198,14 @@ public class CodeGenerator
         {
             // フォールバック: SLANGINITなし環境
             _e.Comment("=== Entry Point ===");
-            _e.Instruction("LD", "IY,__IYWORK");
-            // ROM環境: テンプレートコピー
+            // WORK ZERO CLEAR
+            _e.Instruction("XOR", "A");
+            _e.Instruction("LD", "HL,__WORK__");
+            _e.Instruction("LD", "DE,__WORK__+1");
+            _e.Instruction("LD", "BC,__WORKEND__-__WORK__-1");
+            _e.Instruction("LD", "(HL),A");
+            _e.Instruction("LDIR");
+            // ROM環境: テンプレートコピー (WORK ZERO CLEAR後)
             if (IsCodeReadonly && HasInitDataArrays())
             {
                 _e.Instruction("LD", "HL,__INIT_TEMPLATE");
@@ -207,6 +215,7 @@ public class CodeGenerator
             }
             if (HasRuntimeInitializers())
                 _e.Instruction("CALL", "RUNTIME_INIT");
+            _e.Instruction("LD", "IY,__IYWORK");
             EmitGlobalInit();
             _e.Instruction("CALL", "MAIN");
             _e.Instruction("RET");
@@ -233,6 +242,13 @@ public class CodeGenerator
         foreach (var gv in _module.GlobalVars.Where(v => v.FixedAddress.HasValue))
         {
             _e.Raw($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress!.Value:X4}");
+            // ROM環境で固定アドレス+初期値配列はエラー（LDIRコピー対象外のため初期値が失われる）
+            if (IsCodeReadonly && gv.InitialData != null)
+            {
+                _diagnostics?.Error(
+                    $"Fixed-address array '{gv.Name}' with initializer is not supported in code_readonly environment",
+                    default);
+            }
         }
 
         var initDataArrays = _module.GlobalVars
