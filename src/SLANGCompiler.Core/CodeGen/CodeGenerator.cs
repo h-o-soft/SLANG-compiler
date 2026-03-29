@@ -650,6 +650,8 @@ public class CodeGenerator
                     {
                         EmitInstruction(s1); // src1 → HL
                         _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
                         continue;
                     }
                     if (constVal == 2)
@@ -657,6 +659,8 @@ public class CodeGenerator
                         EmitInstruction(s1);
                         _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
                         _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
                         continue;
                     }
                 }
@@ -665,6 +669,8 @@ public class CodeGenerator
                 EmitInstruction(s1);
                 EmitLoadToDE(s2);
                 EmitBinaryDirect(inst);
+                if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                    _e.Instruction("PUSH", "HL");
                 continue;
             }
 
@@ -686,12 +692,27 @@ public class CodeGenerator
                     && s2Inst.Op == IrOp.LoadConst && s2Inst.Src1.Kind == IrOperandKind.Immediate)
                 {
                     int cv = (int)(s2Inst.Src1.ImmediateValue & 0xFFFF);
-                    if (cv == 1) { _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL"); continue; }
-                    if (cv == 2) { _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL"); _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL"); continue; }
+                    if (cv == 1)
+                    {
+                        _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
+                        continue;
+                    }
+                    if (cv == 2)
+                    {
+                        _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
+                        _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
+                        continue;
+                    }
                 }
 
                 EmitLoadToDE(s2Inst);
                 EmitBinaryDirect(inst);
+                if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                    _e.Instruction("PUSH", "HL");
                 continue;
             }
 
