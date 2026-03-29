@@ -945,9 +945,9 @@ public class CodeGenerator
                 _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "C,$+3"); _e.Instruction("INC", "HL");
                 break;
             case IrOp.CmpLe:
-                // src1 <= src2 → !(src1 > src2)
+                // src1 <= src2 → src2 - src1: carryならsrc1>src2(false)
                 _e.Instruction("EX", "DE,HL"); _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
-                _e.Instruction("LD", "HL,$0001"); _e.Instruction("JR", "C,$+3"); _e.Instruction("DEC", "HL");
+                _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "C,$+3"); _e.Instruction("INC", "HL");
                 break;
 
             // 符号付き比較
