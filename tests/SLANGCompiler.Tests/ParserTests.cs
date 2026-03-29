@@ -170,4 +170,30 @@ public class ParserTests
             diag.Error($"error {i}", default);
         Assert.Equal(DiagnosticBag.MaxErrors, diag.ErrorCount);
     }
+
+    [Fact]
+    public void ErrorRecovery_ModuleBlock()
+    {
+        // #MODULE内のエラーでも同期リカバリが効くこと
+        var (ast, diag) = ParseWithErrors(
+            "MAIN() BEGIN END; #MODULE $8000 VAR ; SUB() BEGIN PRINT(\"OK\",/); END; #END");
+        Assert.True(diag.HasErrors);
+        // SUB関数がASTに残っていること（モジュール内のリカバリが効いている）
+        Assert.True(ast.Definitions.Count >= 2);
+    }
+
+    [Fact]
+    public void ErrorLimit_ParserStopsEarly()
+    {
+        // 大量エラーのソースをparserに食わせて30件で打ち切られること
+        var sb = new System.Text.StringBuilder();
+        sb.Append("MAIN() BEGIN ");
+        for (int i = 0; i < 50; i++)
+            sb.Append("=; ");  // 各行がエラー
+        sb.Append("END;");
+        var (ast, diag) = ParseWithErrors(sb.ToString());
+        Assert.True(diag.HasErrors);
+        Assert.True(diag.ErrorCount <= DiagnosticBag.MaxErrors,
+            $"Expected at most {DiagnosticBag.MaxErrors} errors, got {diag.ErrorCount}");
+    }
 }
