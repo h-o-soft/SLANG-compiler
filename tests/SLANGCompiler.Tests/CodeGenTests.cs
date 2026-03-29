@@ -144,6 +144,34 @@ public class CodeGenTests
     }
 
     [Fact]
+    public void Arithmetic_CallsMULHLDE()
+    {
+        var asm = Compile("VAR X,Y,Z; MAIN() BEGIN Z=X*Y; END;");
+        Assert.Contains("CALL\tMULHLDE", asm);
+    }
+
+    [Fact]
+    public void Arithmetic_CallsDIVHLDE()
+    {
+        var asm = Compile("VAR X,Y,Z; MAIN() BEGIN Z=X/Y; END;");
+        Assert.Contains("CALL\tDIVHLDE", asm);
+    }
+
+    [Fact]
+    public void Shift_CallsLSHIFTHLDE()
+    {
+        var asm = Compile("VAR X,Y,Z; MAIN() BEGIN Z=X<<Y; END;");
+        Assert.Contains("CALL\tLSHIFTHLDE", asm);
+    }
+
+    [Fact]
+    public void SignedCompare_CallsOPSLTHLDE()
+    {
+        var asm = Compile("VAR X,Y,Z; MAIN() BEGIN IF X.<.Y THEN Z=1; END;");
+        Assert.Contains("CALL\tOPSLTHLDE", asm);
+    }
+
+    [Fact]
     public void PrintNewline_CallsPCRONE()
     {
         var asm = Compile("MAIN() BEGIN PRINT(/); END;");
