@@ -19,6 +19,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     // 関数内ローカルシンボル（IrGenerator自身が管理）
     private Dictionary<string, LocalVarInfo>? _localVars;
+    // 関数内静的変数のAsmLabelマップ（ソース名→__FUNC_VAR形式）
+    private Dictionary<string, string>? _staticVarLabels;
 
     public IrGenerator(DiagnosticBag diagnostics, SymbolTable? symbols = null)
     {
@@ -26,9 +28,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _globalSymbols = symbols;
     }
 
-    /// <summary>シンボル名からASMラベルを解決。AsmLabelが設定済みならそれを使い、なければ__プレフィックス。</summary>
+    /// <summary>シンボル名からASMラベルを解決。関数内静的変数→グローバルシンボル→デフォルトの順。</summary>
     private string ResolveAsmLabel(string name)
     {
+        // 関数内静的変数（__FUNC_VAR形式）
+        if (_staticVarLabels != null && _staticVarLabels.TryGetValue(name, out var staticLabel))
+            return staticLabel;
+        // グローバルシンボルテーブル
         var sym = _globalSymbols?.Resolve(name);
         return sym?.AsmLabel ?? $"__{name}";
     }
@@ -90,6 +96,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
             var label = (_inStaticDecl && _currentFuncName != null)
                 ? $"__{_currentFuncName}_{node.Name}"
                 : $"__{node.Name}";
+
+            // 関数内静的変数のラベルを追跡（ResolveAsmLabel用）
+            if (_inStaticDecl && _currentFuncName != null)
+                _staticVarLabels![node.Name] = label;
 
             _module.GlobalVars.Add(new GlobalVarInfo
             {
@@ -213,6 +223,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 ? $"__{_currentFuncName}_{node.Name}"
                 : $"__{node.Name}";
 
+            if (_inStaticDecl && _currentFuncName != null)
+                _staticVarLabels![node.Name] = label;
+
             _module.GlobalVars.Add(new GlobalVarInfo
             {
                 Name = node.Name,
@@ -256,7 +269,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // ローカルシンボルテーブルを構築
         var prevLocalVars = _localVars;
         var prevOffset = _localOffset;
+        var prevStaticLabels = _staticVarLabels;
         _localVars = new Dictionary<string, LocalVarInfo>(StringComparer.OrdinalIgnoreCase);
+        _staticVarLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         _localOffset = 0;
 
         // 仮引数を登録 (IY+$70から上方向)
@@ -291,6 +306,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _module.Functions.Add(_currentFunction);
         _currentFunction = null;
         _localVars = prevLocalVars;
+        _staticVarLabels = prevStaticLabels;
         _localOffset = prevOffset;
         return IrOperand.None;
     }

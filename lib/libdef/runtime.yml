@@ -53,7 +53,7 @@ DIVHLDE:
     .div1
     INC D
     DEC D
-    JR Z, DIVHLDE8
+    JP Z, DIVHLDE8
     LD C, L
     LD L, H
     XOR A

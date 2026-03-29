@@ -1,0 +1,122 @@
+# SLANG新コンパイラ テスト用Makefile
+# ===================================
+# make -f Makefile.test              - SLANGTEST.SLをコンパイル→アセンブル
+# make -f Makefile.test run          - CPMエミュで実行 (LSX環境)
+# make -f Makefile.test asm          - アセンブルのみ
+# make -f Makefile.test TARGET=examples/STARS  - 別ソース指定
+# make -f Makefile.test ENV=msxrom TARGET=examples/MSXROM  - MSX ROM環境
+# make -f Makefile.test compare      - 旧コンパイラ出力と比較
+# make -f Makefile.test clean        - 成果物削除
+
+# === 設定 ===
+TARGET ?= SLANGTEST
+ENV ?= lsx
+
+# ツール
+DOTNET = dotnet
+SLANGC_NEW = $(DOTNET) run --project src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj -c Release --
+SLANGC_OLD = $(DOTNET) run --project SLANGCompiler.csproj -c Release --
+ASM = AILZ80ASM
+CPM = cpm
+
+# ファイル
+SRC = $(TARGET).SL
+ASM_NEW = $(TARGET).ASM
+ASM_OLD = $(TARGET).OLD.ASM
+BIN = $(dir $(TARGET))PROG.bin
+LST = $(TARGET).lst
+SYM = $(TARGET).sym
+
+# CP/M環境
+ifeq ($(ENV),cpm)
+  SLANGENV = lsx
+else
+  SLANGENV = $(ENV)
+endif
+
+# ASMオプション
+ASM_OPT =
+ifeq ($(findstring pc80mk2,$(ENV)),pc80mk2)
+  ASM_OPT = -cmt -gap 0
+endif
+
+.PHONY: all compile asm run compare clean help old-compile
+
+all: asm
+
+# === 新コンパイラでコンパイル ===
+compile: $(ASM_NEW)
+
+$(ASM_NEW): $(SRC)
+	$(SLANGC_NEW) -E $(SLANGENV) -o $@ $<
+
+# === AILZ80ASMでアセンブル ===
+asm: $(BIN)
+
+$(BIN): $(ASM_NEW)
+	$(ASM) $< -f -o $@ -bin -sym -lst $(ASM_OPT)
+	@echo "=== Assemble OK: $@ ==="
+	@ls -la $@
+
+# === CPMエミュで実行 (LSX/CPM環境のみ) ===
+run: $(BIN)
+ifeq ($(ENV),$(filter $(ENV),lsx x1 cpm))
+	$(CPM) $<
+else
+	@echo "Run not supported for ENV=$(ENV) in this Makefile."
+	@echo "Use appropriate emulator manually."
+endif
+
+# === 旧コンパイラでコンパイル（比較用） ===
+old-compile: $(ASM_OLD)
+
+$(ASM_OLD): $(SRC)
+	$(SLANGC_OLD) -O $@ $<
+
+# === 新旧ASM出力比較 ===
+compare: $(ASM_NEW) $(ASM_OLD)
+	@echo "=== Diff: $(ASM_OLD) vs $(ASM_NEW) ==="
+	@echo "Old: $$(wc -l < $(ASM_OLD)) lines"
+	@echo "New: $$(wc -l < $(ASM_NEW)) lines"
+	@diff $(ASM_OLD) $(ASM_NEW) | head -60 || true
+	@echo "..."
+	@echo "Total diff lines: $$(diff $(ASM_OLD) $(ASM_NEW) | wc -l)"
+
+# === 未解決シンボルチェック ===
+check-symbols: $(ASM_NEW)
+	@echo "=== Undefined symbols check ==="
+	@grep 'CALL\s' $(ASM_NEW) | sed 's/.*CALL[[:space:]]*//' | sort -u | while read f; do \
+		case "$$f" in \$$*|.*|NZ,*|Z,*|C,*|NC,*|P,*|M,*|PE,*|PO,*) continue;; esac; \
+		if ! grep -q "^$${f}:" $(ASM_NEW); then \
+			echo "  MISSING: $$f"; \
+		fi; \
+	done
+	@echo "Done."
+
+# === クリーンアップ ===
+clean:
+	rm -f $(ASM_NEW) $(ASM_OLD) $(BIN) $(LST) $(SYM)
+	rm -f $(dir $(TARGET))PROG.bin $(dir $(TARGET))PROG.com
+	rm -f $(TARGET).lst $(TARGET).sym
+
+# === ヘルプ ===
+help:
+	@echo "SLANG新コンパイラ テスト用Makefile"
+	@echo ""
+	@echo "Usage:"
+	@echo "  make -f Makefile.test              - コンパイル+アセンブル (SLANGTEST.SL)"
+	@echo "  make -f Makefile.test run           - CPMエミュで実行"
+	@echo "  make -f Makefile.test compile       - コンパイルのみ (.ASM生成)"
+	@echo "  make -f Makefile.test asm           - アセンブルまで (.bin生成)"
+	@echo "  make -f Makefile.test compare       - 旧コンパイラ出力との比較"
+	@echo "  make -f Makefile.test check-symbols - 未解決シンボルチェック"
+	@echo "  make -f Makefile.test clean         - 成果物削除"
+	@echo ""
+	@echo "Options:"
+	@echo "  TARGET=path  - ソースファイル (拡張子なし, default: SLANGTEST)"
+	@echo "  ENV=name     - 環境名 (default: lsx)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make -f Makefile.test TARGET=examples/STARS"
+	@echo "  make -f Makefile.test ENV=msxrom TARGET=examples/MSXROM compile"
+	@echo "  make -f Makefile.test compare"
