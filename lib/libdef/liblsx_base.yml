@@ -806,9 +806,9 @@ sHLHEX:
 
 sWORK:
   param_count: 0
-  code: |
-    sCRTCD: DB $6F
+  code: ""
   works:
+    sCRTCD: 1
     sXYADR: 2
     sKBFAD: 128
     sKBFAD0: 1

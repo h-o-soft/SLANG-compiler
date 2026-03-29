@@ -27,6 +27,7 @@ public class RuntimeFunction
     public string? InitCode { get; set; }                     // @init_code
     public string? LibName { get; set; }                      // @lib
     public string SourceFile { get; set; } = "";
+    public int LoadOrder { get; set; }                        // ファイル内定義順
     public List<(string Label, int Size)>? Works { get; set; }  // @works (順序付き)
 }
 
@@ -38,6 +39,7 @@ public class RuntimeManager
     private readonly Dictionary<string, RuntimeFunction> _functions = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _usedFunctions = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _excludedFromOutput = new(StringComparer.OrdinalIgnoreCase);
+    private int _loadOrderCounter;
 
     public IReadOnlyDictionary<string, RuntimeFunction> Functions => _functions;
 
@@ -58,6 +60,7 @@ public class RuntimeManager
         var functions = RuntimeParser.Parse(text, sourcePath);
         foreach (var func in functions)
         {
+            func.LoadOrder = _loadOrderCounter++;
             _functions[func.Name] = func;
         }
     }
@@ -127,7 +130,10 @@ public class RuntimeManager
     /// </summary>
     public IEnumerable<RuntimeFunction> GetOutputFunctions()
     {
-        return GetUsedFunctions().Where(f => !_excludedFromOutput.Contains(f.Name));
+        // ファイル内定義順で出力（フォールスルー関係を維持するため）
+        return GetUsedFunctions()
+            .Where(f => !_excludedFromOutput.Contains(f.Name))
+            .OrderBy(f => f.LoadOrder);
     }
 
     /// <summary>
@@ -143,7 +149,8 @@ public class RuntimeManager
             if (!userFuncs.Contains(name))
                 CollectDependencies(name, visited, result);
         }
-        return result.Where(f => !_excludedFromOutput.Contains(f.Name));
+        return result.Where(f => !_excludedFromOutput.Contains(f.Name))
+            .OrderBy(f => f.LoadOrder);
     }
 
     private void CollectDependencies(string name, HashSet<string> visited, List<RuntimeFunction> result)
