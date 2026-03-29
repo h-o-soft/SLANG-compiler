@@ -36,7 +36,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             return staticLabel;
         // グローバルシンボルテーブル
         var sym = _globalSymbols?.Resolve(name);
-        return sym?.AsmLabel ?? $"__{name}";
+        return sym?.AsmLabel ?? LabelUtils.UserVarLabel(name);
     }
 
     private record LocalVarInfo(int Offset, int ByteSize, bool IsArray = false, bool IsByte = false, List<int>? Dims = null);
@@ -94,8 +94,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
             // ラベル: 関数内静的は __{FuncName}_{VarName}、トップレベルは __{VarName}
             var label = (_inStaticDecl && _currentFuncName != null)
-                ? $"__{_currentFuncName}_{node.Name}"
-                : $"__{node.Name}";
+                ? LabelUtils.StaticVarLabel(_currentFuncName!, node.Name)
+                : LabelUtils.UserVarLabel(node.Name);
 
             // 関数内静的変数のラベルを追跡（ResolveAsmLabel用）
             if (_inStaticDecl && _currentFuncName != null)
@@ -220,8 +220,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
 
             var label = (_inStaticDecl && _currentFuncName != null)
-                ? $"__{_currentFuncName}_{node.Name}"
-                : $"__{node.Name}";
+                ? LabelUtils.StaticVarLabel(_currentFuncName!, node.Name)
+                : LabelUtils.UserVarLabel(node.Name);
 
             if (_inStaticDecl && _currentFuncName != null)
                 _staticVarLabels![node.Name] = label;
@@ -252,8 +252,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (node.Value is CodeExpr codeExpr)
         {
             var label = (_inStaticDecl && _currentFuncName != null)
-                ? $"__{_currentFuncName}_{node.Name}"
-                : $"__{node.Name}";
+                ? LabelUtils.StaticVarLabel(_currentFuncName!, node.Name)
+                : LabelUtils.UserVarLabel(node.Name);
 
             if (_inStaticDecl && _currentFuncName != null)
                 _staticVarLabels![node.Name] = label;
@@ -316,7 +316,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitFuncDef(FuncDef node)
     {
-        _currentFunction = new IrFunction { Name = node.Name };
+        _currentFunction = new IrFunction { Name = LabelUtils.SanitizeLabel(node.Name) };
 
         // ローカルシンボルテーブルを構築
         var prevLocalVars = _localVars;
@@ -334,10 +334,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
             paramNames.Add(p.Name);
         }
 
-        Emit(IrOp.FuncBegin, IrOperand.Sym(node.Name));
+        Emit(IrOp.FuncBegin, IrOperand.Sym(LabelUtils.SanitizeLabel(node.Name)));
 
         // Static declarations → グローバルメモリ(__WORK__)、Local declarations → 動的(IY)
-        _currentFuncName = node.Name;
+        _currentFuncName = LabelUtils.SanitizeLabel(node.Name);
         _inStaticDecl = true;
         foreach (var d in node.StaticDeclarations) d.Accept(this);
         _inStaticDecl = false;
@@ -643,13 +643,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitGotoStmt(GotoStmt node)
     {
-        Emit(IrOp.Jump, IrOperand.Lbl(node.Label));
+        Emit(IrOp.Jump, IrOperand.Lbl(LabelUtils.UserLabel(node.Label)));
         return IrOperand.None;
     }
 
     public IrOperand VisitLabelStmt(LabelStmt node)
     {
-        Emit(IrOp.Label, IrOperand.Lbl(node.Label));
+        Emit(IrOp.Label, IrOperand.Lbl(LabelUtils.UserLabel(node.Label)));
         return IrOperand.None;
     }
 
@@ -968,7 +968,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
 
             var dest = IrOperand.Temp(AllocTemp());
-            Emit(IrOp.Call, dest, IrOperand.Sym(funcName!), IrOperand.Imm(machineParamCount.Value));
+            var asmName = funcSym?.AsmLabel ?? LabelUtils.SanitizeLabel(funcName!);
+            Emit(IrOp.Call, dest, IrOperand.Sym(asmName), IrOperand.Imm(machineParamCount.Value));
             return dest;
         }
         else
@@ -984,7 +985,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
 
             var dest = IrOperand.Temp(AllocTemp());
-            Emit(IrOp.Call, dest, IrOperand.Sym(funcName ?? "__indirect_call"));
+            var asmName = funcSym?.AsmLabel ?? LabelUtils.SanitizeLabel(funcName ?? "__indirect_call");
+            Emit(IrOp.Call, dest, IrOperand.Sym(asmName));
             return dest;
         }
     }
@@ -1263,7 +1265,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         foreach (var arg in node.Arguments)
             arg.Accept(this);
         var t = IrOperand.Temp(AllocTemp());
-        Emit(IrOp.Call, t, IrOperand.Sym($"__strfunc_{node.FuncName}"));
+        Emit(IrOp.Call, t, IrOperand.Sym($"_SF_{LabelUtils.SanitizeLabel(node.FuncName)}"));
         return t;
     }
 

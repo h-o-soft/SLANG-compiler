@@ -36,8 +36,8 @@ public class CodeGenTests
     {
         var asm = Compile("VAR X,Y,Z; MAIN() BEGIN Z=X+Y; END;");
         // 直接ロード最適化: PUSH/POP なし
-        Assert.Contains("LD\tHL,(__X)", asm);
-        Assert.Contains("LD\tDE,(__Y)", asm);
+        Assert.Contains("LD\tHL,(_V_X)", asm);
+        Assert.Contains("LD\tDE,(_V_Y)", asm);
         Assert.Contains("ADD\tHL,DE", asm);
         Assert.DoesNotContain("PUSH\tHL", asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0]);
     }
@@ -63,7 +63,7 @@ public class CodeGenTests
     {
         var asm = Compile("VAR GLOBAL; MAIN() BEGIN GLOBAL=1; END;");
         // グローバル変数は__WORK__内にEQU配置
-        Assert.Contains("__GLOBAL EQU (__WORK__", asm);
+        Assert.Contains("_V_GLOBAL EQU (__WORK__", asm);
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class CodeGenTests
         // エントリポイントでグローバル初期化
         var entry = asm.Split("MAIN:")[0];
         Assert.Contains("$002A", entry); // 42
-        Assert.Contains("(__X)", entry);
+        Assert.Contains("(_V_X)", entry);
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public class CodeGenTests
         // VAR A はシステム変数 _A (=_AF+1) と衝突しない
         var asm = Compile("VAR A; MAIN() BEGIN A=1; END;");
         // ユーザー変数は__プレフィックス
-        Assert.Contains("__A EQU (__WORK__", asm);
+        Assert.Contains("_V_A EQU (__WORK__", asm);
         // システム変数は_プレフィックス
         Assert.Contains("_A EQU (_AF + 1)", asm);
         // 両方存在して衝突しない
@@ -220,7 +220,7 @@ public class CodeGenTests
     public void StaticVar_InWorkArea()
     {
         var asm = Compile("FUNC(A) VAR S; BEGIN VAR L; S=1; L=2; END; MAIN() BEGIN FUNC(0); END;");
-        Assert.Contains("__FUNC_S EQU (__WORK__", asm);
+        Assert.Contains("_V_FUNC_S EQU (__WORK__", asm);
         Assert.Contains("(IY+", asm);  // ローカルLはIYアクセス
     }
 
@@ -228,8 +228,8 @@ public class CodeGenTests
     public void StaticVar_FunctionScoped()
     {
         var asm = Compile("F1() VAR S; BEGIN S=1; END; F2() VAR S; BEGIN S=2; END; MAIN() BEGIN F1(); F2(); END;");
-        Assert.Contains("__F1_S EQU (__WORK__", asm);
-        Assert.Contains("__F2_S EQU (__WORK__", asm);
+        Assert.Contains("_V_F1_S EQU (__WORK__", asm);
+        Assert.Contains("_V_F2_S EQU (__WORK__", asm);
     }
 
     [Fact]
@@ -237,18 +237,18 @@ public class CodeGenTests
     {
         var asm = Compile("FUNC() VAR S=42; BEGIN END; MAIN() BEGIN FUNC(); END;");
         var entry = asm.Split("MAIN:")[0];
-        Assert.Contains("__FUNC_S", entry);
+        Assert.Contains("_V_FUNC_S", entry);
         Assert.Contains("$002A", entry);
 
         var funcBody = asm.Split("FUNC:")[1].Split("_FUNC_EXIT")[0];
-        Assert.DoesNotContain("__FUNC_S", funcBody);
+        Assert.DoesNotContain("_V_FUNC_S", funcBody);
     }
 
     [Fact]
     public void StaticArray_InWorkArea()
     {
         var asm = Compile("FUNC() ARRAY A[5]; BEGIN A[0]=1; END; MAIN() BEGIN FUNC(); END;");
-        Assert.Contains("__FUNC_A EQU (__WORK__", asm);
+        Assert.Contains("_V_FUNC_A EQU (__WORK__", asm);
     }
 
     [Fact]

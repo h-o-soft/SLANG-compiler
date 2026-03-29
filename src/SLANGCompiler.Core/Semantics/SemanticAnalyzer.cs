@@ -14,6 +14,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     private readonly SymbolTable _symbols;
     private readonly DiagnosticBag _diagnostics;
     private readonly ConstEvaluator _constEval;
+    private readonly HashSet<string> _usedAsmLabels = new(StringComparer.OrdinalIgnoreCase);
     private bool _inStaticDecl;
     private string? _currentFuncName;
     private FuncInfo? _currentFunc;
@@ -136,8 +137,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             // グローバル変数 or 関数内静的宣言: __WORK__に配置
             sym.IsGlobal = true;
             sym.AsmLabel = (_inStaticDecl && _currentFuncName != null)
-                ? $"__{_currentFuncName}_{node.Name}"
-                : $"__{node.Name}";
+                ? LabelUtils.StaticVarLabel(_currentFuncName, node.Name)
+                : LabelUtils.UserVarLabel(node.Name);
             if (node.Address != null)
             {
                 // アドレス固定
@@ -205,8 +206,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         {
             sym.IsGlobal = true;
             sym.AsmLabel = (_inStaticDecl && _currentFuncName != null)
-                ? $"__{_currentFuncName}_{node.Name}"
-                : $"__{node.Name}";
+                ? LabelUtils.StaticVarLabel(_currentFuncName, node.Name)
+                : LabelUtils.UserVarLabel(node.Name);
         }
 
         return null;
@@ -221,8 +222,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             sym.IsGlobal = true;
             sym.IsCodeBlock = true;
             sym.AsmLabel = (_inStaticDecl && _currentFuncName != null)
-                ? $"__{_currentFuncName}_{node.Name}"
-                : $"__{node.Name}";
+                ? LabelUtils.StaticVarLabel(_currentFuncName, node.Name)
+                : LabelUtils.UserVarLabel(node.Name);
         }
         else
         {
@@ -242,7 +243,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         var funcType = new FunctionType(SlangType.Word, paramTypes);
         var sym = _symbols.Define(node.Name, SymbolKind.MachineFunction, funcType);
         sym.IsGlobal = true;
-        sym.AsmLabel = $"_{node.Name}";
+        sym.AsmLabel = $"_{LabelUtils.SanitizeLabel(node.Name)}";
         return null;
     }
 
@@ -253,7 +254,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         var funcType = new FunctionType(SlangType.Word, paramTypes);
         var funcSym = _symbols.Define(node.Name, SymbolKind.Function, funcType);
         funcSym.IsGlobal = true;
-        funcSym.AsmLabel = node.Name;
+        funcSym.AsmLabel = LabelUtils.SanitizeLabel(node.Name);
 
         // 関数スコープ開始
         _symbols.PushScope(node.Name);

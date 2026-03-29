@@ -210,7 +210,7 @@ SUB() BEGIN PRINT(""X""); END;
         Assert.Contains("LD DE,__WORK__", asm);
         Assert.Contains("LD BC,__INIT_TEMPLATE_END-__INIT_TEMPLATE", asm);
         // 配列はWORK内にEQU配置
-        Assert.Contains("__ARI EQU (__WORK__", asm);
+        Assert.Contains("_V_ARI EQU (__WORK__", asm);
     }
 
     [Fact]
@@ -219,7 +219,7 @@ SUB() BEGIN PRINT(""X""); END;
         // RAM環境: 配列はコード領域にDB直接配置、テンプレートなし
         var asm = CompileWithCli(
             "ARRAY ARI[4]={1,2,3}; MAIN() BEGIN END;");
-        Assert.Contains("__ARI:", asm);
+        Assert.Contains("_V_ARI:", asm);
         Assert.DoesNotContain("__INIT_TEMPLATE", asm);
     }
 }
