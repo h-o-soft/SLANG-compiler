@@ -74,11 +74,11 @@
 
 ### 優先度: 高 (互換性)
 
-#### T4. 静的宣言 vs 局所宣言の区別
-- 仕様: BEGIN前のVAR(静的宣言)は静的メモリ(__WORK__)に配置
-- 現状: 全てローカル変数(IYオフセット)として扱われている
-- 修正後は__WORK__オフセットが旧実装に近づく
-- 工数: 中
+#### ~~T4. 静的宣言 vs 局所宣言の区別~~ ✅完了
+- _inStaticDecl/_emitToGlobalDataフラグで静的/局所を区別
+- 静的変数: __WORK__にEQU配置（__{FuncName}_{VarName}）
+- 静的初期値: _emitToGlobalDataでGlobalDataに積む（起動時1回）
+- __WORKEND__が旧実装と完全一致(1883バイト)
 
 ### 優先度: 中
 
@@ -145,6 +145,7 @@
 - [x] T2b: ユーザー変数ラベルを__プレフィックスに変更 (システム変数_との衝突防止)
 - [x] T2b追加: システム変数アクセスのAsmLabel解決修正 (ResolveAsmLabel導入)
 - [x] T3: CODEリスト内 %定数バグ修正 (CastExprアンラップ + %をWORD型指定に追加)
+- [x] T4: 静的宣言 vs 局所宣言の区別 (_inStaticDecl/_emitToGlobalData、__WORKEND__一致)
 
 ---
 

@@ -13,6 +13,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private readonly IrModule _module = new();
     private IrFunction? _currentFunction;
     private int _labelCount;
+    private bool _inStaticDecl;
+    private string? _currentFuncName;
+    private bool _emitToGlobalData;
 
     // 関数内ローカルシンボル（IrGenerator自身が管理）
     private Dictionary<string, LocalVarInfo>? _localVars;
@@ -48,10 +51,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private void Emit(IrOp op, IrOperand dest = default, IrOperand src1 = default, IrOperand src2 = default, int dataSize = 2)
     {
         var inst = new IrInstruction(op, dest, src1, src2) { DataSize = dataSize };
-        if (_currentFunction != null)
-            _currentFunction.Instructions.Add(inst);
-        else
+        if (_emitToGlobalData || _currentFunction == null)
             _module.GlobalData.Add(inst);
+        else
+            _currentFunction.Instructions.Add(inst);
     }
 
     // ==== Top-level ====
@@ -76,37 +79,43 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         int ds = node.Size == DataSize.Byte ? 1 : (node.Size == DataSize.Float ? 3 : 2);
 
-        // グローバルスコープ（関数外）ならGlobalVarsに登録
-        if (_currentFunction == null)
+        // グローバルスコープ or 関数内静的宣言 → __WORK__に配置
+        if (_currentFunction == null || _inStaticDecl)
         {
             int? fixedAddr = null;
             if (node.Address is IntegerLiteral addrLit)
                 fixedAddr = (int)addrLit.Value;
 
+            // ラベル: 関数内静的は __{FuncName}_{VarName}、トップレベルは __{VarName}
+            var label = (_inStaticDecl && _currentFuncName != null)
+                ? $"__{_currentFuncName}_{node.Name}"
+                : $"__{node.Name}";
+
             _module.GlobalVars.Add(new GlobalVarInfo
             {
                 Name = node.Name,
-                AsmLabel = $"__{node.Name}",
+                AsmLabel = label,
                 ByteSize = ds,
                 FixedAddress = fixedAddr,
             });
 
-            // 初期値付きグローバル変数
+            // 初期値付き: _emitToGlobalDataでGlobalDataに積む（起動時1回だけ初期化）
             if (node.InitialValue != null)
             {
+                _emitToGlobalData = true;
                 var val = node.InitialValue.Accept(this);
-                Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Name)), val, dataSize: ds);
+                Emit(IrOp.StoreVar, IrOperand.Sym(label), val, dataSize: ds);
+                _emitToGlobalData = false;
             }
         }
         else
         {
-            // ローカル変数: オフセット割り当て
+            // ローカル変数: IYオフセット割り当て
             AllocLocalVar(node.Name, ds);
 
             if (node.InitialValue != null)
             {
                 var val = node.InitialValue.Accept(this);
-                // ローカルストア
                 var info = _localVars![node.Name];
                 Emit(IrOp.StoreLocal, IrOperand.Imm(info.Offset), val, dataSize: ds);
             }
@@ -139,9 +148,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (dimSize > 0) totalSize *= dimSize;
         }
 
-        if (_currentFunction == null)
+        if (_currentFunction == null || _inStaticDecl)
         {
-            // グローバル配列（totalSizeは上で計算済み）
+            // グローバル or 静的配列（totalSizeは上で計算済み）
             int? fixedAddr = null;
             if (node.Address is IntegerLiteral addrLit)
                 fixedAddr = (int)addrLit.Value;
@@ -194,10 +203,14 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     initData.Add(0);
             }
 
+            var label = (_inStaticDecl && _currentFuncName != null)
+                ? $"__{_currentFuncName}_{node.Name}"
+                : $"__{node.Name}";
+
             _module.GlobalVars.Add(new GlobalVarInfo
             {
                 Name = node.Name,
-                AsmLabel = $"__{node.Name}",
+                AsmLabel = label,
                 ByteSize = totalSize,
                 FixedAddress = fixedAddr,
                 IsArray = true,
@@ -250,8 +263,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
         Emit(IrOp.FuncBegin, IrOperand.Sym(node.Name));
 
-        // Static/local declarations (静的宣言 → グローバルメモリ、局所宣言 → 動的)
+        // Static declarations → グローバルメモリ(__WORK__)、Local declarations → 動的(IY)
+        _currentFuncName = node.Name;
+        _inStaticDecl = true;
         foreach (var d in node.StaticDeclarations) d.Accept(this);
+        _inStaticDecl = false;
         foreach (var d in node.LocalDeclarations) d.Accept(this);
 
         // Body

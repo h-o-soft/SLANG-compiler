@@ -205,6 +205,41 @@ public class CodeGenTests
     }
 
     [Fact]
+    public void StaticVar_InWorkArea()
+    {
+        var asm = Compile("FUNC(A) VAR S; BEGIN VAR L; S=1; L=2; END; MAIN() BEGIN FUNC(0); END;");
+        Assert.Contains("__FUNC_S EQU (__WORK__", asm);
+        Assert.Contains("(IY+", asm);  // ローカルLはIYアクセス
+    }
+
+    [Fact]
+    public void StaticVar_FunctionScoped()
+    {
+        var asm = Compile("F1() VAR S; BEGIN S=1; END; F2() VAR S; BEGIN S=2; END; MAIN() BEGIN F1(); F2(); END;");
+        Assert.Contains("__F1_S EQU (__WORK__", asm);
+        Assert.Contains("__F2_S EQU (__WORK__", asm);
+    }
+
+    [Fact]
+    public void StaticVar_InitAtStartup_NotInFunction()
+    {
+        var asm = Compile("FUNC() VAR S=42; BEGIN END; MAIN() BEGIN FUNC(); END;");
+        var entry = asm.Split("MAIN:")[0];
+        Assert.Contains("__FUNC_S", entry);
+        Assert.Contains("$002A", entry);
+
+        var funcBody = asm.Split("FUNC:")[1].Split("_FUNC_EXIT")[0];
+        Assert.DoesNotContain("__FUNC_S", funcBody);
+    }
+
+    [Fact]
+    public void StaticArray_InWorkArea()
+    {
+        var asm = Compile("FUNC() ARRAY A[5]; BEGIN A[0]=1; END; MAIN() BEGIN FUNC(); END;");
+        Assert.Contains("__FUNC_A EQU (__WORK__", asm);
+    }
+
+    [Fact]
     public void PrintNewline_CallsPCRONE()
     {
         var asm = Compile("MAIN() BEGIN PRINT(/); END;");

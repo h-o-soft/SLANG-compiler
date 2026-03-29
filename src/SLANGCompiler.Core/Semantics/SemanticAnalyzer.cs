@@ -14,6 +14,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     private readonly SymbolTable _symbols;
     private readonly DiagnosticBag _diagnostics;
     private readonly ConstEvaluator _constEval;
+    private bool _inStaticDecl;
+    private string? _currentFuncName;
     private FuncInfo? _currentFunc;
 
     public SymbolTable Symbols => _symbols;
@@ -121,7 +123,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         var type = DataSizeToType(node.Size);
         var sym = _symbols.Define(node.Name, SymbolKind.Variable, type);
 
-        if (_currentFunc != null && _symbols.IsGlobalScope == false)
+        if (_currentFunc != null && _symbols.IsGlobalScope == false && !_inStaticDecl)
         {
             // ローカル変数(動的): BYTE/WORDとも2バイト、FLOATは3バイト
             sym.IsGlobal = false;
@@ -130,9 +132,11 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         }
         else
         {
-            // グローバル変数(静的): __プレフィックスでシステム変数と分離
+            // グローバル変数 or 関数内静的宣言: __WORK__に配置
             sym.IsGlobal = true;
-            sym.AsmLabel = $"__{node.Name}";
+            sym.AsmLabel = (_inStaticDecl && _currentFuncName != null)
+                ? $"__{_currentFuncName}_{node.Name}"
+                : $"__{node.Name}";
             if (node.Address != null)
             {
                 // アドレス固定
@@ -176,7 +180,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
 
         var sym = _symbols.Define(node.Name, SymbolKind.Variable, type);
 
-        if (_currentFunc != null && !_symbols.IsGlobalScope)
+        if (_currentFunc != null && !_symbols.IsGlobalScope && !_inStaticDecl)
         {
             sym.IsGlobal = false;
             sym.Offset = _currentFunc.AllocLocal(type.ByteSize, isArray: true);
@@ -185,7 +189,9 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         else
         {
             sym.IsGlobal = true;
-            sym.AsmLabel = $"__{node.Name}";
+            sym.AsmLabel = (_inStaticDecl && _currentFuncName != null)
+                ? $"__{_currentFuncName}_{node.Name}"
+                : $"__{node.Name}";
         }
 
         return null;
@@ -239,11 +245,14 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             argOffset += 2; // 引数は常にWORD
         }
 
-        // 静的宣言
+        // 静的宣言（__WORK__に配置、AsmLabelに関数名プレフィックス）
+        _currentFuncName = node.Name;
+        _inStaticDecl = true;
         foreach (var decl in node.StaticDeclarations)
             decl.Accept(this);
+        _inStaticDecl = false;
 
-        // 局所宣言
+        // 局所宣言（IYフレームに配置）
         foreach (var decl in node.LocalDeclarations)
             decl.Accept(this);
 
