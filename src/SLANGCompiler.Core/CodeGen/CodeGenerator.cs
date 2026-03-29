@@ -1146,8 +1146,8 @@ public class CodeGenerator
         }
     }
 
-    /// <summary>シンボル名→ASMラベル名。Z80レジスタ名との衝突を回避。</summary>
-    private static string AsmLabel(string name) => $"_{name}";
+    /// <summary>シンボル名→ASMラベル名。__プレフィックスでシステム変数名との衝突を回避。</summary>
+    private static string AsmLabel(string name) => $"__{name}";
 
     private void EmitLoadVar(IrInstruction inst)
     {

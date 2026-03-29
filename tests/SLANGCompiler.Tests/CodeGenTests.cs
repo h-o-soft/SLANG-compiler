@@ -36,8 +36,8 @@ public class CodeGenTests
     {
         var asm = Compile("VAR X,Y,Z; MAIN() BEGIN Z=X+Y; END;");
         // 直接ロード最適化: PUSH/POP なし
-        Assert.Contains("LD\tHL,(_X)", asm);
-        Assert.Contains("LD\tDE,(_Y)", asm);
+        Assert.Contains("LD\tHL,(__X)", asm);
+        Assert.Contains("LD\tDE,(__Y)", asm);
         Assert.Contains("ADD\tHL,DE", asm);
         Assert.DoesNotContain("PUSH\tHL", asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0]);
     }
@@ -63,7 +63,7 @@ public class CodeGenTests
     {
         var asm = Compile("VAR GLOBAL; MAIN() BEGIN GLOBAL=1; END;");
         // グローバル変数は__WORK__内にEQU配置
-        Assert.Contains("_GLOBAL EQU (__WORK__", asm);
+        Assert.Contains("__GLOBAL EQU (__WORK__", asm);
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class CodeGenTests
         // エントリポイントでグローバル初期化
         var entry = asm.Split("MAIN:")[0];
         Assert.Contains("$002A", entry); // 42
-        Assert.Contains("(_X)", entry);
+        Assert.Contains("(__X)", entry);
     }
 
     [Fact]
@@ -169,6 +169,19 @@ public class CodeGenTests
     {
         var asm = Compile("VAR X,Y,Z; MAIN() BEGIN IF X.<.Y THEN Z=1; END;");
         Assert.Contains("CALL\tOPSLTHLDE", asm);
+    }
+
+    [Fact]
+    public void UserVar_NoCollisionWithSystemRegs()
+    {
+        // VAR A はシステム変数 _A (=_AF+1) と衝突しない
+        var asm = Compile("VAR A; MAIN() BEGIN A=1; END;");
+        // ユーザー変数は__プレフィックス
+        Assert.Contains("__A EQU (__WORK__", asm);
+        // システム変数は_プレフィックス
+        Assert.Contains("_A EQU (_AF + 1)", asm);
+        // 両方存在して衝突しない
+        Assert.Contains("_AF EQU (__WORK__", asm);
     }
 
     [Fact]

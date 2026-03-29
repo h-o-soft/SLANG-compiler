@@ -130,9 +130,9 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         }
         else
         {
-            // グローバル変数(静的)
+            // グローバル変数(静的): __プレフィックスでシステム変数と分離
             sym.IsGlobal = true;
-            sym.AsmLabel = $"_{node.Name}";
+            sym.AsmLabel = $"__{node.Name}";
             if (node.Address != null)
             {
                 // アドレス固定
@@ -185,7 +185,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         else
         {
             sym.IsGlobal = true;
-            sym.AsmLabel = $"_{node.Name}";
+            sym.AsmLabel = $"__{node.Name}";
         }
 
         return null;

@@ -79,7 +79,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             _module.GlobalVars.Add(new GlobalVarInfo
             {
                 Name = node.Name,
-                AsmLabel = $"_{node.Name}",
+                AsmLabel = $"__{node.Name}",
                 ByteSize = ds,
                 FixedAddress = fixedAddr,
             });
@@ -175,7 +175,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             _module.GlobalVars.Add(new GlobalVarInfo
             {
                 Name = node.Name,
-                AsmLabel = $"_{node.Name}",
+                AsmLabel = $"__{node.Name}",
                 ByteSize = totalSize,
                 FixedAddress = fixedAddr,
                 IsArray = true,
