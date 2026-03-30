@@ -29,6 +29,7 @@ namespace SLANGCompiler.SLANG
             public string extlib = null;
             public string[] include = null;
             public int align = 0;
+            public string stack_cleanup = null;
         }
 
         /// <summary>

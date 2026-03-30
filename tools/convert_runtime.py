@@ -78,8 +78,13 @@ def convert_yaml_to_asm(yaml_path):
         if not isinstance(info, dict):
             continue
 
+        # inside_name: ASMラベルとして使う別名（Z80予約語回避）
+        asm_name = info.get('inside_name', name)
+
         # メタデータコメント
-        print(f"; @name {name}")
+        print(f"; @name {asm_name}")
+        if asm_name != name:
+            print(f"; @alias {name}")
 
         if 'param_count' in info:
             print(f"; @param_count {info['param_count']}")

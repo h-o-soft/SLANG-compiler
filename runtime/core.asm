@@ -1,4 +1,4 @@
-; Converted from /home/user/SLANG-compiler/lib/libdef/runtime.yml
+; Converted from lib/libdef/runtime.yml
 ; SLANG Runtime Library (new format)
 
 ; @name MULHLDE
@@ -54,7 +54,7 @@ RET
 .div1
 INC D
 DEC D
-JR Z, DIVHLDE8
+JP Z, DIVHLDE8
 LD C, L
 LD L, H
 XOR A
@@ -309,7 +309,8 @@ LD H, A
 RET
 
 
-; @name BIT
+; @name RBIT
+; @alias BIT
 ; @param_count 2
 ; @calls RSHIFTHLDE
 CALL RSHIFTHLDE
@@ -320,7 +321,8 @@ INC HL
 RET
 
 
-; @name SET
+; @name RSET
+; @alias SET
 ; @param_count 2
 ; @calls ORHLDE
 EX DE,HL
@@ -397,6 +399,17 @@ RET
 ; @name RND
 ; @param_count 1
 ; @calls MULHLDE,MODHLDE
+; @works RND_SEED1:2,RND_SEED2:2
+; @init_code
+LD HL,$E933
+LD (RND_SEED2),HL
+LD A,R
+LD L,A
+LD (RND_SEED1),A
+XOR H
+LD (RND_SEED1+1),A
+RET
+; @end_init
 PUSH HL
 LD HL,(RND_SEED1)
 LD B,H
@@ -459,18 +472,19 @@ DJNZ .vtos3
 RET
 
 
-; @name CALL
+; @name RCALL
+; @alias CALL
 ; @calls GETREG
 PUSH IY
 LD DE,.call1
 PUSH DE
 PUSH HL
-LD A,(___AF+1)
-LD BC,(___BC)
-LD DE,(___DE)
-LD HL,(___HL)
-LD IX,(___IX)
-LD IY,(___IY)
+LD A,(_AF+1)
+LD BC,(_BC)
+LD DE,(_DE)
+LD HL,(_HL)
+LD IX,(_IX)
+LD IY,(_IY)
 RET
 .call1
 PUSH HL

@@ -1900,39 +1900,42 @@ public class CodeGenerator
         _e.Instruction("CALL", QualifyAsmExpr(name));
     }
 
-    /// <summary>ランタイム関数にLibNameがあればnamespace修飾する</summary>
+    /// <summary>ランタイム関数名を解決（エイリアス→実名、namespace修飾）</summary>
     private string QualifyRuntimeName(string name)
     {
         if (_runtimeManager != null
-            && _runtimeManager.Functions.TryGetValue(name, out var func)
-            && func.LibName != null)
+            && _runtimeManager.Functions.TryGetValue(name, out var func))
         {
-            return $"{func.LibName}.{name}";
+            // エイリアス解決: BIT→RBIT
+            var resolved = func.Name;
+            if (func.LibName != null)
+                return $"{func.LibName}.{resolved}";
+            return resolved;
         }
         return name;
     }
 
-    /// <summary>アセンブラ式文字列内のランタイムラベルをnamespace修飾する</summary>
+    /// <summary>アセンブラ式文字列内のランタイムラベルをnamespace修飾・エイリアス解決する</summary>
     private string QualifyAsmExpr(string expr)
     {
         if (_runtimeManager == null) return expr;
-        // ラベル名部分を抽出してnamespace修飾
-        // 式は "LABEL+$XXXX" や "LABEL-$XXXX" や "LABEL" 形式
         foreach (var func in _runtimeManager.Functions)
         {
-            if (func.Value.LibName == null) continue;
             var name = func.Key;
-            // 式内にラベルが含まれるか（前後が演算子or先頭/末尾）
+            var resolved = func.Value.Name;
+            // namespace修飾もエイリアス解決も不要ならスキップ
+            if (func.Value.LibName == null && name == resolved) continue;
             int idx = expr.IndexOf(name, StringComparison.OrdinalIgnoreCase);
             if (idx < 0) continue;
-            // 前後の境界チェック（部分一致を避ける）
             bool startOk = idx == 0 || !char.IsLetterOrDigit(expr[idx - 1]) && expr[idx - 1] != '_';
             bool endOk = idx + name.Length >= expr.Length
                 || !char.IsLetterOrDigit(expr[idx + name.Length]) && expr[idx + name.Length] != '_';
             if (startOk && endOk)
             {
-                var qualified = $"{func.Value.LibName}.{name}";
-                expr = expr.Substring(0, idx) + qualified + expr.Substring(idx + name.Length);
+                var target = func.Value.LibName != null
+                    ? $"{func.Value.LibName}.{resolved}"
+                    : resolved;
+                expr = expr.Substring(0, idx) + target + expr.Substring(idx + name.Length);
             }
         }
         return expr;

@@ -309,7 +309,8 @@ LD H, A
 RET
 
 
-; @name BIT
+; @name RBIT
+; @alias BIT
 ; @param_count 2
 ; @calls RSHIFTHLDE
 CALL RSHIFTHLDE
@@ -320,7 +321,8 @@ INC HL
 RET
 
 
-; @name SET
+; @name RSET
+; @alias SET
 ; @param_count 2
 ; @calls ORHLDE
 EX DE,HL
@@ -470,18 +472,19 @@ DJNZ .vtos3
 RET
 
 
-; @name CALL
+; @name RCALL
+; @alias CALL
 ; @calls GETREG
 PUSH IY
 LD DE,.call1
 PUSH DE
 PUSH HL
-LD A,(___AF+1)
-LD BC,(___BC)
-LD DE,(___DE)
-LD HL,(___HL)
-LD IX,(___IX)
-LD IY,(___IY)
+LD A,(_AF+1)
+LD BC,(_BC)
+LD DE,(_DE)
+LD HL,(_HL)
+LD IX,(_IX)
+LD IY,(_IY)
 RET
 .call1
 PUSH HL

@@ -30,6 +30,7 @@ public class RuntimeFunction
     public int LoadOrder { get; set; }                        // ファイル内定義順
     public List<(string Label, int Size)>? Works { get; set; }  // @works (順序付き)
     public bool CalleeCleanup { get; set; }                    // @stack_cleanup callee
+    public List<string> Aliases { get; set; } = new();          // @alias (元の名前)
 }
 
 /// <summary>
@@ -63,6 +64,9 @@ public class RuntimeManager
         {
             func.LoadOrder = _loadOrderCounter++;
             _functions[func.Name] = func;
+            // エイリアス（inside_name使用時の元名）も同じ関数にマッピング
+            foreach (var alias in func.Aliases)
+                _functions[alias] = func;
         }
     }
 
@@ -278,6 +282,11 @@ public static class RuntimeParser
                     case "stack_cleanup":
                         if (current != null && value.Equals("callee", StringComparison.OrdinalIgnoreCase))
                             current.CalleeCleanup = true;
+                        break;
+
+                    case "alias":
+                        if (current != null && !string.IsNullOrEmpty(value))
+                            current.Aliases.Add(value);
                         break;
                 }
                 continue;

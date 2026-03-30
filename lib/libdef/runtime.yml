@@ -506,12 +506,12 @@ CALL:
     LD DE,.call1
     PUSH DE
     PUSH HL
-    LD A,(___AF+1)
-    LD BC,(___BC)
-    LD DE,(___DE)
-    LD HL,(___HL)
-    LD IX,(___IX)
-    LD IY,(___IY)
+    LD A,(_AF+1)
+    LD BC,(_BC)
+    LD DE,(_DE)
+    LD HL,(_HL)
+    LD IX,(_IX)
+    LD IY,(_IY)
     RET
     .call1
     PUSH HL
