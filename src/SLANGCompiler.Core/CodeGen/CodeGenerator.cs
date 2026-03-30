@@ -790,6 +790,56 @@ public class CodeGenerator
             }
         }
 
+        // MACHINE呼び出し直接レジスタロード最適化（2パス方式）
+        // パス1: 候補検出（skipEmit未変更）
+        var machineDirectCandidates = new Dictionary<int, (List<int> argDefs, List<int> pushIdxs)>();
+        for (int i = 0; i < insts.Count; i++)
+        {
+            var inst = insts[i];
+            if (inst.Op != IrOp.Call || inst.Src2.Kind != IrOperandKind.Immediate) continue;
+            int argCount = (int)inst.Src2.ImmediateValue;
+            if (argCount < 1 || argCount > 3) continue;
+
+            var argDefs = new List<int>();
+            var pushIdxs = new List<int>();
+            int pos = i - 1;
+            bool allSimple = true;
+            for (int a = argCount - 1; a >= 0; a--)
+            {
+                while (pos >= 0 && skipEmit.Contains(pos)) pos--;
+                if (pos < 0 || insts[pos].Op != IrOp.PushArg) { allSimple = false; break; }
+                pushIdxs.Insert(0, pos);
+                pos--;
+
+                while (pos >= 0 && skipEmit.Contains(pos)) pos--;
+                if (pos < 0 || !IsSimpleLoad(insts[pos])) { allSimple = false; break; }
+
+                // tempが対応PushArg以外で使われていないか確認
+                int loadTemp = insts[pos].Dest.TempIndex;
+                bool onlyUsedByPush = true;
+                for (int j = 0; j < insts.Count; j++)
+                {
+                    if (j == pos || j == pushIdxs[0]) continue; // defと対応PushArgは除外
+                    if (UsesTemp(insts[j], loadTemp)) { onlyUsedByPush = false; break; }
+                }
+                if (!onlyUsedByPush) { allSimple = false; break; }
+
+                argDefs.Insert(0, pos);
+                pos--;
+            }
+            if (allSimple && argDefs.Count == argCount)
+                machineDirectCandidates[i] = (argDefs, pushIdxs);
+        }
+
+        // パス2: 確定した候補のみskipEmitに追加
+        var machineDirectArgs = new Dictionary<int, List<int>>();
+        foreach (var (callIdx, (argDefs, pushIdxs)) in machineDirectCandidates)
+        {
+            machineDirectArgs[callIdx] = argDefs;
+            foreach (var idx in argDefs) skipEmit.Add(idx);
+            foreach (var idx in pushIdxs) skipEmit.Add(idx);
+        }
+
         // NeedsPushAfterで参照するためフィールドにセット
         _currentDirectBinaryOps = directBinaryOps;
         _currentHalfDirectOps = halfDirectOps;
@@ -1140,6 +1190,26 @@ public class CodeGenerator
                 continue;
             }
 
+            // MACHINE呼び出し直接レジスタロード最適化
+            if (machineDirectArgs.TryGetValue(i, out var argDefIdxs))
+            {
+                int argCount = (int)inst.Src2.ImmediateValue;
+                // arg1 → HL
+                EmitLoadToHL(insts[argDefIdxs[0]]);
+                if (argCount >= 2)
+                    EmitLoadToDE(insts[argDefIdxs[1]]);
+                if (argCount >= 3)
+                    EmitLoadToBC(insts[argDefIdxs[2]]);
+                // callLabel解決（EmitCallと同じロジック）
+                var funcName = inst.Src1.Name ?? inst.Src1.ToString();
+                _calledFunctions.Add(funcName);
+                var isRuntimeOrExpr = _runtimeManager?.Functions.ContainsKey(funcName) == true
+                    || funcName.Contains('+') || funcName.Contains('-');
+                var callLabel = isRuntimeOrExpr ? QualifyAsmExpr(funcName) : funcName;
+                _e.Instruction("CALL", callLabel);
+                continue;
+            }
+
             // StoreLocal即値最適化: LD (IY+d),imm 直接ストア
             if (storeLocalDirectConst.TryGetValue(i, out int constDefIdx))
             {
@@ -1215,6 +1285,96 @@ public class CodeGenerator
             {
                 var addrName = inst.Src1.Kind == IrOperandKind.Symbol ? AsmLabel(inst.Src1.Name!) : inst.Src1.Name!;
                 _e.Instruction("LD", $"DE,{addrName}");
+                break;
+            }
+        }
+    }
+
+    /// <summary>ロード命令をHLレジスタ版で出力（MACHINE引数用、BYTE時も16bit即値）</summary>
+    private void EmitLoadToHL(IrInstruction inst)
+    {
+        switch (inst.Op)
+        {
+            case IrOp.LoadConst:
+            {
+                int val = (int)(inst.Src1.ImmediateValue & 0xFFFF);
+                _e.Instruction("LD", $"HL,${val:X4}");
+                break;
+            }
+            case IrOp.LoadVar:
+                if (inst.DataSize == 1)
+                {
+                    _e.Instruction("LD", $"A,({AsmLabel(inst.Src1.Name!)})");
+                    _e.Instruction("LD", "L,A");
+                    _e.Instruction("LD", "H,$00");
+                }
+                else
+                    _e.Instruction("LD", $"HL,({AsmLabel(inst.Src1.Name!)})");
+                break;
+            case IrOp.LoadLocal:
+            {
+                int offset = (int)inst.Src1.ImmediateValue;
+                if (inst.DataSize == 1)
+                {
+                    _e.Instruction("LD", $"L,(IY+${offset:X2})");
+                    _e.Instruction("LD", "H,$00");
+                }
+                else
+                {
+                    _e.Instruction("LD", $"L,(IY+${offset:X2})");
+                    _e.Instruction("LD", $"H,(IY+${offset + 1:X2})");
+                }
+                break;
+            }
+            case IrOp.LoadAddr:
+            {
+                var addrName = inst.Src1.Kind == IrOperandKind.Symbol ? AsmLabel(inst.Src1.Name!) : inst.Src1.Name!;
+                _e.Instruction("LD", $"HL,{addrName}");
+                break;
+            }
+        }
+    }
+
+    /// <summary>ロード命令をBCレジスタ版で出力（MACHINE引数用）</summary>
+    private void EmitLoadToBC(IrInstruction inst)
+    {
+        switch (inst.Op)
+        {
+            case IrOp.LoadConst:
+            {
+                int val = (int)(inst.Src1.ImmediateValue & 0xFFFF);
+                _e.Instruction("LD", $"BC,${val:X4}");
+                break;
+            }
+            case IrOp.LoadVar:
+                if (inst.DataSize == 1)
+                {
+                    _e.Instruction("LD", $"A,({AsmLabel(inst.Src1.Name!)})");
+                    _e.Instruction("LD", "C,A");
+                    _e.Instruction("LD", "B,$00");
+                }
+                else
+                    _e.Instruction("LD", $"BC,({AsmLabel(inst.Src1.Name!)})");
+                break;
+            case IrOp.LoadLocal:
+            {
+                int offset = (int)inst.Src1.ImmediateValue;
+                if (inst.DataSize == 1)
+                {
+                    _e.Instruction("LD", $"C,(IY+${offset:X2})");
+                    _e.Instruction("LD", "B,$00");
+                }
+                else
+                {
+                    _e.Instruction("LD", $"C,(IY+${offset:X2})");
+                    _e.Instruction("LD", $"B,(IY+${offset + 1:X2})");
+                }
+                break;
+            }
+            case IrOp.LoadAddr:
+            {
+                var addrName = inst.Src1.Kind == IrOperandKind.Symbol ? AsmLabel(inst.Src1.Name!) : inst.Src1.Name!;
+                _e.Instruction("LD", $"BC,{addrName}");
                 break;
             }
         }
