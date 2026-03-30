@@ -41,6 +41,7 @@ BFILL:
   calls:
     - PAINT1
   lib_name: X1PAINT
+  stack_cleanup: callee
   extlib: x1/gpaint.asm:BFILL
 
 LINECOMMON:
@@ -51,6 +52,7 @@ LINE:
   calls:
     - LINECOMMON
     - X1WORK
+  stack_cleanup: callee
   extlib: x1/gline.asm:LINEALL
 
 XLINE:
@@ -58,6 +60,7 @@ XLINE:
     - LINECOMMON
     - LINE
     - X1WORK
+  stack_cleanup: callee
   extlib: x1/gline.asm:XORLINE
 
 GRPSETUP:

@@ -1516,6 +1516,7 @@ JP X1PAINT.GPAINT_TOP
 ; @name BFILL
 ; @calls PAINT1
 ; @lib X1PAINT
+; @stack_cleanup callee
 ; ペイントルーチンのタイル横ライン描画を流用したBOX FILL
 ; X2>X1、Y2>Y1である必要があるので注意！(手抜き)
 
@@ -2486,6 +2487,7 @@ DAMY:
 
 ; @name LINE
 ; @calls LINECOMMON,X1WORK
+; @stack_cleanup callee
 	LD	HL,DRAWALL
 	LD	(SELLINE+1),HL
 ;	JR	DRAWTOP
@@ -2595,6 +2597,7 @@ LRETADR:
 
 ; @name XLINE
 ; @calls LINECOMMON,LINE,X1WORK
+; @stack_cleanup callee
 	LD	HL,DRAWXOR
 	LD	(SELLINE+1),HL
 	JR	DRAWTOP

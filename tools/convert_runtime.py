@@ -94,6 +94,9 @@ def convert_yaml_to_asm(yaml_path):
         if 'lib_name' in info and info['lib_name']:
             print(f"; @lib {info['lib_name']}")
 
+        if 'stack_cleanup' in info and info['stack_cleanup']:
+            print(f"; @stack_cleanup {info['stack_cleanup']}")
+
         # works: メタデータとして出力（本体にDSを出さない）
         if 'works' in info and info['works']:
             items = ','.join(f"{k}:{v}" for k, v in info['works'].items())

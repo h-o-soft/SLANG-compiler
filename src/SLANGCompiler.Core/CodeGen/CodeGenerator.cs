@@ -66,12 +66,18 @@ public class CodeGenerator
         _e.Instruction("ORG", $"${overlay.OrgAddress:X4}");
         _e.Blank();
 
-        // モジュール内の関数（メイン部と同じEmitFunctionロジックでフル生成）
+        // モジュール内の関数（コンパイラ生成コードのみ最適化）
+        var overlayFuncEmitter = new Z80Emitter();
+        var overlayMainEmitter = _e;
+        _e = overlayFuncEmitter;
         foreach (var func in overlay.Functions)
         {
             EmitFunction(func);
             _e.Blank();
         }
+        _e = overlayMainEmitter;
+        overlayFuncEmitter.OptimizeWith(new PeepholeOptimizer());
+        _e.AppendFrom(overlayFuncEmitter);
 
         // モジュール内で使われた文字列（メイン部StringTableから該当分を抽出）
         // 現在は全文字列がメイン部に入るので、オーバーレイからはメイン部の文字列を参照
@@ -228,7 +234,8 @@ public class CodeGenerator
         }
         _e.Blank();
 
-        // === Phase 5: 関数本体を挿入 ===
+        // === Phase 5: 関数本体を挿入（コンパイラ生成コードのみ最適化） ===
+        funcEmitter.OptimizeWith(new PeepholeOptimizer());
         _e.AppendFrom(funcEmitter);
 
         // === Phase 6: 文字列テーブル ===
@@ -332,9 +339,6 @@ public class CodeGenerator
 
         // === Phase 9: __WORK__集約レイアウト ===
         EmitWorkArea();
-
-        // ピープホール最適化
-        _e.OptimizeWith(new PeepholeOptimizer());
 
         return _e.ToAssembly();
     }
@@ -1949,7 +1953,6 @@ public class CodeGenerator
             switch (machineArgs)
             {
                 case 1:
-                    // HLに既に入っている（最後のPushArgの値）
                     _e.Instruction("POP", "HL");
                     break;
                 case 2:
@@ -1962,11 +1965,28 @@ public class CodeGenerator
                     _e.Instruction("POP", "HL");
                     break;
                 default:
-                    // 4個以上: スタック渡し（そのまま）
+                    // 4個以上: スタック渡し（そのまま、CALL後に復帰）
                     break;
             }
         }
 
         _e.Instruction("CALL", callLabel);
+
+        // 4引数以上: calleeクリーンアップでなければcaller側でSP復帰
+        if (machineArgs >= 4)
+        {
+            bool calleeCleanup = _runtimeManager != null
+                && _runtimeManager.Functions.TryGetValue(funcName, out var rtFunc)
+                && rtFunc.CalleeCleanup;
+            if (!calleeCleanup)
+            {
+                int stackSize = machineArgs * 2;
+                _e.Instruction("EX", "DE,HL");
+                _e.Instruction("LD", $"HL,{stackSize}");
+                _e.Instruction("ADD", "HL,SP");
+                _e.Instruction("LD", "SP,HL");
+                _e.Instruction("EX", "DE,HL");
+            }
+        }
     }
 }

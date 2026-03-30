@@ -29,6 +29,7 @@ public class RuntimeFunction
     public string SourceFile { get; set; } = "";
     public int LoadOrder { get; set; }                        // ファイル内定義順
     public List<(string Label, int Size)>? Works { get; set; }  // @works (順序付き)
+    public bool CalleeCleanup { get; set; }                    // @stack_cleanup callee
 }
 
 /// <summary>
@@ -272,6 +273,11 @@ public static class RuntimeParser
 
                     case "function_type":
                         // function_type is metadata only, no action needed
+                        break;
+
+                    case "stack_cleanup":
+                        if (current != null && value.Equals("callee", StringComparison.OrdinalIgnoreCase))
+                            current.CalleeCleanup = true;
                         break;
                 }
                 continue;

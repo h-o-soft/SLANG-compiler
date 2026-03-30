@@ -100,20 +100,15 @@ MAIN:
 	CALL	MAGLIB.GRDISP
 	CALL	MAGLIB.GRCLS
 _L0:
-	LD	HL,$0140
-	CALL	RND
+	LD	HL,$0000
 	PUSH	HL
-	LD	HL,$00C8
-	CALL	RND
+	LD	HL,$0000
 	PUSH	HL
-	LD	HL,$0140
-	CALL	RND
+	LD	HL,$0064
 	PUSH	HL
-	LD	HL,$00C8
-	CALL	RND
+	LD	HL,$0064
 	PUSH	HL
-	LD	HL,$0008
-	CALL	RND
+	LD	HL,$0003
 	PUSH	HL
 	CALL	LINE
 	JP	_L0
@@ -383,7 +378,7 @@ _L9:
 	LD	(_V_MAIN_I),HL
 	LD	DE,$0007
 	CALL	OPSLEHLDE
-; if t159 != 0 goto _L8
+; if t154 != 0 goto _L8
 	LD	A,H
 	OR	L
 	JP	NZ,_L8
@@ -416,7 +411,7 @@ _L14:
 	LD	A,E
 	OR	L
 	LD	L,A
-; if t168 == 0 goto _L18
+; if t163 == 0 goto _L18
 	LD	A,H
 	OR	L
 	JP	Z,_L18
@@ -442,7 +437,7 @@ _L14:
 	LD	A,E
 	OR	L
 	LD	L,A
-; if t175 == 0 goto _L20
+; if t170 == 0 goto _L20
 	LD	A,H
 	OR	L
 	JP	Z,_L20
@@ -525,7 +520,7 @@ _L15:
 	LD	(_V_MAIN_J),HL
 	LD	DE,$0000
 	CALL	OPSGEHLDE
-; if t221 != 0 goto _L14
+; if t216 != 0 goto _L14
 	LD	A,H
 	OR	L
 	JP	NZ,_L14
@@ -536,7 +531,7 @@ _L12:
 	LD	(_V_MAIN_I),HL
 	LD	DE,$0007
 	CALL	OPSLEHLDE
-; if t226 != 0 goto _L11
+; if t221 != 0 goto _L11
 	LD	A,H
 	OR	L
 	JP	NZ,_L11
@@ -2852,6 +2847,7 @@ DRAWTOP:
 	PUSH IY
 	PUSH IX
 SELLINE:
+	JP	DRAWALL
 DRAWALL:
 	; OR
 	LD A,$28    ; JR Z,...
