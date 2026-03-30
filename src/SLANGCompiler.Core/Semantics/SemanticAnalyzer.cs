@@ -245,6 +245,9 @@ public class SemanticAnalyzer : IAstVisitor<object?>
 
     public object? VisitMachineDecl(MachineDecl node)
     {
+        if (node.Address != null && node.CodeBody != null)
+            _diagnostics.Error("MACHINE declaration cannot have both address and CODE body", node.Span);
+
         var paramTypes = new List<SlangType>();
         if (node.ParamCount.HasValue)
             paramTypes = Enumerable.Repeat(SlangType.Word, node.ParamCount.Value).ToList();
@@ -254,6 +257,17 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         sym.AsmLabel = $"_{LabelUtils.SanitizeLabel(node.Name)}";
         if (node.Address != null)
             sym.AddressAst = node.Address;  // AST保持、文字列化はIR段階で
+
+        // 静的宣言を関数スコープで処理（AsmLabelに関数名プレフィックス付与）
+        if (node.StaticDeclarations.Count > 0)
+        {
+            _currentFuncName = node.Name;
+            _inStaticDecl = true;
+            foreach (var decl in node.StaticDeclarations)
+                decl.Accept(this);
+            _inStaticDecl = false;
+            _currentFuncName = null;
+        }
         return null;
     }
 

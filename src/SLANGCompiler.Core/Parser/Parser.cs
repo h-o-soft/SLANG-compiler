@@ -348,7 +348,7 @@ public class Parser
 
     // ==== Function definition ====
 
-    private FuncDef ParseFuncDef()
+    private AstNode ParseFuncDef()
     {
         var start = Current.Span;
         var name = Advance().StringValue; // identifier
@@ -358,17 +358,44 @@ public class Parser
             address = ParseNcExpr();
 
         Expect(TokenKind.LParen, "Expected '('");
-        var parms = new List<ParamDecl>();
-        bool isMachineCodeDef = false;
 
+        // MACHINE CODE定義: @FUNC(引数数) [static decls] [CODE(...);] → 早期return
         if (Check(TokenKind.IntegerLiteral))
         {
-            // MACHINE関数のCODE定義: @FUNC(引数数) [CODE(...)]
-            // (定数) は引数数であって引数リストではない
-            isMachineCodeDef = true;
-            Advance(); // 引数数（無視、MACHINE宣言側で管理）
+            var paramCount = (int)Advance().IntValue;
+            Expect(TokenKind.RParen, "Expected ')'");
+
+            // 静的宣言（例: ARRAY BUFF[34]; ）をパース
+            var machineStaticDecls = new List<AstNode>();
+            while (IsDeclStart() && !IsBlockOpen() && !_diagnostics.HasReachedMaxErrors)
+            {
+                int errorsBefore = _diagnostics.ErrorCount;
+                int before = _pos;
+                machineStaticDecls.Add(ParseLocalDecl());
+                if (_diagnostics.ErrorCount > errorsBefore)
+                    SynchronizeDeclaration();
+                else if (_pos == before)
+                    Advance();
+            }
+
+            CodeExpr? codeBody = null;
+            if (IsBlockOpen())
+            {
+                Advance(); // ブロックオープン消費 ([)
+                var expr = ParseNcExpr(); // CODE(...) を式としてパース
+                Match(TokenKind.Semicolon);
+                ExpectBlockClose("Expected block close");
+                if (expr is CodeExpr ce)
+                    codeBody = ce;
+            }
+            Match(TokenKind.Semicolon);
+
+            return new MachineDecl(name, address, paramCount, start, codeBody,
+                machineStaticDecls.Count > 0 ? machineStaticDecls : null);
         }
-        else if (!Check(TokenKind.RParen))
+
+        var parms = new List<ParamDecl>();
+        if (!Check(TokenKind.RParen))
         {
             do
             {
@@ -381,6 +408,18 @@ public class Parser
             } while (Match(TokenKind.Comma));
         }
         Expect(TokenKind.RParen, "Expected ')'");
+
+        // MACHINE CODE定義(引数0個): @FUNC()[CODE(...);] — [の次がCODEキーワード
+        if (IsBlockOpen() && Peek(1).Kind == TokenKind.Code)
+        {
+            Advance(); // ブロックオープン消費
+            var expr = ParseNcExpr();
+            Match(TokenKind.Semicolon);
+            ExpectBlockClose("Expected block close");
+            Match(TokenKind.Semicolon);
+            CodeExpr? codeBody = expr is CodeExpr ce ? ce : null;
+            return new MachineDecl(name, address, parms.Count, start, codeBody);
+        }
 
         // Static declarations (before BEGIN)
         var staticDecls = new List<AstNode>();

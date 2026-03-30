@@ -273,48 +273,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (_inStaticDecl && _currentFuncName != null)
                 _staticVarLabels![node.Name] = label;
 
-            var initItems = new List<InitItem>();
-            foreach (var expr in codeExpr.Values)
-            {
-                var initExpr = expr;
-                int itemSize = 1; // CODEブロックのデフォルトはBYTE
-                if (initExpr is CastExpr cast)
-                {
-                    initExpr = cast.Operand;
-                    itemSize = cast.TargetSize == DataSize.Byte ? 1 : cast.TargetSize == DataSize.Float ? 3 : 2;
-                }
-                if (initExpr is IntegerLiteral ilit)
-                {
-                    if (itemSize == 1)
-                        initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
-                    else
-                    {
-                        initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
-                        initItems.Add(InitItem.Byte((byte)((ilit.Value >> 8) & 0xFF)));
-                    }
-                }
-                else if (initExpr is StringLiteral slit)
-                {
-                    foreach (var ch in slit.Value)
-                        initItems.Add(InitItem.Byte((byte)ch));
-                }
-                else
-                {
-                    // 非定数式: アセンブラ式に変換
-                    var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics);
-                    if (asmResult.HasValue && itemSize == 2)
-                    {
-                        initItems.Add(InitItem.Word(asmResult.Value.Expr));
-                        foreach (var dep in asmResult.Value.Deps)
-                            _module.AddressSymbolDeps.Add(dep);
-                    }
-                    else if (itemSize == 1)
-                    {
-                        _diagnostics?.Error("Non-constant BYTE expression in CODE block not supported",
-                            initExpr.Span);
-                    }
-                }
-            }
+            var initItems = BuildCodeBlockItems(codeExpr);
 
             _module.GlobalVars.Add(new GlobalVarInfo
             {
@@ -335,7 +294,85 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitMachineDecl(MachineDecl node)
     {
         Emit(IrOp.Comment, IrOperand.Asm($"MACHINE {node.Name}"));
+
+        // 静的宣言を関数スコープで処理
+        if (node.StaticDeclarations.Count > 0)
+        {
+            var prevStaticLabels = _staticVarLabels;
+            _staticVarLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            _currentFuncName = LabelUtils.SanitizeLabel(node.Name);
+            _inStaticDecl = true;
+            foreach (var d in node.StaticDeclarations) d.Accept(this);
+            _inStaticDecl = false;
+            _currentFuncName = null;
+            _staticVarLabels = prevStaticLabels;
+        }
+
+        if (node.CodeBody != null)
+        {
+            var sym = _globalSymbols?.Resolve(node.Name);
+            var label = sym?.AsmLabel ?? $"_{LabelUtils.SanitizeLabel(node.Name)}";
+            var initItems = BuildCodeBlockItems(node.CodeBody);
+            // 旧コンパイラ互換: funcend()相当のRETを末尾に追加
+            initItems.Add(InitItem.Byte(0xC9)); // RET
+
+            _module.GlobalVars.Add(new GlobalVarInfo
+            {
+                Name = node.Name,
+                AsmLabel = label,
+                ByteSize = initItems.Sum(i => i.ByteSize),
+                InitialItems = initItems,
+                StorageKind = VarStorageKind.CodeConst,
+            });
+        }
         return IrOperand.None;
+    }
+
+    private List<InitItem> BuildCodeBlockItems(CodeExpr codeExpr)
+    {
+        var initItems = new List<InitItem>();
+        foreach (var expr in codeExpr.Values)
+        {
+            var initExpr = expr;
+            int itemSize = 1; // CODEブロックのデフォルトはBYTE
+            if (initExpr is CastExpr cast)
+            {
+                initExpr = cast.Operand;
+                itemSize = cast.TargetSize == DataSize.Byte ? 1 : cast.TargetSize == DataSize.Float ? 3 : 2;
+            }
+            if (initExpr is IntegerLiteral ilit)
+            {
+                if (itemSize == 1)
+                    initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
+                else
+                {
+                    initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
+                    initItems.Add(InitItem.Byte((byte)((ilit.Value >> 8) & 0xFF)));
+                }
+            }
+            else if (initExpr is StringLiteral slit)
+            {
+                foreach (var ch in slit.Value)
+                    initItems.Add(InitItem.Byte((byte)ch));
+            }
+            else
+            {
+                // 非定数式: アセンブラ式に変換
+                var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics);
+                if (asmResult.HasValue && itemSize == 2)
+                {
+                    initItems.Add(InitItem.Word(asmResult.Value.Expr));
+                    foreach (var dep in asmResult.Value.Deps)
+                        _module.AddressSymbolDeps.Add(dep);
+                }
+                else if (itemSize == 1)
+                {
+                    _diagnostics?.Error("Non-constant BYTE expression in CODE block not supported",
+                        initExpr.Span);
+                }
+            }
+        }
+        return initItems;
     }
 
     public IrOperand VisitParamDecl(ParamDecl node) => IrOperand.None;
@@ -831,6 +868,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // 1. ローカル変数テーブルをまず検索
         if (_localVars != null && _localVars.TryGetValue(node.Name, out var localInfo))
         {
+            if (localInfo.IsArray)
+            {
+                // ローカル配列: アドレスをロード（IY+offsetの実効アドレス）
+                Emit(IrOp.InlineAsm, t, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${localInfo.Offset:X4}\n\tADD\tHL,DE"));
+                return t;
+            }
             Emit(IrOp.LoadLocal, t, IrOperand.Imm(localInfo.Offset), dataSize: localInfo.ByteSize);
             _tempDataSize[t.TempIndex] = localInfo.ByteSize;
             return t;
@@ -867,6 +910,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
         else if (sym != null && sym.IsCodeBlock)
         {
             // CODEブロック定数: アドレスをロード（LD HL,label）
+            Emit(IrOp.LoadAddr, t, IrOperand.Sym(ResolveAsmLabel(node.Name)));
+        }
+        else if (sym != null && sym.Type is ArrayType)
+        {
+            // 配列変数: アドレスをロード（LD HL,label）
             Emit(IrOp.LoadAddr, t, IrOperand.Sym(ResolveAsmLabel(node.Name)));
         }
         else

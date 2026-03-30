@@ -151,12 +151,17 @@ public class MachineDecl : AstNode
     public string Name { get; }
     public Expression? Address { get; }
     public int? ParamCount { get; }
+    public CodeExpr? CodeBody { get; }
+    public List<AstNode> StaticDeclarations { get; }
 
-    public MachineDecl(string name, Expression? address, int? paramCount, SourceSpan span) : base(span)
+    public MachineDecl(string name, Expression? address, int? paramCount, SourceSpan span,
+                       CodeExpr? codeBody = null, List<AstNode>? staticDecls = null) : base(span)
     {
         Name = name;
         Address = address;
         ParamCount = paramCount;
+        CodeBody = codeBody;
+        StaticDeclarations = staticDecls ?? new List<AstNode>();
     }
 
     public override T Accept<T>(IAstVisitor<T> visitor) => visitor.VisitMachineDecl(this);

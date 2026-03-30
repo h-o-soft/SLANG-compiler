@@ -296,4 +296,43 @@ public class CodeGenTests
         // "E"のPMSXはあるが"N"のPMSXに対応する条件分岐はない
         Assert.DoesNotContain("JP\tZ,", body);
     }
+
+    [Fact]
+    public void MachineCodeDef_NoFuncWrapper()
+    {
+        // MACHINE+CODEブロック関数: PUSH IY/RET等の関数ラッパーなし、DB/DWデータ+RET出力
+        var asm = Compile("MACHINE MF(1); MF(1)[CODE($CD,%$1234,$EB);] MAIN() BEGIN MF(1); END;");
+        // CODEブロックラベル配下にDBデータが出力される
+        Assert.Contains("_MF:", asm);
+        Assert.Contains("$CD", asm);
+        Assert.Contains("$34,$12", asm); // %$1234 → little-endian 2バイト
+        Assert.Contains("$EB", asm);
+        Assert.Contains("$C9", asm); // 旧コンパイラ互換の自動RET
+        // 関数ラッパーが出力されないこと（PUSH IYなし、_EXIT無し）
+        Assert.DoesNotContain("_MF_EXIT", asm);
+        // CALL先が正しいラベル
+        Assert.Contains("CALL\t_MF", asm);
+    }
+
+    [Fact]
+    public void MachineCodeDef_StaticDeclScoped()
+    {
+        // MACHINE CODE定義の静的宣言が関数スコープでラベル付けされること
+        var asm = Compile("MACHINE MF(1); MF(1) ARRAY BUF[5]; [CODE($CD,%BUF,$C9);] MAIN() BEGIN MF(0); END;");
+        // BUFが関数名プレフィックス付き
+        Assert.Contains("_V_MF_BUF", asm);
+        Assert.DoesNotContain("_V_BUF EQU", asm);
+    }
+
+    [Fact]
+    public void LocalArray_AddressLoad()
+    {
+        // ローカル配列をMACHINE関数に渡すとアドレスがロードされること
+        var asm = Compile("MACHINE MF(1); MAIN() BEGIN ARRAY A[5]; MF(A); END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        // PUSH IY; POP HL; LD DE,offset; ADD HL,DE でアドレス計算
+        Assert.Contains("PUSH\tIY", body);
+        Assert.Contains("POP\tHL", body);
+        Assert.Contains("ADD\tHL,DE", body);
+    }
 }
