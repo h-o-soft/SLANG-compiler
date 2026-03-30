@@ -21,6 +21,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private Dictionary<string, LocalVarInfo>? _localVars;
     // 関数内静的変数のAsmLabelマップ（ソース名→__FUNC_VAR形式）
     private Dictionary<string, string>? _staticVarLabels;
+    // 関数内静的変数のdataSizeマップ（BYTE変数のFOR文対応）
+    private Dictionary<string, int>? _staticVarSizes;
     // 関数内静的配列の名前セット（アドレス参照用）
     private HashSet<string>? _staticArrayNames;
 
@@ -216,9 +218,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 ? LabelUtils.StaticVarLabel(_currentFuncName!, node.Name)
                 : LabelUtils.UserVarLabel(node.Name);
 
-            // 関数内静的変数のラベルを追跡（ResolveAsmLabel用）
+            // 関数内静的変数のラベルとサイズを追跡
             if (_inStaticDecl && _currentFuncName != null)
+            {
                 _staticVarLabels![node.Name] = label;
+                _staticVarSizes![node.Name] = ds;
+            }
 
             _module.GlobalVars.Add(new GlobalVarInfo
             {
@@ -428,8 +433,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (node.StaticDeclarations.Count > 0)
         {
             var prevStaticLabels = _staticVarLabels;
+            var prevStaticSizes = _staticVarSizes;
             var prevStaticArrays = _staticArrayNames;
             _staticVarLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            _staticVarSizes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             _staticArrayNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             _currentFuncName = LabelUtils.SanitizeLabel(node.Name);
             _inStaticDecl = true;
@@ -437,6 +444,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             _inStaticDecl = false;
             _currentFuncName = null;
             _staticVarLabels = prevStaticLabels;
+            _staticVarSizes = prevStaticSizes;
             _staticArrayNames = prevStaticArrays;
         }
 
@@ -527,9 +535,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var prevLocalVars = _localVars;
         var prevOffset = _localOffset;
         var prevStaticLabels = _staticVarLabels;
+        var prevStaticSizes = _staticVarSizes;
         var prevStaticArrays = _staticArrayNames;
         _localVars = new Dictionary<string, LocalVarInfo>(StringComparer.OrdinalIgnoreCase);
         _staticVarLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        _staticVarSizes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         _staticArrayNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         _localOffset = 0;
 
@@ -582,6 +592,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _currentFunction = null;
         _localVars = prevLocalVars;
         _staticVarLabels = prevStaticLabels;
+        _staticVarSizes = prevStaticSizes;
         _staticArrayNames = prevStaticArrays;
         _localOffset = prevOffset;
         return IrOperand.None;
@@ -739,14 +750,21 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // FOR変数のアクセス方法を決定: ローカル変数ならLoadLocal/StoreLocal
         LocalVarInfo? forVarInfo = null;
         bool forVarIsLocal = _localVars != null && _localVars.TryGetValue(node.Variable, out forVarInfo);
-        int forVarDs = forVarIsLocal ? forVarInfo!.ByteSize : 2;
+        // BYTE変数のdataSize: ローカルはLocalVarInfo、静的は_staticVarSizes→シンボルテーブル
+        int forVarDs;
+        if (forVarIsLocal)
+            forVarDs = forVarInfo!.ByteSize;
+        else if (_staticVarSizes != null && _staticVarSizes.TryGetValue(node.Variable, out int svDs))
+            forVarDs = svDs;
+        else
+            forVarDs = _globalSymbols?.Resolve(node.Variable)?.Type?.ByteSize ?? 2;
 
         // Initialize: var = from
         var fromVal = node.From.Accept(this);
         if (forVarIsLocal)
             Emit(IrOp.StoreLocal, IrOperand.Imm(forVarInfo!.Offset), fromVal, dataSize: forVarDs);
         else
-            Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Variable)), fromVal);
+            Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Variable)), fromVal, dataSize: forVarDs);
 
         PushLoop(contLabel, endLabel);
 
@@ -763,7 +781,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (forVarIsLocal)
             Emit(IrOp.LoadLocal, curVal, IrOperand.Imm(forVarInfo!.Offset), dataSize: forVarDs);
         else
-            Emit(IrOp.LoadVar, curVal, IrOperand.Sym(ResolveAsmLabel(node.Variable)));
+            Emit(IrOp.LoadVar, curVal, IrOperand.Sym(ResolveAsmLabel(node.Variable)), dataSize: forVarDs);
         var one = IrOperand.Temp(AllocTemp());
         Emit(IrOp.LoadConst, one, IrOperand.Imm(1));
         var newVal = IrOperand.Temp(AllocTemp());
@@ -771,7 +789,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (forVarIsLocal)
             Emit(IrOp.StoreLocal, IrOperand.Imm(forVarInfo!.Offset), newVal, dataSize: forVarDs);
         else
-            Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Variable)), newVal);
+            Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Variable)), newVal, dataSize: forVarDs);
 
         // Compare with limit
         // FOR TO: unsigned比較（旧コンパイラ互換、コンパクト）
