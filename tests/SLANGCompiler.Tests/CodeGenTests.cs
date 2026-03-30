@@ -372,4 +372,36 @@ public class CodeGenTests
         Assert.Contains("(IY+", body);
         Assert.DoesNotContain("POP\tHL", body);
     }
+
+    [Fact]
+    public void GlobalArray_ConstIndex_Word_LabelOffset()
+    {
+        // グローバルWORD配列の定数添字 → label+offset 直接アクセス
+        var asm = Compile("ARRAY AR[5]; MAIN() BEGIN AR[2]=99; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        // AR[2] → offset=2*2=4 → LD (_V_AR+4),HL
+        Assert.Contains("(_V_AR+4)", body);
+        Assert.DoesNotContain("ADD\tHL,DE", body); // アドレス計算不要
+    }
+
+    [Fact]
+    public void GlobalArray_ConstIndex_Byte_LabelOffset()
+    {
+        // グローバルBYTE配列の定数添字 → label+offset 直接アクセス
+        var asm = Compile("ARRAY BYTE AB[10]; MAIN() BEGIN AB[3]=42; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Contains("(_V_AB+3)", body);
+        Assert.DoesNotContain("ADD\tHL,DE", body);
+    }
+
+    [Fact]
+    public void GlobalArray_ConstIndex_MultiDim_LabelOffset()
+    {
+        // グローバル多次元配列の定数添字 → label+offset 直接アクセス
+        var asm = Compile("ARRAY AR2[3][5]; MAIN() BEGIN AR2[1][2]=7; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        // AR2[1][2]: stride[0]=6*2=12, stride[1]=2 → offset=1*12+2*2=16
+        Assert.Contains("(_V_AR2+16)", body);
+        Assert.DoesNotContain("ADD\tHL,DE", body);
+    }
 }

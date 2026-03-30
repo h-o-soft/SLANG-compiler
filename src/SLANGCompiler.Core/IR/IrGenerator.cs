@@ -1416,6 +1416,23 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 }
             }
 
+            // グローバル配列の定数インデックス最適化: label+offset 直接アクセス
+            // 条件: plain global/static array symbol + 全添字定数
+            if (!isLocalArray && arrayName != null && arraySym?.Type is ArrayType)
+            {
+                bool gIsByte = arraySym.Type is ArrayType gat && gat.ElementType == SlangType.Byte;
+                int gElemSize = gIsByte ? 1 : 2;
+                var globalOffset = TryComputeConstArrayOffset(node.Indices, strides, gElemSize);
+                if (globalOffset.HasValue)
+                {
+                    var result = IrOperand.Temp(AllocTemp());
+                    string label = ResolveAsmLabel(arrayName);
+                    string sym = globalOffset.Value == 0 ? label : $"{label}+{globalOffset.Value}";
+                    Emit(IrOp.LoadVar, result, IrOperand.Sym(sym), dataSize: gElemSize);
+                    return result;
+                }
+            }
+
             // 配列のベースアドレスをロード
             IrOperand baseAddr;
             if (arrayName != null)
@@ -1803,6 +1820,20 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     }
                 }
 
+                // グローバル配列の定数インデックス最適化: label+offset 直接ストア
+                if (!localStoreHandled && !isLocalStoreArray && arrayName != null && arraySym?.Type is ArrayType)
+                {
+                    int gElemSize = storeIsByte ? 1 : 2;
+                    var globalOffset = TryComputeConstArrayOffset(arr.Indices, strides, gElemSize);
+                    if (globalOffset.HasValue)
+                    {
+                        string label = ResolveAsmLabel(arrayName);
+                        string sym = globalOffset.Value == 0 ? label : $"{label}+{globalOffset.Value}";
+                        Emit(IrOp.StoreVar, IrOperand.Sym(sym), value, dataSize: gElemSize);
+                        localStoreHandled = true;
+                    }
+                }
+
                 if (localStoreHandled) { /* 定数インデックスで処理済み */ }
                 else
                 {
@@ -1915,6 +1946,28 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // (IY+d)範囲チェック: BYTE=0..127, WORD=0..126
         int maxOffset = 127 - (elemSize - 1);
         if (totalOffset < 0 || totalOffset > maxOffset) return null;
+        return totalOffset;
+    }
+
+    /// <summary>
+    /// グローバル/static配列の定数インデックスオフセットを計算。
+    /// 全インデックスが定数なら合計オフセットを返す。
+    /// </summary>
+    private int? TryComputeConstArrayOffset(
+        List<Expression> indices, List<int> strides, int elemSize)
+    {
+        var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+        if (constEval == null) return null;
+
+        int totalOffset = 0;
+        for (int i = 0; i < indices.Count && i < strides.Count; i++)
+        {
+            var constIdx = constEval.Evaluate(indices[i]);
+            if (constIdx == null) return null;
+            totalOffset += constIdx.Value * strides[i];
+        }
+
+        if (totalOffset < 0) return null;
         return totalOffset;
     }
 
