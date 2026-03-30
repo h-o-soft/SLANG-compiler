@@ -758,15 +758,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
                 if (branch.RangeEnd != null)
                 {
-                    // Range: value TO rangeEnd
+                    // Range: value TO rangeEnd — 短絡ジャンプ化
+                    // 評価順は維持: branchVal, rangeEnd を先に評価
                     var rangeEnd = branch.RangeEnd.Accept(this);
+                    // CmpGe → false なら即スキップ
                     var cmpLo = IrOperand.Temp(AllocTemp());
-                    var cmpHi = IrOperand.Temp(AllocTemp());
                     Emit(IrOp.CmpGe, cmpLo, exprVal, branchVal);
+                    Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), cmpLo);
+                    // CmpLe → false なら即スキップ
+                    var cmpHi = IrOperand.Temp(AllocTemp());
                     Emit(IrOp.CmpLe, cmpHi, exprVal, rangeEnd);
-                    var both = IrOperand.Temp(AllocTemp());
-                    Emit(IrOp.LogAnd, both, cmpLo, cmpHi);
-                    Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), both);
+                    Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), cmpHi);
                 }
                 else
                 {
