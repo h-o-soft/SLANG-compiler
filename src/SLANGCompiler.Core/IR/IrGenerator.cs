@@ -1467,127 +1467,130 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
         else
         {
-            // 通常配列: base_label + sum(index[i] * stride[i])
-            //
-            // 例: ARRAY WORD AR2[5][10] → 6行×11列のWORD配列
-            //   AR2[i][j] → base + (i * 11 * 2) + (j * 2)
-            //   stride[0] = dim[1] * elemSize = 11 * 2 = 22
-            //   stride[1] = elemSize = 2
-            //
-            // 例: ARRAY BYTE ARB2[10][30] → 11行×31列のBYTE配列
-            //   ARB2[i][j] → base + (i * 31) + j
-            //   stride[0] = dim[1] = 31
-            //   stride[1] = 1
-
-            // 各次元のストライドを計算（定数インデックス最適化でも使用）
-            List<int> strides;
-            LocalVarInfo? arrInfo = null;
-            bool isLocalArray = _localVars != null && arrayName != null
-                && _localVars.TryGetValue(arrayName, out arrInfo) && arrInfo.IsArray && arrInfo.Dims != null;
-            if (isLocalArray)
-            {
-                strides = ComputeStridesFromDims(arrInfo!.Dims!, arrInfo.IsByte ? 1 : 2, node.Indices.Count);
-                isArrayByte = arrInfo.IsByte;
-            }
-            else
-            {
-                strides = ComputeStrides(arraySym, node.Indices.Count);
-            }
-
-            // ローカル配列の定数インデックス最適化: (IY+d) 直接アクセス
-            if (isLocalArray)
-            {
-                int elemSize = arrInfo!.IsByte ? 1 : 2;
-                var directOffset = TryComputeLocalArrayOffset(arrInfo, node.Indices, strides, elemSize);
-                if (directOffset.HasValue)
-                {
-                    var result = IrOperand.Temp(AllocTemp());
-                    Emit(IrOp.LoadLocal, result, IrOperand.Imm(directOffset.Value), dataSize: elemSize);
-                    return result;
-                }
-            }
-
-            // グローバル配列の定数インデックス最適化: label+offset 直接アクセス
-            // 条件: plain global/static array symbol + 全添字定数
-            if (!isLocalArray && arrayName != null && arraySym?.Type is ArrayType)
-            {
-                bool gIsByte = arraySym.Type is ArrayType gat && gat.ElementType == SlangType.Byte;
-                int gElemSize = gIsByte ? 1 : 2;
-                var globalOffset = TryComputeConstArrayOffset(node.Indices, strides);
-                if (globalOffset.HasValue)
-                {
-                    var result = IrOperand.Temp(AllocTemp());
-                    string label = ResolveAsmLabel(arrayName);
-                    string sym = globalOffset.Value == 0 ? label : $"{label}+{globalOffset.Value}";
-                    Emit(IrOp.LoadVar, result, IrOperand.Sym(sym), dataSize: gElemSize);
-                    return result;
-                }
-            }
-
-            // 配列のベースアドレスをロード
-            IrOperand baseAddr;
-            if (arrayName != null)
-            {
-                baseAddr = IrOperand.Temp(AllocTemp());
-                // ローカル配列: IY+offsetのアドレスを計算
-                if (isLocalArray)
-                {
-                    // ローカル配列のベースアドレス計算: HL = IY + offset
-                    Emit(IrOp.Comment, IrOperand.Asm($"local array {arrayName} addr"));
-                    Emit(IrOp.InlineAsm, baseAddr, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${arrInfo!.Offset:X4}\n\tADD\tHL,DE"));
-                }
-                else if (_localVars != null && _localVars.TryGetValue(arrayName, out var localInfo))
-                {
-                    Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(localInfo.Offset));
-                }
-                else
-                {
-                    Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(ResolveAsmLabel(arrayName)));
-                }
-            }
-            else
-            {
-                baseAddr = node.Array.Accept(this);
-            }
-
-            // 各次元のインデックス×ストライドを加算
-            // base + idx0*stride0 + idx1*stride1 + ...
-            var addr = baseAddr;
-            for (int i = 0; i < node.Indices.Count; i++)
-            {
-                var idx = node.Indices[i].Accept(this);
-                int stride = strides[i];
-
-                // idx * stride をアドレスに加算
-                var scaledIdx = IrOperand.Temp(AllocTemp());
-                if (stride == 1)
-                {
-                    scaledIdx = idx;
-                }
-                else if (stride == 2)
-                {
-                    // ×2は ADD HL,HL で効率的に生成される
-                    Emit(IrOp.Add, scaledIdx, idx, idx);
-                }
-                else
-                {
-                    // stride定数を乗算
-                    var strideOp = IrOperand.Temp(AllocTemp());
-                    Emit(IrOp.LoadConst, strideOp, IrOperand.Imm(stride));
-                    Emit(IrOp.Mul, scaledIdx, idx, strideOp);
-                }
-
-                var newAddr = IrOperand.Temp(AllocTemp());
-                Emit(IrOp.Add, newAddr, addr, scaledIdx);
-                addr = newAddr;
-            }
-
-            // 最終アドレスから値をロード
-            var result2 = IrOperand.Temp(AllocTemp());
-            bool isByte = isArrayByte || (arraySym?.Type is ArrayType at && at.ElementType == SlangType.Byte);
-            Emit(IrOp.IndirLoad, result2, addr, dataSize: isByte ? 1 : 2);
-            return result2;
+            // 通常配列: アドレス計算して値をロード
+            return ComputeArrayAccess(node, loadValue: true);
         }
+    }
+
+    /// <summary>
+    /// 配列要素のアドレス計算（共通helper）。
+    /// loadValue=true: アドレスから値をロードして返す（通常の配列アクセス）
+    /// loadValue=false: アドレスだけ返す（&amp;array[idx]用）
+    /// </summary>
+    private IrOperand ComputeArrayAccess(ArrayAccessExpr node, bool loadValue)
+    {
+        var arrayName = (node.Array as IdentifierExpr)?.Name;
+        var arraySym = arrayName != null ? _globalSymbols?.Resolve(arrayName) : null;
+        bool isArrayByte = arraySym?.Type is ArrayType aty2 && aty2.ElementType == SlangType.Byte;
+
+        // 各次元のストライドを計算
+        List<int> strides;
+        LocalVarInfo? arrInfo = null;
+        bool isLocalArray = _localVars != null && arrayName != null
+            && _localVars.TryGetValue(arrayName, out arrInfo) && arrInfo.IsArray && arrInfo.Dims != null;
+        if (isLocalArray)
+        {
+            strides = ComputeStridesFromDims(arrInfo!.Dims!, arrInfo.IsByte ? 1 : 2, node.Indices.Count);
+            isArrayByte = arrInfo.IsByte;
+        }
+        else
+        {
+            strides = ComputeStrides(arraySym, node.Indices.Count);
+        }
+
+        int elemSize = isArrayByte ? 1 : 2;
+
+        // ローカル配列の定数インデックス最適化
+        if (isLocalArray)
+        {
+            var directOffset = TryComputeLocalArrayOffset(arrInfo!, node.Indices, strides, elemSize);
+            if (directOffset.HasValue)
+            {
+                var result = IrOperand.Temp(AllocTemp());
+                if (loadValue)
+                {
+                    Emit(IrOp.LoadLocal, result, IrOperand.Imm(directOffset.Value), dataSize: elemSize);
+                }
+                else
+                {
+                    // アドレスのみ: IY+offset のアドレスを生成
+                    Emit(IrOp.InlineAsm, result, IrOperand.Asm(
+                        $"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${directOffset.Value:X4}\n\tADD\tHL,DE"));
+                }
+                return result;
+            }
+        }
+
+        // グローバル配列の定数インデックス最適化
+        if (!isLocalArray && arrayName != null && arraySym?.Type is ArrayType)
+        {
+            var globalOffset = TryComputeConstArrayOffset(node.Indices, strides);
+            if (globalOffset.HasValue)
+            {
+                var result = IrOperand.Temp(AllocTemp());
+                string label = ResolveAsmLabel(arrayName);
+                string sym = globalOffset.Value == 0 ? label : $"{label}+{globalOffset.Value}";
+                if (loadValue)
+                    Emit(IrOp.LoadVar, result, IrOperand.Sym(sym), dataSize: elemSize);
+                else
+                    Emit(IrOp.LoadAddr, result, IrOperand.Sym(sym));
+                return result;
+            }
+        }
+
+        // 配列のベースアドレスをロード
+        IrOperand baseAddr;
+        if (arrayName != null)
+        {
+            baseAddr = IrOperand.Temp(AllocTemp());
+            if (isLocalArray)
+            {
+                Emit(IrOp.Comment, IrOperand.Asm($"local array {arrayName} addr"));
+                Emit(IrOp.InlineAsm, baseAddr, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${arrInfo!.Offset:X4}\n\tADD\tHL,DE"));
+            }
+            else if (_localVars != null && _localVars.TryGetValue(arrayName, out var localInfo))
+            {
+                Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(localInfo.Offset));
+            }
+            else
+            {
+                Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(ResolveAsmLabel(arrayName)));
+            }
+        }
+        else
+        {
+            baseAddr = node.Array.Accept(this);
+        }
+
+        // 各次元のインデックス×ストライドを加算
+        var addr = baseAddr;
+        for (int i = 0; i < node.Indices.Count; i++)
+        {
+            var idx = node.Indices[i].Accept(this);
+            int stride = strides[i];
+            var scaledIdx = IrOperand.Temp(AllocTemp());
+            if (stride == 1)
+                scaledIdx = idx;
+            else if (stride == 2)
+                Emit(IrOp.Add, scaledIdx, idx, idx);
+            else
+            {
+                var strideOp = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.LoadConst, strideOp, IrOperand.Imm(stride));
+                Emit(IrOp.Mul, scaledIdx, idx, strideOp);
+            }
+            var newAddr = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.Add, newAddr, addr, scaledIdx);
+            addr = newAddr;
+        }
+
+        if (loadValue)
+        {
+            var result = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.IndirLoad, result, addr, dataSize: elemSize);
+            return result;
+        }
+        return addr; // アドレスのみ
     }
 
     public IrOperand VisitConditionalExpr(ConditionalExpr node)
@@ -1632,6 +1635,43 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
             Emit(IrOp.LoadAddr, t, IrOperand.Sym(ResolveAsmLabel(id.Name)));
             return t;
+        }
+        if (node.Operand is ArrayAccessExpr arr)
+        {
+            var arrName = (arr.Array as IdentifierExpr)?.Name;
+            var arrSym = arrName != null ? _globalSymbols?.Resolve(arrName) : null;
+
+            // &MEM[x] / &SOS[x] → アドレスxそのもの
+            if (arrSym?.Type is MemoryArrayType)
+                return arr.Indices[0].Accept(this);
+
+            // &PORT[x] → 意味がないがアドレスxを返す
+            if (arrName != null && (arrName.Equals("PORT", StringComparison.OrdinalIgnoreCase)
+                || arrName.Equals("PORTW", StringComparison.OrdinalIgnoreCase)))
+                return arr.Indices[0].Accept(this);
+
+            // 間接変数: &p[i] → p + i*elemSize のアドレス
+            if (arrSym?.Type is PointerType)
+            {
+                var baseAddr = arr.Array.Accept(this); // ポインタ値
+                var idx = arr.Indices[0].Accept(this);
+                bool isByte = arrSym.Type is PointerType pt && pt.ElementType == SlangType.Byte;
+                int eSize = isByte ? 1 : 2;
+                IrOperand scaledIdx;
+                if (eSize == 1)
+                    scaledIdx = idx;
+                else
+                {
+                    scaledIdx = IrOperand.Temp(AllocTemp());
+                    Emit(IrOp.Add, scaledIdx, idx, idx);
+                }
+                var addr = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.Add, addr, baseAddr, scaledIdx);
+                return addr; // アドレスのみ（IndirLoadなし）
+            }
+
+            // 通常配列: アドレスのみ返す
+            return ComputeArrayAccess(arr, loadValue: false);
         }
         return node.Operand.Accept(this);
     }
