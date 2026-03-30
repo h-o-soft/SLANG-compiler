@@ -1911,22 +1911,20 @@ public class CodeGenerator
         _e.Comment($"function {funcName}");
         if (_currentFuncLocalSize > 0)
         {
-            // 動的変数あり → IY退避＆調整
+            // ローカル変数あり → IY退避＆フレーム調整
             _e.Instruction("PUSH", "IY");
             _e.Instruction("LD", $"BC,${_currentFuncLocalSize:X4}");
             _e.Instruction("ADD", "IY,BC");
         }
-        else
-        {
-            // 動的変数なし → 引数だけならIYはそのまま
-            _e.Instruction("PUSH", "IY");
-        }
+        // LocalSize == 0: IYフレーム不要 → PUSH IY省略
+        // (IY非破壊は既存runtime/MACHINE群の前提に依存)
     }
 
     private void EmitFuncEnd()
     {
         _e.Label(_currentFuncExitLabel);
-        _e.Instruction("POP", "IY");
+        if (_currentFuncLocalSize > 0)
+            _e.Instruction("POP", "IY");
         _e.Instruction("RET");
     }
 
