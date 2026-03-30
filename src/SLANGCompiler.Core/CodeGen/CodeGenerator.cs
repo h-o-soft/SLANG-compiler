@@ -707,8 +707,7 @@ public class CodeGenerator
         var fusedCompareJumps = new Dictionary<int, int>(); // compareIdx → jumpIdx
         for (int i = 0; i < insts.Count - 1; i++)
         {
-            if (IsCompareOp(insts[i].Op) && insts[i].Dest.Kind == IrOperandKind.Temp
-                && insts[i].DataSize != 3) // FLOATはfused不可
+            if (IsCompareOp(insts[i].Op) && insts[i].Dest.Kind == IrOperandKind.Temp)
             {
                 int cmpTemp = insts[i].Dest.TempIndex;
                 // 次の命令(skipを飛ばして)がJumpIfZero/JumpIfNonZeroでこのtempを参照するか
@@ -1160,15 +1159,23 @@ public class CodeGenerator
                 continue;
             }
 
-            // 非直接ロードだが融合比較ジャンプの場合（FLOATは通常パスへ）
-            if (inst.DataSize != 3 && fusedCompareJumps.TryGetValue(i, out int jumpIdx2))
+            // 非直接ロードだが融合比較ジャンプの場合
+            if (fusedCompareJumps.TryGetValue(i, out int jumpIdx2))
             {
                 var jumpInst = insts[jumpIdx2];
                 var label = jumpInst.Dest.Name!;
                 bool jumpOnTrue = jumpInst.Op == IrOp.JumpIfNonZero;
-                // POP DE → HL vs DE の比較
-                _e.Instruction("POP", "DE");
-                _e.Instruction("EX", "DE,HL");
+                if (inst.DataSize == 3)
+                {
+                    // FLOAT: EmitPopToDE で AHL/CDE セットアップ
+                    EmitPopToDE(inst.DataSize);
+                }
+                else
+                {
+                    // 整数: POP DE → EX DE,HL
+                    _e.Instruction("POP", "DE");
+                    _e.Instruction("EX", "DE,HL");
+                }
                 EmitFusedCompareJump(inst, label, jumpOnTrue);
                 continue;
             }
@@ -1432,6 +1439,68 @@ public class CodeGenerator
 
     private void EmitFusedCompareJump(IrInstruction cmpInst, string label, bool jumpOnTrue = false)
     {
+        // FLOAT比較: f24cmpを呼んでフラグから直接JP
+        // f24cmp: C=AHL<CDE, Z=AHL==CDE, NC=AHL>=CDE
+        if (cmpInst.DataSize == 3)
+        {
+            CallRuntime("f24cmp");
+            switch (cmpInst.Op)
+            {
+                case IrOp.CmpEq:
+                    _e.Instruction("JP", $"{(jumpOnTrue ? "Z" : "NZ")},{label}");
+                    break;
+                case IrOp.CmpNeq:
+                    _e.Instruction("JP", $"{(jumpOnTrue ? "NZ" : "Z")},{label}");
+                    break;
+                case IrOp.CmpLt: // AHL < CDE → C flag
+                    _e.Instruction("JP", $"{(jumpOnTrue ? "C" : "NC")},{label}");
+                    break;
+                case IrOp.CmpGe: // AHL >= CDE → NC flag
+                    _e.Instruction("JP", $"{(jumpOnTrue ? "NC" : "C")},{label}");
+                    break;
+                case IrOp.CmpGt: // AHL > CDE → NC and NZ
+                    if (jumpOnTrue)
+                    {
+                        // trueで飛ぶ: C(less)ならスキップ、Z(equal)ならスキップ、残り(greater)で飛ぶ
+                        var skipGt = $"_SC{_genLabelCount++}";
+                        _e.Instruction("JP", $"C,{skipGt}");
+                        _e.Instruction("JP", $"NZ,{label}");
+                        _e.Label(skipGt);
+                    }
+                    else
+                    {
+                        // falseで飛ぶ: C(less)で飛ぶ、Z(equal)で飛ぶ
+                        _e.Instruction("JP", $"C,{label}");
+                        _e.Instruction("JP", $"Z,{label}");
+                    }
+                    break;
+                case IrOp.CmpLe: // AHL <= CDE → C or Z
+                    if (jumpOnTrue)
+                    {
+                        // trueで飛ぶ: C(less)で飛ぶ、Z(equal)で飛ぶ
+                        _e.Instruction("JP", $"C,{label}");
+                        _e.Instruction("JP", $"Z,{label}");
+                    }
+                    else
+                    {
+                        // falseで飛ぶ: C(less)ならスキップ、Z(equal)ならスキップ、残り(greater)で飛ぶ
+                        var skipLe = $"_SC{_genLabelCount++}";
+                        _e.Instruction("JP", $"C,{skipLe}");
+                        _e.Instruction("JP", $"NZ,{label}");
+                        _e.Label(skipLe);
+                    }
+                    break;
+                default:
+                    // 未対応: 値化にフォールバック
+                    EmitBinaryDirect(cmpInst);
+                    _e.Instruction("LD", "A,H");
+                    _e.Instruction("OR", "L");
+                    _e.Instruction("JP", $"{(jumpOnTrue ? "NZ" : "Z")},{label}");
+                    break;
+            }
+            return;
+        }
+
         // jumpOnTrue=false: CmpEq→「等しくなければ飛ぶ」= JP NZ
         // jumpOnTrue=true:  CmpEq→「等しければ飛ぶ」= JP Z
         switch (cmpInst.Op)
