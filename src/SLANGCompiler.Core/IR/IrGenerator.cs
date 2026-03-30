@@ -1422,7 +1422,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             {
                 bool gIsByte = arraySym.Type is ArrayType gat && gat.ElementType == SlangType.Byte;
                 int gElemSize = gIsByte ? 1 : 2;
-                var globalOffset = TryComputeConstArrayOffset(node.Indices, strides, gElemSize);
+                var globalOffset = TryComputeConstArrayOffset(node.Indices, strides);
                 if (globalOffset.HasValue)
                 {
                     var result = IrOperand.Temp(AllocTemp());
@@ -1824,7 +1824,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 if (!localStoreHandled && !isLocalStoreArray && arrayName != null && arraySym?.Type is ArrayType)
                 {
                     int gElemSize = storeIsByte ? 1 : 2;
-                    var globalOffset = TryComputeConstArrayOffset(arr.Indices, strides, gElemSize);
+                    var globalOffset = TryComputeConstArrayOffset(arr.Indices, strides);
                     if (globalOffset.HasValue)
                     {
                         string label = ResolveAsmLabel(arrayName);
@@ -1952,9 +1952,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// <summary>
     /// グローバル/static配列の定数インデックスオフセットを計算。
     /// 全インデックスが定数なら合計オフセットを返す。
+    /// elemSizeはstride計算に既に織り込まれているため引数不要。
     /// </summary>
     private int? TryComputeConstArrayOffset(
-        List<Expression> indices, List<int> strides, int elemSize)
+        List<Expression> indices, List<int> strides)
     {
         var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
         if (constEval == null) return null;

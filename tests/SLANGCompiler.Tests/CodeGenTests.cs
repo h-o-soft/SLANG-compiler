@@ -404,4 +404,12 @@ public class CodeGenTests
         Assert.Contains("(_V_AR2+16)", body);
         Assert.DoesNotContain("ADD\tHL,DE", body);
     }
+
+    [Fact]
+    public void StaticArray_ConstIndex_LabelOffset()
+    {
+        // static配列（BEGIN前宣言=グローバル）の定数添字 → label+offset 直接アクセス
+        var asm = Compile("ARRAY SA[5]; MAIN() BEGIN SA[2]=10; END;");
+        Assert.Contains("(_V_SA+4)", asm); // offset=2*2=4
+    }
 }
