@@ -101,14 +101,27 @@ MAIN:
 	CALL	MAGLIB.GRCLS
 _L0:
 	LD	HL,$0000
+	CALL	INKEY
+	LD	DE,$001B
+	OR	A
+	SBC	HL,DE
+	JP	NZ,_L2
+	JP	_L1
+_L2:
+	LD	HL,$0140
+	CALL	RND
 	PUSH	HL
-	LD	HL,$0000
+	LD	HL,$00C8
+	CALL	RND
 	PUSH	HL
-	LD	HL,$0064
+	LD	HL,$0140
+	CALL	RND
 	PUSH	HL
-	LD	HL,$0064
+	LD	HL,$00C8
+	CALL	RND
 	PUSH	HL
-	LD	HL,$0003
+	LD	HL,$0008
+	CALL	RND
 	PUSH	HL
 	CALL	LINE
 	JP	_L0
@@ -232,26 +245,26 @@ _L1:
 	POP	DE
 	POP	HL
 	CALL	X1PAINT.PAINT
-_L2:
+_L3:
 	LD	HL,$0000
 	CALL	INKEY
 	LD	DE,$001B
 	OR	A
 	SBC	HL,DE
-	JP	NZ,_L4
+	JP	NZ,_L5
+	JP	_L4
+_L5:
 	JP	_L3
 _L4:
-	JP	_L2
-_L3:
-_L5:
+_L6:
 	LD	HL,$0000
 	CALL	INKEY
 	LD	DE,$001B
 	OR	A
 	SBC	HL,DE
-	JP	NZ,_L7
-	JP	_L6
-_L7:
+	JP	NZ,_L8
+	JP	_L7
+_L8:
 	LD	HL,$013F
 	CALL	RND
 	LD	(_V_MAIN_J),HL
@@ -296,8 +309,8 @@ _L7:
 	ADD	HL,DE
 	PUSH	HL
 	CALL	X1PAINT.BFILL
-	JP	_L5
-_L6:
+	JP	_L6
+_L7:
 	LD	HL,$0000
 	CALL	MAGLIB.GRDISP
 	LD	HL,$0050
@@ -341,7 +354,7 @@ _L6:
 	CALL	PMSX
 	LD	HL,$0000
 	LD	(_V_MAIN_I),HL
-_L8:
+_L9:
 	LD	HL,(_V_MAIN_I)
 	LD	DE,$0005
 	CALL	MULHLDE
@@ -372,23 +385,23 @@ _L8:
 	CALL	LOCATE
 	LD	HL,(_V_MAIN_I)
 	CALL	P10
-_L9:
+_L10:
 	LD	HL,(_V_MAIN_I)
 	INC	HL
 	LD	(_V_MAIN_I),HL
 	LD	DE,$0007
 	CALL	OPSLEHLDE
-; if t154 != 0 goto _L8
+; if t163 != 0 goto _L9
 	LD	A,H
 	OR	L
-	JP	NZ,_L8
-_L10:
+	JP	NZ,_L9
+_L11:
 	LD	HL,$0000
 	LD	(_V_MAIN_I),HL
-_L11:
+_L12:
 	LD	HL,(_V_MAIN_I)
 	LD	(_V_MAIN_J),HL
-_L14:
+_L15:
 	LD	HL,(_V_MAIN_I)
 	LD	DE,$0001
 	OR	A
@@ -411,10 +424,10 @@ _L14:
 	LD	A,E
 	OR	L
 	LD	L,A
-; if t163 == 0 goto _L18
+; if t172 == 0 goto _L19
 	LD	A,H
 	OR	L
-	JP	Z,_L18
+	JP	Z,_L19
 	LD	HL,(_V_MAIN_I)
 	LD	DE,$0002
 	OR	A
@@ -437,22 +450,22 @@ _L14:
 	LD	A,E
 	OR	L
 	LD	L,A
-; if t170 == 0 goto _L20
+; if t179 == 0 goto _L21
 	LD	A,H
 	OR	L
-	JP	Z,_L20
+	JP	Z,_L21
 	LD	HL,$0003
 	LD	(_V_MAIN_K),HL
-	JP	_L19
-_L20:
+	JP	_L20
+_L21:
 	LD	HL,$0002
 	LD	(_V_MAIN_K),HL
+_L20:
+	JP	_L18
 _L19:
-	JP	_L17
-_L18:
 	LD	HL,$0001
 	LD	(_V_MAIN_K),HL
-_L17:
+_L18:
 	LD	HL,(_V_MAIN_I)
 	LD	DE,$0028
 	CALL	MULHLDE
@@ -514,31 +527,31 @@ _L17:
 	POP	DE
 	POP	HL
 	CALL	X1PAINT.PAINT
-_L15:
+_L16:
 	LD	HL,(_V_MAIN_J)
 	DEC	HL
 	LD	(_V_MAIN_J),HL
 	LD	DE,$0000
 	CALL	OPSGEHLDE
-; if t216 != 0 goto _L14
+; if t225 != 0 goto _L15
 	LD	A,H
 	OR	L
-	JP	NZ,_L14
-_L16:
-_L12:
+	JP	NZ,_L15
+_L17:
+_L13:
 	LD	HL,(_V_MAIN_I)
 	INC	HL
 	LD	(_V_MAIN_I),HL
 	LD	DE,$0007
 	CALL	OPSLEHLDE
-; if t221 != 0 goto _L11
+; if t230 != 0 goto _L12
 	LD	A,H
 	OR	L
-	JP	NZ,_L11
-_L13:
-_L21:
-	JP	_L21
+	JP	NZ,_L12
+_L14:
 _L22:
+	JP	_L22
+_L23:
 _MAIN_EXIT:
 	POP	IY
 	RET
@@ -1101,7 +1114,7 @@ LEFT8:
 	EX	AF,AF'
 	DEC	A
 	; 左端の場合はVRAM位置が左端でビット位置左端(80h)が塗り開始位置となる
-	JP	M,LEFTEND
+	JP	M,.LEFT_EDGE
 	EX	AF,AF'
 	; VRAM8ドット左に移動
 	DEC	HL
@@ -1109,6 +1122,11 @@ LEFT8:
 	CALL	CHECKCOL
 	RLC	B	; 80h→01h
 	JR	SEARCHLEFT
+; 画面左端到達: A'がFFhにアンダーフローしているので0に補正
+.LEFT_EDGE
+	INC	A		; FFh → 0
+	EX	AF,AF'
+	JP	LEFTEND
 ; 左端に到達したのでここを境界とする
 ; 左のボーダーを発見した
 FLEFTBORDER:

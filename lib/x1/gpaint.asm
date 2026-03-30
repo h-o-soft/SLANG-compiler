@@ -333,7 +333,7 @@ LEFT8:
 	EX	AF,AF'
 	DEC	A
 	; 左端の場合はVRAM位置が左端でビット位置左端(80h)が塗り開始位置となる
-	JP	M,LEFTEND
+	JP	M,.LEFT_EDGE
 	EX	AF,AF'
 	; VRAM8ドット左に移動
 	DEC	HL
@@ -341,6 +341,11 @@ LEFT8:
 	CALL	CHECKCOL
 	RLC	B	; 80h→01h
 	JR	SEARCHLEFT
+; 画面左端到達: A'がFFhにアンダーフローしているので0に補正
+.LEFT_EDGE
+	INC	A		; FFh → 0
+	EX	AF,AF'
+	JP	LEFTEND
 
 ; 左端に到達したのでここを境界とする
 ; 左のボーダーを発見した
