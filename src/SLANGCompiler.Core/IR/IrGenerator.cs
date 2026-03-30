@@ -959,6 +959,40 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
         }
 
+        // 論理AND/OR: 短絡評価（旧コンパイラ互換）
+        if (node.Op == BinaryOp.LogAnd)
+        {
+            var falseLabel = NewLabel();
+            var endLabel = NewLabel();
+            var result = IrOperand.Temp(AllocTemp());
+            var lhsAnd = node.Left.Accept(this);
+            Emit(IrOp.JumpIfZero, IrOperand.Lbl(falseLabel), lhsAnd);
+            var rhsAnd = node.Right.Accept(this);
+            Emit(IrOp.JumpIfZero, IrOperand.Lbl(falseLabel), rhsAnd);
+            Emit(IrOp.LoadConst, result, IrOperand.Imm(1));
+            Emit(IrOp.Jump, IrOperand.Lbl(endLabel));
+            Emit(IrOp.Label, IrOperand.Lbl(falseLabel));
+            Emit(IrOp.LoadConst, result, IrOperand.Imm(0));
+            Emit(IrOp.Label, IrOperand.Lbl(endLabel));
+            return result;
+        }
+        if (node.Op == BinaryOp.LogOr)
+        {
+            var trueLabel = NewLabel();
+            var endLabel = NewLabel();
+            var result = IrOperand.Temp(AllocTemp());
+            var lhsOr = node.Left.Accept(this);
+            Emit(IrOp.JumpIfNonZero, IrOperand.Lbl(trueLabel), lhsOr);
+            var rhsOr = node.Right.Accept(this);
+            Emit(IrOp.JumpIfNonZero, IrOperand.Lbl(trueLabel), rhsOr);
+            Emit(IrOp.LoadConst, result, IrOperand.Imm(0));
+            Emit(IrOp.Jump, IrOperand.Lbl(endLabel));
+            Emit(IrOp.Label, IrOperand.Lbl(trueLabel));
+            Emit(IrOp.LoadConst, result, IrOperand.Imm(1));
+            Emit(IrOp.Label, IrOperand.Lbl(endLabel));
+            return result;
+        }
+
         // left/rightの型を先にAcceptし、FLOATの場合はleft変換→right Acceptの順にする
         var left = node.Left.Accept(this);
         int leftDs = left.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(left.TempIndex, out int lds) ? lds : 2;
