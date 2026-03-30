@@ -109,7 +109,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         if (expr is BinaryExpr bin)
         {
-            if (bin.Op == BinaryOp.And)
+            if (bin.Op is BinaryOp.And or BinaryOp.LogAnd or BinaryOp.LogOr)
                 return IsComparisonOrChain(bin.Left) && IsComparisonOrChain(bin.Right);
         }
         return false;
@@ -123,41 +123,62 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 or BinaryOp.Lt or BinaryOp.Gt or BinaryOp.Le or BinaryOp.Ge
                 or BinaryOp.SLt or BinaryOp.SGt or BinaryOp.SLe or BinaryOp.SGe)
                 return true;
-            if (bin.Op == BinaryOp.And)
+            if (bin.Op is BinaryOp.And or BinaryOp.LogAnd or BinaryOp.LogOr)
                 return IsComparisonOrChain(bin.Left) && IsComparisonOrChain(bin.Right);
         }
         return false;
     }
 
     /// <summary>
-    /// ビットANDチェーンの比較式を短絡ジャンプに変換。
-    /// いずれかの比較がfalse(0)なら直ちにfalseLabelへジャンプ。
+    /// AND/LogAnd/LogOrチェーンを短絡ジャンプに変換。
+    /// 条件がfalseならfalseLabelへジャンプ。
     /// </summary>
     private void EmitShortCircuitJump(Expression expr, string falseLabel)
     {
-        if (expr is BinaryExpr bin && bin.Op == BinaryOp.And)
+        if (expr is BinaryExpr bin && bin.Op is BinaryOp.And or BinaryOp.LogAnd)
         {
-            // 左辺: 再帰的に展開
-            if (CanShortCircuit(bin.Left))
-                EmitShortCircuitJump(bin.Left, falseLabel);
-            else
-            {
-                var lVal = bin.Left.Accept(this);
-                Emit(IrOp.JumpIfZero, IrOperand.Lbl(falseLabel), lVal);
-            }
-            // 右辺: 再帰的に展開
-            if (CanShortCircuit(bin.Right))
-                EmitShortCircuitJump(bin.Right, falseLabel);
-            else
-            {
-                var rVal = bin.Right.Accept(this);
-                Emit(IrOp.JumpIfZero, IrOperand.Lbl(falseLabel), rVal);
-            }
+            // AND: 左false→即falseLabel、右false→即falseLabel
+            EmitShortCircuitJump(bin.Left, falseLabel);
+            EmitShortCircuitJump(bin.Right, falseLabel);
+        }
+        else if (expr is BinaryExpr bin2 && bin2.Op == BinaryOp.LogOr)
+        {
+            // OR: 左true→skip(body側)、左false→右を評価
+            var trueLabel = NewLabel();
+            EmitShortCircuitJumpIfTrue(bin2.Left, trueLabel);
+            EmitShortCircuitJump(bin2.Right, falseLabel);
+            Emit(IrOp.Label, IrOperand.Lbl(trueLabel));
         }
         else
         {
             var val = expr.Accept(this);
             Emit(IrOp.JumpIfZero, IrOperand.Lbl(falseLabel), val);
+        }
+    }
+
+    /// <summary>
+    /// 条件がtrueならtrueLabelへジャンプ（LogOr用、再帰対称）。
+    /// </summary>
+    private void EmitShortCircuitJumpIfTrue(Expression expr, string trueLabel)
+    {
+        if (expr is BinaryExpr bin && bin.Op == BinaryOp.LogOr)
+        {
+            // OR: 左true→即trueLabel、右true→即trueLabel
+            EmitShortCircuitJumpIfTrue(bin.Left, trueLabel);
+            EmitShortCircuitJumpIfTrue(bin.Right, trueLabel);
+        }
+        else if (expr is BinaryExpr bin2 && bin2.Op is BinaryOp.And or BinaryOp.LogAnd)
+        {
+            // AND: 左false→skip、右true→trueLabel
+            var skipLabel = NewLabel();
+            EmitShortCircuitJump(bin2.Left, skipLabel);
+            EmitShortCircuitJumpIfTrue(bin2.Right, trueLabel);
+            Emit(IrOp.Label, IrOperand.Lbl(skipLabel));
+        }
+        else
+        {
+            var val = expr.Accept(this);
+            Emit(IrOp.JumpIfNonZero, IrOperand.Lbl(trueLabel), val);
         }
     }
 
