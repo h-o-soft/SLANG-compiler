@@ -52,6 +52,7 @@ endif
 
 # ターゲット
 .PHONY: all build release install uninstall publish setup-tools clean help
+.PHONY: build-new test-new publish-new-local install-new install-new-bin uninstall-new publish-new
 
 all: build
 
@@ -121,6 +122,62 @@ else
 endif
 	@echo "Uninstallation complete!"
 
+# === 新コンパイラ (slangc) ===
+
+NEW_CSPROJ = src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj
+NEW_SLN = SLANGCompilerNew.sln
+
+# 新コンパイラ ビルド
+build-new:
+	$(DOTNET) build $(NEW_SLN) -c Release
+
+# 新コンパイラ テスト
+test-new:
+	$(DOTNET) test $(NEW_SLN) --no-restore
+
+# 新コンパイラ publish (self-contained)
+publish-new-local:
+ifeq ($(DETECTED_OS),Windows)
+	$(DOTNET) publish $(NEW_CSPROJ) -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true
+else
+	$(DOTNET) publish $(NEW_CSPROJ) -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
+endif
+
+# 新コンパイラ インストール (旧と共存: SLANGCompiler + slangc)
+install-new: publish-new-local install-new-bin install-lib
+	@echo "New compiler installation complete!"
+	@echo "  Binary: $(BINDIR)/slangc"
+	@echo "  Libraries: $(CONFIG_DIR)"
+	@echo "  (Old compiler SLANGCompiler is unchanged)"
+
+install-new-bin:
+ifeq ($(DETECTED_OS),Windows)
+	@if not exist "$(BINDIR)" $(MKDIR) "$(BINDIR)"
+	$(CP) src\SLANGCompiler.CLI\bin\Release\net8.0\win-x64\publish\slangc.exe "$(BINDIR)\"
+else
+	$(MKDIR) $(BINDIR)
+	$(CP) src/SLANGCompiler.CLI/bin/Release/net8.0/$(RID)/publish/slangc $(BINDIR)/
+	chmod +x $(BINDIR)/slangc
+endif
+
+# 新コンパイラ アンインストール (ライブラリは共有なので消さない)
+uninstall-new:
+ifeq ($(DETECTED_OS),Windows)
+	$(RM) "$(BINDIR)\slangc.exe"
+else
+	$(RM) $(BINDIR)/slangc
+endif
+	@echo "New compiler uninstalled. Libraries left intact."
+
+# 新コンパイラ パブリッシュ (全プラットフォーム)
+publish-new:
+ifndef VERSION
+	$(error VERSION is required. Usage: make publish-new VERSION=1.0.0)
+endif
+	./publish-new.sh $(VERSION)
+
+# === 旧コンパイラ (SLANGCompiler) ===
+
 # パブリッシュ (全プラットフォーム向けリリース作成)
 publish:
 ifndef VERSION
@@ -149,12 +206,21 @@ clean:
 help:
 	@echo "SLANG Compiler Makefile"
 	@echo ""
-	@echo "Usage:"
-	@echo "  make              - Build compiler (Debug)"
-	@echo "  make release      - Build compiler (Release)"
-	@echo "  make install      - Install to $(PREFIX)"
-	@echo "  make uninstall    - Uninstall from $(PREFIX)"
-	@echo "  make publish VERSION=x.x.x - Create release packages"
+	@echo "New compiler (slangc):"
+	@echo "  make build-new    - Build new compiler (Release)"
+	@echo "  make test-new     - Run new compiler tests"
+	@echo "  make install-new  - Install slangc + libraries to $(PREFIX)"
+	@echo "  make uninstall-new - Uninstall slangc only"
+	@echo "  make publish-new VERSION=x.x.x - Create release packages"
+	@echo ""
+	@echo "Old compiler (SLANGCompiler):"
+	@echo "  make              - Build old compiler (Debug)"
+	@echo "  make release      - Build old compiler (Release)"
+	@echo "  make install      - Install SLANGCompiler to $(PREFIX)"
+	@echo "  make uninstall    - Uninstall SLANGCompiler + libraries"
+	@echo "  make publish VERSION=x.x.x - Create old release packages"
+	@echo ""
+	@echo "Common:"
 	@echo "  make setup-tools  - Download development tools"
 	@echo "  make clean        - Clean build artifacts"
 	@echo ""
