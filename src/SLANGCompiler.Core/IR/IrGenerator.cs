@@ -65,6 +65,102 @@ public class IrGenerator : IAstVisitor<IrOperand>
             _currentFunction.Instructions.Add(inst);
     }
 
+    /// <summary>
+    /// MPRNT方式のインライン文字列出力: CALL MPRNT + DB "text",0
+    /// 旧コンパイラ互換（LD HL,_Sx不要で3バイト節約/呼び出し）
+    /// </summary>
+    private void EmitInlinePrint(string text)
+    {
+        // 文字列データのASM表現を構築
+        var sb = new System.Text.StringBuilder();
+        var strBuf = new System.Text.StringBuilder();
+        foreach (var ch in text)
+        {
+            if (ch >= 0x20 && ch < 0x7F && ch != '"')
+                strBuf.Append(ch);
+            else
+            {
+                if (strBuf.Length > 0)
+                {
+                    if (sb.Length > 0) sb.Append(',');
+                    sb.Append($"\"{strBuf}\"");
+                    strBuf.Clear();
+                }
+                if (sb.Length > 0) sb.Append(',');
+                sb.Append($"${(int)ch:X2}");
+            }
+        }
+        if (strBuf.Length > 0)
+        {
+            if (sb.Length > 0) sb.Append(',');
+            sb.Append($"\"{strBuf}\"");
+        }
+        if (sb.Length > 0) sb.Append(',');
+        sb.Append("0");  // null terminator
+
+        Emit(IrOp.InlineAsm, IrOperand.Asm($"\tCALL\tMPRNT\n\tDB\t{sb}"));
+    }
+
+    /// <summary>
+    /// 条件式がビットAND/ORチェーンの比較式か判定。
+    /// 短絡ジャンプ最適化が適用可能な場合にtrue。
+    /// </summary>
+    private static bool CanShortCircuit(Expression expr)
+    {
+        if (expr is BinaryExpr bin)
+        {
+            if (bin.Op == BinaryOp.And)
+                return IsComparisonOrChain(bin.Left) && IsComparisonOrChain(bin.Right);
+        }
+        return false;
+    }
+
+    private static bool IsComparisonOrChain(Expression expr)
+    {
+        if (expr is BinaryExpr bin)
+        {
+            if (bin.Op is BinaryOp.Eq or BinaryOp.Neq
+                or BinaryOp.Lt or BinaryOp.Gt or BinaryOp.Le or BinaryOp.Ge
+                or BinaryOp.SLt or BinaryOp.SGt or BinaryOp.SLe or BinaryOp.SGe)
+                return true;
+            if (bin.Op == BinaryOp.And)
+                return IsComparisonOrChain(bin.Left) && IsComparisonOrChain(bin.Right);
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// ビットANDチェーンの比較式を短絡ジャンプに変換。
+    /// いずれかの比較がfalse(0)なら直ちにfalseLabelへジャンプ。
+    /// </summary>
+    private void EmitShortCircuitJump(Expression expr, string falseLabel)
+    {
+        if (expr is BinaryExpr bin && bin.Op == BinaryOp.And)
+        {
+            // 左辺: 再帰的に展開
+            if (CanShortCircuit(bin.Left))
+                EmitShortCircuitJump(bin.Left, falseLabel);
+            else
+            {
+                var lVal = bin.Left.Accept(this);
+                Emit(IrOp.JumpIfZero, IrOperand.Lbl(falseLabel), lVal);
+            }
+            // 右辺: 再帰的に展開
+            if (CanShortCircuit(bin.Right))
+                EmitShortCircuitJump(bin.Right, falseLabel);
+            else
+            {
+                var rVal = bin.Right.Accept(this);
+                Emit(IrOp.JumpIfZero, IrOperand.Lbl(falseLabel), rVal);
+            }
+        }
+        else
+        {
+            var val = expr.Accept(this);
+            Emit(IrOp.JumpIfZero, IrOperand.Lbl(falseLabel), val);
+        }
+    }
+
     // ==== Top-level ====
 
     public IrOperand VisitCompilationUnit(CompilationUnit node)
@@ -501,8 +597,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 continue;
             }
 
-            var condVal = cond.Accept(this);
-            Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), condVal);
+            // ビットAND/ORチェーンの短絡評価最適化
+            // IF (cmp1 AND cmp2 AND ...) → 各比較で即座にジャンプ（旧コンパイラ互換）
+            if (CanShortCircuit(cond))
+                EmitShortCircuitJump(cond, nextLabel);
+            else
+            {
+                var condVal = cond.Accept(this);
+                Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), condVal);
+            }
 
             body.Accept(this);
             if (nextLabel != endLabel)
@@ -540,8 +643,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
         else
         {
-            var condVal = node.Condition.Accept(this);
-            Emit(IrOp.JumpIfZero, IrOperand.Lbl(endLabel), condVal);
+            if (CanShortCircuit(node.Condition))
+                EmitShortCircuitJump(node.Condition, endLabel);
+            else
+            {
+                var condVal = node.Condition.Accept(this);
+                Emit(IrOp.JumpIfZero, IrOperand.Lbl(endLabel), condVal);
+            }
         }
 
         node.Body.Accept(this);
@@ -817,19 +925,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         break;
                 }
             }
+            else if (arg is StringLiteral strLit)
+            {
+                // MPRNT方式: CALL MPRNT → DB "string" → DB 0
+                // 旧コンパイラ互換のインライン文字列出力（LD HL不要で3バイト節約）
+                EmitInlinePrint(strLit.Value);
+            }
             else
             {
                 var val = arg.Accept(this);
-                if (arg is StringLiteral)
-                {
-                    // PMSX: HL=null終端文字列アドレスから出力
-                    Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PMSX"));
-                }
-                else
-                {
-                    // P10: HL=数値を10進文字列に変換して出力
-                    Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10"));
-                }
+                // P10: HL=数値を10進文字列に変換して出力
+                Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10"));
             }
         }
         return IrOperand.None;
@@ -865,9 +971,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitStringLiteral(StringLiteral node)
     {
-        // 文字列テーブルに登録し、ラベルアドレスをロード
-        var label = $"_S{_module.StringTable.Count}";
-        _module.StringTable[label] = node.Value;
+        // 文字列テーブルに登録し、ラベルアドレスをロード（重複排除）
+        string? label = null;
+        foreach (var (k, v) in _module.StringTable)
+        {
+            if (v == node.Value) { label = k; break; }
+        }
+        if (label == null)
+        {
+            label = $"_S{_module.StringTable.Count}";
+            _module.StringTable[label] = node.Value;
+        }
 
         var t = IrOperand.Temp(AllocTemp());
         Emit(IrOp.LoadAddr, t, IrOperand.Lbl(label));
@@ -1274,18 +1388,45 @@ public class IrGenerator : IAstVisitor<IrOperand>
             //   stride[0] = dim[1] = 31
             //   stride[1] = 1
 
+            // 各次元のストライドを計算（定数インデックス最適化でも使用）
+            List<int> strides;
+            LocalVarInfo? arrInfo = null;
+            bool isLocalArray = _localVars != null && arrayName != null
+                && _localVars.TryGetValue(arrayName, out arrInfo) && arrInfo.IsArray && arrInfo.Dims != null;
+            if (isLocalArray)
+            {
+                strides = ComputeStridesFromDims(arrInfo!.Dims!, arrInfo.IsByte ? 1 : 2, node.Indices.Count);
+                isArrayByte = arrInfo.IsByte;
+            }
+            else
+            {
+                strides = ComputeStrides(arraySym, node.Indices.Count);
+            }
+
+            // ローカル配列の定数インデックス最適化: (IY+d) 直接アクセス
+            if (isLocalArray)
+            {
+                int elemSize = arrInfo!.IsByte ? 1 : 2;
+                var directOffset = TryComputeLocalArrayOffset(arrInfo, node.Indices, strides, elemSize);
+                if (directOffset.HasValue)
+                {
+                    var result = IrOperand.Temp(AllocTemp());
+                    Emit(IrOp.LoadLocal, result, IrOperand.Imm(directOffset.Value), dataSize: elemSize);
+                    return result;
+                }
+            }
+
             // 配列のベースアドレスをロード
             IrOperand baseAddr;
             if (arrayName != null)
             {
                 baseAddr = IrOperand.Temp(AllocTemp());
                 // ローカル配列: IY+offsetのアドレスを計算
-                if (_localVars != null && _localVars.TryGetValue(arrayName, out var localArrInfo) && localArrInfo.IsArray)
+                if (isLocalArray)
                 {
                     // ローカル配列のベースアドレス計算: HL = IY + offset
                     Emit(IrOp.Comment, IrOperand.Asm($"local array {arrayName} addr"));
-                    Emit(IrOp.InlineAsm, baseAddr, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${localArrInfo.Offset:X4}\n\tADD\tHL,DE"));
-                    isArrayByte = localArrInfo.IsByte;
+                    Emit(IrOp.InlineAsm, baseAddr, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${arrInfo!.Offset:X4}\n\tADD\tHL,DE"));
                 }
                 else if (_localVars != null && _localVars.TryGetValue(arrayName, out var localInfo))
                 {
@@ -1299,19 +1440,6 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else
             {
                 baseAddr = node.Array.Accept(this);
-            }
-
-            // 各次元のストライドを計算
-            List<int> strides;
-            if (_localVars != null && arrayName != null
-                && _localVars.TryGetValue(arrayName, out var arrInfo) && arrInfo.Dims != null)
-            {
-                // ローカル配列: LocalVarInfoのDimsからストライド計算
-                strides = ComputeStridesFromDims(arrInfo.Dims, arrInfo.IsByte ? 1 : 2, node.Indices.Count);
-            }
-            else
-            {
-                strides = ComputeStrides(arraySym, node.Indices.Count);
             }
 
             // 各次元のインデックス×ストライドを加算
@@ -1347,10 +1475,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
 
             // 最終アドレスから値をロード
-            var result = IrOperand.Temp(AllocTemp());
+            var result2 = IrOperand.Temp(AllocTemp());
             bool isByte = isArrayByte || (arraySym?.Type is ArrayType at && at.ElementType == SlangType.Byte);
-            Emit(IrOp.IndirLoad, result, addr, dataSize: isByte ? 1 : 2);
-            return result;
+            Emit(IrOp.IndirLoad, result2, addr, dataSize: isByte ? 1 : 2);
+            return result2;
         }
     }
 
@@ -1646,15 +1774,47 @@ public class IrGenerator : IAstVisitor<IrOperand>
             {
                 // 通常配列のストア（多次元対応）
                 bool storeIsByte = arraySym?.Type is ArrayType stAt && stAt.ElementType == SlangType.Byte;
+
+                // 多次元ストライド計算（定数最適化でも使用）
+                List<int> strides;
+                LocalVarInfo? stArrLi = null;
+                bool isLocalStoreArray = _localVars != null && arrayName != null
+                    && _localVars.TryGetValue(arrayName, out stArrLi) && stArrLi.IsArray && stArrLi.Dims != null;
+                if (isLocalStoreArray)
+                {
+                    strides = ComputeStridesFromDims(stArrLi!.Dims!, stArrLi.IsByte ? 1 : 2, arr.Indices.Count);
+                    storeIsByte = stArrLi.IsByte;
+                }
+                else
+                {
+                    strides = ComputeStrides(arraySym, arr.Indices.Count);
+                }
+
+                // ローカル配列の定数インデックス最適化: (IY+d) 直接ストア
+                bool localStoreHandled = false;
+                if (isLocalStoreArray)
+                {
+                    int elemSize = stArrLi!.IsByte ? 1 : 2;
+                    var directOffset = TryComputeLocalArrayOffset(stArrLi, arr.Indices, strides, elemSize);
+                    if (directOffset.HasValue)
+                    {
+                        Emit(IrOp.StoreLocal, IrOperand.Imm(directOffset.Value), value, dataSize: elemSize);
+                        localStoreHandled = true;
+                    }
+                }
+
+                if (localStoreHandled) { /* 定数インデックスで処理済み */ }
+                else
+                {
+
                 IrOperand baseAddr;
                 if (arrayName != null)
                 {
                     baseAddr = IrOperand.Temp(AllocTemp());
                     // ローカル配列: IY+offsetのアドレスを計算
-                    if (_localVars != null && _localVars.TryGetValue(arrayName, out var li) && li.IsArray)
+                    if (isLocalStoreArray)
                     {
-                        Emit(IrOp.InlineAsm, baseAddr, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${li.Offset:X4}\n\tADD\tHL,DE"));
-                        storeIsByte = li.IsByte;
+                        Emit(IrOp.InlineAsm, baseAddr, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${stArrLi!.Offset:X4}\n\tADD\tHL,DE"));
                     }
                     else if (_localVars != null && _localVars.TryGetValue(arrayName, out var li2))
                         Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(li2.Offset));
@@ -1668,17 +1828,6 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     baseAddr = arr.Array.Accept(this);
                 }
 
-                // 多次元ストライド計算
-                List<int> strides;
-                if (_localVars != null && arrayName != null
-                    && _localVars.TryGetValue(arrayName, out var stArrInfo) && stArrInfo.Dims != null)
-                {
-                    strides = ComputeStridesFromDims(stArrInfo.Dims, stArrInfo.IsByte ? 1 : 2, arr.Indices.Count);
-                }
-                else
-                {
-                    strides = ComputeStrides(arraySym, arr.Indices.Count);
-                }
                 var addr = baseAddr;
                 for (int i = 0; i < arr.Indices.Count; i++)
                 {
@@ -1704,6 +1853,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
                 // 最終アドレスに値を書き込み
                 Emit(IrOp.IndirStore, addr, value, dataSize: storeIsByte ? 1 : 2);
+
+                } // end else (non-const index path)
             }
         }
         else
@@ -1742,6 +1893,31 @@ public class IrGenerator : IAstVisitor<IrOperand>
     }
 
     /// <summary>次元リストとelemSizeからストライドを計算</summary>
+    /// <summary>
+    /// ローカル配列の定数インデックスオフセットを計算。
+    /// 全インデックスが定数で、最終オフセットが(IY+d)範囲内なら値を返す。
+    /// strides計算は既存ロジック(ComputeStridesFromDims/ComputeStrides)をそのまま使用。
+    /// </summary>
+    private int? TryComputeLocalArrayOffset(
+        LocalVarInfo localInfo, List<Expression> indices, List<int> strides, int elemSize)
+    {
+        var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+        if (constEval == null) return null;
+
+        int totalOffset = localInfo.Offset;
+        for (int i = 0; i < indices.Count && i < strides.Count; i++)
+        {
+            var constIdx = constEval.Evaluate(indices[i]);
+            if (constIdx == null) return null;
+            totalOffset += constIdx.Value * strides[i];
+        }
+
+        // (IY+d)範囲チェック: BYTE=0..127, WORD=0..126
+        int maxOffset = 127 - (elemSize - 1);
+        if (totalOffset < 0 || totalOffset > maxOffset) return null;
+        return totalOffset;
+    }
+
     private List<int> ComputeStridesFromDims(List<int> dims, int elemSize, int indexCount)
     {
         var strides = new List<int>();

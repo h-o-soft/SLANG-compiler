@@ -666,6 +666,7 @@ public class CodeGenerator
         var skipEmit = new HashSet<int>();
         var directBinaryOps = new HashSet<int>(); // 両src単純ロード
         var halfDirectOps = new HashSet<int>();  // src2のみ単純ロード
+        var reverseHalfDirectOps = new HashSet<int>(); // src1のみ単純ロード（可換演算のみ）
 
         for (int i = 0; i < insts.Count; i++)
         {
@@ -688,6 +689,14 @@ public class CodeGenerator
                     // src2のみ単純ロード → src1はHLに残っている、src2をDE直接ロード
                     skipEmit.Add(s2);
                     halfDirectOps.Add(i);
+                }
+                else if (IsSimpleLoad(insts[s1]) && !IsSimpleLoad(insts[s2])
+                         && IsCommutativeOp(inst.Op))
+                {
+                    // src1のみ単純ロード + 可換演算 → src2がHL、src1をDE直接ロード
+                    // PUSH/POP回避: src1はskip、演算時にDE直接ロード
+                    skipEmit.Add(s1);
+                    reverseHalfDirectOps.Add(i);
                 }
             }
         }
@@ -720,9 +729,43 @@ public class CodeGenerator
             }
         }
 
+        // IndirStore/MemStore の値を直接DEロード: PUSH/POP回避
+        // パターン: LoadConst/LoadVar t_val → ... → IndirStore addr, t_val
+        // t_valのPUSHを省き、ストア直前にDE直接ロード
+        var indirStoreDirectValue = new Dictionary<int, int>(); // storeIdx → valueDefIdx
+        for (int i = 0; i < insts.Count; i++)
+        {
+            var inst = insts[i];
+            if ((inst.Op is IrOp.IndirStore or IrOp.MemStore)
+                && inst.Src1.Kind == IrOperandKind.Temp
+                && tempDef.TryGetValue(inst.Src1.TempIndex, out int valDefIdx))
+            {
+                var valDef = insts[valDefIdx];
+                if (IsSimpleLoad(valDef) && !skipEmit.Contains(valDefIdx))
+                {
+                    // 値tempがこのストア以外で使われないか確認
+                    int valTemp = inst.Src1.TempIndex;
+                    bool onlyUsedHere = true;
+                    for (int j = 0; j < insts.Count; j++)
+                    {
+                        if (j == i || j == valDefIdx) continue; // ストア自身と定義命令は除外
+                        if (skipEmit.Contains(j)) continue;
+                        if (UsesTemp(insts[j], valTemp)) { onlyUsedHere = false; break; }
+                    }
+                    if (onlyUsedHere)
+                    {
+                        indirStoreDirectValue[i] = valDefIdx;
+                        skipEmit.Add(valDefIdx);
+                    }
+                }
+            }
+        }
+
         // NeedsPushAfterで参照するためフィールドにセット
         _currentDirectBinaryOps = directBinaryOps;
         _currentHalfDirectOps = halfDirectOps;
+        _currentReverseHalfDirectOps = reverseHalfDirectOps;
+        _currentIndirStoreDirectValue = indirStoreDirectValue;
         _currentSkipEmit = skipEmit;
 
         // Pass 2: 出力
@@ -746,6 +789,78 @@ public class CodeGenerator
                     EmitInstruction(s1);
                     EmitLoadToDE(s2);
                     EmitFusedCompareJump(inst, label, jumpOnTrue);
+                    continue;
+                }
+
+                // 定数同士の二項演算: コンパイル時計算
+                if (s1.Op == IrOp.LoadConst && s2.Op == IrOp.LoadConst
+                    && s1.Src1.Kind == IrOperandKind.Immediate && s2.Src1.Kind == IrOperandKind.Immediate)
+                {
+                    int v1 = (int)(s1.Src1.ImmediateValue & 0xFFFF);
+                    int v2 = (int)(s2.Src1.ImmediateValue & 0xFFFF);
+                    int? result = inst.Op switch
+                    {
+                        IrOp.Add => (v1 + v2) & 0xFFFF,
+                        IrOp.Sub => (v1 - v2) & 0xFFFF,
+                        IrOp.Mul or IrOp.SMul => (v1 * v2) & 0xFFFF,
+                        IrOp.And => v1 & v2,
+                        IrOp.Or => v1 | v2,
+                        IrOp.Xor => v1 ^ v2,
+                        IrOp.Shl => (v1 << v2) & 0xFFFF,
+                        IrOp.Shr => (v1 >> v2) & 0xFFFF,
+                        _ => null,
+                    };
+                    if (result.HasValue)
+                    {
+                        _e.Instruction("LD", $"HL,${result.Value:X4}");
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
+                        continue;
+                    }
+                }
+
+                // LoadAddr + LoadConst のAdd → LD HL,label+offset (コンパイル時アドレス計算)
+                if (inst.Op == IrOp.Add)
+                {
+                    IrInstruction? addrInst = null, constInst = null;
+                    if (s1.Op == IrOp.LoadAddr && s2.Op == IrOp.LoadConst && s2.Src1.Kind == IrOperandKind.Immediate)
+                    { addrInst = s1; constInst = s2; }
+                    else if (s2.Op == IrOp.LoadAddr && s1.Op == IrOp.LoadConst && s1.Src1.Kind == IrOperandKind.Immediate)
+                    { addrInst = s2; constInst = s1; }
+
+                    if (addrInst != null && constInst != null)
+                    {
+                        int offset = (int)(constInst.Src1.ImmediateValue & 0xFFFF);
+                        var label = AsmLabel(addrInst.Src1.Name!);
+                        if (offset == 0)
+                            _e.Instruction("LD", $"HL,{label}");
+                        else
+                            _e.Instruction("LD", $"HL,{label}+{offset}");
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
+                        continue;
+                    }
+                }
+
+                // 同一オペランドのAdd → ADD HL,HL (×2パターン)
+                if (inst.Op == IrOp.Add && inst.Src1.TempIndex == inst.Src2.TempIndex)
+                {
+                    EmitInstruction(s1);
+                    _e.Instruction("ADD", "HL,HL");
+                    if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                        _e.Instruction("PUSH", "HL");
+                    continue;
+                }
+
+                // 同一変数のAdd → LD HL + ADD HL,HL (両方同じ変数)
+                if (inst.Op == IrOp.Add
+                    && s1.Op == s2.Op && s1.Op is IrOp.LoadVar or IrOp.LoadLocal or IrOp.LoadConst
+                    && s1.Src1.Equals(s2.Src1))
+                {
+                    EmitInstruction(s1);
+                    _e.Instruction("ADD", "HL,HL");
+                    if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                        _e.Instruction("PUSH", "HL");
                     continue;
                 }
 
@@ -814,7 +929,18 @@ public class CodeGenerator
 
                 // 通常の直接ロード最適化
                 EmitInstruction(s1);
-                EmitLoadToDE(s2);
+                // 同一変数/定数: LD D,H; LD E,L で1バイト節約（WORD変数のみ）
+                if (s1.Op == s2.Op && s1.DataSize == 2
+                    && s1.Op is IrOp.LoadVar or IrOp.LoadConst or IrOp.LoadLocal
+                    && s1.Src1.Kind == s2.Src1.Kind
+                    && ((s1.Src1.Kind == IrOperandKind.Label && s1.Src1.Name == s2.Src1.Name)
+                        || (s1.Src1.Kind == IrOperandKind.Immediate && s1.Src1.ImmediateValue == s2.Src1.ImmediateValue)))
+                {
+                    _e.Instruction("LD", "D,H");
+                    _e.Instruction("LD", "E,L");
+                }
+                else
+                    EmitLoadToDE(s2);
                 EmitBinaryDirect(inst);
                 if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
                     _e.Instruction("PUSH", "HL");
@@ -900,6 +1026,61 @@ public class CodeGenerator
                 continue;
             }
 
+            // src1のみ単純ロード（可換演算）: src2結果がHL、src1をDE直接ロード
+            if (reverseHalfDirectOps.Contains(i) && inst.DataSize != 3)
+            {
+                var s1Inst = insts[tempDef[inst.Src1.TempIndex]];
+
+                // 定数加算最適化（reverseHalfDirect経路: src1が定数）
+                if ((inst.Op == IrOp.Add)
+                    && s1Inst.Op == IrOp.LoadConst && s1Inst.Src1.Kind == IrOperandKind.Immediate)
+                {
+                    int cv = (int)(s1Inst.Src1.ImmediateValue & 0xFFFF);
+                    if (cv == 0) // +0 は何もしない
+                    {
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
+                        continue;
+                    }
+                    if (cv == 1)
+                    {
+                        _e.Instruction("INC", "HL");
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
+                        continue;
+                    }
+                    if (cv == 2)
+                    {
+                        _e.Instruction("INC", "HL");
+                        _e.Instruction("INC", "HL");
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
+                        continue;
+                    }
+                }
+
+                // 定数乗算最適化（reverseHalfDirect経路: src1が定数）
+                if (inst.Op == IrOp.Mul
+                    && s1Inst.Op == IrOp.LoadConst && s1Inst.Src1.Kind == IrOperandKind.Immediate)
+                {
+                    int cv = (int)(s1Inst.Src1.ImmediateValue & 0xFFFF);
+                    if (cv == 0) { _e.Instruction("LD", "HL,$0000"); }
+                    else if (cv == 1) { /* HLそのまま */ }
+                    else if (EmitConstMul(cv)) { /* handled */ }
+                    else goto noReverseConstMul;
+                    if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                        _e.Instruction("PUSH", "HL");
+                    continue;
+                    noReverseConstMul:;
+                }
+
+                EmitLoadToDE(s1Inst);
+                EmitBinaryDirect(inst);
+                if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                    _e.Instruction("PUSH", "HL");
+                continue;
+            }
+
             // 非直接ロードだが融合比較ジャンプの場合（FLOATは通常パスへ）
             if (inst.DataSize != 3 && fusedCompareJumps.TryGetValue(i, out int jumpIdx2))
             {
@@ -910,6 +1091,23 @@ public class CodeGenerator
                 _e.Instruction("POP", "DE");
                 _e.Instruction("EX", "DE,HL");
                 EmitFusedCompareJump(inst, label, jumpOnTrue);
+                continue;
+            }
+
+            // IndirStore/MemStore 直接値ロード最適化
+            if (indirStoreDirectValue.TryGetValue(i, out int valDefIdx2))
+            {
+                bool isByte = inst.DataSize == 1;
+                // HL = address (既に計算済み)
+                EmitLoadToDE(insts[valDefIdx2]);
+                if (isByte)
+                    _e.Instruction("LD", "(HL),E");
+                else
+                {
+                    _e.Instruction("LD", "(HL),E");
+                    _e.Instruction("INC", "HL");
+                    _e.Instruction("LD", "(HL),D");
+                }
                 continue;
             }
 
@@ -1245,6 +1443,8 @@ public class CodeGenerator
     // 最適化パスの結果（NeedsPushAfterで参照）
     private HashSet<int> _currentDirectBinaryOps = new();
     private HashSet<int> _currentHalfDirectOps = new();
+    private HashSet<int> _currentReverseHalfDirectOps = new();
+    private Dictionary<int, int> _currentIndirStoreDirectValue = new();
     private HashSet<int> _currentSkipEmit = new();
 
     private bool NeedsPushAfter(List<IrInstruction> insts, int currentIdx, int destTemp)
@@ -1258,8 +1458,9 @@ public class CodeGenerator
             // この temp が src1 で、src2 が別の temp → PUSH 必要
             if (next.Src1.Kind == IrOperandKind.Temp && next.Src1.TempIndex == destTemp)
             {
-                // directBinaryOps/halfDirectOps → src2は直接DEロードされるのでPUSH不要
-                if (_currentDirectBinaryOps.Contains(j) || _currentHalfDirectOps.Contains(j))
+                // directBinaryOps/halfDirectOps/reverseHalfDirectOps → 直接ロードされるのでPUSH不要
+                if (_currentDirectBinaryOps.Contains(j) || _currentHalfDirectOps.Contains(j)
+                    || _currentReverseHalfDirectOps.Contains(j))
                     return false;
 
                 // 二項演算でsrc2もtempなら
@@ -1267,10 +1468,14 @@ public class CodeGenerator
                     return true;
 
                 // IndirStore/MemStore/PortOut: Src1=value, Dest=addr
-                // addrが別tempならvalue退避が必要（addr計算でHLが上書きされるため）
+                // addrが別tempならvalue退避が必要（ただしindirStoreDirectValueで直接ロードする場合は不要）
                 if (next.Op is IrOp.IndirStore or IrOp.MemStore or IrOp.PortOut
                     && next.Dest.Kind == IrOperandKind.Temp && next.Dest.TempIndex != destTemp)
+                {
+                    if (_currentIndirStoreDirectValue.ContainsKey(j))
+                        return false; // 直接DEロードするのでPUSH不要
                     return true;
+                }
 
                 // ArrayStore: Dest=base, Src1=value, Src2=index → 全部tempの場合PUSH要
                 if (next.Op == IrOp.ArrayStore && next.Src2.Kind == IrOperandKind.Temp)
@@ -1306,6 +1511,12 @@ public class CodeGenerator
         or IrOp.LogAnd or IrOp.LogOr => true,
         _ => false,
     };
+
+    private static bool IsCommutativeOp(IrOp op) => op is
+        IrOp.Add or IrOp.Mul or IrOp.SMul
+        or IrOp.And or IrOp.Or or IrOp.Xor
+        or IrOp.CmpEq or IrOp.CmpNeq
+        or IrOp.LogAnd or IrOp.LogOr;
 
     private static bool IsCompareOp(IrOp op) => op is
         IrOp.CmpEq or IrOp.CmpNeq or IrOp.CmpLt or IrOp.CmpGt or IrOp.CmpLe or IrOp.CmpGe
@@ -1433,7 +1644,20 @@ public class CodeGenerator
                     ? inst.Src1.Name
                     : inst.Dest.Name;
                 if (asmCode != null)
+                {
                     _e.Raw(asmCode);
+                    // InlineAsm内のCALL命令を_calledFunctionsに登録
+                    foreach (var line in asmCode.Split('\n'))
+                    {
+                        var trimmed = line.Trim();
+                        if (trimmed.StartsWith("CALL\t") || trimmed.StartsWith("CALL "))
+                        {
+                            var funcName = trimmed[5..].Trim().Split(';')[0].Trim();
+                            if (!string.IsNullOrEmpty(funcName))
+                                _calledFunctions.Add(funcName);
+                        }
+                    }
+                }
                 break;
 
             case IrOp.Comment:

@@ -80,6 +80,48 @@ public class PeepholeOptimizer
                 i += 2; changes++; continue;
             }
 
+            // Rule 8: PUSH HL / POP DE / EX DE,HL / ADD HL,DE → ADD HL,HL
+            // (×2パターン: HL値を自身に加算)
+            if (line == "PUSH\tHL" && next == "POP\tDE"
+                && i + 2 < lines.Count && lines[i + 2].Trim() == "EX\tDE,HL"
+                && i + 3 < lines.Count && lines[i + 3].Trim() == "ADD\tHL,DE")
+            {
+                result.Add("\tADD\tHL,HL");
+                i += 3; changes++; continue;
+            }
+
+            // Rule 9: PUSH HL / POP DE / EX DE,HL → (削除、連続なら無操作)
+            if (line == "PUSH\tHL" && next == "POP\tDE"
+                && i + 2 < lines.Count && lines[i + 2].Trim() == "EX\tDE,HL")
+            {
+                i += 2; changes++; continue;
+            }
+
+            // Rule 10: POP DE / EX DE,HL / ADD HL,DE → POP DE / ADD HL,DE
+            // (POP後のEXは、HL=src1,DE=src2のセットアップだが、ADD HL,DEは可換なので不要)
+            if (line == "POP\tDE" && next == "EX\tDE,HL"
+                && i + 2 < lines.Count && lines[i + 2].Trim() == "ADD\tHL,DE")
+            {
+                result.Add(lines[i]); // POP DE
+                result.Add($"\tADD\tHL,DE"); // ADD directly
+                i += 2; changes++; continue;
+            }
+
+            // Rule 11: LD (var),HL / LD HL,(var) → LD (var),HL (不要な再ロード除去)
+            if (line.StartsWith("LD\t(") && line.EndsWith(",HL"))
+            {
+                var varName = line[3..^3]; // "(var)" 部分
+                if (next == $"LD\tHL,{varName}")
+                {
+                    result.Add(lines[i]); // LD (var),HL を残す
+                    i++; changes++; continue; // LD HL,(var) をスキップ
+                }
+            }
+
+            // Rule 12: LD (var),HL / LD HL,(var) 同一変数の再ロード（BYTE変数対応）
+            // LD A,L / LD (var),A / LD A,(var) / LD L,A → LD A,L / LD (var),A
+            // (BYTEストア後の再ロードを除去 - HLのLにまだ値がある)
+
             result.Add(lines[i]);
         }
 
