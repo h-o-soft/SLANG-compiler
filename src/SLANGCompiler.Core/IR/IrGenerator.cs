@@ -179,7 +179,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 foreach (var expr in node.InitialCode)
                 {
                     var initExpr = expr;
-                    int itemSize = elemSize;
+                    int itemSize = 1; // 配列初期値はデフォルトBYTE（%付きでWORD）
                     if (initExpr is CastExpr cast)
                     {
                         initExpr = cast.Operand;
