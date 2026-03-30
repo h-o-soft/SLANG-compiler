@@ -761,6 +761,35 @@ public class CodeGenerator
             }
         }
 
+        // StoreLocal即値最適化: LoadConst → StoreLocal で定数を直接(IY+d),imm
+        var storeLocalDirectConst = new Dictionary<int, int>(); // storeIdx → constDefIdx
+        for (int i = 0; i < insts.Count; i++)
+        {
+            var inst = insts[i];
+            if (inst.Op == IrOp.StoreLocal
+                && inst.Src1.Kind == IrOperandKind.Temp
+                && tempDef.TryGetValue(inst.Src1.TempIndex, out int cDefIdx))
+            {
+                var cDef = insts[cDefIdx];
+                if (cDef.Op == IrOp.LoadConst && cDef.Src1.Kind == IrOperandKind.Immediate
+                    && !skipEmit.Contains(cDefIdx))
+                {
+                    int valTemp = inst.Src1.TempIndex;
+                    bool onlyUsedHere = true;
+                    for (int j = 0; j < insts.Count; j++)
+                    {
+                        if (j == i || j == cDefIdx) continue;
+                        if (UsesTemp(insts[j], valTemp)) { onlyUsedHere = false; break; }
+                    }
+                    if (onlyUsedHere)
+                    {
+                        storeLocalDirectConst[i] = cDefIdx;
+                        skipEmit.Add(cDefIdx);
+                    }
+                }
+            }
+        }
+
         // NeedsPushAfterで参照するためフィールドにセット
         _currentDirectBinaryOps = directBinaryOps;
         _currentHalfDirectOps = halfDirectOps;
@@ -1107,6 +1136,23 @@ public class CodeGenerator
                     _e.Instruction("LD", "(HL),E");
                     _e.Instruction("INC", "HL");
                     _e.Instruction("LD", "(HL),D");
+                }
+                continue;
+            }
+
+            // StoreLocal即値最適化: LD (IY+d),imm 直接ストア
+            if (storeLocalDirectConst.TryGetValue(i, out int constDefIdx))
+            {
+                int offset = (int)inst.Dest.ImmediateValue;
+                int val = (int)(insts[constDefIdx].Src1.ImmediateValue & 0xFFFF);
+                if (inst.DataSize == 1)
+                {
+                    _e.Instruction("LD", $"(IY+${offset:X2}),${val & 0xFF:X2}");
+                }
+                else
+                {
+                    _e.Instruction("LD", $"(IY+${offset:X2}),${val & 0xFF:X2}");
+                    _e.Instruction("LD", $"(IY+${offset + 1:X2}),${(val >> 8) & 0xFF:X2}");
                 }
                 continue;
             }

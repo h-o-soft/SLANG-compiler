@@ -46,8 +46,8 @@ public class CodeGenTests
     public void ConstantFolding()
     {
         var asm = Compile("CONST MAX=100; MAIN() BEGIN VAR X; X=MAX; END;");
-        // CONST値が即値になる
-        Assert.Contains("$0064", asm); // 100 = $64
+        // CONST値が即値になる（StoreLocal即値最適化で$64/$00に分離される場合あり）
+        Assert.True(asm.Contains("$0064") || asm.Contains("$64"), "100 ($64) should appear in output");
     }
 
     [Fact]
@@ -411,5 +411,17 @@ public class CodeGenTests
         // static配列（BEGIN前宣言=グローバル）の定数添字 → label+offset 直接アクセス
         var asm = Compile("ARRAY SA[5]; MAIN() BEGIN SA[2]=10; END;");
         Assert.Contains("(_V_SA+4)", asm); // offset=2*2=4
+    }
+
+    [Fact]
+    public void StoreLocal_ConstValue_DirectImmediate()
+    {
+        // ローカル変数への定数代入 → LD (IY+d),imm 直接ストア
+        var asm = Compile("MAIN() BEGIN VAR X; X=42; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        // LD (IY+xx),$2A が出力される（LD HL,$002A 経由でない）
+        Assert.Contains("(IY+", body);
+        Assert.Contains("$2A", body);
+        Assert.DoesNotContain("LD\tHL,$002A", body);
     }
 }
