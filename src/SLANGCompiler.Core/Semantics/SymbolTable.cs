@@ -69,6 +69,7 @@ public class SymbolTable
 
     public Scope CurrentScope => _scopes.Peek();
     public bool IsGlobalScope => _scopes.Count == 1;
+    public int ScopeCount => _scopes.Count;
 
     public void PushScope(string name)
     {

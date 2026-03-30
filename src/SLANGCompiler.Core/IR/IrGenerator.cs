@@ -736,9 +736,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var contLabel = NewLabel();
         var endLabel = NewLabel();
 
+        // FOR変数のアクセス方法を決定: ローカル変数ならLoadLocal/StoreLocal
+        LocalVarInfo? forVarInfo = null;
+        bool forVarIsLocal = _localVars != null && _localVars.TryGetValue(node.Variable, out forVarInfo);
+        int forVarDs = forVarIsLocal ? forVarInfo!.ByteSize : 2;
+
         // Initialize: var = from
         var fromVal = node.From.Accept(this);
-        Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Variable)), fromVal);
+        if (forVarIsLocal)
+            Emit(IrOp.StoreLocal, IrOperand.Imm(forVarInfo!.Offset), fromVal, dataSize: forVarDs);
+        else
+            Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Variable)), fromVal);
 
         PushLoop(contLabel, endLabel);
 
@@ -752,12 +760,18 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
         // Increment/decrement
         var curVal = IrOperand.Temp(AllocTemp());
-        Emit(IrOp.LoadVar, curVal, IrOperand.Sym(ResolveAsmLabel(node.Variable)));
+        if (forVarIsLocal)
+            Emit(IrOp.LoadLocal, curVal, IrOperand.Imm(forVarInfo!.Offset), dataSize: forVarDs);
+        else
+            Emit(IrOp.LoadVar, curVal, IrOperand.Sym(ResolveAsmLabel(node.Variable)));
         var one = IrOperand.Temp(AllocTemp());
         Emit(IrOp.LoadConst, one, IrOperand.Imm(1));
         var newVal = IrOperand.Temp(AllocTemp());
         Emit(node.IsDownTo ? IrOp.Sub : IrOp.Add, newVal, curVal, one);
-        Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Variable)), newVal);
+        if (forVarIsLocal)
+            Emit(IrOp.StoreLocal, IrOperand.Imm(forVarInfo!.Offset), newVal, dataSize: forVarDs);
+        else
+            Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Variable)), newVal);
 
         // Compare with limit
         // FOR TO: unsigned比較（旧コンパイラ互換、コンパクト）
