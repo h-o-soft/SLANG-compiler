@@ -99,11 +99,7 @@ public class CodeGenerator
                 foreach (var func in overlayRuntime)
                 {
                     _e.Label(func.Name);
-                    foreach (var line in func.Code.Split('\n'))
-                    {
-                        if (!string.IsNullOrWhiteSpace(line))
-                            _e.Raw(line);
-                    }
+                    EmitRuntimeCode(func.Code, null);
                     _e.Blank();
                 }
             }
@@ -238,6 +234,9 @@ public class CodeGenerator
         funcEmitter.OptimizeWith(new PeepholeOptimizer());
         _e.AppendFrom(funcEmitter);
 
+        // === Phase 5.5: トップレベルのインラインASM（#ASMブロック） ===
+        EmitGlobalPlainAsm();
+
         // === Phase 6: 文字列テーブル ===
         if (_module.StringTable.Count > 0)
         {
@@ -321,11 +320,7 @@ public class CodeGenerator
                         currentNamespace = ns;
                     }
                     _e.Label(func.Name);
-                    foreach (var line in func.Code.Split('\n'))
-                    {
-                        if (!string.IsNullOrWhiteSpace(line))
-                            _e.Raw(line);
-                    }
+                    EmitRuntimeCode(func.Code, currentNamespace);
                     _e.Blank();
                 }
                 // namespaceが開いたままなら戻す
@@ -364,6 +359,40 @@ public class CodeGenerator
             else
             {
                 pendingConstVal = null;
+            }
+        }
+    }
+
+    /// <summary>トップレベルのインラインASM（#ASMブロック）を出力</summary>
+    private void EmitGlobalPlainAsm()
+    {
+        foreach (var inst in _module.GlobalData)
+        {
+            if (inst.Op == IrOp.InlineAsm && inst.Dest.Kind == IrOperandKind.AsmString)
+            {
+                foreach (var line in inst.Dest.Name!.Split('\n'))
+                {
+                    if (!string.IsNullOrWhiteSpace(line))
+                        _e.Raw(line);
+                }
+            }
+        }
+    }
+
+    /// <summary>ランタイムコードを出力（namespace内なら!LABEL→NAME_SPACE_DEFAULT.LABEL変換）</summary>
+    private void EmitRuntimeCode(string code, string? currentNamespace)
+    {
+        foreach (var line in code.Split('\n'))
+        {
+            if (!string.IsNullOrWhiteSpace(line))
+            {
+                var outLine = line;
+                if (currentNamespace != null)
+                {
+                    outLine = System.Text.RegularExpressions.Regex.Replace(
+                        outLine, @"!\s*(\w+)", "NAME_SPACE_DEFAULT.$1");
+                }
+                _e.Raw(outLine);
             }
         }
     }
