@@ -21,6 +21,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private Dictionary<string, LocalVarInfo>? _localVars;
     // 関数内静的変数のAsmLabelマップ（ソース名→__FUNC_VAR形式）
     private Dictionary<string, string>? _staticVarLabels;
+    // 関数内静的配列の名前セット（アドレス参照用）
+    private HashSet<string>? _staticArrayNames;
 
     public IrGenerator(DiagnosticBag diagnostics, SymbolTable? symbols = null)
     {
@@ -238,7 +240,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 : LabelUtils.UserVarLabel(node.Name);
 
             if (_inStaticDecl && _currentFuncName != null)
+            {
                 _staticVarLabels![node.Name] = label;
+                _staticArrayNames?.Add(node.Name);
+            }
 
             _module.GlobalVars.Add(new GlobalVarInfo
             {
@@ -299,13 +304,16 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (node.StaticDeclarations.Count > 0)
         {
             var prevStaticLabels = _staticVarLabels;
+            var prevStaticArrays = _staticArrayNames;
             _staticVarLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            _staticArrayNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             _currentFuncName = LabelUtils.SanitizeLabel(node.Name);
             _inStaticDecl = true;
             foreach (var d in node.StaticDeclarations) d.Accept(this);
             _inStaticDecl = false;
             _currentFuncName = null;
             _staticVarLabels = prevStaticLabels;
+            _staticArrayNames = prevStaticArrays;
         }
 
         if (node.CodeBody != null)
@@ -387,8 +395,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var prevLocalVars = _localVars;
         var prevOffset = _localOffset;
         var prevStaticLabels = _staticVarLabels;
+        var prevStaticArrays = _staticArrayNames;
         _localVars = new Dictionary<string, LocalVarInfo>(StringComparer.OrdinalIgnoreCase);
         _staticVarLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        _staticArrayNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         _localOffset = 0;
 
         // 仮引数を仮登録（オフセットはLocalDeclarations走査後に確定）
@@ -440,6 +450,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _currentFunction = null;
         _localVars = prevLocalVars;
         _staticVarLabels = prevStaticLabels;
+        _staticArrayNames = prevStaticArrays;
         _localOffset = prevOffset;
         return IrOperand.None;
     }
@@ -914,7 +925,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
         else if (sym != null && sym.Type is ArrayType)
         {
-            // 配列変数: アドレスをロード（LD HL,label）
+            // グローバル配列変数: アドレスをロード（LD HL,label）
+            Emit(IrOp.LoadAddr, t, IrOperand.Sym(ResolveAsmLabel(node.Name)));
+        }
+        else if (_staticArrayNames != null && _staticArrayNames.Contains(node.Name))
+        {
+            // 関数内static配列: アドレスをロード（symがスコープ外で見えない場合）
             Emit(IrOp.LoadAddr, t, IrOperand.Sym(ResolveAsmLabel(node.Name)));
         }
         else
