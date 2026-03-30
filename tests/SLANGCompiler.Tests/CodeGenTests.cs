@@ -120,6 +120,15 @@ public class CodeGenTests
     }
 
     [Fact]
+    public void ByteVar_DirectLoadZeroExtend()
+    {
+        // BYTE変数の直接ロード（direct path含む）でゼロ拡張されること
+        var asm = Compile("VAR BYTE X,BYTE Y,Z; MAIN() BEGIN Z=X+Y; END;");
+        // direct path: LoadToDE側もD=$00でゼロ拡張
+        Assert.Contains("D,$00", asm);
+    }
+
+    [Fact]
     public void EntryPoint()
     {
         var asm = Compile("MAIN() BEGIN END;");

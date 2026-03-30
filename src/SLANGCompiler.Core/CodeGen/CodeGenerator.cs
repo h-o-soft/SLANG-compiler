@@ -798,12 +798,27 @@ public class CodeGenerator
                 }
                 break;
             case IrOp.LoadVar:
-                _e.Instruction("LD", $"DE,({AsmLabel(inst.Src1.Name!)})");
+                if (inst.DataSize == 1)
+                {
+                    _e.Instruction("LD", $"A,({AsmLabel(inst.Src1.Name!)})");
+                    _e.Instruction("LD", "E,A");
+                    _e.Instruction("LD", "D,$00");
+                }
+                else
+                    _e.Instruction("LD", $"DE,({AsmLabel(inst.Src1.Name!)})");
                 break;
             case IrOp.LoadLocal:
                 int offset = (int)inst.Src1.ImmediateValue;
-                _e.Instruction("LD", $"E,(IY+${offset:X2})");
-                _e.Instruction("LD", $"D,(IY+${offset + 1:X2})");
+                if (inst.DataSize == 1)
+                {
+                    _e.Instruction("LD", $"E,(IY+${offset:X2})");
+                    _e.Instruction("LD", "D,$00");
+                }
+                else
+                {
+                    _e.Instruction("LD", $"E,(IY+${offset:X2})");
+                    _e.Instruction("LD", $"D,(IY+${offset + 1:X2})");
+                }
                 break;
             case IrOp.LoadAddr:
             {
