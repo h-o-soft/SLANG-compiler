@@ -794,10 +794,22 @@ public class IrGenerator : IAstVisitor<IrOperand>
         return t;
     }
 
+    private int _floatConstCount;
+
     public IrOperand VisitFloatLiteral(FloatLiteral node)
     {
+        // FLOAT定数をconstant poolに格納し、LoadVar(dataSize:3)で読む
+        var f24 = LabelUtils.ConvertToF24(node.Value);
+        var label = $"_FC{_floatConstCount++}";
+        _module.GlobalVars.Add(new GlobalVarInfo
+        {
+            Name = label, AsmLabel = label, ByteSize = 3,
+            InitialItems = new List<InitItem> { InitItem.Byte(f24[0]), InitItem.Byte(f24[1]), InitItem.Byte(f24[2]) },
+            StorageKind = VarStorageKind.CodeConst,
+        });
         var t = IrOperand.Temp(AllocTemp());
-        Emit(IrOp.LoadConst, t, IrOperand.Imm((long)BitConverter.DoubleToInt64Bits(node.Value)));
+        Emit(IrOp.LoadVar, t, IrOperand.Sym(label), dataSize: 3);
+        _tempDataSize[t.TempIndex] = 3;
         return t;
     }
 
@@ -881,7 +893,25 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
         }
 
+        // left/rightの型を先にAcceptし、FLOATの場合はleft変換→right Acceptの順にする
         var left = node.Left.Accept(this);
+        int leftDs = left.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(left.TempIndex, out int lds) ? lds : 2;
+
+        // rightがFLOATかどうかを事前推定（AcceptしないとtempDataSizeは不明だが、
+        // FloatLiteralやFLOAT変数は先に型が分かる）
+        bool rightMightBeFloat = node.Right is FloatLiteral
+            || (node.Right is IdentifierExpr rid && _globalSymbols?.Resolve(rid.Name)?.Type?.ByteSize == 3);
+
+        // leftが整数でrightがFLOATの場合、leftの変換をright Accept前に行う
+        if (leftDs != 3 && rightMightBeFloat)
+        {
+            var conv = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.Call, conv, IrOperand.Sym("i16tof24"), IrOperand.Imm(0), dataSize: 3);
+            _tempDataSize[conv.TempIndex] = 3;
+            left = conv;
+            leftDs = 3;
+        }
+
         var right = node.Right.Accept(this);
         var dest = IrOperand.Temp(AllocTemp());
 
@@ -902,25 +932,24 @@ public class IrGenerator : IAstVisitor<IrOperand>
             _ => IrOp.Nop,
         };
 
-        // FLOAT判定: いずれかのオペランドがFLOAT(3byte)なら演算もFLOAT
-        int leftDs = left.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(left.TempIndex, out int lds) ? lds : 2;
         int rightDs = right.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(right.TempIndex, out int rds) ? rds : 2;
         int resultDs = (leftDs == 3 || rightDs == 3) ? 3 : 2;
 
-        // Word→Float型変換が必要な場合
+        // Word→Float型変換（rightがFLOATでleftがまだ整数の場合、またはその逆）
         if (resultDs == 3)
         {
             if (leftDs != 3)
             {
+                // leftの変換: このケースはrightMightBeFloat判定で漏れた場合のフォールバック
                 var conv = IrOperand.Temp(AllocTemp());
-                Emit(IrOp.Call, conv, IrOperand.Sym("i16tof24"));
+                Emit(IrOp.Call, conv, IrOperand.Sym("i16tof24"), IrOperand.Imm(0), dataSize: 3);
                 _tempDataSize[conv.TempIndex] = 3;
                 left = conv;
             }
             if (rightDs != 3)
             {
                 var conv = IrOperand.Temp(AllocTemp());
-                Emit(IrOp.Call, conv, IrOperand.Sym("i16tof24"));
+                Emit(IrOp.Call, conv, IrOperand.Sym("i16tof24"), IrOperand.Imm(0), dataSize: 3);
                 _tempDataSize[conv.TempIndex] = 3;
                 right = conv;
             }
@@ -1415,6 +1444,29 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     // ==== Helpers: Store to lvalue ====
 
+    /// <summary>代入先の型に合わせてFLOAT変換を挿入</summary>
+    private IrOperand EmitTypeConversion(IrOperand value, int targetDs)
+    {
+        int valueDs = value.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(value.TempIndex, out int vds) ? vds : 2;
+        if (targetDs == 3 && valueDs != 3)
+        {
+            // Word→Float変換
+            var conv = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.Call, conv, IrOperand.Sym("i16tof24"), IrOperand.Imm(0), dataSize: 3);
+            _tempDataSize[conv.TempIndex] = 3;
+            return conv;
+        }
+        else if (targetDs != 3 && valueDs == 3)
+        {
+            // Float→Word変換
+            var conv = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.Call, conv, IrOperand.Sym("FTOI"), IrOperand.Imm(0));
+            _tempDataSize[conv.TempIndex] = 2;
+            return conv;
+        }
+        return value;
+    }
+
     private void EmitStore(Expression target, IrOperand value)
     {
         if (target is IdentifierExpr id)
@@ -1422,12 +1474,14 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // ローカル変数優先
             if (_localVars != null && _localVars.TryGetValue(id.Name, out var localInfo))
             {
+                value = EmitTypeConversion(value, localInfo.ByteSize);
                 Emit(IrOp.StoreLocal, IrOperand.Imm(localInfo.Offset), value, dataSize: localInfo.ByteSize);
             }
             else
             {
                 var sym = _globalSymbols?.Resolve(id.Name);
                 int ds = sym?.Type?.ByteSize ?? 2;
+                value = EmitTypeConversion(value, ds);
                 Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(id.Name)), value, dataSize: ds);
             }
         }

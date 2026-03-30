@@ -627,7 +627,8 @@ public class CodeGenerator
         var fusedCompareJumps = new Dictionary<int, int>(); // compareIdx → jumpIdx
         for (int i = 0; i < insts.Count - 1; i++)
         {
-            if (IsCompareOp(insts[i].Op) && insts[i].Dest.Kind == IrOperandKind.Temp)
+            if (IsCompareOp(insts[i].Op) && insts[i].Dest.Kind == IrOperandKind.Temp
+                && insts[i].DataSize != 3) // FLOATはfused不可
             {
                 int cmpTemp = insts[i].Dest.TempIndex;
                 // 次の命令(skipを飛ばして)がJumpIfZeroでこのtempを参照するか
@@ -660,7 +661,7 @@ public class CodeGenerator
 
             var inst = insts[i];
 
-            if (directBinaryOps.Contains(i))
+            if (directBinaryOps.Contains(i) && inst.DataSize != 3)
             {
                 var s1 = insts[tempDef[inst.Src1.TempIndex]];
                 var s2 = insts[tempDef[inst.Src2.TempIndex]];
@@ -710,7 +711,7 @@ public class CodeGenerator
             }
 
             // src2のみ単純ロード: src1の結果がHL、src2をDE直接ロード
-            if (halfDirectOps.Contains(i))
+            if (halfDirectOps.Contains(i) && inst.DataSize != 3)
             {
                 var s2Inst = insts[tempDef[inst.Src2.TempIndex]];
 
@@ -751,8 +752,8 @@ public class CodeGenerator
                 continue;
             }
 
-            // 非直接ロードだが融合比較ジャンプの場合
-            if (fusedCompareJumps.TryGetValue(i, out int jumpIdx2))
+            // 非直接ロードだが融合比較ジャンプの場合（FLOATは通常パスへ）
+            if (inst.DataSize != 3 && fusedCompareJumps.TryGetValue(i, out int jumpIdx2))
             {
                 var jumpInst = insts[jumpIdx2];
                 var label = jumpInst.Dest.Name!;
@@ -771,14 +772,15 @@ public class CodeGenerator
             if (inst.Dest.Kind == IrOperandKind.Temp && !skipEmit.Contains(i))
             {
                 if (NeedsPushAfter(insts, i, inst.Dest.TempIndex))
-                    _e.Instruction("PUSH", "HL");
+                    EmitPushValue(inst.DataSize);
             }
         }
         _currentFunction = null;
     }
 
     /// <summary>単純ロード命令かどうか</summary>
-    private static bool IsSimpleLoad(IrInstruction inst) => inst.Op is
+    private static bool IsSimpleLoad(IrInstruction inst) =>
+        inst.DataSize != 3 && inst.Op is  // FLOATはdirect最適化対象外
         IrOp.LoadVar or IrOp.LoadConst or IrOp.LoadLocal or IrOp.LoadAddr;
 
     /// <summary>ロード命令をDEレジスタ版で出力</summary>
@@ -1218,7 +1220,7 @@ public class CodeGenerator
                 break;
 
             case IrOp.PushArg:
-                _e.Instruction("PUSH", "HL");
+                EmitPushValue(inst.DataSize);
                 break;
 
             case IrOp.InlineAsm:
@@ -1352,17 +1354,34 @@ public class CodeGenerator
     private void EmitLoadVar(IrInstruction inst)
     {
         var label = AsmLabel(inst.Src1.Name!);
-        _e.Instruction("LD", $"HL,({label})");
-        if (inst.DataSize == 3)
-            _e.Instruction("LD", $"A,({label}+2)");
+        if (inst.DataSize == 1)
+        {
+            _e.Instruction("LD", $"A,({label})");
+            _e.Instruction("LD", "L,A");
+            _e.Instruction("LD", "H,$00");
+        }
+        else
+        {
+            _e.Instruction("LD", $"HL,({label})");
+            if (inst.DataSize == 3)
+                _e.Instruction("LD", $"A,({label}+2)");
+        }
     }
 
     private void EmitStoreVar(IrInstruction inst)
     {
         var label = AsmLabel(inst.Dest.Name!);
-        _e.Instruction("LD", $"({label}),HL");
-        if (inst.DataSize == 3)
-            _e.Instruction("LD", $"({label}+2),A");
+        if (inst.DataSize == 1)
+        {
+            _e.Instruction("LD", "A,L");
+            _e.Instruction("LD", $"({label}),A");
+        }
+        else
+        {
+            _e.Instruction("LD", $"({label}),HL");
+            if (inst.DataSize == 3)
+                _e.Instruction("LD", $"({label}+2),A");
+        }
     }
 
     private void EmitLoadLocal(IrInstruction inst)
@@ -1415,9 +1434,10 @@ public class CodeGenerator
 
     private void EmitArith(IrInstruction inst, string op)
     {
-        _e.Instruction("POP", "DE");
-        _e.Instruction("EX", "DE,HL");
-        if (op == "ADD")
+        EmitPopToDE(inst.DataSize);
+        if (inst.DataSize == 3)
+            CallRuntime(op == "ADD" ? "f24add" : "f24sub");
+        else if (op == "ADD")
             _e.Instruction("ADD", "HL,DE");
         else
         {
@@ -1428,16 +1448,16 @@ public class CodeGenerator
 
     private void EmitMul(IrInstruction inst)
     {
-        _e.Instruction("POP", "DE");
-        _e.Instruction("EX", "DE,HL");
-        CallRuntime("MULHLDE");
+        EmitPopToDE(inst.DataSize);
+        if (inst.DataSize == 3) CallRuntime("f24mul");
+        else CallRuntime("MULHLDE");
     }
 
     private void EmitDiv(IrInstruction inst, bool signed)
     {
-        _e.Instruction("POP", "DE");
-        _e.Instruction("EX", "DE,HL");
-        CallRuntime(signed ? "SDIVHLDE" : "DIVHLDE");
+        EmitPopToDE(inst.DataSize);
+        if (inst.DataSize == 3) CallRuntime("f24div");
+        else CallRuntime(signed ? "SDIVHLDE" : "DIVHLDE");
     }
 
     private void EmitMod(IrInstruction inst, bool signed)
@@ -1496,12 +1516,14 @@ public class CodeGenerator
 
     private void EmitCompare(IrInstruction inst, string trueCond)
     {
-        // src1(stack) cmp src2(HL) → 0 or 1
-        // trueCond: 条件成立時のフラグ。INCをスキップする条件はその反転。
-        _e.Instruction("POP", "DE");     // DE = src1
-        _e.Instruction("EX", "DE,HL");   // HL = src1, DE = src2
-        _e.Instruction("OR", "A");
-        _e.Instruction("SBC", "HL,DE");  // src1 - src2
+        EmitPopToDE(inst.DataSize);
+        if (inst.DataSize == 3)
+            CallRuntime("f24cmp");
+        else
+        {
+            _e.Instruction("OR", "A");
+            _e.Instruction("SBC", "HL,DE");
+        }
         _e.Instruction("LD", "HL,$0000");
         _e.Instruction("JR", $"{InvertCond[trueCond]},$+3"); // false時にINCスキップ
         _e.Instruction("INC", "HL");
@@ -1509,13 +1531,24 @@ public class CodeGenerator
 
     private void EmitCompareGt(IrInstruction inst)
     {
-        // src1 > src2 → swap and use C: src2 - src1 で C=1 なら src1 > src2
-        _e.Instruction("POP", "DE");     // DE = src1
-        // HL = src2, DE = src1 → src2 - src1
-        _e.Instruction("OR", "A");
-        _e.Instruction("SBC", "HL,DE");  // src2 - src1
+        // src1 > src2 → swap and use C
+        EmitPopToDE(inst.DataSize);
+        // After EmitPopToDE: HL=src1, DE=src2 (for FLOAT: AHL=src1, CDE=src2)
+        // Need: src2 - src1, so swap
+        _e.Instruction("EX", "DE,HL");
+        if (inst.DataSize == 3)
+        {
+            // FLOAT: swap A and C too
+            _e.Instruction("LD", "B,A"); _e.Instruction("LD", "A,C"); _e.Instruction("LD", "C,B");
+            CallRuntime("f24cmp");
+        }
+        else
+        {
+            _e.Instruction("OR", "A");
+            _e.Instruction("SBC", "HL,DE");
+        }
         _e.Instruction("LD", "HL,$0000");
-        _e.Instruction("JR", "C,$+3");   // C=1 → src1 > src2
+        _e.Instruction("JR", "NC,$+3");
         _e.Instruction("INC", "HL");
     }
 
@@ -1786,6 +1819,32 @@ public class CodeGenerator
             _e.Instruction("OUT", "(C),L");
             _e.Instruction("INC", "BC");
             _e.Instruction("OUT", "(C),H");
+        }
+    }
+
+    /// <summary>FLOAT対応のPUSH: DataSize==3ならPUSH AF(上位byte)も追加</summary>
+    private void EmitPushValue(int dataSize = 2)
+    {
+        if (dataSize == 3) _e.Instruction("PUSH", "AF");
+        _e.Instruction("PUSH", "HL");
+    }
+
+    /// <summary>FLOAT対応のPOP: スタックからsrc1を復元し、現在のHL+Aをsrc2としてDE+Cに移動</summary>
+    private void EmitPopToDE(int dataSize = 2)
+    {
+        if (dataSize == 3)
+        {
+            // src2(現在): AHL → CDE に移動
+            _e.Instruction("LD", "C,A");     // src2 high → C
+            _e.Instruction("EX", "DE,HL");   // src2 low → DE
+            // src1: スタックから復元 → AHL
+            _e.Instruction("POP", "HL");     // src1 low
+            _e.Instruction("POP", "AF");     // src1 high → A (PUSHした順の逆)
+        }
+        else
+        {
+            _e.Instruction("POP", "DE");
+            _e.Instruction("EX", "DE,HL");   // HL=src1, DE=src2
         }
     }
 
