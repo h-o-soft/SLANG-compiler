@@ -1109,6 +1109,45 @@ public class IrGenerator : IAstVisitor<IrOperand>
             return result;
         }
 
+        // FLOAT専用パターン: A*A → f24sqr, 2*A → f24mul2
+        // ASTレベルで早期検出（i16tof24変換前に拾う必要がある）
+        // 現段階ではglobal FLOAT identifierのみ対象（ローカルFLOATやCastExprは取りこぼし）
+        if (node.Op == BinaryOp.Mul)
+        {
+            bool leftIsFloat = node.Left is IdentifierExpr li2
+                && _globalSymbols?.Resolve(li2.Name)?.Type?.ByteSize == 3;
+            bool rightIsFloat = node.Right is IdentifierExpr ri2
+                && _globalSymbols?.Resolve(ri2.Name)?.Type?.ByteSize == 3;
+
+            // f24sqr: X*X（同一FLOAT変数）
+            if (leftIsFloat && rightIsFloat
+                && node.Left is IdentifierExpr sqrL && node.Right is IdentifierExpr sqrR
+                && sqrL.Name == sqrR.Name)
+            {
+                node.Left.Accept(this); // AHL = X
+                var sqrDest = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.Call, sqrDest, IrOperand.Sym("f24sqr"), IrOperand.Imm(0), dataSize: 3);
+                _tempDataSize[sqrDest.TempIndex] = 3;
+                return sqrDest;
+            }
+
+            // f24mul2: 2*X or X*2（一方が整数リテラル2、他方がglobal FLOAT）
+            Expression? floatSide = null;
+            if (node.Left is IntegerLiteral il2a && il2a.Value == 2 && rightIsFloat)
+                floatSide = node.Right;
+            else if (node.Right is IntegerLiteral il2b && il2b.Value == 2 && leftIsFloat)
+                floatSide = node.Left;
+
+            if (floatSide != null)
+            {
+                floatSide.Accept(this); // AHL = X
+                var mul2Dest = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.Call, mul2Dest, IrOperand.Sym("f24mul2"), IrOperand.Imm(0), dataSize: 3);
+                _tempDataSize[mul2Dest.TempIndex] = 3;
+                return mul2Dest;
+            }
+        }
+
         // left/rightの型を先にAcceptし、FLOATの場合はleft変換→right Acceptの順にする
         var left = node.Left.Accept(this);
         int leftDs = left.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(left.TempIndex, out int lds) ? lds : 2;
