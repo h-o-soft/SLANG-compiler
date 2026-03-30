@@ -756,7 +756,7 @@ public class CodeGenerator
                     int constVal = (int)(s2.Src1.ImmediateValue & 0xFFFF);
                     if (constVal == 1)
                     {
-                        EmitInstruction(s1); // src1 → HL
+                        EmitInstruction(s1);
                         _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
                         if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
                             _e.Instruction("PUSH", "HL");
@@ -767,6 +767,37 @@ public class CodeGenerator
                         EmitInstruction(s1);
                         _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
                         _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
+                        continue;
+                    }
+                }
+
+                // 定数乗算最適化（旧コンパイラ互換）
+                if (inst.Op == IrOp.Mul
+                    && s2.Op == IrOp.LoadConst && s2.Src1.Kind == IrOperandKind.Immediate)
+                {
+                    int cv = (int)(s2.Src1.ImmediateValue & 0xFFFF);
+                    if (cv == 1) { EmitInstruction(s1); }
+                    else if (EmitConstMul(cv, () => EmitInstruction(s1)))
+                    { /* handled */ }
+                    else goto noConstMul;
+                    if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                        _e.Instruction("PUSH", "HL");
+                    continue;
+                    noConstMul:;
+                }
+
+                // 定数MOD最適化: 2のべき乗 → AND (n-1)
+                if (inst.Op == IrOp.Mod
+                    && s2.Op == IrOp.LoadConst && s2.Src1.Kind == IrOperandKind.Immediate)
+                {
+                    int cv = (int)(s2.Src1.ImmediateValue & 0xFFFF);
+                    if (cv > 0 && (cv & (cv - 1)) == 0)
+                    {
+                        EmitInstruction(s1);
+                        _e.Instruction("LD", $"DE,${cv - 1:X4}");
+                        CallRuntime("ANDHLDE");
                         if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
                             _e.Instruction("PUSH", "HL");
                         continue;
@@ -812,6 +843,34 @@ public class CodeGenerator
                     {
                         _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
                         _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
+                        continue;
+                    }
+                }
+
+                // 定数乗算最適化（halfDirect経路）
+                if (inst.Op == IrOp.Mul
+                    && s2Inst.Op == IrOp.LoadConst && s2Inst.Src1.Kind == IrOperandKind.Immediate)
+                {
+                    int cv = (int)(s2Inst.Src1.ImmediateValue & 0xFFFF);
+                    if (EmitConstMul(cv))
+                    {
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
+                        continue;
+                    }
+                }
+
+                // 定数MOD最適化（halfDirect経路）
+                if (inst.Op == IrOp.Mod
+                    && s2Inst.Op == IrOp.LoadConst && s2Inst.Src1.Kind == IrOperandKind.Immediate)
+                {
+                    int cv = (int)(s2Inst.Src1.ImmediateValue & 0xFFFF);
+                    if (cv > 0 && (cv & (cv - 1)) == 0)
+                    {
+                        _e.Instruction("LD", $"DE,${cv - 1:X4}");
+                        CallRuntime("ANDHLDE");
                         if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
                             _e.Instruction("PUSH", "HL");
                         continue;
@@ -910,6 +969,47 @@ public class CodeGenerator
     /// jumpOnTrue=false (JumpIfZero): 条件偽でlabelへジャンプ
     /// jumpOnTrue=true (JumpIfNonZero): 条件真でlabelへジャンプ
     /// </summary>
+    /// <summary>定数乗算をインラインで生成。HLに値がある前提。対応外ならfalse。</summary>
+    private bool EmitConstMul(int constVal, Action? emitSrc = null)
+    {
+        switch (constVal)
+        {
+            case 2:
+                emitSrc?.Invoke();
+                _e.Instruction("ADD", "HL,HL");
+                return true;
+            case 3:
+                emitSrc?.Invoke();
+                _e.Instruction("LD", "D,H"); _e.Instruction("LD", "E,L");
+                _e.Instruction("ADD", "HL,HL");
+                _e.Instruction("ADD", "HL,DE");
+                return true;
+            case 4:
+                emitSrc?.Invoke();
+                _e.Instruction("ADD", "HL,HL"); _e.Instruction("ADD", "HL,HL");
+                return true;
+            case 5:
+                emitSrc?.Invoke();
+                _e.Instruction("LD", "D,H"); _e.Instruction("LD", "E,L");
+                _e.Instruction("ADD", "HL,HL"); _e.Instruction("ADD", "HL,HL");
+                _e.Instruction("ADD", "HL,DE");
+                return true;
+            case 6:
+                emitSrc?.Invoke();
+                _e.Instruction("ADD", "HL,HL");
+                _e.Instruction("LD", "D,H"); _e.Instruction("LD", "E,L");
+                _e.Instruction("ADD", "HL,HL");
+                _e.Instruction("ADD", "HL,DE");
+                return true;
+            case 8:
+                emitSrc?.Invoke();
+                _e.Instruction("ADD", "HL,HL"); _e.Instruction("ADD", "HL,HL"); _e.Instruction("ADD", "HL,HL");
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private void EmitFusedCompareJump(IrInstruction cmpInst, string label, bool jumpOnTrue = false)
     {
         // jumpOnTrue=false: CmpEq→「等しくなければ飛ぶ」= JP NZ
