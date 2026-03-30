@@ -125,6 +125,20 @@ public class RuntimeManager
         }
     }
 
+    public IEnumerable<(string Label, int Size, string? LibName)> GetUsedWorkVariablesWithLib()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var func in GetUsedFunctions())
+        {
+            if (func.Works == null) continue;
+            foreach (var (label, size) in func.Works)
+            {
+                if (seen.Add(label))
+                    yield return (label, size, func.LibName);
+            }
+        }
+    }
+
     /// <summary>
     /// 通常出力対象の使用済み関数（除外されたものをスキップ）
     /// </summary>

@@ -300,8 +300,19 @@ public class CodeGenerator
             {
                 _e.Blank();
                 _e.Comment("=== Runtime Functions ===");
+                string? currentNamespace = null;
                 foreach (var func in outputFuncs)
                 {
+                    // namespace切り替え
+                    var ns = func.LibName;
+                    if (ns != currentNamespace)
+                    {
+                        if (ns != null)
+                            _e.Raw($"[{ns}]");
+                        else if (currentNamespace != null)
+                            _e.Raw("[NAME_SPACE_DEFAULT]");
+                        currentNamespace = ns;
+                    }
                     _e.Label(func.Name);
                     foreach (var line in func.Code.Split('\n'))
                     {
@@ -310,6 +321,9 @@ public class CodeGenerator
                     }
                     _e.Blank();
                 }
+                // namespaceが開いたままなら戻す
+                if (currentNamespace != null)
+                    _e.Raw("[NAME_SPACE_DEFAULT]");
             }
         }
 
@@ -373,7 +387,7 @@ public class CodeGenerator
                     _e.Raw($"\tDB\t{string.Join(",", byteRun.Select(b => $"${b:X2}"))}");
                     byteRun.Clear();
                 }
-                _e.Raw($"\tDW\t{item.AsmExpr}");
+                _e.Raw($"\tDW\t{QualifyAsmExpr(item.AsmExpr!)}");
             }
         }
         if (byteRun.Count > 0)
@@ -493,14 +507,26 @@ public class CodeGenerator
         // _A = _AF + 1 (エイリアス、領域を消費しない)
         _e.Raw($"_A EQU (_AF + 1)");
 
-        // 4. ランタイムworks変数
+        // 4. ランタイムworks変数（LibNameがある場合はnamespace内で定義）
         if (_runtimeManager != null)
         {
-            foreach (var (label, size) in _runtimeManager.GetUsedWorkVariables())
+            string? currentNs = null;
+            foreach (var (label, size, libName) in _runtimeManager.GetUsedWorkVariablesWithLib())
             {
-                _e.Raw($"{label} EQU (__WORK__ + {workOffset})");
+                if (libName != currentNs)
+                {
+                    if (libName != null)
+                        _e.Raw($"[{libName}]");
+                    else if (currentNs != null)
+                        _e.Raw("[NAME_SPACE_DEFAULT]");
+                    currentNs = libName;
+                }
+                var workRef = currentNs != null ? "NAME_SPACE_DEFAULT.__WORK__" : "__WORK__";
+                _e.Raw($"{label} EQU ({workRef} + {workOffset})");
                 workOffset += size;
             }
+            if (currentNs != null)
+                _e.Raw("[NAME_SPACE_DEFAULT]");
         }
 
         // 5. __IYWORK (256バイト)
@@ -1867,13 +1893,52 @@ public class CodeGenerator
     private void CallRuntime(string name)
     {
         _calledFunctions.Add(name);
-        _e.Instruction("CALL", name);
+        _e.Instruction("CALL", QualifyAsmExpr(name));
+    }
+
+    /// <summary>ランタイム関数にLibNameがあればnamespace修飾する</summary>
+    private string QualifyRuntimeName(string name)
+    {
+        if (_runtimeManager != null
+            && _runtimeManager.Functions.TryGetValue(name, out var func)
+            && func.LibName != null)
+        {
+            return $"{func.LibName}.{name}";
+        }
+        return name;
+    }
+
+    /// <summary>アセンブラ式文字列内のランタイムラベルをnamespace修飾する</summary>
+    private string QualifyAsmExpr(string expr)
+    {
+        if (_runtimeManager == null) return expr;
+        // ラベル名部分を抽出してnamespace修飾
+        // 式は "LABEL+$XXXX" や "LABEL-$XXXX" や "LABEL" 形式
+        foreach (var func in _runtimeManager.Functions)
+        {
+            if (func.Value.LibName == null) continue;
+            var name = func.Key;
+            // 式内にラベルが含まれるか（前後が演算子or先頭/末尾）
+            int idx = expr.IndexOf(name, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) continue;
+            // 前後の境界チェック（部分一致を避ける）
+            bool startOk = idx == 0 || !char.IsLetterOrDigit(expr[idx - 1]) && expr[idx - 1] != '_';
+            bool endOk = idx + name.Length >= expr.Length
+                || !char.IsLetterOrDigit(expr[idx + name.Length]) && expr[idx + name.Length] != '_';
+            if (startOk && endOk)
+            {
+                var qualified = $"{func.Value.LibName}.{name}";
+                expr = expr.Substring(0, idx) + qualified + expr.Substring(idx + name.Length);
+            }
+        }
+        return expr;
     }
 
     private void EmitCall(IrInstruction inst)
     {
         var funcName = inst.Src1.Name ?? inst.Src1.ToString();
         _calledFunctions.Add(funcName);
+        var callLabel = QualifyAsmExpr(funcName);
         int machineArgs = (int)inst.Src2.ImmediateValue;
 
         if (machineArgs > 0)
@@ -1902,6 +1967,6 @@ public class CodeGenerator
             }
         }
 
-        _e.Instruction("CALL", funcName);
+        _e.Instruction("CALL", callLabel);
     }
 }
