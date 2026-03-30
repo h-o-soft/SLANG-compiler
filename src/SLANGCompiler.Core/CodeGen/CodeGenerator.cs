@@ -754,6 +754,13 @@ public class CodeGenerator
                     && s2.Op == IrOp.LoadConst && s2.Src1.Kind == IrOperandKind.Immediate)
                 {
                     int constVal = (int)(s2.Src1.ImmediateValue & 0xFFFF);
+                    if (constVal == 0) // +0/-0 は何もしない
+                    {
+                        EmitInstruction(s1);
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
+                        continue;
+                    }
                     if (constVal == 1)
                     {
                         EmitInstruction(s1);
@@ -778,7 +785,8 @@ public class CodeGenerator
                     && s2.Op == IrOp.LoadConst && s2.Src1.Kind == IrOperandKind.Immediate)
                 {
                     int cv = (int)(s2.Src1.ImmediateValue & 0xFFFF);
-                    if (cv == 1) { EmitInstruction(s1); }
+                    if (cv == 0) { _e.Instruction("LD", "HL,$0000"); }
+                    else if (cv == 1) { EmitInstruction(s1); }
                     else if (EmitConstMul(cv, () => EmitInstruction(s1)))
                     { /* handled */ }
                     else goto noConstMul;
@@ -827,11 +835,17 @@ public class CodeGenerator
                     continue;
                 }
 
-                // INC/DEC最適化
+                // 定数加減算最適化
                 if ((inst.Op == IrOp.Add || inst.Op == IrOp.Sub)
                     && s2Inst.Op == IrOp.LoadConst && s2Inst.Src1.Kind == IrOperandKind.Immediate)
                 {
                     int cv = (int)(s2Inst.Src1.ImmediateValue & 0xFFFF);
+                    if (cv == 0) // +0/-0 は何もしない
+                    {
+                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                            _e.Instruction("PUSH", "HL");
+                        continue;
+                    }
                     if (cv == 1)
                     {
                         _e.Instruction(inst.Op == IrOp.Add ? "INC" : "DEC", "HL");
@@ -854,12 +868,14 @@ public class CodeGenerator
                     && s2Inst.Op == IrOp.LoadConst && s2Inst.Src1.Kind == IrOperandKind.Immediate)
                 {
                     int cv = (int)(s2Inst.Src1.ImmediateValue & 0xFFFF);
-                    if (EmitConstMul(cv))
-                    {
-                        if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
-                            _e.Instruction("PUSH", "HL");
-                        continue;
-                    }
+                    if (cv == 0) { _e.Instruction("LD", "HL,$0000"); }
+                    else if (cv == 1) { /* HLそのまま */ }
+                    else if (EmitConstMul(cv)) { /* handled */ }
+                    else goto noHalfConstMul;
+                    if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                        _e.Instruction("PUSH", "HL");
+                    continue;
+                    noHalfConstMul:;
                 }
 
                 // 定数MOD最適化（halfDirect経路）
