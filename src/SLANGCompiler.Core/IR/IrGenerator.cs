@@ -1335,6 +1335,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (node.Operand is IdentifierExpr id)
         {
             var t = IrOperand.Temp(AllocTemp());
+            // ローカル変数/パラメータ: IY+offsetのアドレスを計算
+            if (_localVars != null && _localVars.TryGetValue(id.Name, out var localInfo))
+            {
+                Emit(IrOp.InlineAsm, t, IrOperand.Asm(
+                    $"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${localInfo.Offset:X4}\n\tADD\tHL,DE"));
+                return t;
+            }
             Emit(IrOp.LoadAddr, t, IrOperand.Sym(ResolveAsmLabel(id.Name)));
             return t;
         }
