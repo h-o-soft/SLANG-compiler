@@ -101,12 +101,15 @@ ifeq ($(DETECTED_OS),Windows)
 	@if not exist "$(CONFIG_DIR)" $(MKDIR) "$(CONFIG_DIR)"
 	@if not exist "$(CONFIG_DIR)\include" $(MKDIR) "$(CONFIG_DIR)\include"
 	@if not exist "$(CONFIG_DIR)\lib" $(MKDIR) "$(CONFIG_DIR)\lib"
+	@if not exist "$(CONFIG_DIR)\runtime" $(MKDIR) "$(CONFIG_DIR)\runtime"
 	$(XCOPY) include "$(CONFIG_DIR)\include"
 	$(XCOPY) lib "$(CONFIG_DIR)\lib"
+	$(XCOPY) runtime "$(CONFIG_DIR)\runtime"
 else
 	$(MKDIR) $(CONFIG_DIR)
 	$(XCOPY) include $(CONFIG_DIR)/
 	$(XCOPY) lib $(CONFIG_DIR)/
+	$(XCOPY) runtime $(CONFIG_DIR)/
 endif
 
 # アンインストール
