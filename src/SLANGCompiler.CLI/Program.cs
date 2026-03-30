@@ -8,24 +8,29 @@ namespace SLANGCompiler.CLI;
 
 class Program
 {
+    const string Version = "0.13.0";
+
     static int Main(string[] args)
     {
-        if (args.Length == 0)
+        if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
         {
-            Console.Error.WriteLine("SLANG Compiler v0.13.0 (new architecture)");
-            Console.Error.WriteLine("Usage: slangc [options] <input.sl>");
-            Console.Error.WriteLine("Options:");
-            Console.Error.WriteLine("  -o <file>    Output file path");
-            Console.Error.WriteLine("  -E <env>     Environment name (default: lsx)");
-            Console.Error.WriteLine("  --dump-ast   Dump AST to stdout");
-            Console.Error.WriteLine("  --dump-ir    Dump IR to stdout");
-            return 1;
+            PrintUsage();
+            return args.Length == 0 ? 1 : 0;
         }
 
+        if (args.Contains("--version"))
+        {
+            Console.WriteLine($"slangc {Version}");
+            return 0;
+        }
+
+        // --- オプション解析 ---
         string? outputPath = null;
         string envName = "lsx";
         bool dumpAst = false;
         bool dumpIr = false;
+        var extraIncludePaths = new List<string>();
+        var extraLibPaths = new List<string>();
         var inputFiles = new List<string>();
 
         for (int i = 0; i < args.Length; i++)
@@ -38,6 +43,12 @@ class Program
                 case "-E" when i + 1 < args.Length:
                     envName = args[++i];
                     break;
+                case "-I" when i + 1 < args.Length:
+                    extraIncludePaths.Add(args[++i]);
+                    break;
+                case "-L" when i + 1 < args.Length:
+                    extraLibPaths.Add(args[++i]);
+                    break;
                 case "--dump-ast":
                     dumpAst = true;
                     break;
@@ -45,6 +56,11 @@ class Program
                     dumpIr = true;
                     break;
                 default:
+                    if (args[i].StartsWith("-"))
+                    {
+                        Console.Error.WriteLine($"Error: Unknown option: {args[i]}");
+                        return 1;
+                    }
                     inputFiles.Add(args[i]);
                     break;
             }
@@ -55,6 +71,9 @@ class Program
             Console.Error.WriteLine("Error: No input files specified.");
             return 1;
         }
+
+        // --- パス解決 ---
+        var pathResolver = new PathResolver(extraIncludePaths, extraLibPaths);
 
         var diagnostics = new DiagnosticBag();
 
@@ -67,14 +86,14 @@ class Program
             }
 
             var source = File.ReadAllText(filePath);
+            var baseDir = Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? ".";
 
             // Phase 1: Lexer
             var lexer = new Lexer.Lexer(source, filePath);
             var tokens = lexer.Tokenize();
 
             // Phase 1.5: Preprocessor (#INCLUDE展開, #IF/#ELSE/#ENDIF評価)
-            var baseDir = Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? ".";
-            var includePaths = new List<string> { baseDir, ".", "include" };
+            var includePaths = pathResolver.GetIncludePaths(baseDir);
             var preprocessor = new Lexer.Preprocessor(diagnostics, includePaths);
             tokens = preprocessor.Process(tokens, baseDir);
 
@@ -98,7 +117,6 @@ class Program
             {
                 Console.WriteLine($"; AST for {filePath}");
                 Console.WriteLine("; (AST printer not yet implemented)");
-                // TODO: implement AST printer
             }
 
             // Phase 3: Semantic Analysis
@@ -127,11 +145,9 @@ class Program
             }
 
             // Phase 5: Code Generation
-            // 環境設定の読み込みとランタイムロード
             var runtimeManager = new Runtime.RuntimeManager();
-            var envConfig = LoadEnvironment(envName, runtimeManager, baseDir);
+            var envConfig = LoadEnvironment(envName, runtimeManager, pathResolver);
 
-            // 環境のデフォルトORG/WORKをIrModuleに反映（ソースで未指定の場合）
             if (envConfig != null)
             {
                 if (!irModule.OrgAddress.HasValue && envConfig.DefaultOrg > 0)
@@ -149,12 +165,11 @@ class Program
                 return 1;
             }
 
-            // Output main
+            // Output
             var outPath = outputPath ?? Path.ChangeExtension(filePath, ".ASM");
             File.WriteAllText(outPath, mainAsm);
             Console.Error.WriteLine($"; Output: {outPath}");
 
-            // Output overlay modules
             if (overlays.Count > 0)
             {
                 foreach (var (name, asm) in overlays)
@@ -164,27 +179,41 @@ class Program
                     Console.Error.WriteLine($"; Output: {overlayPath} (overlay)");
                 }
 
-                // 共有シンボルの.incファイル生成
                 var incPath = Path.ChangeExtension(outPath, ".inc");
                 GenerateSharedSymbolsInc(incPath, irModule);
                 Console.Error.WriteLine($"; Output: {incPath} (shared symbols)");
             }
         }
 
-        // エラーがなくてもwarning等があれば出力
         if (diagnostics.Diagnostics.Count > 0)
             diagnostics.WriteTo(Console.Error);
 
         return diagnostics.HasErrors ? 1 : 0;
     }
 
-    /// <summary>
-    /// ランタイムライブラリファイル（新形式.asm）を探して読み込む
-    /// </summary>
-    /// <summary>
-    /// 共有シンボル定義の.incファイル生成。
-    /// メイン部とオーバーレイの両方からINCLUDEして使う。
-    /// </summary>
+    static void PrintUsage()
+    {
+        Console.Error.WriteLine($"SLANG Compiler v{Version}");
+        Console.Error.WriteLine("Usage: slangc [options] <input.sl>");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("Options:");
+        Console.Error.WriteLine("  -o <file>       Output file path");
+        Console.Error.WriteLine("  -E <env>        Environment name (default: lsx)");
+        Console.Error.WriteLine("  -I <path>       Add include search path (repeatable)");
+        Console.Error.WriteLine("  -L <path>       Add library search path (repeatable)");
+        Console.Error.WriteLine("  --dump-ast      Dump AST to stdout");
+        Console.Error.WriteLine("  --dump-ir       Dump IR to stdout");
+        Console.Error.WriteLine("  -h, --help      Show this help");
+        Console.Error.WriteLine("  --version       Show version");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("Search paths (in order):");
+        Console.Error.WriteLine("  1. Source file directory");
+        Console.Error.WriteLine("  2. Paths from -I / -L flags");
+        Console.Error.WriteLine("  3. $SLANG_HOME/{include,lib,runtime}");
+        Console.Error.WriteLine($"  4. {PathResolver.UserConfigDir}/");
+        Console.Error.WriteLine("  5. <compiler_dir>/../share/slang/");
+    }
+
     static void GenerateSharedSymbolsInc(string incPath, IR.IrModule module)
     {
         using var writer = new StreamWriter(incPath);
@@ -192,7 +221,6 @@ class Program
         writer.WriteLine("; Include this file from both main and overlay ASM files.");
         writer.WriteLine();
 
-        // グローバル変数
         writer.WriteLine("; --- Global Variables ---");
         foreach (var gv in module.GlobalVars)
         {
@@ -202,24 +230,15 @@ class Program
                 writer.WriteLine($"; {gv.AsmLabel}\t; address assigned by linker/assembler");
         }
 
-        // メイン部の関数
         writer.WriteLine();
         writer.WriteLine("; --- Functions ---");
         foreach (var func in module.Functions)
-        {
             writer.WriteLine($"; {func.Name}\t; defined in main");
-        }
 
-        // オーバーレイの関数
         foreach (var overlay in module.Overlays)
-        {
             foreach (var func in overlay.Functions)
-            {
                 writer.WriteLine($"; {func.Name}\t; defined in overlay {overlay.Index}");
-            }
-        }
 
-        // 文字列テーブル
         if (module.StringTable.Count > 0)
         {
             writer.WriteLine();
@@ -229,83 +248,150 @@ class Program
         }
     }
 
-    /// <summary>
-    /// 環境設定(.env)を読み込み、指定されたランタイムライブラリをロード
-    /// </summary>
-    static Runtime.EnvironmentConfig? LoadEnvironment(string envName, Runtime.RuntimeManager manager, string baseDir)
+    static Runtime.EnvironmentConfig? LoadEnvironment(
+        string envName, Runtime.RuntimeManager manager, PathResolver paths)
     {
-        // .envファイルを探す
-        var envSearchDirs = new[] {
-            Path.Combine(baseDir, "lib", "env"),
-            "lib/env",
-        };
-
-        foreach (var dir in envSearchDirs)
+        // .envファイルを検索
+        var envFile = $"{envName}.env";
+        foreach (var dir in paths.GetLibPaths())
         {
-            var envPath = Path.Combine(dir, $"{envName}.env");
-            if (File.Exists(envPath))
+            var envPath = Path.Combine(dir, "env", envFile);
+            if (!File.Exists(envPath)) continue;
+
+            try
             {
-                try
-                {
-                    var config = Runtime.EnvironmentLoader.Load(envPath);
-                    Console.Error.WriteLine($"; Environment: {config.Name} (type={config.EnvType})");
+                var config = Runtime.EnvironmentLoader.Load(envPath);
+                Console.Error.WriteLine($"; Environment: {config.Name} (type={config.EnvType})");
 
-                    // 環境が指定するライブラリをロード
-                    var runtimeDir = Path.Combine(Path.GetDirectoryName(envPath) ?? ".", "..", "..", "runtime");
-                    var altRuntimeDir = "runtime";
-                    foreach (var lib in config.Libraries)
-                    {
-                        var libPath = Path.Combine(runtimeDir, lib);
-                        if (!File.Exists(libPath))
-                            libPath = Path.Combine(altRuntimeDir, lib);
-                        if (File.Exists(libPath))
-                        {
-                            manager.LoadFromFile(libPath);
-                        }
-                        else
-                        {
-                            Console.Error.WriteLine($"; Warning: Runtime not found: {lib}");
-                        }
-                    }
-
-                    return config;
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"; Warning: Failed to load env {envPath}: {ex.Message}");
-                }
+                // 環境が指定するランタイムライブラリをロード
+                LoadRuntimeLibraries(config.Libraries, manager, paths);
+                return config;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"; Warning: Failed to load env {envPath}: {ex.Message}");
             }
         }
 
-        // .envが見つからない場合はruntimeディレクトリから直接ロード
-        LoadRuntimeLibrariesFromDir(manager, baseDir);
-        return null;
-    }
-
-    static void LoadRuntimeLibrariesFromDir(Runtime.RuntimeManager manager, string baseDir)
-    {
-        // 新形式の.asmランタイムファイルを探す
-        var searchDirs = new[] {
-            Path.Combine(baseDir, "lib", "runtime"),
-            Path.Combine(baseDir, "runtime"),
-            "lib/runtime",
-            "runtime",
-        };
-
-        foreach (var dir in searchDirs)
+        // .envが見つからない場合: runtimeディレクトリから直接ロード
+        Console.Error.WriteLine($"; Warning: Environment '{envName}' not found, loading runtime directly");
+        foreach (var dir in paths.GetRuntimePaths())
         {
             if (!Directory.Exists(dir)) continue;
             foreach (var file in Directory.GetFiles(dir, "*.asm"))
             {
-                try
-                {
-                    manager.LoadFromFile(file);
-                }
+                try { manager.LoadFromFile(file); }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine($"; Warning: Failed to load runtime {file}: {ex.Message}");
+                    Console.Error.WriteLine($"; Warning: Failed to load {file}: {ex.Message}");
                 }
             }
         }
+        return null;
+    }
+
+    static void LoadRuntimeLibraries(
+        IEnumerable<string> libraries, Runtime.RuntimeManager manager, PathResolver paths)
+    {
+        foreach (var lib in libraries)
+        {
+            bool found = false;
+            foreach (var dir in paths.GetRuntimePaths())
+            {
+                var libPath = Path.Combine(dir, lib);
+                if (File.Exists(libPath))
+                {
+                    manager.LoadFromFile(libPath);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                Console.Error.WriteLine($"; Warning: Runtime not found: {lib}");
+        }
+    }
+}
+
+/// <summary>
+/// インクルード/ライブラリ/ランタイムのパス解決。
+/// 検索順: ソースディレクトリ → -I/-L指定 → $SLANG_HOME → ~/.config/SLANG → <compiler>/../share/slang
+/// </summary>
+class PathResolver
+{
+    private readonly List<string> _extraIncludePaths;
+    private readonly List<string> _extraLibPaths;
+    private readonly List<string> _defaultPaths;
+
+    /// <summary>ユーザー設定ディレクトリ（~/.config/SLANG）</summary>
+    public static string UserConfigDir =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "SLANG");
+
+    public PathResolver(List<string> extraIncludePaths, List<string> extraLibPaths)
+    {
+        _extraIncludePaths = extraIncludePaths;
+        _extraLibPaths = extraLibPaths;
+        _defaultPaths = BuildDefaultPaths();
+    }
+
+    /// <summary>デフォルト検索パスを構築</summary>
+    private static List<string> BuildDefaultPaths()
+    {
+        var paths = new List<string>();
+
+        // $SLANG_HOME
+        var slangHome = Environment.GetEnvironmentVariable("SLANG_HOME");
+        if (!string.IsNullOrEmpty(slangHome) && Directory.Exists(slangHome))
+            paths.Add(slangHome);
+
+        // ~/.config/SLANG
+        var configDir = UserConfigDir;
+        if (Directory.Exists(configDir))
+            paths.Add(configDir);
+
+        // <compiler_executable>/../share/slang （システムインストール）
+        var exeDir = Path.GetDirectoryName(Environment.ProcessPath);
+        if (exeDir != null)
+        {
+            var shareDir = Path.Combine(exeDir, "..", "share", "slang");
+            var resolved = Path.GetFullPath(shareDir);
+            if (Directory.Exists(resolved))
+                paths.Add(resolved);
+        }
+
+        return paths;
+    }
+
+    /// <summary>#INCLUDE用の検索パスリスト</summary>
+    public List<string> GetIncludePaths(string sourceDir)
+    {
+        var paths = new List<string>();
+        paths.Add(sourceDir);                   // 1. ソースファイルのディレクトリ
+        paths.AddRange(_extraIncludePaths);      // 2. -I で指定されたパス
+        foreach (var d in _defaultPaths)         // 3-5. デフォルトパス
+            paths.Add(Path.Combine(d, "include"));
+        return paths;
+    }
+
+    /// <summary>lib/（env定義ファイル等）の検索パスリスト</summary>
+    public List<string> GetLibPaths()
+    {
+        var paths = new List<string>();
+        paths.Add("lib");                        // CWDのlib（開発時）
+        paths.AddRange(_extraLibPaths);          // -L で指定されたパス
+        foreach (var d in _defaultPaths)
+            paths.Add(Path.Combine(d, "lib"));
+        return paths;
+    }
+
+    /// <summary>ランタイム(.asm)の検索パスリスト</summary>
+    public List<string> GetRuntimePaths()
+    {
+        var paths = new List<string>();
+        paths.Add("runtime");                    // CWDのruntime（開発時）
+        foreach (var lp in _extraLibPaths)       // -L配下のruntime
+            paths.Add(Path.Combine(lp, "runtime"));
+        foreach (var d in _defaultPaths)
+            paths.Add(Path.Combine(d, "runtime"));
+        return paths;
     }
 }
