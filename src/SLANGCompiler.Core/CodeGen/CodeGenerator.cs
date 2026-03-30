@@ -96,12 +96,24 @@ public class CodeGenerator
             {
                 _e.Blank();
                 _e.Comment("=== Runtime Functions ===");
+                string? currentNamespace = null;
                 foreach (var func in overlayRuntime)
                 {
+                    var ns = func.LibName;
+                    if (ns != currentNamespace)
+                    {
+                        if (ns != null)
+                            _e.Raw($"[{ns}]");
+                        else if (currentNamespace != null)
+                            _e.Raw("[NAME_SPACE_DEFAULT]");
+                        currentNamespace = ns;
+                    }
                     _e.Label(func.Name);
-                    EmitRuntimeCode(func.Code, null);
+                    EmitRuntimeCode(func.Code, currentNamespace);
                     _e.Blank();
                 }
+                if (currentNamespace != null)
+                    _e.Raw("[NAME_SPACE_DEFAULT]");
             }
         }
 
@@ -1974,7 +1986,11 @@ public class CodeGenerator
     {
         var funcName = inst.Src1.Name ?? inst.Src1.ToString();
         _calledFunctions.Add(funcName);
-        var callLabel = QualifyAsmExpr(funcName);
+        // ランタイム関数またはアドレス式（SOROBAN+$14等）の場合のみalias解決・namespace修飾
+        // ユーザー定義の単純関数名との衝突を避けるため、ランタイムに存在するかアドレス式かで判定
+        var isRuntimeOrExpr = _runtimeManager?.Functions.ContainsKey(funcName) == true
+            || funcName.Contains('+') || funcName.Contains('-');
+        var callLabel = isRuntimeOrExpr ? QualifyAsmExpr(funcName) : funcName;
         int machineArgs = (int)inst.Src2.ImmediateValue;
 
         if (machineArgs > 0)

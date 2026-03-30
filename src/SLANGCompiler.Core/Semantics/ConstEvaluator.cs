@@ -23,7 +23,7 @@ public class ConstEvaluator
         return expr switch
         {
             IntegerLiteral lit => (int)lit.Value,
-            FloatLiteral flt => (int)flt.Value,
+            FloatLiteral flt when flt.Value == Math.Truncate(flt.Value) => (int)flt.Value,
             IdentifierExpr id => EvaluateIdentifier(id),
             UnaryExpr unary => EvaluateUnary(unary),
             BinaryExpr binary => EvaluateBinary(binary),
