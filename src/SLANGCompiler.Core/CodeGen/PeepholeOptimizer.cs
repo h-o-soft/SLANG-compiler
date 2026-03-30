@@ -71,14 +71,14 @@ public class PeepholeOptimizer
                 }
             }
 
-            // Rule 7: LD A,H / OR L / JP Z,label → OR直後にJPを簡略化
-            // (これは条件分岐の標準パターンなのでそのまま)
-
-            // Rule 8: LD HL,$0000 → LD HL,0
-            // (可読性のみ、サイズは同じ)
-
-            // Rule 9: INC HL を ADD HL,1 の代わりに (size optimization)
-            // (元実装のピープホールルールに従う)
+            // Rule 7: LD DE,xxxx / PUSH DE / POP HL → LD HL,xxxx
+            if (line.StartsWith("LD\tDE,") && next == "PUSH\tDE"
+                && i + 2 < lines.Count && lines[i + 2].Trim() == "POP\tHL")
+            {
+                var operand = line[6..];
+                result.Add($"\tLD\tHL,{operand}");
+                i += 2; changes++; continue;
+            }
 
             result.Add(lines[i]);
         }
