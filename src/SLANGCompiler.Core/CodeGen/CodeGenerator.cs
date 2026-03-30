@@ -702,16 +702,16 @@ public class CodeGenerator
                 && insts[i].DataSize != 3) // FLOATはfused不可
             {
                 int cmpTemp = insts[i].Dest.TempIndex;
-                // 次の命令(skipを飛ばして)がJumpIfZeroでこのtempを参照するか
+                // 次の命令(skipを飛ばして)がJumpIfZero/JumpIfNonZeroでこのtempを参照するか
                 for (int j = i + 1; j < insts.Count; j++)
                 {
                     if (skipEmit.Contains(j)) continue;
-                    if (insts[j].Op == IrOp.JumpIfZero
+                    if ((insts[j].Op == IrOp.JumpIfZero || insts[j].Op == IrOp.JumpIfNonZero)
                         && insts[j].Src1.Kind == IrOperandKind.Temp
                         && insts[j].Src1.TempIndex == cmpTemp)
                     {
                         fusedCompareJumps[i] = j;
-                        skipEmit.Add(j); // JumpIfZeroは融合先で処理
+                        skipEmit.Add(j);
                         break;
                     }
                     // このtempが他で使われるなら融合不可
@@ -742,9 +742,10 @@ public class CodeGenerator
                 {
                     var jumpInst = insts[jumpIdx];
                     var label = jumpInst.Dest.Name!;
+                    bool jumpOnTrue = jumpInst.Op == IrOp.JumpIfNonZero;
                     EmitInstruction(s1);
                     EmitLoadToDE(s2);
-                    EmitFusedCompareJump(inst, label);
+                    EmitFusedCompareJump(inst, label, jumpOnTrue);
                     continue;
                 }
 
@@ -789,8 +790,9 @@ public class CodeGenerator
                 if (fusedCompareJumps.TryGetValue(i, out int hJumpIdx))
                 {
                     var jumpInst = insts[hJumpIdx];
+                    bool jumpOnTrue = jumpInst.Op == IrOp.JumpIfNonZero;
                     EmitLoadToDE(s2Inst);
-                    EmitFusedCompareJump(inst, jumpInst.Dest.Name!);
+                    EmitFusedCompareJump(inst, jumpInst.Dest.Name!, jumpOnTrue);
                     continue;
                 }
 
@@ -828,12 +830,11 @@ public class CodeGenerator
             {
                 var jumpInst = insts[jumpIdx2];
                 var label = jumpInst.Dest.Name!;
-                // 比較のsrc1/src2はスタック経由
-                EmitInstruction(inst); // 比較(0/1生成)は不要だが... フォールバック
-                // TODO: スタック経由の融合比較
-                _e.Instruction("LD", "A,H");
-                _e.Instruction("OR", "L");
-                _e.Instruction("JP", $"Z,{label}");
+                bool jumpOnTrue = jumpInst.Op == IrOp.JumpIfNonZero;
+                // POP DE → HL vs DE の比較
+                _e.Instruction("POP", "DE");
+                _e.Instruction("EX", "DE,HL");
+                EmitFusedCompareJump(inst, label, jumpOnTrue);
                 continue;
             }
 
@@ -904,77 +905,73 @@ public class CodeGenerator
     /// 比較+分岐の融合: 比較結果を0/1にせず、フラグから直接JP。
     /// HL=src1, DE=src2 がセット済み。JumpIfZero→条件が偽なら分岐。
     /// </summary>
-    private void EmitFusedCompareJump(IrInstruction cmpInst, string label)
+    /// <summary>
+    /// 比較+ジャンプ融合。HL=src1, DE=src2セット済み。
+    /// jumpOnTrue=false (JumpIfZero): 条件偽でlabelへジャンプ
+    /// jumpOnTrue=true (JumpIfNonZero): 条件真でlabelへジャンプ
+    /// </summary>
+    private void EmitFusedCompareJump(IrInstruction cmpInst, string label, bool jumpOnTrue = false)
     {
-        // CmpEq + JumpIfZero = 「等しくなければジャンプ」→ JP NZ
-        // CmpNeq + JumpIfZero = 「等しければジャンプ」→ JP Z
-        // CmpLt + JumpIfZero = 「小さくなければジャンプ」→ JP NC
-        // CmpGe + JumpIfZero = 「以上でなければジャンプ」→ JP C
-        // CmpGt + JumpIfZero = src2-src1してCで判定
-
+        // jumpOnTrue=false: CmpEq→「等しくなければ飛ぶ」= JP NZ
+        // jumpOnTrue=true:  CmpEq→「等しければ飛ぶ」= JP Z
         switch (cmpInst.Op)
         {
             case IrOp.CmpEq:
                 _e.Instruction("OR", "A");
                 _e.Instruction("SBC", "HL,DE");
-                _e.Instruction("JP", $"NZ,{label}");
+                _e.Instruction("JP", $"{(jumpOnTrue ? "Z" : "NZ")},{label}");
                 break;
             case IrOp.CmpNeq:
                 _e.Instruction("OR", "A");
                 _e.Instruction("SBC", "HL,DE");
-                _e.Instruction("JP", $"Z,{label}");
+                _e.Instruction("JP", $"{(jumpOnTrue ? "NZ" : "Z")},{label}");
                 break;
             case IrOp.CmpLt:
                 _e.Instruction("OR", "A");
                 _e.Instruction("SBC", "HL,DE");
-                _e.Instruction("JP", $"NC,{label}");
+                _e.Instruction("JP", $"{(jumpOnTrue ? "C" : "NC")},{label}");
                 break;
             case IrOp.CmpGe:
                 _e.Instruction("OR", "A");
                 _e.Instruction("SBC", "HL,DE");
-                _e.Instruction("JP", $"C,{label}");
+                _e.Instruction("JP", $"{(jumpOnTrue ? "NC" : "C")},{label}");
                 break;
             case IrOp.CmpGt:
-                // src1 > src2 → src2 - src1 で C判定
+                // src1 > src2 → EX DE,HL; SBC HL,DE
                 _e.Instruction("EX", "DE,HL");
                 _e.Instruction("OR", "A");
                 _e.Instruction("SBC", "HL,DE");
-                _e.Instruction("JP", $"NC,{label}");
+                _e.Instruction("JP", $"{(jumpOnTrue ? "C" : "NC")},{label}");
                 break;
             case IrOp.CmpLe:
-                // src1 <= src2 → !(src1 > src2) → src2-src1でC判定
+                // src1 <= src2 → EX DE,HL; SBC HL,DE
                 _e.Instruction("EX", "DE,HL");
                 _e.Instruction("OR", "A");
                 _e.Instruction("SBC", "HL,DE");
-                _e.Instruction("JP", $"C,{label}");
+                _e.Instruction("JP", $"{(jumpOnTrue ? "NC" : "C")},{label}");
                 break;
 
-            // 符号付き比較: BIT 7テストで符号判定後、同符号ならunsigned比較
+            // 符号付き比較
             case IrOp.CmpSLt:
-                // HL .<. DE → false(not less)ならlabelへジャンプ
-                EmitSignedFusedJump(label, lessThan: true);
+                EmitSignedFusedJump(label, lessThan: true, jumpOnTrue);
                 break;
             case IrOp.CmpSGe:
-                // HL .>=. DE → false(less than)ならlabelへジャンプ
-                EmitSignedFusedJump(label, lessThan: false);
+                EmitSignedFusedJump(label, lessThan: false, jumpOnTrue);
                 break;
             case IrOp.CmpSGt:
-                // HL .>. DE → EX DE,HL して .<. 判定
                 _e.Instruction("EX", "DE,HL");
-                EmitSignedFusedJump(label, lessThan: true);
+                EmitSignedFusedJump(label, lessThan: true, jumpOnTrue);
                 break;
             case IrOp.CmpSLe:
-                // HL .<=. DE → EX DE,HL して .>=. 判定
                 _e.Instruction("EX", "DE,HL");
-                EmitSignedFusedJump(label, lessThan: false);
+                EmitSignedFusedJump(label, lessThan: false, jumpOnTrue);
                 break;
 
             default:
-                // フォールバック: 0/1生成 + JP Z
                 EmitBinaryDirect(cmpInst);
                 _e.Instruction("LD", "A,H");
                 _e.Instruction("OR", "L");
-                _e.Instruction("JP", $"Z,{label}");
+                _e.Instruction("JP", $"{(jumpOnTrue ? "NZ" : "Z")},{label}");
                 break;
         }
     }
@@ -984,31 +981,36 @@ public class CodeGenerator
     /// lessThan=true: src1 &lt; src2でなければlabelへ（CmpSLt + JumpIfZero）
     /// lessThan=false: src1 &gt;= src2でなければlabelへ（CmpSGe + JumpIfZero）
     /// </summary>
-    private void EmitSignedFusedJump(string label, bool lessThan)
+    /// <summary>
+    /// 符号付き比較+ジャンプ融合。
+    /// jumpOnTrue=false: 条件偽でlabelへ / jumpOnTrue=true: 条件真でlabelへ
+    /// </summary>
+    private void EmitSignedFusedJump(string label, bool lessThan, bool jumpOnTrue = false)
     {
-        // 符号ビット比較: HL(bit7) vs DE(bit7)
-        // 符号が異なる → HL負&DE正ならHL<DE(true), HL正&DE負ならHL>=DE
-        // 符号が同じ → unsigned compare (SBC HL,DE)
+        // jumpOnFalse(JumpIfZero): lessThan=true → HL>=DEならlabelへ
+        // jumpOnTrue(JumpIfNonZero): lessThan=true → HL<DEならlabelへ
+        // effectiveLessThan: 実際に「less thanでジャンプ」するかどうか
+        bool jumpIfLess = lessThan == jumpOnTrue;
+
         var sameSign = $"_SC{_genLabelCount++}";
         _e.Instruction("LD", "A,H");
-        _e.Instruction("XOR", "D");          // bit7が異なれば符号が異なる
-        _e.Instruction("JP", $"P,{sameSign}"); // bit7=0(同符号)ならsameSignへ
-        // 異符号: HLのbit7で判定（HL負→HL<DE）
+        _e.Instruction("XOR", "D");
+        _e.Instruction("JP", $"P,{sameSign}");
+        // 異符号: HLのbit7で判定
         _e.Instruction("BIT", "7,H");
-        if (lessThan)
-            _e.Instruction("JP", $"Z,{label}");  // HL正(bit7=0)→HL>=DE→not less→jump
+        if (jumpIfLess)
+            _e.Instruction("JP", $"NZ,{label}"); // HL負→HL<DE→jump
         else
-            _e.Instruction("JP", $"NZ,{label}"); // HL負(bit7=1)→HL<DE→not ge→jump
+            _e.Instruction("JP", $"Z,{label}");  // HL正→HL>=DE→jump
         var done = $"_SC{_genLabelCount++}";
         _e.Instruction("JP", done);
         _e.Label(sameSign);
-        // 同符号: unsigned compare
         _e.Instruction("OR", "A");
         _e.Instruction("SBC", "HL,DE");
-        if (lessThan)
-            _e.Instruction("JP", $"NC,{label}"); // not carry→HL>=DE→not less→jump
+        if (jumpIfLess)
+            _e.Instruction("JP", $"C,{label}");  // carry→HL<DE→jump
         else
-            _e.Instruction("JP", $"C,{label}");  // carry→HL<DE→not ge→jump
+            _e.Instruction("JP", $"NC,{label}"); // not carry→HL>=DE→jump
         _e.Label(done);
     }
 

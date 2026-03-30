@@ -615,10 +615,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
         Emit(node.IsDownTo ? IrOp.Sub : IrOp.Add, newVal, curVal, one);
         Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(node.Variable)), newVal);
 
-        // Compare with limit（符号付き比較: 0を跨ぐオーバーフローで終了）
+        // Compare with limit
+        // FOR TO: unsigned比較（旧コンパイラ互換、コンパクト）
+        // FOR DOWNTO: 符号付き比較（0を跨ぐオーバーフロー対策）
         var limit = node.To.Accept(this);
         var cmp = IrOperand.Temp(AllocTemp());
-        Emit(node.IsDownTo ? IrOp.CmpSGe : IrOp.CmpSLe, cmp, newVal, limit);
+        Emit(node.IsDownTo ? IrOp.CmpSGe : IrOp.CmpLe, cmp, newVal, limit);
         Emit(IrOp.JumpIfNonZero, IrOperand.Lbl(startLabel), cmp);
 
         Emit(IrOp.Label, IrOperand.Lbl(endLabel));
