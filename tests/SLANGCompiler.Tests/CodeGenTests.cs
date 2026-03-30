@@ -77,10 +77,11 @@ public class CodeGenTests
     }
 
     [Fact]
-    public void StringTable()
+    public void StringInlinePrint()
     {
+        // PRINT文字列はMPRNT方式（インライン）で出力される
         var asm = Compile("MAIN() BEGIN PRINT(\"Hello\"); END;");
-        Assert.Contains("_S0:", asm);
+        Assert.Contains("CALL\tMPRNT", asm);
         Assert.Contains("DB\t\"Hello\",0", asm);
     }
 
@@ -151,10 +152,11 @@ public class CodeGenTests
     }
 
     [Fact]
-    public void PrintString_CallsPMSX()
+    public void PrintString_CallsMPRNT()
     {
+        // PRINT文字列はMPRNT方式（インライン文字列）で出力される
         var asm = Compile("MAIN() BEGIN PRINT(\"Hello\"); END;");
-        Assert.Contains("CALL\tPMSX", asm);
+        Assert.Contains("CALL\tMPRNT", asm);
         Assert.DoesNotContain("CALL\tPSTR", asm);
     }
 
@@ -286,7 +288,7 @@ public class CodeGenTests
         // 定数TRUE条件: 条件チェックコードが生成されないこと
         var asm = Compile("CONST C=1; MAIN() BEGIN IF C==1 THEN PRINT(\"Y\",/); END;");
         var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
-        Assert.Contains("CALL\tPMSX", body);
+        Assert.Contains("CALL\tMPRNT", body);
         Assert.DoesNotContain("JP\tZ,", body);
     }
 
@@ -337,5 +339,37 @@ public class CodeGenTests
         Assert.Contains("PUSH\tIY", body);
         Assert.Contains("POP\tHL", body);
         Assert.Contains("ADD\tHL,DE", body);
+    }
+
+    [Fact]
+    public void LocalArray_ConstIndex_Word_DirectIY()
+    {
+        // WORD local array の定数添字 → (IY+d) 直接アクセス
+        var asm = Compile("MAIN() BEGIN ARRAY A[5]; A[2]=99; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        // 定数添字: StoreLocalで(IY+offset)直接ストア
+        Assert.Contains("(IY+", body);
+        // 配列アクセスでPUSH IY; POP HL; ADD HL,DEは不要（プロローグのPUSH IYは許容）
+        Assert.DoesNotContain("POP\tHL", body);
+    }
+
+    [Fact]
+    public void LocalArray_ConstIndex_Byte_DirectIY()
+    {
+        // BYTE local array の定数添字 → (IY+d) 直接アクセス
+        var asm = Compile("MAIN() BEGIN ARRAY BYTE B[10]; B[3]=42; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Contains("(IY+", body);
+        Assert.DoesNotContain("POP\tHL", body);
+    }
+
+    [Fact]
+    public void LocalArray_ConstIndex_MultiDim_DirectIY()
+    {
+        // 多次元 local array の定数添字 → (IY+d) 直接アクセス
+        var asm = Compile("MAIN() BEGIN ARRAY A[3][5]; A[1][2]=7; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Contains("(IY+", body);
+        Assert.DoesNotContain("POP\tHL", body);
     }
 }

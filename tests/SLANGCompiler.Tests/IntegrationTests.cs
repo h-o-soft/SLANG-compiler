@@ -143,7 +143,7 @@ public class IntegrationTests : IDisposable
     {
         // PRINT文で必要なランタイムが自動リンクされること
         var asm = CompileWithCli("MAIN() BEGIN PRINT(\"Hello\", 42, /); END;");
-        Assert.Contains("PMSX:", asm);   // 文字列表示
+        Assert.Contains("MPRNT:", asm);  // 文字列表示（インライン方式）
         Assert.Contains("P10:", asm);    // 数値表示
         Assert.Contains("PCRONE:", asm); // 改行
         Assert.Contains("VTOS:", asm);   // 数値→文字列変換
@@ -188,11 +188,11 @@ SUB() BEGIN PRINT(""X""); END;
         // メインにBEEPのランタイムがあること
         Assert.Contains("BEEP:", mainAsm);
 
-        // オーバーレイにはPMSXがあるがBEEPは含まれないこと
+        // オーバーレイにはMPRNTがあるがBEEPは含まれないこと
         Assert.True(overlays.Count > 0, "No overlay files generated");
         foreach (var (name, asm) in overlays)
         {
-            Assert.Contains("PMSX:", asm);
+            Assert.Contains("MPRNT:", asm);
             Assert.DoesNotContain("BEEP:", asm);
         }
     }
