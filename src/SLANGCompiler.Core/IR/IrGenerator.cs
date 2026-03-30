@@ -305,20 +305,27 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         itemSize = cast.TargetSize == DataSize.Byte ? 1 : cast.TargetSize == DataSize.Float ? 3 : 2;
                     }
 
+                    // 定数式の評価を試みる（BinaryExpr, CONST参照なども含む）
+                    var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+                    var constVal = constEval?.Evaluate(initExpr);
                     if (initExpr is IntegerLiteral ilit)
+                        constVal = (int)ilit.Value; // IntegerLiteralは直接使用
+
+                    if (constVal.HasValue)
                     {
+                        int v = constVal.Value;
                         if (itemSize == 1)
-                            initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
+                            initItems.Add(InitItem.Byte((byte)(v & 0xFF)));
                         else if (itemSize == 3)
                         {
-                            initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
-                            initItems.Add(InitItem.Byte((byte)((ilit.Value >> 8) & 0xFF)));
-                            initItems.Add(InitItem.Byte((byte)((ilit.Value >> 16) & 0xFF)));
+                            initItems.Add(InitItem.Byte((byte)(v & 0xFF)));
+                            initItems.Add(InitItem.Byte((byte)((v >> 8) & 0xFF)));
+                            initItems.Add(InitItem.Byte((byte)((v >> 16) & 0xFF)));
                         }
                         else
                         {
-                            initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
-                            initItems.Add(InitItem.Byte((byte)((ilit.Value >> 8) & 0xFF)));
+                            initItems.Add(InitItem.Byte((byte)(v & 0xFF)));
+                            initItems.Add(InitItem.Byte((byte)((v >> 8) & 0xFF)));
                         }
                     }
                     else if (initExpr is StringLiteral slit)
@@ -465,14 +472,21 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 initExpr = cast.Operand;
                 itemSize = cast.TargetSize == DataSize.Byte ? 1 : cast.TargetSize == DataSize.Float ? 3 : 2;
             }
-            if (initExpr is IntegerLiteral ilit)
+            // 定数式の評価を試みる（BinaryExpr, CONST参照なども含む）
+            var constEval2 = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+            var constVal2 = constEval2?.Evaluate(initExpr);
+            if (initExpr is IntegerLiteral ilit2)
+                constVal2 = (int)ilit2.Value;
+
+            if (constVal2.HasValue)
             {
+                int v = constVal2.Value;
                 if (itemSize == 1)
-                    initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
+                    initItems.Add(InitItem.Byte((byte)(v & 0xFF)));
                 else
                 {
-                    initItems.Add(InitItem.Byte((byte)(ilit.Value & 0xFF)));
-                    initItems.Add(InitItem.Byte((byte)((ilit.Value >> 8) & 0xFF)));
+                    initItems.Add(InitItem.Byte((byte)(v & 0xFF)));
+                    initItems.Add(InitItem.Byte((byte)((v >> 8) & 0xFF)));
                 }
             }
             else if (initExpr is StringLiteral slit)
@@ -482,10 +496,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
             else
             {
-                // 非定数式: アセンブラ式に変換
+                // 非定数式: アセンブラ式に変換（ラベル参照等）
                 var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics);
-                if (asmResult.HasValue && itemSize == 2)
+                if (asmResult.HasValue)
                 {
+                    // ラベル参照は常にWORD（アドレス）
                     initItems.Add(InitItem.Word(asmResult.Value.Expr));
                     foreach (var dep in asmResult.Value.Deps)
                         _module.AddressSymbolDeps.Add(dep);

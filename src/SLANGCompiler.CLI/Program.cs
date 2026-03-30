@@ -295,10 +295,15 @@ class Program
     {
         foreach (var lib in libraries)
         {
+            // .yml → .asm 読み替え（旧.envとの互換性）
+            var asmLib = lib.EndsWith(".yml", StringComparison.OrdinalIgnoreCase)
+                ? Path.ChangeExtension(lib, ".asm")
+                : lib;
+
             bool found = false;
             foreach (var dir in paths.GetRuntimePaths())
             {
-                var libPath = Path.Combine(dir, lib);
+                var libPath = Path.Combine(dir, asmLib);
                 if (File.Exists(libPath))
                 {
                     manager.LoadFromFile(libPath);
@@ -307,7 +312,7 @@ class Program
                 }
             }
             if (!found)
-                Console.Error.WriteLine($"; Warning: Runtime not found: {lib}");
+                Console.Error.WriteLine($"; Warning: Runtime not found: {asmLib}");
         }
     }
 }
@@ -388,8 +393,11 @@ class PathResolver
     {
         var paths = new List<string>();
         paths.Add("runtime");                    // CWDのruntime（開発時）
-        foreach (var lp in _extraLibPaths)       // -L配下のruntime
-            paths.Add(Path.Combine(lp, "runtime"));
+        foreach (var lp in _extraLibPaths)
+        {
+            paths.Add(lp);                       // -Lパス直接（runtime/を直接指定した場合）
+            paths.Add(Path.Combine(lp, "runtime")); // -L配下のruntime/
+        }
         foreach (var d in _defaultPaths)
             paths.Add(Path.Combine(d, "runtime"));
         return paths;

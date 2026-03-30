@@ -134,6 +134,15 @@ internal static class LabelUtils
                     if (left == null || right == null) return null;
                     return $"{left}{(bin.Op == Parser.Ast.BinaryOp.Add ? "+" : "-")}{right}";
 
+                case Parser.Ast.BinaryExpr bin2:
+                    // Mul等の定数演算: ConstEvaluatorで評価してリテラルに変換
+                    var constEval = symbols != null ? new Semantics.ConstEvaluator(symbols) : null;
+                    var constVal = constEval?.Evaluate(bin2);
+                    if (constVal.HasValue)
+                        return $"${constVal.Value & 0xFFFF:X4}";
+                    diag?.Error($"Unsupported expression in MACHINE/CONST address: {e.GetType().Name}", e.Span);
+                    return null;
+
                 default:
                     diag?.Error($"Unsupported expression in MACHINE/CONST address: {e.GetType().Name}", e.Span);
                     return null;
