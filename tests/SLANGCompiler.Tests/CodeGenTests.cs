@@ -489,4 +489,15 @@ public class CodeGenTests
         // BYTE: INC HL (offset+1) が使われる。ADD HL,HL (×2) は使われない
         Assert.DoesNotContain("ADD\tHL,HL", body);
     }
+
+    [Fact]
+    public void BytePointerVar_StoreAsWord()
+    {
+        // VAR BYTE sptr[] のポインタ変数自体はWORD(2byte)でストアされること
+        // 要素がBYTEでも変数(アドレス保持)はWORD
+        var asm = Compile("F() VAR BYTE P[]; { P = $9000; P[0] = 1; } MAIN() BEGIN F(); END;");
+        // LD (_V_F_P),HL がWORDストア（LD (_V_F_P),A ではない）
+        Assert.Contains("(_V_F_P),HL", asm);
+        Assert.DoesNotContain("(_V_F_P),A", asm);
+    }
 }

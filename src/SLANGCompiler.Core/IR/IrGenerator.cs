@@ -371,7 +371,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (_inStaticDecl && _currentFuncName != null)
             {
                 _staticVarLabels![node.Name] = label;
-                _staticVarSizes![node.Name] = node.Size == DataSize.Byte ? 1 : 2;
+                // 要素サイズ（配列アクセスのelemSize用）
+                _staticVarSizes![node.Name] = isByte ? 1 : 2;
                 _staticArrayNames?.Add(node.Name);
             }
 
@@ -1130,8 +1131,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
         else
         {
             // dataSizeはシンボルテーブル→_staticVarSizes→デフォルト2
-            int ds = sym?.Type?.ByteSize
-                ?? (_staticVarSizes != null && _staticVarSizes.TryGetValue(node.Name, out int svDs) ? svDs : 2);
+            // ポインタ配列(sptr[])は要素がBYTEでも変数自体はWORD
+            int ds;
+            if (_staticArrayNames != null && _staticArrayNames.Contains(node.Name))
+                ds = 2; // ポインタ変数は常にWORD
+            else
+                ds = sym?.Type?.ByteSize
+                    ?? (_staticVarSizes != null && _staticVarSizes.TryGetValue(node.Name, out int svDs) ? svDs : 2);
             Emit(IrOp.LoadVar, t, IrOperand.Sym(ResolveAsmLabel(node.Name)), dataSize: ds);
             _tempDataSize[t.TempIndex] = ds;
         }
@@ -1900,8 +1906,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else
             {
                 var sym = _globalSymbols?.Resolve(id.Name);
-                int ds = sym?.Type?.ByteSize
-                    ?? (_staticVarSizes != null && _staticVarSizes.TryGetValue(id.Name, out int svDs2) ? svDs2 : 2);
+                int ds;
+                if (_staticArrayNames != null && _staticArrayNames.Contains(id.Name))
+                    ds = 2; // ポインタ変数は常にWORD
+                else
+                    ds = sym?.Type?.ByteSize
+                        ?? (_staticVarSizes != null && _staticVarSizes.TryGetValue(id.Name, out int svDs2) ? svDs2 : 2);
                 value = EmitTypeConversion(value, ds);
                 Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(id.Name)), value, dataSize: ds);
             }
