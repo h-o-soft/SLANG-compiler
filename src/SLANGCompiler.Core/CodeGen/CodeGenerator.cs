@@ -1214,6 +1214,10 @@ public class CodeGenerator
                     || funcName.Contains('+') || funcName.Contains('-');
                 var callLabel = isRuntimeOrExpr ? QualifyAsmExpr(funcName) : funcName;
                 _e.Instruction("CALL", callLabel);
+
+                // 戻り値のPUSH判定
+                if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                    EmitPushValue(inst.DataSize);
                 continue;
             }
 
