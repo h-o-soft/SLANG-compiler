@@ -21,9 +21,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private Dictionary<string, LocalVarInfo>? _localVars;
     // 関数内静的変数のAsmLabelマップ（ソース名→__FUNC_VAR形式）
     private Dictionary<string, string>? _staticVarLabels;
-    // 関数内静的変数のdataSizeマップ（BYTE変数のFOR文対応）
+    // 関数内静的変数のdataSizeマップ（BYTE変数のFOR/代入対応）
     private Dictionary<string, int>? _staticVarSizes;
-    // 関数内静的配列の名前セット（アドレス参照用）
+    // 関数内静的配列の要素サイズマップ（BYTE配列のインデックスアクセス用）
+    private Dictionary<string, int>? _staticElemSizes;
+    // 関数内静的配列の名前セット（サイズ確定配列のアドレス参照用）
     private HashSet<string>? _staticArrayNames;
 
     public IrGenerator(DiagnosticBag diagnostics, SymbolTable? symbols = null)
@@ -371,9 +373,14 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (_inStaticDecl && _currentFuncName != null)
             {
                 _staticVarLabels![node.Name] = label;
-                // 要素サイズ（配列アクセスのelemSize用）
-                _staticVarSizes![node.Name] = isByte ? 1 : 2;
-                _staticArrayNames?.Add(node.Name);
+                // 変数自体のサイズ: PointerType(間接変数)はWORD(2)
+                bool isPointerType = dims.All(d => d == 0);
+                _staticVarSizes![node.Name] = isPointerType ? 2 : 2; // 配列変数は常にWORD
+                // 要素サイズ: BYTE配列のインデックスアクセス用
+                _staticElemSizes![node.Name] = isByte ? 1 : 2;
+                // サイズ確定配列のみ_staticArrayNamesに追加
+                if (!isPointerType)
+                    _staticArrayNames?.Add(node.Name);
             }
 
             _module.GlobalVars.Add(new GlobalVarInfo
@@ -436,9 +443,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
         {
             var prevStaticLabels = _staticVarLabels;
             var prevStaticSizes = _staticVarSizes;
+            var prevStaticElemSizes = _staticElemSizes;
             var prevStaticArrays = _staticArrayNames;
             _staticVarLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             _staticVarSizes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            _staticElemSizes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             _staticArrayNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             _currentFuncName = LabelUtils.SanitizeLabel(node.Name);
             _inStaticDecl = true;
@@ -447,6 +456,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             _currentFuncName = null;
             _staticVarLabels = prevStaticLabels;
             _staticVarSizes = prevStaticSizes;
+            _staticElemSizes = prevStaticElemSizes;
             _staticArrayNames = prevStaticArrays;
         }
 
@@ -538,10 +548,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var prevOffset = _localOffset;
         var prevStaticLabels = _staticVarLabels;
         var prevStaticSizes = _staticVarSizes;
+        var prevStaticElemSizes = _staticElemSizes;
         var prevStaticArrays = _staticArrayNames;
         _localVars = new Dictionary<string, LocalVarInfo>(StringComparer.OrdinalIgnoreCase);
         _staticVarLabels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         _staticVarSizes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        _staticElemSizes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         _staticArrayNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         _localOffset = 0;
 
@@ -595,6 +607,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _localVars = prevLocalVars;
         _staticVarLabels = prevStaticLabels;
         _staticVarSizes = prevStaticSizes;
+        _staticElemSizes = prevStaticElemSizes;
         _staticArrayNames = prevStaticArrays;
         _localOffset = prevOffset;
         return IrOperand.None;
@@ -1133,11 +1146,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // dataSizeはシンボルテーブル→_staticVarSizes→デフォルト2
             // ポインタ配列(sptr[])は要素がBYTEでも変数自体はWORD
             int ds;
-            if (_staticArrayNames != null && _staticArrayNames.Contains(node.Name))
-                ds = 2; // ポインタ変数は常にWORD
-            else
-                ds = sym?.Type?.ByteSize
-                    ?? (_staticVarSizes != null && _staticVarSizes.TryGetValue(node.Name, out int svDs) ? svDs : 2);
+            ds = sym?.Type?.ByteSize
+                ?? (_staticVarSizes != null && _staticVarSizes.TryGetValue(node.Name, out int svDs) ? svDs : 2);
             Emit(IrOp.LoadVar, t, IrOperand.Sym(ResolveAsmLabel(node.Name)), dataSize: ds);
             _tempDataSize[t.TempIndex] = ds;
         }
@@ -1441,17 +1451,25 @@ public class IrGenerator : IAstVisitor<IrOperand>
         bool isByteAccess = arraySym?.Type is MemoryArrayType mat && mat.ElementType == SlangType.Byte;
 
         // 間接変数判定 (VAR x[])
+        // static PointerType: _staticVarSizesに要素サイズがあるが_staticArrayNamesに入っていない
+        bool isStaticIndirect = arraySym == null && arrayName != null
+            && _staticVarSizes != null && _staticVarSizes.ContainsKey(arrayName)
+            && !(_staticArrayNames != null && _staticArrayNames.Contains(arrayName));
+        // ローカルPointerType
+        bool isLocalIndirect = arraySym == null && arrayName != null
+            && _localVars != null && _localVars.TryGetValue(arrayName, out var localPtrInfo)
+            && !localPtrInfo.IsArray; // IsArray=trueはサイズ確定配列
         bool isIndirect = arraySym?.Type is PointerType
-            || (arraySym == null && _staticArrayNames != null && arrayName != null && _staticArrayNames.Contains(arrayName));
+            || isStaticIndirect || isLocalIndirect;
         // 間接変数/配列のBYTE判定
         bool isIndirectByte = arraySym?.Type is PointerType pt && pt.ElementType == SlangType.Byte;
         // ローカル変数のBYTE判定
         if (!isIndirectByte && arrayName != null && _localVars != null
             && _localVars.TryGetValue(arrayName, out var localArrPtrInfo) && localArrPtrInfo.IsByte)
             isIndirectByte = true;
-        // staticスコープ外でsymがnullの場合は_staticVarSizesで判定
+        // staticスコープ外でsymがnullの場合は_staticElemSizesで判定
         if (!isIndirectByte && arraySym == null && arrayName != null
-            && _staticVarSizes != null && _staticVarSizes.TryGetValue(arrayName, out int arrDs) && arrDs == 1)
+            && _staticElemSizes != null && _staticElemSizes.TryGetValue(arrayName, out int arrEs) && arrEs == 1)
             isIndirectByte = true;
         bool isArrayByte = arraySym?.Type is ArrayType aty && aty.ElementType == SlangType.Byte;
 
@@ -1907,11 +1925,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
             {
                 var sym = _globalSymbols?.Resolve(id.Name);
                 int ds;
-                if (_staticArrayNames != null && _staticArrayNames.Contains(id.Name))
-                    ds = 2; // ポインタ変数は常にWORD
-                else
-                    ds = sym?.Type?.ByteSize
-                        ?? (_staticVarSizes != null && _staticVarSizes.TryGetValue(id.Name, out int svDs2) ? svDs2 : 2);
+                ds = sym?.Type?.ByteSize
+                    ?? (_staticVarSizes != null && _staticVarSizes.TryGetValue(id.Name, out int svDs2) ? svDs2 : 2);
                 value = EmitTypeConversion(value, ds);
                 Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(id.Name)), value, dataSize: ds);
             }
@@ -1922,14 +1937,21 @@ public class IrGenerator : IAstVisitor<IrOperand>
             var arraySym = arrayName != null ? _globalSymbols?.Resolve(arrayName) : null;
             bool isMemArray = arraySym?.Type is MemoryArrayType;
             bool isByteAccess = arraySym?.Type is MemoryArrayType mt && mt.ElementType == SlangType.Byte;
+            // 間接変数判定
+            bool isStaticIndirect2 = arraySym == null && arrayName != null
+                && _staticVarSizes != null && _staticVarSizes.ContainsKey(arrayName)
+                && !(_staticArrayNames != null && _staticArrayNames.Contains(arrayName));
+            bool isLocalIndirect2 = arraySym == null && arrayName != null
+                && _localVars != null && _localVars.TryGetValue(arrayName, out var localPtrInfo3)
+                && !localPtrInfo3.IsArray;
             bool isIndirect = arraySym?.Type is PointerType
-                || (arraySym == null && _staticArrayNames != null && arrayName != null && _staticArrayNames.Contains(arrayName));
+                || isStaticIndirect2 || isLocalIndirect2;
             bool isIndirectByte = arraySym?.Type is PointerType pt2 && pt2.ElementType == SlangType.Byte;
             if (!isIndirectByte && arrayName != null && _localVars != null
                 && _localVars.TryGetValue(arrayName, out var localArrPtrInfo2) && localArrPtrInfo2.IsByte)
                 isIndirectByte = true;
             if (!isIndirectByte && arraySym == null && arrayName != null
-                && _staticVarSizes != null && _staticVarSizes.TryGetValue(arrayName, out int arrDs2) && arrDs2 == 1)
+                && _staticElemSizes != null && _staticElemSizes.TryGetValue(arrayName, out int arrEs2) && arrEs2 == 1)
                 isIndirectByte = true;
 
             // PORT/PORTW判定
