@@ -491,13 +491,23 @@ public class CodeGenTests
     }
 
     [Fact]
-    public void BytePointerVar_StoreAsWord()
+    public void BytePointerVar_Static_StoreAsWord()
     {
-        // VAR BYTE sptr[] のポインタ変数自体はWORD(2byte)でストアされること
-        // 要素がBYTEでも変数(アドレス保持)はWORD
+        // static VAR BYTE P[] のポインタ変数自体はWORD(2byte)でストアされること
         var asm = Compile("F() VAR BYTE P[]; { P = $9000; P[0] = 1; } MAIN() BEGIN F(); END;");
-        // LD (_V_F_P),HL がWORDストア（LD (_V_F_P),A ではない）
         Assert.Contains("(_V_F_P),HL", asm);
         Assert.DoesNotContain("(_V_F_P),A", asm);
+    }
+
+    [Fact]
+    public void BytePointerVar_Local_StoreAsWord()
+    {
+        // ローカル(BEGIN内) VAR BYTE P[] のポインタ変数自体はWORD(2byte)でアクセスされること
+        var asm = Compile("F() { VAR BYTE P[]; P = $9000; P[0] = 1; } MAIN() BEGIN F(); END;");
+        var body = asm.Split("F:")[1].Split("_F_EXIT")[0];
+        // P = $9000: 2バイト分のIYストア（即値最適化 or L/H経由）
+        // (IY+$6E) と (IY+$6F) の2箇所にストア
+        var iyStoreCount = System.Text.RegularExpressions.Regex.Matches(body, @"LD\t\(IY\+\$6[EF]\)").Count;
+        Assert.True(iyStoreCount >= 2, $"Expected >= 2 IY stores for WORD pointer, got {iyStoreCount}");
     }
 }

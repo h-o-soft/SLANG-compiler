@@ -396,10 +396,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
         else
         {
-            // ローカル配列: IYオフセットに動的確保
-            _localOffset += totalSize;
+            // ローカル配列/間接変数: IYオフセットに動的確保
+            bool isPointerVar = dims.All(d => d == 0);
+            int allocSize = isPointerVar ? 2 : totalSize; // ポインタ変数はアドレス格納なのでWORD(2)
+            _localOffset += allocSize;
             int offset = 0x70 - _localOffset;
-            _localVars![node.Name] = new LocalVarInfo(offset, totalSize, IsArray: true, IsByte: isByte, Dims: dims);
+            _localVars![node.Name] = new LocalVarInfo(offset, allocSize, IsArray: true, IsByte: isByte, Dims: dims);
         }
         return IrOperand.None;
     }
@@ -1082,14 +1084,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // 1. ローカル変数テーブルをまず検索
         if (_localVars != null && _localVars.TryGetValue(node.Name, out var localInfo))
         {
-            if (localInfo.IsArray)
+            // PointerType(間接変数): Dims全て0 → LoadLocal(値=ポインタ読み、常にWORD)
+            bool isLocalPointer = localInfo.IsArray && localInfo.Dims != null && localInfo.Dims.All(d => d == 0);
+            if (localInfo.IsArray && !isLocalPointer)
             {
-                // ローカル配列: アドレスをロード（IY+offsetの実効アドレス）
+                // サイズ確定ローカル配列: アドレスをロード（IY+offsetの実効アドレス）
                 Emit(IrOp.InlineAsm, t, IrOperand.Asm($"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${localInfo.Offset:X4}\n\tADD\tHL,DE"));
                 return t;
             }
-            Emit(IrOp.LoadLocal, t, IrOperand.Imm(localInfo.Offset), dataSize: localInfo.ByteSize);
-            _tempDataSize[t.TempIndex] = localInfo.ByteSize;
+            int localDs = isLocalPointer ? 2 : localInfo.ByteSize; // ポインタ変数は常にWORD
+            Emit(IrOp.LoadLocal, t, IrOperand.Imm(localInfo.Offset), dataSize: localDs);
+            _tempDataSize[t.TempIndex] = localDs;
             return t;
         }
 
@@ -1918,8 +1923,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // ローカル変数優先
             if (_localVars != null && _localVars.TryGetValue(id.Name, out var localInfo))
             {
-                value = EmitTypeConversion(value, localInfo.ByteSize);
-                Emit(IrOp.StoreLocal, IrOperand.Imm(localInfo.Offset), value, dataSize: localInfo.ByteSize);
+                // PointerType(間接変数)はWORD
+                bool isLocalPtr = localInfo.IsArray && localInfo.Dims != null && localInfo.Dims.All(d => d == 0);
+                int storeDs = isLocalPtr ? 2 : localInfo.ByteSize;
+                value = EmitTypeConversion(value, storeDs);
+                Emit(IrOp.StoreLocal, IrOperand.Imm(localInfo.Offset), value, dataSize: storeDs);
             }
             else
             {
