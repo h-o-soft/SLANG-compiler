@@ -371,6 +371,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (_inStaticDecl && _currentFuncName != null)
             {
                 _staticVarLabels![node.Name] = label;
+                _staticVarSizes![node.Name] = node.Size == DataSize.Byte ? 1 : 2;
                 _staticArrayNames?.Add(node.Name);
             }
 
@@ -1434,9 +1435,18 @@ public class IrGenerator : IAstVisitor<IrOperand>
         bool isByteAccess = arraySym?.Type is MemoryArrayType mat && mat.ElementType == SlangType.Byte;
 
         // 間接変数判定 (VAR x[])
-        bool isIndirect = arraySym?.Type is PointerType;
+        bool isIndirect = arraySym?.Type is PointerType
+            || (arraySym == null && _staticArrayNames != null && arrayName != null && _staticArrayNames.Contains(arrayName));
         // 間接変数/配列のBYTE判定
         bool isIndirectByte = arraySym?.Type is PointerType pt && pt.ElementType == SlangType.Byte;
+        // ローカル変数のBYTE判定
+        if (!isIndirectByte && arrayName != null && _localVars != null
+            && _localVars.TryGetValue(arrayName, out var localArrPtrInfo) && localArrPtrInfo.IsByte)
+            isIndirectByte = true;
+        // staticスコープ外でsymがnullの場合は_staticVarSizesで判定
+        if (!isIndirectByte && arraySym == null && arrayName != null
+            && _staticVarSizes != null && _staticVarSizes.TryGetValue(arrayName, out int arrDs) && arrDs == 1)
+            isIndirectByte = true;
         bool isArrayByte = arraySym?.Type is ArrayType aty && aty.ElementType == SlangType.Byte;
 
         // PORT/PORTW判定
@@ -1902,8 +1912,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
             var arraySym = arrayName != null ? _globalSymbols?.Resolve(arrayName) : null;
             bool isMemArray = arraySym?.Type is MemoryArrayType;
             bool isByteAccess = arraySym?.Type is MemoryArrayType mt && mt.ElementType == SlangType.Byte;
-            bool isIndirect = arraySym?.Type is PointerType;
+            bool isIndirect = arraySym?.Type is PointerType
+                || (arraySym == null && _staticArrayNames != null && arrayName != null && _staticArrayNames.Contains(arrayName));
             bool isIndirectByte = arraySym?.Type is PointerType pt2 && pt2.ElementType == SlangType.Byte;
+            if (!isIndirectByte && arrayName != null && _localVars != null
+                && _localVars.TryGetValue(arrayName, out var localArrPtrInfo2) && localArrPtrInfo2.IsByte)
+                isIndirectByte = true;
+            if (!isIndirectByte && arraySym == null && arrayName != null
+                && _staticVarSizes != null && _staticVarSizes.TryGetValue(arrayName, out int arrDs2) && arrDs2 == 1)
+                isIndirectByte = true;
 
             // PORT/PORTW判定
             bool isPortArray = arrayName != null &&
