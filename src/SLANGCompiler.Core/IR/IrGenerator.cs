@@ -351,8 +351,20 @@ public class IrGenerator : IAstVisitor<IrOperand>
         {
             // グローバル or 静的配列（totalSizeは上で計算済み）
             int? fixedAddr = null;
+            string? fixedAddrLabel = null;
             if (node.Address is IntegerLiteral addrLit)
                 fixedAddr = (int)addrLit.Value;
+            else if (node.Address != null)
+            {
+                // ラベルベースのアドレス (例: ARRAY X[]:LABEL)
+                var asmResult = LabelUtils.ExprToAsmString(node.Address, _globalSymbols, _diagnostics);
+                if (asmResult.HasValue)
+                {
+                    fixedAddrLabel = asmResult.Value.Expr;
+                    foreach (var dep in asmResult.Value.Deps)
+                        _module.AddressSymbolDeps.Add(dep);
+                }
+            }
 
             // 初期値付き配列: CODEリストをInitialItemsに変換
             List<InitItem>? initItems = null;
@@ -446,6 +458,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 AsmLabel = label,
                 ByteSize = globalByteSize,
                 FixedAddress = fixedAddr,
+                FixedAddressLabel = fixedAddrLabel,
                 IsArray = true,
                 InitialItems = initItems,
                 StorageKind = initItems != null ? VarStorageKind.InitArray : VarStorageKind.Bss,

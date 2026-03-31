@@ -246,6 +246,8 @@ public class GlobalVarInfo
     public string AsmLabel { get; set; } = "";
     public int ByteSize { get; set; } = 2;
     public int? FixedAddress { get; set; }
+    /// <summary>ラベルベースの固定アドレス (例: ARRAY X[]:LABEL)</summary>
+    public string? FixedAddressLabel { get; set; }
     public List<InitItem>? InitialItems { get; set; }
     public bool HasInitializer => InitialItems != null && InitialItems.Count > 0;
     public bool IsArray { get; set; }

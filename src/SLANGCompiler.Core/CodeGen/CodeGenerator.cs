@@ -124,6 +124,8 @@ public class CodeGenerator
         {
             if (gv.FixedAddress.HasValue)
                 _e.Raw($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress.Value:X4}");
+            else if (gv.FixedAddressLabel != null)
+                _e.Raw($"{gv.AsmLabel}\tEQU\t{gv.FixedAddressLabel}");
             else
                 _e.Raw($"; EXTERN {gv.AsmLabel}  ; address resolved at link time");
         }
@@ -263,9 +265,12 @@ public class CodeGenerator
 
         // === Phase 7: 初期値付きグローバル変数 ===
         // アドレス固定変数: EQUで定義
-        foreach (var gv in _module.GlobalVars.Where(v => v.FixedAddress.HasValue))
+        foreach (var gv in _module.GlobalVars.Where(v => v.FixedAddress.HasValue || v.FixedAddressLabel != null))
         {
-            _e.Raw($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress!.Value:X4}");
+            if (gv.FixedAddress.HasValue)
+                _e.Raw($"{gv.AsmLabel}\tEQU\t${gv.FixedAddress!.Value:X4}");
+            else
+                _e.Raw($"{gv.AsmLabel}\tEQU\t{gv.FixedAddressLabel}");
             if (IsCodeReadonly && gv.HasInitializer)
             {
                 _diagnostics?.Error(
@@ -283,7 +288,7 @@ public class CodeGenerator
 
         // InitArray: RAM/ROM分岐
         var initArrays = _module.GlobalVars
-            .Where(v => v.StorageKind == VarStorageKind.InitArray && !v.FixedAddress.HasValue).ToList();
+            .Where(v => v.StorageKind == VarStorageKind.InitArray && !v.FixedAddress.HasValue && v.FixedAddressLabel == null).ToList();
 
         if (IsCodeReadonly)
         {
@@ -401,8 +406,15 @@ public class CodeGenerator
                 var outLine = line;
                 if (currentNamespace != null)
                 {
+                    // 名前空間あり: !FUNC → NAME_SPACE_DEFAULT.FUNC
                     outLine = System.Text.RegularExpressions.Regex.Replace(
                         outLine, @"!\s*(\w+)", "NAME_SPACE_DEFAULT.$1");
+                }
+                else
+                {
+                    // 名前空間なし: !FUNC → FUNC（SLANG関数ラベル直接参照）
+                    outLine = System.Text.RegularExpressions.Regex.Replace(
+                        outLine, @"!\s*(\w+)", "$1");
                 }
                 _e.Raw(outLine);
             }
@@ -411,7 +423,7 @@ public class CodeGenerator
 
     /// <summary>InitArray（テンプレートコピー対象）が存在するか</summary>
     private bool HasInitDataArrays() =>
-        _module.GlobalVars.Any(v => v.StorageKind == VarStorageKind.InitArray && !v.FixedAddress.HasValue);
+        _module.GlobalVars.Any(v => v.StorageKind == VarStorageKind.InitArray && !v.FixedAddress.HasValue && v.FixedAddressLabel == null);
 
     /// <summary>InitialItems（DB/DW混在）を出力</summary>
     private void EmitInitialItems(List<InitItem> items)
@@ -527,7 +539,7 @@ public class CodeGenerator
         // ROM環境: InitArray(初期値付き配列)を__WORK__先頭に連続配置
         if (IsCodeReadonly)
         {
-            foreach (var gv in _module.GlobalVars.Where(v => v.StorageKind == VarStorageKind.InitArray && !v.FixedAddress.HasValue))
+            foreach (var gv in _module.GlobalVars.Where(v => v.StorageKind == VarStorageKind.InitArray && !v.FixedAddress.HasValue && v.FixedAddressLabel == null))
             {
                 _e.Raw($"{gv.AsmLabel} EQU (__WORK__ + {workOffset})");
                 workOffset += gv.ByteSize;
@@ -535,7 +547,7 @@ public class CodeGenerator
         }
 
         // Bss変数（固定アドレスなし、初期値なし）→ EQU
-        foreach (var gv in _module.GlobalVars.Where(v => !v.FixedAddress.HasValue && v.StorageKind == VarStorageKind.Bss))
+        foreach (var gv in _module.GlobalVars.Where(v => !v.FixedAddress.HasValue && v.FixedAddressLabel == null && v.StorageKind == VarStorageKind.Bss))
         {
             _e.Raw($"{gv.AsmLabel} EQU (__WORK__ + {workOffset})");
             workOffset += gv.ByteSize;
