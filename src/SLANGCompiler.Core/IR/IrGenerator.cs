@@ -1745,11 +1745,32 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 return arr.Indices[0].Accept(this);
 
             // 間接変数: &p[i] → p + i*elemSize のアドレス
-            if (arrSym?.Type is PointerType)
+            bool isAddrIndirect = arrSym?.Type is PointerType;
+            // static/localのPointerType判定（symがnullの場合）
+            if (!isAddrIndirect && arrSym == null && arrName != null)
+            {
+                if (_staticVarSizes != null && _staticVarSizes.ContainsKey(arrName)
+                    && !(_staticArrayNames != null && _staticArrayNames.Contains(arrName)))
+                    isAddrIndirect = true;
+                if (_localVars != null && _localVars.TryGetValue(arrName, out var lai) && !lai.IsArray)
+                    isAddrIndirect = true;
+                if (_localVars != null && _localVars.TryGetValue(arrName, out var lai2)
+                    && lai2.IsArray && lai2.Dims != null && lai2.Dims.All(d => d == 0))
+                    isAddrIndirect = true;
+            }
+            if (isAddrIndirect)
             {
                 var baseAddr = arr.Array.Accept(this); // ポインタ値
                 var idx = arr.Indices[0].Accept(this);
-                bool isByte = arrSym.Type is PointerType pt && pt.ElementType == SlangType.Byte;
+                bool isByte = arrSym?.Type is PointerType pt && pt.ElementType == SlangType.Byte;
+                // static/localのBYTE判定
+                if (!isByte && arrName != null)
+                {
+                    if (_staticElemSizes != null && _staticElemSizes.TryGetValue(arrName, out int es) && es == 1)
+                        isByte = true;
+                    if (_localVars != null && _localVars.TryGetValue(arrName, out var lbi) && lbi.IsByte)
+                        isByte = true;
+                }
                 int eSize = isByte ? 1 : 2;
                 IrOperand scaledIdx;
                 if (eSize == 1)

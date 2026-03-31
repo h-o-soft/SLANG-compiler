@@ -520,4 +520,14 @@ public class CodeGenTests
         var iyStoreCount = System.Text.RegularExpressions.Regex.Matches(body, @"LD\t\(IY\+\$6[EF]\)").Count;
         Assert.True(iyStoreCount >= 2, $"Expected >= 2 IY stores for WORD pointer, got {iyStoreCount}");
     }
+
+    [Fact]
+    public void AddressOf_StaticPointerArray_UsesValue()
+    {
+        // &pcur[8] でpcurがstatic VAR pcur[]のとき、pcurの値(ポインタ)+16のアドレスを返す
+        // pcur変数のWORKアドレス+16ではない
+        var asm = Compile("F() VAR P[]; { P = $C000; VAR Q; Q = &P[8]; } MAIN() BEGIN F(); END;");
+        // P値をLoadVar(括弧付き)で読むこと
+        Assert.Contains("(_V_F_P)", asm);
+    }
 }
