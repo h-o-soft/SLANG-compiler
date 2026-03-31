@@ -107,6 +107,7 @@ public class ArrayDecl : AstNode
     public List<Expression?> Dimensions { get; }  // 各次元のサイズ (nullはサイズ未指定=間接参照)
     public Expression? InitialValue { get; }
     public List<Expression>? InitialCode { get; }
+    public bool IsArrayKeyword { get; set; }       // ARRAYキーワードで宣言（VARではない）
 
     public ArrayDecl(string name, DataSize size, Expression? address,
                      List<Expression?> dimensions,

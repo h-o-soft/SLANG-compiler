@@ -1119,6 +1119,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // 関数内static配列: アドレスをロード（symがスコープ外で見えない場合）
             Emit(IrOp.LoadAddr, t, IrOperand.Sym(ResolveAsmLabel(node.Name)));
         }
+        else if (sym != null && sym.Type is PointerType && sym.IsArrayDecl)
+        {
+            // ARRAY宣言由来のPointerType: アドレスをロード（ARRAY X[]:$addr等）
+            Emit(IrOp.LoadAddr, t, IrOperand.Sym(ResolveAsmLabel(node.Name)));
+        }
         else
         {
             int ds = sym?.Type?.ByteSize ?? 2;
@@ -1918,6 +1923,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 var baseAddr = IrOperand.Temp(AllocTemp());
                 if (_localVars != null && _localVars.TryGetValue(arrayName!, out var li))
                     Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(li.Offset));
+                else if (arraySym != null && arraySym.IsArrayDecl)
+                    Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(ResolveAsmLabel(arrayName!)));
                 else
                     Emit(IrOp.LoadVar, baseAddr, IrOperand.Sym(ResolveAsmLabel(arrayName!)));
 
@@ -1998,7 +2005,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     }
                     else if (_localVars != null && _localVars.TryGetValue(arrayName, out var li2))
                         Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(li2.Offset));
-                    else if (arraySym?.Type is PointerType)
+                    else if (arraySym?.Type is PointerType && !(arraySym?.IsArrayDecl == true))
                         Emit(IrOp.LoadVar, baseAddr, IrOperand.Sym(ResolveAsmLabel(arrayName)));
                     else
                         Emit(IrOp.LoadAddr, baseAddr, IrOperand.Sym(ResolveAsmLabel(arrayName)));

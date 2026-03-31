@@ -304,7 +304,7 @@ public class Parser
                     initValue = ParseNcExpr();
             }
 
-            decls.Add(new ArrayDecl(name, size, address, dims, initValue, initCode, s));
+            decls.Add(new ArrayDecl(name, size, address, dims, initValue, initCode, s) { IsArrayKeyword = true });
         } while (Match(TokenKind.Comma));
 
         Match(TokenKind.Semicolon);

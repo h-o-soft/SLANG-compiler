@@ -195,6 +195,10 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         }
 
         var sym = _symbols.Define(node.Name, SymbolKind.Variable, type);
+        // ARRAYキーワードで宣言されたもののみフラグ設定
+        // VAR X[] はポインタ変数（LoadVar）、ARRAY X[] は配列（LoadAddr）
+        if (node.IsArrayKeyword)
+            sym.IsArrayDecl = true;
 
         if (_currentFunc != null && !_symbols.IsGlobalScope && !_inStaticDecl)
         {

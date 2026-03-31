@@ -29,6 +29,7 @@ public class Symbol
     public bool IsGlobal { get; set; }
     public bool IsCodeBlock { get; set; }    // CODEブロック定数（アドレス参照）
     public string? AsmLabel { get; set; }    // アセンブリラベル名
+    public bool IsArrayDecl { get; set; }   // ARRAY宣言由来（PointerTypeでもアドレス参照）
 
     // AST保持（semantic段階で設定、IR段階で文字列化）
     public Expression? ConstAst { get; set; }          // CONST値のAST（非整数の場合）
