@@ -840,8 +840,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 }
                 else
                 {
+                    // exprValを再ロード（fusedSBCでHL破壊されるため）
+                    var reloadedExpr = node.Expr.Accept(this);
                     var cmp = IrOperand.Temp(AllocTemp());
-                    Emit(IrOp.CmpEq, cmp, exprVal, branchVal);
+                    Emit(IrOp.CmpEq, cmp, reloadedExpr, branchVal);
                     Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), cmp);
                 }
 
