@@ -1109,6 +1109,16 @@ public class CodeGenerator
             {
                 var s1Inst = insts[tempDef[inst.Src1.TempIndex]];
 
+                // 融合比較+ジャンプ（reverseHalfDirect経路）
+                if (fusedCompareJumps.TryGetValue(i, out int rJumpIdx))
+                {
+                    var jumpInst = insts[rJumpIdx];
+                    bool jumpOnTrue = jumpInst.Op == IrOp.JumpIfNonZero;
+                    EmitLoadToDE(s1Inst);
+                    EmitFusedCompareJump(inst, jumpInst.Dest.Name!, jumpOnTrue);
+                    continue;
+                }
+
                 // 定数加算最適化（reverseHalfDirect経路: src1が定数）
                 if ((inst.Op == IrOp.Add)
                     && s1Inst.Op == IrOp.LoadConst && s1Inst.Src1.Kind == IrOperandKind.Immediate)
