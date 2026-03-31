@@ -424,4 +424,58 @@ public class CodeGenTests
         Assert.Contains("$2A", body);
         Assert.DoesNotContain("LD\tHL,$002A", body);
     }
+
+    [Fact]
+    public void ForByte_StaticVar_ByteAccess()
+    {
+        // FOR文のBYTE静的変数がBYTEアクセスされること（WORDで隣接変数を破壊しない）
+        var asm = Compile("F() VAR BYTE I; VAR BYTE J; { FOR I=0 TO 10 { J=I; } } MAIN() BEGIN F(); END;");
+        var body = asm.Split("F:")[1].Split("_F_EXIT")[0];
+        // BYTE: LD A,(addr) / LD (addr),A パターン
+        Assert.Contains("LD\tA,(_V_F_I)", body);
+        Assert.Contains("LD\t(_V_F_I),A", body);
+        // WORD: LD HL,(addr) が出ないこと
+        Assert.DoesNotContain("LD\tHL,(_V_F_I)", body);
+    }
+
+    [Fact]
+    public void ArrayDecl_PointerType_LoadAddr()
+    {
+        // ARRAY X[]:$addr はLoadAddr（アドレス直接）、VAR X[] はLoadVar（値読み）
+        var asm = Compile("ARRAY BYTE BUF[]:$8000; MAIN() BEGIN MEMSET(BUF, 0, 10); END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        // LD HL,_V_BUF（括弧なし=アドレス直接）
+        Assert.Contains("HL,_V_BUF", body);
+        // LD HL,(_V_BUF)（括弧付き=値読み）が出ないこと
+        Assert.DoesNotContain("HL,(_V_BUF)", body);
+    }
+
+    [Fact]
+    public void Case_ExprValue_NotDestroyed()
+    {
+        // CASE文で式の値がSBC連鎖で破壊されないこと
+        var asm = Compile(@"
+            MAIN() BEGIN
+                VAR X; X=2;
+                CASE X { 0: X=10; 1: X=20; 2: X=30; }
+            END;");
+        // CASE 2にマッチしてX=30になるべき。
+        // SBC連鎖でHLが壊れると2番目以降のcaseにマッチしない。
+        // 各caseで式を再評価していることを確認（複数回のLoadLocal/LoadVar）
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        // 少なくとも3回X値をロードする（case 0, 1, 2の比較）
+        var loadCount = System.Text.RegularExpressions.Regex.Matches(body, @"LD\tL,\(IY\+").Count;
+        Assert.True(loadCount >= 3, $"Expected >= 3 loads of X, got {loadCount}");
+    }
+
+    [Fact]
+    public void AddressOf_Array_ReturnsAddress()
+    {
+        // &array[idx] がアドレスを返す（値ではない）
+        var asm = Compile("ARRAY AR[10]; VAR P[]; MAIN() BEGIN P = &AR[3]; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        // &AR[3] → LoadAddr _V_AR+6（値読みのLD HL,(_V_AR+6)ではない）
+        Assert.Contains("_V_AR+6", body);
+        Assert.DoesNotContain("(_V_AR+6)", body);
+    }
 }
