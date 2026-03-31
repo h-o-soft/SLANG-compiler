@@ -1177,6 +1177,29 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 Emit(IrOp.LoadConst, t, IrOperand.Imm(constResult.Value));
                 return t;
             }
+
+            // no-op算術のIR正規化: CodeGeneratorのスタック整合バグ回避
+            // Add(x,0)/Sub(x,0) → x, Mul(x,1)/Div(x,1) → x
+            if (node.Op is BinaryOp.Add or BinaryOp.Sub)
+            {
+                var rc = constEval.Evaluate(node.Right);
+                if (rc.HasValue && rc.Value == 0) return node.Left.Accept(this);
+                if (node.Op == BinaryOp.Add)
+                {
+                    var lc = constEval.Evaluate(node.Left);
+                    if (lc.HasValue && lc.Value == 0) return node.Right.Accept(this);
+                }
+            }
+            if (node.Op is BinaryOp.Mul or BinaryOp.SMul or BinaryOp.Div or BinaryOp.SDiv)
+            {
+                var rc = constEval.Evaluate(node.Right);
+                if (rc.HasValue && rc.Value == 1) return node.Left.Accept(this);
+                if (node.Op is BinaryOp.Mul or BinaryOp.SMul)
+                {
+                    var lc = constEval.Evaluate(node.Left);
+                    if (lc.HasValue && lc.Value == 1) return node.Right.Accept(this);
+                }
+            }
         }
 
         // 論理AND/OR: 短絡評価（旧コンパイラ互換）
