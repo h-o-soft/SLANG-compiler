@@ -1505,6 +1505,14 @@ public class IrGenerator : IAstVisitor<IrOperand>
             && _staticElemSizes != null && _staticElemSizes.TryGetValue(arrayName, out int arrEs) && arrEs == 1)
             isIndirectByte = true;
         bool isArrayByte = arraySym?.Type is ArrayType aty && aty.ElementType == SlangType.Byte;
+        // static/localのBYTE配列判定（symがnullの場合）
+        if (!isArrayByte && arraySym == null && arrayName != null)
+        {
+            if (_staticElemSizes != null && _staticElemSizes.TryGetValue(arrayName, out int aes) && aes == 1)
+                isArrayByte = true;
+            if (_localVars != null && _localVars.TryGetValue(arrayName, out var lai3) && lai3.IsByte)
+                isArrayByte = true;
+        }
 
         // PORT/PORTW判定
         bool isPortArray = arrayName != null &&
@@ -1576,6 +1584,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var arrayName = (node.Array as IdentifierExpr)?.Name;
         var arraySym = arrayName != null ? _globalSymbols?.Resolve(arrayName) : null;
         bool isArrayByte = arraySym?.Type is ArrayType aty2 && aty2.ElementType == SlangType.Byte;
+        if (!isArrayByte && arraySym == null && arrayName != null
+            && _staticElemSizes != null && _staticElemSizes.TryGetValue(arrayName, out int caes) && caes == 1)
+            isArrayByte = true;
 
         // 各次元のストライドを計算
         List<int> strides;
@@ -2058,6 +2069,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
             {
                 // 通常配列のストア（多次元対応）
                 bool storeIsByte = arraySym?.Type is ArrayType stAt && stAt.ElementType == SlangType.Byte;
+                if (!storeIsByte && arraySym == null && arrayName != null)
+                {
+                    if (_staticElemSizes != null && _staticElemSizes.TryGetValue(arrayName, out int ses) && ses == 1)
+                        storeIsByte = true;
+                    if (_localVars != null && _localVars.TryGetValue(arrayName, out var sli) && sli.IsByte)
+                        storeIsByte = true;
+                }
 
                 // 多次元ストライド計算（定数最適化でも使用）
                 List<int> strides;

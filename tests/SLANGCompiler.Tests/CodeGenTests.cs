@@ -530,4 +530,15 @@ public class CodeGenTests
         // P値をLoadVar(括弧付き)で読むこと
         Assert.Contains("(_V_F_P)", asm);
     }
+
+    [Fact]
+    public void StaticByteArray_ByteStore()
+    {
+        // static ARRAY BYTE のストアが1バイトであること（WORDストアで隣接データ破壊しない）
+        var asm = Compile("F() ARRAY BYTE B[3]; { B[0] = 42; B[1] = 99; } MAIN() BEGIN F(); END;");
+        // BYTE配列へのストア: LD (HL),E のみ (INC HL; LD (HL),D なし)
+        var body = asm.Split("F:")[1].Split("_F_EXIT")[0];
+        // BYTE store回数（LD (HL),E without INC HL; LD (HL),D）
+        Assert.DoesNotContain("INC\tHL\n\tLD\t(HL),D", body);
+    }
 }
