@@ -478,4 +478,15 @@ public class CodeGenTests
         Assert.Contains("_V_AR+6", body);
         Assert.DoesNotContain("(_V_AR+6)", body);
     }
+
+    [Fact]
+    public void LocalBytePointerArray_ByteElemSize()
+    {
+        // ローカルBYTEポインタ配列のインデックスがBYTE(×1)で計算されること
+        // VAR BYTE sptr[] → sptr[1] = offset 1 (WORDなら2になるバグ)
+        var asm = Compile("F() { VAR BYTE P[]; P = 0; P[1] = 42; } MAIN() BEGIN F(); END;");
+        var body = asm.Split("F:")[1].Split("_F_EXIT")[0];
+        // BYTE: INC HL (offset+1) が使われる。ADD HL,HL (×2) は使われない
+        Assert.DoesNotContain("ADD\tHL,HL", body);
+    }
 }
