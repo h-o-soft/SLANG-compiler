@@ -1126,7 +1126,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
         else
         {
-            int ds = sym?.Type?.ByteSize ?? 2;
+            // dataSizeはシンボルテーブル→_staticVarSizes→デフォルト2
+            int ds = sym?.Type?.ByteSize
+                ?? (_staticVarSizes != null && _staticVarSizes.TryGetValue(node.Name, out int svDs) ? svDs : 2);
             Emit(IrOp.LoadVar, t, IrOperand.Sym(ResolveAsmLabel(node.Name)), dataSize: ds);
             _tempDataSize[t.TempIndex] = ds;
         }
@@ -1886,7 +1888,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else
             {
                 var sym = _globalSymbols?.Resolve(id.Name);
-                int ds = sym?.Type?.ByteSize ?? 2;
+                int ds = sym?.Type?.ByteSize
+                    ?? (_staticVarSizes != null && _staticVarSizes.TryGetValue(id.Name, out int svDs2) ? svDs2 : 2);
                 value = EmitTypeConversion(value, ds);
                 Emit(IrOp.StoreVar, IrOperand.Sym(ResolveAsmLabel(id.Name)), value, dataSize: ds);
             }
