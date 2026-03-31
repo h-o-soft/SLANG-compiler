@@ -383,11 +383,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     _staticArrayNames?.Add(node.Name);
             }
 
+            // PointerType(間接変数)はアドレス格納なのでWORD(2byte)確保
+            bool isPointerGlobal = dims.All(d => d == 0);
+            int globalByteSize = isPointerGlobal ? 2 : totalSize;
+
             _module.GlobalVars.Add(new GlobalVarInfo
             {
                 Name = node.Name,
                 AsmLabel = label,
-                ByteSize = totalSize,
+                ByteSize = globalByteSize,
                 FixedAddress = fixedAddr,
                 IsArray = true,
                 InitialItems = initItems,

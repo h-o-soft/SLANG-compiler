@@ -493,10 +493,20 @@ public class CodeGenTests
     [Fact]
     public void BytePointerVar_Static_StoreAsWord()
     {
-        // static VAR BYTE P[] のポインタ変数自体はWORD(2byte)でストアされること
-        var asm = Compile("F() VAR BYTE P[]; { P = $9000; P[0] = 1; } MAIN() BEGIN F(); END;");
+        // static VAR BYTE P[] のポインタ変数自体はWORD(2byte)でストア＆WORK確保されること
+        var asm = Compile("F() VAR BYTE P[]; VAR Q; { P = $9000; P[0] = 1; Q = 0; } MAIN() BEGIN F(); END;");
+        // WORDストア
         Assert.Contains("(_V_F_P),HL", asm);
         Assert.DoesNotContain("(_V_F_P),A", asm);
+        // WORK確保: Pが2byte、Qが2byte。P+2のアドレスにQが来る
+        // _V_F_P と _V_F_Q のアドレス差が2以上であること
+        var pMatch = System.Text.RegularExpressions.Regex.Match(asm, @"_V_F_P EQU \(__WORK__ \+ (\d+)\)");
+        var qMatch = System.Text.RegularExpressions.Regex.Match(asm, @"_V_F_Q EQU \(__WORK__ \+ (\d+)\)");
+        Assert.True(pMatch.Success && qMatch.Success, "P and Q EQU definitions not found");
+        int pOff = int.Parse(pMatch.Groups[1].Value);
+        int qOff = int.Parse(qMatch.Groups[1].Value);
+        int gap = System.Math.Abs(qOff - pOff);
+        Assert.True(gap >= 2, $"BYTE pointer P should occupy 2 bytes in WORK, but gap to Q is {gap}");
     }
 
     [Fact]
