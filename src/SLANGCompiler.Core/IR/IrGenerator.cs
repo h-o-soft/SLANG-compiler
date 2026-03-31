@@ -960,15 +960,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PHEX4"));
                         break;
                     case "FORM$":
-                        // FORM$(value, n): HL=value, DE=n桁
+                        // FORM$(value, n): HL=value, DE=n桁 → MACHINE(2)として呼ぶ
                         if (sf.Arguments.Count >= 2)
                         {
-                            var v = sf.Arguments[0].Accept(this);
-                            Emit(IrOp.PushArg, v);
-                            var n = sf.Arguments[1].Accept(this);
-                            // DE=n, HL=value
+                            sf.Arguments[0].Accept(this);
+                            Emit(IrOp.PushArg, IrOperand.None);
+                            sf.Arguments[1].Accept(this);
+                            Emit(IrOp.PushArg, IrOperand.None);
                         }
-                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10toN"));
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10toN"), IrOperand.Imm(2));
                         break;
                     case "DECI$":
                         if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
@@ -987,14 +987,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PMSX"));
                         break;
                     case "STR$":
-                        // STR$(char, n)
+                        // STR$(char, n): HL=char, DE=n → MACHINE(2)として呼ぶ
                         if (sf.Arguments.Count >= 2)
                         {
                             sf.Arguments[0].Accept(this);
                             Emit(IrOp.PushArg, IrOperand.None);
                             sf.Arguments[1].Accept(this);
+                            Emit(IrOp.PushArg, IrOperand.None);
                         }
-                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSTR2"));
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSTR2"), IrOperand.Imm(2));
                         break;
                     case "CHR$":
                         if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
