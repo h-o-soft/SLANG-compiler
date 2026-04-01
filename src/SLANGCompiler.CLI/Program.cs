@@ -95,6 +95,24 @@ class Program
             // Phase 1.5: Preprocessor (#INCLUDE展開, #IF/#ELSE/#ENDIF評価)
             var includePaths = pathResolver.GetIncludePaths(baseDir);
             var preprocessor = new Lexer.Preprocessor(diagnostics, includePaths);
+
+            // 環境定数をプリプロセッサに登録（#IF条件式で参照可能）
+            if (!string.IsNullOrEmpty(envName))
+            {
+                var envFile = $"{envName}.env";
+                foreach (var dir in pathResolver.GetLibPaths())
+                {
+                    var envPath = Path.Combine(dir, "env", envFile);
+                    if (File.Exists(envPath))
+                    {
+                        var envInfo = Runtime.EnvironmentLoader.Load(envPath);
+                        preprocessor.DefineConst("ENV_TYPE", envInfo.EnvType);
+                        preprocessor.DefineConst("OS_TYPE", envInfo.OsType);
+                        break;
+                    }
+                }
+            }
+
             tokens = preprocessor.Process(tokens, baseDir);
 
             if (diagnostics.HasErrors)

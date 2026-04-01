@@ -26,6 +26,8 @@ public class Lexer
         ["THEN"] = TokenKind.Then,
         ["ELSE"] = TokenKind.Else,
         ["ELIF"] = TokenKind.Elif,
+        ["ELSEIF"] = TokenKind.Elif,
+        ["EF"] = TokenKind.Ef,
         ["ENDIF"] = TokenKind.EndIf,
         ["WHILE"] = TokenKind.While,
         ["DO"] = TokenKind.Do,

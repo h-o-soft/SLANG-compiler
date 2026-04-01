@@ -2,6 +2,56 @@ using System.Text;
 
 namespace SLANGCompiler;
 
+/// <summary>文字列をShift-JISバイト列のDB形式に変換するヘルパー</summary>
+public static class StringEncoder
+{
+    private static readonly Encoding ShiftJis;
+    static StringEncoder()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        ShiftJis = Encoding.GetEncoding(932,
+            EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
+    }
+
+    /// <summary>文字列をShift-JISバイト列に変換</summary>
+    public static byte[] ToShiftJisBytes(string text, DiagnosticBag? diagnostics = null)
+    {
+        try
+        {
+            return ShiftJis.GetBytes(text);
+        }
+        catch (EncoderFallbackException)
+        {
+            diagnostics?.Error("String contains characters that cannot be encoded to Shift-JIS", default);
+            return Encoding.ASCII.GetBytes(text);
+        }
+    }
+
+    /// <summary>文字列をShift-JISバイト列のDB引数形式に変換（0終端なし）</summary>
+    public static string ToAsmDbArgs(string text, DiagnosticBag? diagnostics = null)
+    {
+        // ASCII文字のみ → そのまま
+        if (text.All(ch => ch >= 0x20 && ch < 0x7F && ch != '"'))
+            return $"\"{text}\"";
+
+        var bytes = ToShiftJisBytes(text, diagnostics);
+        var parts = new List<string>();
+        var strBuf = new StringBuilder();
+        foreach (var b in bytes)
+        {
+            if (b >= 0x20 && b < 0x7F && b != (byte)'"')
+                strBuf.Append((char)b);
+            else
+            {
+                if (strBuf.Length > 0) { parts.Add($"\"{strBuf}\""); strBuf.Clear(); }
+                parts.Add($"${b:X2}");
+            }
+        }
+        if (strBuf.Length > 0) parts.Add($"\"{strBuf}\"");
+        return string.Join(",", parts);
+    }
+}
+
 /// <summary>
 /// ソース識別子→ASM安全ラベル名の変換ユーティリティ。
 /// アセンブラ(AILZ80ASM)で使用可能な文字（英数字+_）のみで構成されるラベルに変換する。
@@ -27,7 +77,7 @@ internal static class LabelUtils
         foreach (var c in name)
         {
             if (c == '@') sb.Append("_AT_");
-            else if (c == '^') sb.Append("_CR_");
+            else if (c == '^') sb.Append(".");
             else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')
                 sb.Append(c);
             else

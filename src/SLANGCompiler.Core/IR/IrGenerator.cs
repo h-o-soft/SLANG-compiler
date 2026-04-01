@@ -131,34 +131,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// </summary>
     private void EmitInlinePrint(string text)
     {
-        // 文字列データのASM表現を構築
-        var sb = new System.Text.StringBuilder();
-        var strBuf = new System.Text.StringBuilder();
-        foreach (var ch in text)
-        {
-            if (ch >= 0x20 && ch < 0x7F && ch != '"')
-                strBuf.Append(ch);
-            else
-            {
-                if (strBuf.Length > 0)
-                {
-                    if (sb.Length > 0) sb.Append(',');
-                    sb.Append($"\"{strBuf}\"");
-                    strBuf.Clear();
-                }
-                if (sb.Length > 0) sb.Append(',');
-                sb.Append($"${(int)ch:X2}");
-            }
-        }
-        if (strBuf.Length > 0)
-        {
-            if (sb.Length > 0) sb.Append(',');
-            sb.Append($"\"{strBuf}\"");
-        }
-        if (sb.Length > 0) sb.Append(',');
-        sb.Append("0");  // null terminator
-
-        Emit(IrOp.InlineAsm, IrOperand.Asm($"\tCALL\tMPRNT\n\tDB\t{sb}"));
+        var dbArgs = StringEncoder.ToAsmDbArgs(text, _diagnostics);
+        Emit(IrOp.InlineAsm, IrOperand.Asm($"\tCALL\tMPRNT\n\tDB\t{dbArgs},0"));
     }
 
     /// <summary>
@@ -406,8 +380,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     }
                     else if (initExpr is StringLiteral slit)
                     {
-                        foreach (var ch in slit.Value)
-                            initItems.Add(InitItem.Byte((byte)ch));
+                        var sjisBytes = StringEncoder.ToShiftJisBytes(slit.Value, _diagnostics);
+                        foreach (var b in sjisBytes)
+                            initItems.Add(InitItem.Byte(b));
                     }
                     else
                     {
@@ -615,6 +590,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitFuncDef(FuncDef node)
     {
         _currentFunction = new IrFunction { Name = LabelUtils.SanitizeLabel(node.Name) };
+        _tempDataSize.Clear();
 
         // ローカルシンボルテーブルを構築
         var prevLocalVars = _localVars;
@@ -909,15 +885,16 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 if (branch.RangeEnd != null)
                 {
                     // Range: value TO rangeEnd — 短絡ジャンプ化
-                    // 評価順は維持: branchVal, rangeEnd を先に評価
                     var rangeEnd = branch.RangeEnd.Accept(this);
-                    // CmpGe → false なら即スキップ
+                    // CmpGe: exprVal >= branchVal（exprVal再評価: fusedSBCでHL破壊されるため）
+                    var reloadedExpr1 = node.Expr.Accept(this);
                     var cmpLo = IrOperand.Temp(AllocTemp());
-                    Emit(IrOp.CmpGe, cmpLo, exprVal, branchVal);
+                    Emit(IrOp.CmpGe, cmpLo, reloadedExpr1, branchVal);
                     Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), cmpLo);
-                    // CmpLe → false なら即スキップ
+                    // CmpLe: exprVal <= rangeEnd（同様に再評価）
+                    var reloadedExpr2 = node.Expr.Accept(this);
                     var cmpHi = IrOperand.Temp(AllocTemp());
-                    Emit(IrOp.CmpLe, cmpHi, exprVal, rangeEnd);
+                    Emit(IrOp.CmpLe, cmpHi, reloadedExpr2, rangeEnd);
                     Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), cmpHi);
                 }
                 else
@@ -1056,7 +1033,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                             sf.Arguments[1].Accept(this);
                             Emit(IrOp.PushArg, IrOperand.None);
                         }
-                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSTR2"), IrOperand.Imm(2));
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSTR"), IrOperand.Imm(2));
                         break;
                     case "CHR$":
                         if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
@@ -1522,19 +1499,20 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
         else
         {
-            // ユーザー関数: (IY+$70)～に引数を格納してCALL
-            int argOffset = 0x70;
-            foreach (var arg in node.Arguments)
+            // ユーザー関数: PushArgでスタックに退避してからCALL
+            // 引数評価中に別の関数呼び出しがIYワークを壊す問題の防止
+            // （MACHINE関数と同じPushArg方式、codegenでPOP→IY格納に展開）
+            for (int i = 0; i < node.Arguments.Count; i++)
             {
-                var argVal = arg.Accept(this);
-                // (IY+argOffset) に書き込み
-                Emit(IrOp.StoreLocal, IrOperand.Imm(argOffset), argVal);
-                argOffset += 2;
+                var argVal = node.Arguments[i].Accept(this);
+                Emit(IrOp.PushArg, argVal, IrOperand.Imm(i));
             }
 
             var dest = IrOperand.Temp(AllocTemp());
             var asmName = funcSym?.AsmLabel ?? LabelUtils.SanitizeLabel(funcName ?? "__indirect_call");
-            Emit(IrOp.Call, dest, IrOperand.Sym(asmName));
+            // 負の引数数 = ユーザー関数のIY渡し（0は引数なしで共通）
+            Emit(IrOp.Call, dest, IrOperand.Sym(asmName),
+                IrOperand.Imm(node.Arguments.Count > 0 ? -node.Arguments.Count : 0));
             return dest;
         }
     }
@@ -1858,9 +1836,24 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     else
                         Emit(IrOp.DefWord, IrOperand.Imm(constVal.Value & 0xFFFF));
                 }
+                else if (cast.TargetSize == DataSize.Word)
+                {
+                    // 非定数WORD: ラベル式としてDWで埋め込みを試みる
+                    var asmResult = LabelUtils.ExprToAsmString(cast.Operand, _globalSymbols, _diagnostics);
+                    if (asmResult.HasValue)
+                    {
+                        Emit(IrOp.DefWord, IrOperand.Lbl(asmResult.Value.Expr));
+                        foreach (var dep in asmResult.Value.Deps)
+                            _module.AddressSymbolDeps.Add(dep);
+                    }
+                    else
+                    {
+                        cast.Operand.Accept(this); // フォールバック: 実行時コード
+                    }
+                }
                 else
                 {
-                    cast.Operand.Accept(this); // 非定数→実行時コード
+                    cast.Operand.Accept(this); // 非定数BYTE→実行時コード
                 }
             }
             else if (v is IntegerLiteral ilit)

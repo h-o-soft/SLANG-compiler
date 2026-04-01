@@ -1,3 +1,4 @@
+using System.Text;
 using SLANGCompiler.IR;
 
 namespace SLANGCompiler.CodeGen;
@@ -595,36 +596,15 @@ public class CodeGenerator
 
     private void EmitStringData(string text)
     {
-        // 印刷可能ASCII文字のみならDB "text",0形式、それ以外は混在形式
+        // StringEncoderで統一的にShift-JIS変換
         if (text.All(ch => ch >= 0x20 && ch < 0x7F && ch != '"'))
         {
             _e.Raw($"\tDB\t\"{text}\",0");
         }
         else
         {
-            // 制御文字を含む場合: 印刷可能部分は文字列、それ以外は$xx
-            var parts = new List<string>();
-            var strBuf = new System.Text.StringBuilder();
-            foreach (var ch in text)
-            {
-                if (ch >= 0x20 && ch < 0x7F && ch != '"')
-                {
-                    strBuf.Append(ch);
-                }
-                else
-                {
-                    if (strBuf.Length > 0)
-                    {
-                        parts.Add($"\"{strBuf}\"");
-                        strBuf.Clear();
-                    }
-                    parts.Add($"${(int)ch:X2}");
-                }
-            }
-            if (strBuf.Length > 0)
-                parts.Add($"\"{strBuf}\"");
-            parts.Add("0");
-            _e.Raw($"\tDB\t{string.Join(",", parts)}");
+            var dbArgs = StringEncoder.ToAsmDbArgs(text, _diagnostics);
+            _e.Raw($"\tDB\t{dbArgs},0");
         }
     }
 
@@ -1977,8 +1957,8 @@ public class CodeGenerator
             case IrOp.DefString:
                 if (inst.Dest.Name != null)
                 {
-                    var bytes = inst.Dest.Name.Select(ch => $"${(int)ch:X2}");
-                    _e.Raw($"\tDB\t{string.Join(",", bytes)}");
+                    var dbArgs = StringEncoder.ToAsmDbArgs(inst.Dest.Name, _diagnostics);
+                    _e.Raw($"\tDB\t{dbArgs}");
                 }
                 break;
 
@@ -2632,14 +2612,27 @@ public class CodeGenerator
         var isRuntimeOrExpr = _runtimeManager?.Functions.ContainsKey(funcName) == true
             || funcName.Contains('+') || funcName.Contains('-');
         var callLabel = isRuntimeOrExpr ? QualifyAsmExpr(funcName) : funcName;
-        int machineArgs = (int)inst.Src2.ImmediateValue;
+        int callArgMode = (int)inst.Src2.ImmediateValue;
 
-        if (machineArgs > 0)
+        if (callArgMode < 0)
+        {
+            // ユーザー関数: POP → IY+$70〜 に逆順で格納（引数はWORD前提）
+            int userArgCount = -callArgMode;
+            int argOffset = 0x70 + (userArgCount - 1) * 2;
+            for (int i = userArgCount - 1; i >= 0; i--)
+            {
+                _e.Instruction("POP", "HL");
+                _e.Instruction("LD", $"(IY+${argOffset:X2}),L");
+                _e.Instruction("LD", $"(IY+${argOffset + 1:X2}),H");
+                argOffset -= 2;
+            }
+        }
+        else if (callArgMode > 0)
         {
             // MACHINE関数: スタック上の引数をレジスタに移す
             // 引数はPushArgで逆順にスタックに積まれている
             // 仕様: 1個→HL, 2個→HL,DE, 3個→HL,DE,BC
-            switch (machineArgs)
+            switch (callArgMode)
             {
                 case 1:
                     _e.Instruction("POP", "HL");
@@ -2662,14 +2655,14 @@ public class CodeGenerator
         _e.Instruction("CALL", callLabel);
 
         // 4引数以上: calleeクリーンアップでなければcaller側でSP復帰
-        if (machineArgs >= 4)
+        if (callArgMode >= 4)
         {
             bool calleeCleanup = _runtimeManager != null
                 && _runtimeManager.Functions.TryGetValue(funcName, out var rtFunc)
                 && rtFunc.CalleeCleanup;
             if (!calleeCleanup)
             {
-                int stackSize = machineArgs * 2;
+                int stackSize = callArgMode * 2;
                 _e.Instruction("EX", "DE,HL");
                 _e.Instruction("LD", $"HL,{stackSize}");
                 _e.Instruction("ADD", "HL,SP");
