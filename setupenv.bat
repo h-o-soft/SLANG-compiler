@@ -1,6 +1,6 @@
 ECHO OFF
 
-REM ƒRƒ}ƒ“ƒh‚ª‚ ‚é‚©ƒ`ƒFƒbƒN
+REM ï¿½Rï¿½}ï¿½ï¿½ï¿½hï¿½ï¿½ï¿½ï¿½ï¿½é‚©ï¿½`ï¿½Fï¿½bï¿½N
 
 SET CMDNAME=curl
 curl --version
@@ -8,10 +8,6 @@ IF not %errorlevel%==0 goto ERROR
 
 SET CMDNAME=unzip
 unzip -h
-IF not %errorlevel%==0 goto ERROR
-
-SET CMDNAME=lha
-lha --version
 IF not %errorlevel%==0 goto ERROR
 
 SET TOOLPATH=%~dp0tools\
@@ -22,31 +18,31 @@ mkdir tools
 mkdir temp
 cd temp
 
-REM NDC‚ğƒ_ƒEƒ“ƒ[ƒh
-curl https://euee.web.fc2.com/tool/NDC0A07.LZH -fsLO
-lha xf NDC0A07.LZH
-DEL NDC0A07.LZH
+REM NDCï¿½ï¿½ï¿½_ï¿½Eï¿½ï¿½ï¿½ï¿½ï¿½[ï¿½h
+curl https://euee.web.fc2.com/tool/NDC0A08.ZIP -fsLO
+unzip -xo NDC0A08.ZIP
+DEL NDC0A08.ZIP
 copy NDC.exe %TOOLPATH%
 DEL NDC.exe
 
-REM HuDISK‚ğƒ_ƒEƒ“ƒ[ƒh
+REM HuDISKï¿½ï¿½ï¿½_ï¿½Eï¿½ï¿½ï¿½ï¿½ï¿½[ï¿½h
 REM curl https://github.com/BouKiCHi/HuDisk/raw/master/HuDisk.exe -OL
-REM (ASCII‘‚«‚İ‰Â”\”Å)
+REM (ASCIIï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½İ‰Â”\ï¿½ï¿½)
 curl https://github.com/ho-ogino/HuDisk/raw/feature/write-ascii-mode/HuDisk.exe -OL
 IF not %errorlevel%==0 goto ERROR
 copy HuDisk.exe %TOOLPATH%
 DEL HuDisk.exe
 
-REM AILZ80ASM‚ğƒ_ƒEƒ“ƒ[ƒh
-SET AILZNAME=AILZ80ASM.win-x64.v1.0.7.zip
-curl https://github.com/AILight/AILZ80ASM/releases/download/v1.0.7/%AILZNAME% -OL
+REM AILZ80ASMï¿½ï¿½ï¿½_ï¿½Eï¿½ï¿½ï¿½ï¿½ï¿½[ï¿½h
+SET AILZNAME=AILZ80ASM.win-x64.v1.0.31.zip
+curl https://github.com/AILight/AILZ80ASM/releases/download/v1.0.31/%AILZNAME% -OL
 IF not %errorlevel%==0 goto ERROR
 unzip -xo %AILZNAME%
 copy AILZ80ASM.exe %TOOLPATH%
 DEL AILZ80ASM.exe
 DEL %AILZNAME%
 
-REM cpm.exe‚ğƒ_ƒEƒ“ƒ[ƒh
+REM cpm.exeï¿½ï¿½ï¿½_ï¿½Eï¿½ï¿½ï¿½ï¿½ï¿½[ï¿½h
 curl https://ftp.vector.co.jp/57/78/2156/cpm32_04.zip -OL
 IF not %errorlevel%==0 goto ERROR
 unzip -xo cpm32_04.zip
@@ -63,25 +59,25 @@ del utl\* /q
 rmdir src /q
 rmdir utl /q
 
-REM REM S-OS(X1)‚ğƒ_ƒEƒ“ƒ[ƒh
+REM REM S-OS(X1)ï¿½ï¿½ï¿½_ï¿½Eï¿½ï¿½ï¿½ï¿½ï¿½[ï¿½h
 curl http://www.retropc.net/ohishi/s-os/SWXCV110.zip -OL
 unzip -xo SWXCV110.zip
-REM AUTOEXEC.BAT‚ğ’Ç‰Á
+REM AUTOEXEC.BATï¿½ï¿½Ç‰ï¿½
 REN SWXCV110.d88 SOSPROG.d88
 %TOOLPATH%HuDisk SOSPROG.d88 -a ..\env\S-OS\AUTOEXEC.BAT --ascii
 copy SOSPROG.d88 ..\images\
 DEL SOSPROG.d88
 DEL SWXCV110.zip
 
-REM LSX-Dodgers‚Í“ÁêƒtƒH[ƒ}ƒbƒg‚Ì‚½‚ßæ“¾‚µ‚Ä‰ÁH‚·‚é–‚ªo—ˆ‚È‚¢(NDC‚ÅƒAƒNƒZƒX•s‰Â‚Ì)‚½‚ß‘Î‰‚µ‚È‚¢
-REM ‚Ç‚¤‚µ‚½‚à‚Ì‚©cc
+REM LSX-Dodgersï¿½Í“ï¿½ï¿½ï¿½tï¿½Hï¿½[ï¿½}ï¿½bï¿½gï¿½Ì‚ï¿½ï¿½ßæ“¾ï¿½ï¿½ï¿½Ä‰ï¿½ï¿½Hï¿½ï¿½ï¿½é–ï¿½ï¿½ï¿½oï¿½ï¿½ï¿½È‚ï¿½(NDCï¿½ÅƒAï¿½Nï¿½Zï¿½Xï¿½sï¿½Â‚ï¿½)ï¿½ï¿½ï¿½ß‘Î‰ï¿½ï¿½ï¿½ï¿½È‚ï¿½
+REM ï¿½Ç‚ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ì‚ï¿½ï¿½cï¿½c
 REM curl https://github.com/tablacus/LSX-Dodgers/releases/download/1.55/ldsys155.zip -OL
 REM unzip ldsys155.zip
 
-REM —”ñDOS for MSX‚ğƒ_ƒEƒ“ƒ[ƒh
+REM ï¿½ï¿½ï¿½ï¿½DOS for MSXï¿½ï¿½ï¿½_ï¿½Eï¿½ï¿½ï¿½ï¿½ï¿½[ï¿½h
 curl https://github.com/tablacus/dosformsx/releases/download/0.16/dosformsx_016.zip -OL
 unzip -xo dosformsx_016.zip
-REM AUTOEXEC.BAT‚ğ’Ç‰Á
+REM AUTOEXEC.BATï¿½ï¿½Ç‰ï¿½
 %TOOLPATH%NDC P dosformsx.dsk 0 ..\env\LSX-Dodgers\AUTOEXEC.BAT
 copy dosformsx.dsk ..\images\
 DEL dosformsx.dsk
@@ -96,6 +92,6 @@ EXIT /B
 :ERROR
 ECHO             _________________
 ECHO --------------------------------------------
-ECHO Error! %CMDNAME%‚ªƒCƒ“ƒXƒg[ƒ‹‚³‚ê‚Ä‚¢‚Ü‚¹‚ñ
+ECHO Error! %CMDNAME%ï¿½ï¿½ï¿½Cï¿½ï¿½ï¿½Xï¿½gï¿½[ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä‚ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½
 ECHO 
 PAUSE

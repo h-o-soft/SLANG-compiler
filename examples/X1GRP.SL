@@ -31,7 +31,7 @@ VAR I,J,K;
     // LINEのテスト(以降、ESCキーで次に進む)
     LOOP
     {
-        // IF INKEY(0)==$1B THEN EXIT;
+        IF INKEY(0)==$1B THEN EXIT;
         LINE(RND(320),RND(200),RND(320),RND(200),RND(8));
     }
 

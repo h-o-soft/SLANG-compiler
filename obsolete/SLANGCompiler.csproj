@@ -10,10 +10,16 @@
   <ItemGroup>
     <Compile Remove="ModuleSplitter\**" />
     <Compile Remove="SLANGCompilerTest\**" />
+    <Compile Remove="src\**" />
+    <Compile Remove="tests\**" />
     <EmbeddedResource Remove="ModuleSplitter\**" />
     <EmbeddedResource Remove="SLANGCompilerTest\**" />
+    <EmbeddedResource Remove="src\**" />
+    <EmbeddedResource Remove="tests\**" />
     <None Remove="ModuleSplitter\**" />
     <None Remove="SLANGCompilerTest\**" />
+    <None Remove="src\**" />
+    <None Remove="tests\**" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="CommandLineParser" Version="2.9.1" />

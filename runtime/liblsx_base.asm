@@ -513,7 +513,10 @@ RET
 
 ; @name sGETKY
 ; @param_count 0
-; @calls LSXCALLS,sFLGET
+; @calls LSXCALLS,sFLGET,GETKY_DOINIT
+GETKY_INIT:
+JP	GETKY_DOINIT	; 初回のみ実行。実行後NOP×3に自己書き換え
+GETKY_MAIN:
 PUSH	BC
 PUSH	DE
 PUSH	HL
@@ -554,8 +557,49 @@ JR	NZ,.fl4
 LD	A,$1F
 RET
 .fl4
+OR	A
+JR	NZ,GETKY_FL5
+; LSX-Dodgers 1.62c: キーデータ直読み（バージョン不一致時はNOP×3に書き換え済み）
+GETKY_PATCH:
+LD	A,($EE92)
+GETKY_FL5:
 AND	A
 RET
+
+
+; @name GETKY_DOINIT
+; @param_count 0
+; @calls LSXCALLS
+; sGETKY初回: LSX-Dodgersバージョン判定＋自己書き換え
+PUSH	BC
+PUSH	DE
+PUSH	HL
+; _DOSVER (C=$6F) でバージョン取得
+LD	C,$6F
+CALL	$0005
+; DE = LSX-Dodgersバージョン (1.62c = $0162)
+LD	A,D
+CP	$01
+JR	NZ,.getky_nopatch
+LD	A,E
+CP	$62
+JR	Z,.getky_patchdone
+.getky_nopatch:
+; バージョン不一致: LD A,(nn) → NOP×3 に書き換え
+XOR	A
+LD	(GETKY_PATCH),A		; $3A(LD A,(nn)) → $00(NOP)
+LD	(GETKY_PATCH+1),A	; → NOP
+LD	(GETKY_PATCH+2),A	; → NOP
+.getky_patchdone:
+; 初期化コード自体を無効化: JP → NOP×3
+XOR	A
+LD	(GETKY_INIT),A
+LD	(GETKY_INIT+1),A
+LD	(GETKY_INIT+2),A
+POP	HL
+POP	DE
+POP	BC
+JR	GETKY_MAIN
 
 
 ; @name sINKEY

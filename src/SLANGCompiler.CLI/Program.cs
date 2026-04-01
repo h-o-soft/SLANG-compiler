@@ -8,7 +8,7 @@ namespace SLANGCompiler.CLI;
 
 class Program
 {
-    const string Version = "0.13.0";
+    const string Version = "0.20.0";
 
     static int Main(string[] args)
     {
@@ -100,7 +100,7 @@ class Program
             if (!string.IsNullOrEmpty(envName))
             {
                 var envFile = $"{envName}.env";
-                foreach (var dir in pathResolver.GetLibPaths())
+                foreach (var dir in pathResolver.GetRuntimePaths().Concat(pathResolver.GetLibPaths()))
                 {
                     var envPath = Path.Combine(dir, "env", envFile);
                     if (File.Exists(envPath))
@@ -269,9 +269,10 @@ class Program
     static Runtime.EnvironmentConfig? LoadEnvironment(
         string envName, Runtime.RuntimeManager manager, PathResolver paths)
     {
-        // .envファイルを検索
+        // .envファイルを検索（runtime/env/ → lib/env/ の順）
         var envFile = $"{envName}.env";
-        foreach (var dir in paths.GetLibPaths())
+        var envSearchPaths = paths.GetRuntimePaths().Concat(paths.GetLibPaths());
+        foreach (var dir in envSearchPaths)
         {
             var envPath = Path.Combine(dir, "env", envFile);
             if (!File.Exists(envPath)) continue;

@@ -14,10 +14,11 @@ RUNADR = 3000
 LOADADR = 3000
 
 # ツールのコマンド名
-SLANGCOMPILER = SLANGcompiler
+SLANGCOMPILER = bin/Release/net6.0/SLANGCompiler
+#SLANGcompiler
 ASM = AILZ80ASM
 NDC = ndc
-HUDISK = HuDisk
+HUDISK = mono tools/HuDisk.exe
 MODSPLIT = ModuleSplitter
 
 OUTPROG = $(dir $(TARGET))PROG.bin
@@ -38,13 +39,13 @@ ifeq ($(ENV), lsx)
   DISK_IMAGE = images/LSXPROG.D88
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), x1)
-  EMU = C:\emu\X1\X1.exe
-  # EMU = ~/emu/X1/X1.exe
+  # EMU = C:\emu\X1\X1.exe
+  EMU = wine ~/Emus/X1/x1.exe
   DISK_IMAGE = images/LSXPROG.D88
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), sos)
-  EMU = C:\emu\X1\X1.exe
-  # EMU = ~/emu/X1/X1.exe
+  # EMU = C:\emu\X1\X1.exe
+  EMU = wine ~/Emus/X1/x1.exe
   DISK_IMAGE = images/SOSPROG.D88
   BIN_EXT_ENV = $(BIN_EXT)
 else ifeq ($(ENV), msxrom)
@@ -78,7 +79,7 @@ else ifeq ($(findstring $(ENV),pc80mk2 pc80mk2x),$(ENV))
   ASM_OPT = -cmt -gap 0
 else ifeq ($(ENV), cpm)
   SLANGENV=lsx
-  EMU = tools/cpm.exe
+  EMU = wine ~/projects/SLANG-compiler/tools/cpm.exe
   DISK_IMAGE = $(OUTPROG)
 endif
 

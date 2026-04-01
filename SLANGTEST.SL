@@ -104,7 +104,7 @@ MAIN()
     TNUM++;
 
     // 符号つき比較が正しく行われるか
-    IF VAL.<.-10 AND VAL.>.-51 AND VAL.<=.-10 AND VAL.>=-.51 THEN PRINT(TNUM,"OK",/) ELSE PRINT(TNUM,"NG",VAL,/);
+    IF VAL.<.-10 AND VAL.>.-51 AND VAL.<=.-10 AND VAL.>=.-51 THEN PRINT(TNUM,"OK",/) ELSE PRINT(TNUM,"NG",VAL,/);
     TNUM++;
 
     // 符号なし比較が正しく行われるか
