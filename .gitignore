@@ -49,10 +49,15 @@ msbuild.wrn
 .vs/
 
 # SLANG compiler build artifacts
-examples/*.ASM
+*.ASM
+*.LST
+*.SYM
+PROG.*
 examples/*.asm
-examples/*.LST
-examples/*.SYM
 examples/*.bin
 examples/*.com
-examples/PROG.*
+apps/*.ASM
+apps/*.LST
+apps/*.SYM
+apps/*.bin
+apps/PROG.*

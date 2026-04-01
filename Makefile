@@ -7,6 +7,8 @@
 # make ENV=msxrom TARGET=examples/MSXROM  - MSX ROM環境
 # make compare                       - 旧コンパイラ出力と比較
 # make clean                         - 成果物削除
+# make publish VERSION=x.x.x         - 全プラットフォーム向けリリース作成
+# make setup-tools                    - 開発ツール(AILZ80ASM等)のダウンロード
 
 # === 設定 ===
 TARGET ?= SLANGTEST
@@ -56,8 +58,7 @@ else ifeq ($(ENV), x1)
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), sos)
   # EMU = ~/emu/X1/X1.exe
-  # EMU = @echo "S-OS emulator not configured. Set EMU variable" \#
-  EMU = wine ~/Emus/X1/x1.exe
+  EMU = @echo "S-OS emulator not configured. Set EMU variable" \#
   DISK_IMAGE = images/SOSPROG.D88
 else ifeq ($(ENV), msxrom)
   # EMU = /Applications/openMSX.app/Contents/MacOS/openmsx
@@ -80,7 +81,7 @@ endif
 
 IMGPROG = $(basename $(OUTPROG))$(BIN_EXT_ENV)
 
-.PHONY: all compile asm run compare clean help old-compile
+.PHONY: all compile asm run compare clean help old-compile publish setup-tools
 
 all: asm
 
@@ -167,19 +168,38 @@ help:
 	@echo "SLANG Compiler Makefile"
 	@echo ""
 	@echo "Usage:"
-	@echo "  make             - コンパイル+アセンブル (SLANGTEST.SL)"
-	@echo "  makerun           - CPMエミュで実行"
-	@echo "  makecompile       - コンパイルのみ (.ASM生成)"
-	@echo "  makeasm           - アセンブルまで (.bin生成)"
-	@echo "  makecompare       - 旧コンパイラ出力との比較"
-	@echo "  makecheck-symbols - 未解決シンボルチェック"
-	@echo "  makeclean         - 成果物削除"
+	@echo "  make                          - コンパイル+アセンブル (SLANGTEST.SL)"
+	@echo "  make run                      - CPMエミュで実行"
+	@echo "  make compile                  - コンパイルのみ (.ASM生成)"
+	@echo "  make asm                      - アセンブルまで (.bin生成)"
+	@echo "  make compare                  - 旧コンパイラ出力との比較"
+	@echo "  make check-symbols            - 未解決シンボルチェック"
+	@echo "  make clean                    - 成果物削除"
+	@echo "  make publish VERSION=x.x.x    - 全プラットフォーム向けリリース作成"
+	@echo "  make setup-tools              - 開発ツールのダウンロード"
 	@echo ""
 	@echo "Options:"
 	@echo "  TARGET=path  - ソースファイル (拡張子なし, default: SLANGTEST)"
 	@echo "  ENV=name     - 環境名 (default: lsx)"
 	@echo ""
 	@echo "Examples:"
-	@echo "  makeTARGET=examples/STARS"
-	@echo "  makeENV=msxrom TARGET=examples/MSXROM compile"
-	@echo "  makecompare"
+	@echo "  make TARGET=examples/STARS"
+	@echo "  make ENV=msxrom TARGET=examples/MSXROM compile"
+	@echo "  make compare"
+
+# === リリースパッケージ作成 ===
+publish:
+ifndef VERSION
+	$(error VERSION is required. Usage: make publish VERSION=0.20.0)
+endif
+	./publish.sh $(VERSION)
+
+# === 開発ツールのダウンロード ===
+setup-tools:
+ifeq ($(OS),Windows_NT)
+	setupenv.bat
+else ifeq ($(shell uname -s),Darwin)
+	./setupenv.sh mac
+else
+	./setupenv.sh linux
+endif

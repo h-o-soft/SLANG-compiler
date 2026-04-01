@@ -9,15 +9,22 @@ createRelease() {
   mkdir bin
   mv slangc* bin
   cp -r ../../include .
-  cp -r ../../lib .
   cp -r ../../runtime .
-  cp -r ../../examples .
+  # examples: SLANGソースのみ（ビルド成果物除外）
+  mkdir -p examples
+  cp ../../examples/*.SL examples/ 2>/dev/null
   cp -r ../../env .
-  cp -r ../../images .
+  # images: LSXPROG.d88のみ
+  mkdir -p images
+  cp ../../images/LSXPROG.d88 images/
+  cp -r ../../docs .
   cp -r ../../syntax .
   cp ../../Makefile.dist ./Makefile
   cp ../../README.md .
+  cp ../../CHANGELOG.md .
   cp ../../LICENSE .
+  cp ../../setupenv.bat .
+  cp ../../setupenv.sh .
   zip -r SLANG-compiler-$3-$1.zip * -x '*/.DS_Store'
   mv SLANG-compiler-$3-$1.zip ../../
   cd ../..
