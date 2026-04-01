@@ -550,42 +550,24 @@ EXIT TOと違い、ジャンプ先に制限なし。
 - `+=`, `-=`, `*=`, `/=`: 複合代入演算子
 - マルチプラットフォーム対応（MSX, X1, PC-8001, PC-8801, ZX Next, VGS0等）
 - ランタイムライブラリシステム
-- ケース感応モード (`--case-sensitive`)
-- デバッグシンボル出力
 - モジュールシステム (`#MODULE`)
+- プリプロセッサ定数 `ENV_TYPE` / `OS_TYPE`（`#IF` 条件式で環境判定可能）
 
 ---
 
-## MODULE/オーバーレイ機能（再設計予定）
+## MODULE/オーバーレイ機能
 
-### 元実装の仕組み
+`#MODULE` 指定により、同一アドレス空間で動的に切り替えて使用するモジュールを分割出力できる。
 
-元コンパイラのMODULEは以下の流れで動作:
-
-1. `#MODULE $8000` → `ORG $8000,$00000` (AILZ80ASMの2引数ORG)
-2. AILZ80ASMが64KBブロック単位で巨大バイナリを生成
-3. ModuleSplitterが.symから `_MODULE_N_START/_END` を探して分割
-
-問題点:
-- AILZ80ASMの特殊ORG機能に完全依存
-- 64KB境界アライメントで無駄に大きい中間バイナリ
-- ModuleSplitterの.symパースが脆い
-
-### 新コンパイラでの再設計方針
-
-コンパイラ内で解決する:
-- 全モジュールを1パスでコンパイル（シンボルテーブル共有）
-- CodeGenerator段階でモジュール単位にASMファイルを分割出力
-- ModuleSplitter不要、アセンブラの特殊機能にも非依存
+新コンパイラでは、コンパイラが直接モジュール単位のASMファイルを出力する（ModuleSplitter不要）:
 
 ```
-slangc --split-modules source.SL
+slangc source.SL
   → source.ASM       (メイン部)
-  → source_m0.ASM    (モジュール0)
-  → source_m1.ASM    (モジュール1)
+  → source._m0.ASM   (モジュール0)
+  → source._m1.ASM   (モジュール1)
+  → source._inc.ASM  (共有シンボル定義)
 ```
 
-シンボル共有の実現:
-- SemanticAnalyzer/IrGeneratorは全モジュール共通で実行
-- 他モジュールのシンボルはEXTERN/PUBLIC宣言として各ASMに出力
-- または共通シンボルファイル(.inc)を生成して各ASMからINCLUDE
+- 全モジュールを1パスでコンパイル（シンボルテーブル共有）
+- 共通シンボルファイル(.inc)を生成して各ASMからINCLUDE
