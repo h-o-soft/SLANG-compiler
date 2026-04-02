@@ -694,8 +694,8 @@ SOUNDDRV_INIT:
 
     _CTCVEC EQU NAME_SPACE_DEFAULT._CTCVEC
 #IF NAME_SPACE_DEFAULT.OS_TYPE == 0
-    ; LSX-Dodgers
-    _CTC  EQU   F08Ch
+    ; LSX-Dodgers 1.62c
+    _CTC  EQU   EE8Ch
 
     LD BC,(_CTC)
     LD A,C

@@ -58,6 +58,8 @@ SLANGコンパイラの標準環境です。-Eオプションを指定しない�
 
 X1/turbo/ZやMZ-700/1500やPC-8801mkIISRでCP/M80やMSX-DOSのソフトを実行するためのOS [LSX-Dodgers](https://github.com/tablacus/LSX-Dodgers) 用になります。
 
+**LSX-Dodgers 1.62c が必要です。** ランタイムライブラリがLSX-Dodgers 1.62cの内部アドレスに依存しています（詳細は「LSX-Dodgersバージョン依存について」を参照）。
+
 LSX-Dodgersにて安定して動作する環境です。一部を除き、MSX(2)、CP/M環境などでも動作すると思われます。
 
 ファイルオープンの際のMSX-DOS2の処理を省略しています。
@@ -67,6 +69,8 @@ WIDTH関数は動作しません。
 ## x1 ( SHARP X1 )
 
 lsx環境をベースとし、テキスト表示関連についてX1専用にカスタマイズした環境です。
+
+**LSX-Dodgers 1.62c が必要です。** lsx環境と同様、ランタイムがLSX-Dodgers 1.62cに依存しています。
 
 WIDTH関数が正常に動作し、文字表示について高速化されます。
 
@@ -289,6 +293,20 @@ make TARGET=examples/STARS ENV=x1 run
 - LSX-Dodgers用: `images/LSXPROG.D88`
 - S-OS用: `images/SOSPROG.D88`
 - MSX-DOS用: `images/dosformsx.dsk`
+
+# LSX-Dodgersバージョン依存について
+
+lsx環境およびx1環境のランタイムは **LSX-Dodgers 1.62c** の内部アドレスに依存しています。他のバージョンでは正常に動作しない可能性があります。
+
+依存箇所:
+
+| ファイル | 内容 | 依存アドレス |
+|----------|------|-------------|
+| `runtime/liblsx_base.asm` | CTCベクタ初期化 | `$EEC0`（CTC0ベクタアドレス） |
+| `runtime/liblsx_base.asm` | INKEY(0)リアルタイムキー入力 | `$EE92`（キーデータ）。初回呼び出し時にバージョン判定し、1.62c以外では無効化 |
+| `runtime/libx1_psg.asm` | PSG再生ライブラリ | LSX-Dodgers内部のCTCアドレス |
+
+LSX-Dodgers 1.62c は [LSX-Dodgersのリリースページ](https://github.com/tablacus/LSX-Dodgers) から入手できます。
 
 # 更新履歴
 
