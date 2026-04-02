@@ -1,0 +1,163 @@
+# SLANG新コンパイラ 残タスク一覧
+
+最終更新: 2026-03-29
+
+## 実装状況サマリ
+
+- **Lexer**: 完成
+- **Preprocessor**: 完成 (#INCLUDE再帰展開, #IF/#ELSE/#ENDIF)
+- **Parser**: 完成 (15/15 examples, SLANGTEST.SL全パース)
+- **SemanticAnalyzer**: 完成 (ビルトイン登録, IYオフセット, 定数式評価)
+- **IrGenerator**: 完成 (全制御フロー, FLOAT追跡, 定数畳み込み)
+- **CodeGenerator**: 完成 (直接ロード/比較融合/INC最適化/halfDirect/ピープホール)
+- **MODULE/オーバーレイ**: 完成 (フルZ80コード生成, .incファイル, 固有ランタイム分離)
+- **ランタイム統合**: SLANGINIT展開, RUNTIME_INIT, __WORK__集約, ENV_TYPE/OS_TYPE
+- **ランタイム変換**: 全48ファイル新形式(works/init_code/extlib/include対応)
+- **プラットフォーム**: 全8環境対応 (.env読込み)
+- **テスト**: 42件全パス (CodeGen 14件 + CLI統合8件 + Lexer/Parser 20件)
+- **仕様書**: docs/SLANG-spec.md
+
+---
+
+## 新旧出力比較結果 (SLANGTEST.SL + STARS.SL + MANDEL.SL)
+
+### 致命的 (アセンブル不可またはランタイムエラー)
+
+| 問題 | 詳細 | 影響範囲 |
+|------|------|----------|
+| 算術ランタイム名不一致 | MUL16→MULHLDE, DIV16→DIVHLDE, SDIV16→SDIVHLDE, MOD16→MODHLDE, SMOD16→SMODHLDE | 乗除算・剰余を使う全プログラム |
+| シフトランタイム名不一致 | SHL16→LSHIFTHLDE, SHR16→RSHIFTHLDE, SSHR16→SRSHIFTHLDE | <<, >> 演算子を使うプログラム |
+| 符号付き比較ランタイム未実装 | SCMP_LT/GT/LE/GEを呼ぶがランタイムに存在しない。旧はインライン展開(BIT 7テスト) | `.>=.` `.<=.` `.>.` `.<.` 演算子 |
+| CODEリスト内 %定数バグ | `{1,2,3,%5,%6,...}`の`%5`が0になる | 配列初期化子のバイナリリテラル |
+
+### 互換性 (動作するが旧と異なる挙動)
+
+| 問題 | 詳細 | 備考 |
+|------|------|------|
+| 静的宣言 vs 局所宣言 | BEGIN前のVARが全てローカル扱い | __WORK__オフセットが旧と約8バイトずれる原因 |
+| 関数内静的変数の__WORK__配置 | 旧は関数名_変数名でWORK配置、新は未対応 | 上記と連動 |
+| メモリレイアウト不統一 | 初期値付き変数はコード領域DB、初期値なしはWORK内EQU | ROM環境での配列書き換え問題 |
+| 定数条件IF文の最適化 | CONST同士の比較でコードが残る | 無駄なコード生成 |
+
+### 可読性・最適化 (機能に影響なし)
+
+| 項目 | 旧 | 新 | 評価 |
+|------|----|----|------|
+| 文字列出力方式 | MPRNT(インライン) | PMSX(テーブル参照) | 新が良い(コード/データ分離) |
+| シンボル名 | __SYMxxx | _変数名 | 新が良い(可読性) |
+| ラベル名 | __Lxx | _Lxx | 同等 |
+| 数値リテラル | 混在($100, 28672, F0C0H) | 統一($0100, $7000, $F0C0) | 新が良い(一貫性) |
+| 関数コメント | なし | `; function FUNC1` | 新が良い |
+| 文字列DB | hex列 | `DB "text",0` | 新が良い(可読性) |
+| 未使用関数 | 出力しない | 出力する | 旧が良い(サイズ) → 将来のデッドコード除去で対応 |
+
+---
+
+## 残タスク
+
+### 優先度: 致命的 (アセンブル不可)
+
+#### ~~T1. 算術・シフトランタイム名の修正~~ ✅完了
+#### ~~T2. 符号付き比較ランタイム名の修正~~ ✅完了
+- T1/T2ともにランタイム名をCallRuntime()ヘルパー経由で修正済み
+- 合わせて、算術/シフト/比較のCALLが_calledFunctionsに追加されないバグも修正
+
+#### ~~T2b. ユーザー変数とシステム変数のラベル衝突防止~~ ✅完了
+- ユーザー変数: `__`プレフィックス（例: `__A`, `__VAL`）
+- システムレジスタ変数: `_`プレフィックス（例: `_AF`, `_CARRY`）— ランタイム互換
+- `_A EQU (_AF+1)` はシステムエイリアスとして独立
+- IrGenerator.ResolveAsmLabel()でシンボルのAsmLabelをIR命令に反映（文字列規則依存を排除）
+
+#### ~~T3. CODEリスト内 %定数 のバグ修正~~ ✅完了
+- Parser: `%`をWORD型指定としてParseCodeItemに追加
+- IrGenerator: 配列初期化子でCastExprをアンラップしてサイズ別にバイト列生成
+
+### 優先度: 高 (互換性)
+
+#### ~~T4. 静的宣言 vs 局所宣言の区別~~ ✅完了
+- _inStaticDecl/_emitToGlobalDataフラグで静的/局所を区別
+- 静的変数: __WORK__にEQU配置（__{FuncName}_{VarName}）
+- 静的初期値: _emitToGlobalDataでGlobalDataに積む（起動時1回）
+- __WORKEND__が旧実装と完全一致(1883バイト)
+
+### 優先度: 中
+
+#### ~~T5. メモリレイアウトの統一~~ ✅完了 (Phase 1+2)
+- code_readonlyフラグをenv追加（msxrom.env: true）
+- RAM環境: 現行維持（コード領域にDB直接配置）
+- ROM環境: テンプレート(__INIT_TEMPLATE)+WORK配置+起動時LDIRコピー
+- Phase 3（明示的セクション管理）は将来タスク
+
+#### ~~T6. 定数条件IF文の最適化~~ ✅完了
+- 定数TRUE: 条件チェック省略、bodyのみ出力、残りブランチ/else省略
+- 定数FALSE: ブランチ完全スキップ
+- WHILEの既存最適化と同じConstEvaluatorパターン
+
+#### ~~T6b. 符号付き比較のcompare+jump特殊化~~ ✅完了
+- IF文での符号付き比較をインライン展開（XOR D→JP P→BIT 7,H→条件分岐）
+- CALL OPS*HLDEが不要になりコードサイズ・速度両方改善
+- 非融合ケース（代入等）は従来通りCALL OPS*HLDE
+
+#### ~~T7. エラーメッセージの改善~~ ✅完了
+- 3種同期リカバリ: SynchronizeTopLevel/Declaration/Statement（停止集合は既存パーサーと完全一致）
+- ErrorCount差分で同期発火（5ループ: CompilationUnit, ModuleBlock, StmtList, staticDecls, localDecls）
+- MaxErrors=30で打ち切り（HasReachedMaxErrors）
+- 行番号追跡は既に正確（Lexer/Preprocessor経由で#INCLUDEファイル名も保持）
+
+### 優先度: 低
+
+#### T8. デッドコード除去
+- 呼ばれない関数(FUNC1等が実際は呼ばれているが、呼ばれないケースでの除去)
+- 旧実装は未使用関数を出力しない
+
+#### T9. AILZ80ASM出力フォーマット準拠
+- ラベル命名規則 (__L番号形式)
+- ネームスペース記法 ([NAMESPACE])
+
+#### T10. テスト拡充
+- 符号付き比較テスト追加
+- 算術演算テスト追加
+- 制御フロー、多次元配列、MEM/MEMW/PORT、オーバーレイ
+
+---
+
+## 完了済みタスク
+
+- [x] H0: 間接変数の完全対応 (BYTE/WORDスケーリング)
+- [x] H1: FLOAT型 (24bit演算, f24ランタイム, 3バイトLD/ST)
+- [x] H2: PORT[]/PORTW[]/SOS[]/SOSW[] のIR接続
+- [x] H3: CODE関数 (DB/DW/[式]/<ラベル>/型指定)
+- [x] H4: SOROBAN.LIB対応 (MACHINE関数の(定数)パターン)
+- [x] M1: ピープホール最適化の実適用 (5ルール)
+- [x] M2: src2のみ単純ロード時のDE直接化
+- [x] M3: ローカル配列のIYオフセットアドレス計算
+- [x] M4: 全48ランタイム新形式変換 (works/init_code/extlib/include対応)
+- [x] M5: 定数式評価拡張 (CastExpr, ConditionalExpr)
+- [x] L2: 全8プラットフォーム .env読込み対応
+- [x] PRINT文字列 PSTR→PMSX修正
+- [x] PRINT数値 PRT→P10修正
+- [x] ローカル配列IYフレーム確保修正 (IrFunction.LocalSize)
+- [x] SLANGINIT展開・RUNTIME_INIT常時生成・__WORK__集約レイアウト
+- [x] ENV_TYPE/OS_TYPE出力
+- [x] レジスタワーク変数ラベル修正 (_REG_CARRY→_CARRY)
+- [x] オーバーレイのランタイム分離 (メイン側混入防止)
+- [x] 文字列DB可読性改善
+- [x] T1: 算術・シフトランタイム名修正 (MUL16→MULHLDE等)
+- [x] T2: 符号付き比較ランタイム名修正 (SCMP_*→OPS*HLDE)
+- [x] ランタイムCALLの_calledFunctions追跡漏れ修正 (CallRuntimeヘルパー)
+- [x] T2b: ユーザー変数ラベルを__プレフィックスに変更 (システム変数_との衝突防止)
+- [x] T2b追加: システム変数アクセスのAsmLabel解決修正 (ResolveAsmLabel導入)
+- [x] T3: CODEリスト内 %定数バグ修正 (CastExprアンラップ + %をWORD型指定に追加)
+- [x] T4: 静的宣言 vs 局所宣言の区別 (_inStaticDecl/_emitToGlobalData、__WORKEND__一致)
+- [x] T6: 定数条件IF文の最適化 (TRUE→チェック省略、FALSE→ブランチ省略)
+- [x] T6b: 符号付き比較のcompare+jump特殊化 (IF文でインライン展開、CALL不要)
+- [x] T7: エラーリカバリ (3種同期+MaxErrors=30+5ループ対応)
+- [x] T5: メモリレイアウト統一 Phase1+2 (code_readonly, テンプレートLDIR)
+
+---
+
+## 将来検討
+
+### F1. 他言語への移植 (TS/Go/Rust)
+### F2. 言語仕様拡張 (構造体等)
+### F3. IDE連携 (LSP)

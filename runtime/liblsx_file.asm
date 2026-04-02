@@ -1,0 +1,559 @@
+; Converted from lib/libdef/liblsx_file.yml
+; SLANG Runtime Library (new format)
+
+; @name LSXFILE
+; @calls MULHLDE
+; fnum to FCB address
+LSXCALCFCB:
+PUSH BC
+PUSH DE
+LD DE,37
+CALL MULHLDE
+LD DE,LSXFCBS
+ADD HL,DE
+POP DE
+POP BC
+RET
+
+; HL >= 8 ?
+LSXFCHECKNUM:
+PUSH HL
+PUSH DE
+
+; HL >= 8
+LD DE,8
+OR A
+SBC HL,DE
+; non carry (HL >= 8)
+
+POP DE
+POP HL
+RET
+
+
+; @name FOPEN
+; @calls LSXCALLS,FWORK,LSXFILE
+; HL=fnum DE=fname addr BC=mode
+LD (LSXFCB),HL
+LD A,C
+AND 3
+LD C,A
+LD (LSXFMODE),BC
+
+CALL LSXFCHECKNUM
+JP C,.fopen1
+; return $FF
+LD HL,255
+RET
+
+.fopen1
+; LSXFCB=fnum*37+LSXFCBS
+LD HL,(LSXFCB)
+CALL LSXCALCFCB
+LD (LSXFCB),HL
+
+; LD C,$29  ; _PPATH
+; CALL BDOS
+CALL PPATH
+
+LD HL,(LSXFMODE)
+; mode >= 3
+LD DE,3
+OR A
+SBC HL,DE
+JR C,.fopen2
+LD C,$16  ; _FMAKE
+JR .fopen3
+.fopen2
+LD C,$0F  ; _FOPEN
+.fopen3
+LD DE,(LSXFCB)
+PUSH IY
+CALL BDOS
+POP IY
+
+; SET RANDOM RECORD to 0(4bytes)
+LD HL,(LSXFCB)
+LD DE,33
+ADD HL,DE
+LD (HL),0
+INC HL
+LD (HL),0
+INC HL
+LD (HL),0
+INC HL
+LD (HL),0
+
+LD L,A
+LD H,0
+RET
+
+PPATH:
+CALL	MGETDV	;文字列からデバイス名を取り出します
+SUB	'A'-1
+LD	(HL),A
+INC	HL
+
+CALL	CLRWFG
+LD	B,8	;プライマリ名
+FNML11:
+CALL	GTFLTR
+LD	(HL),A
+INC	HL
+DJNZ	FNML11
+CALL	SKPPRD
+CALL	CLRWFG
+LD	B,3	;拡張子
+FNML12:
+CALL	GTFLTR
+LD	(HL),A
+INC	HL
+DJNZ	FNML12
+CALL	SKPPRD
+
+XOR	A	;ＣＹ←０
+RET
+
+MGETDV:
+CALL	SPSKIP	;文字列の空白を読み飛ばします
+LD	A,(DE)
+OR	A
+JR	Z,MGTDV1	;文字列の終わりに達していました
+INC	DE
+LD	A,(DE)
+DEC	DE
+CP	':'
+JR	NZ,MGTDV1	;デバイスが指定されていません
+
+;	デバイスが指定されています
+LD	A,(DE)
+CALL	TOUPR
+INC	DE
+INC	DE
+OR	A	;ＣＹ←０
+RET
+
+;	デバイスが指定されていません
+MGTDV1:
+; カレントドライブ(0)
+LD  A,'A'-1
+SCF		;ＣＹ←１
+RET
+
+SPSLP:	INC	DE
+
+SPSKIP:
+LD	A,(DE)
+CP	' '
+JR	Z,SPSLP
+CP	09H	;ＴＡＢ
+JR	Z,SPSLP
+
+RET
+
+TOUPR:
+CP	'a'
+RET	C
+CP	'z'+1
+RET	NC
+SUB	20H
+RET
+
+CLRWFG:
+XOR	A
+LD	(WASFLG),A
+RET
+
+WASFLG:	DS	1	;＝FFHで「*」フェイズ中
+GFLLP:	INC	DE
+
+GTFLTR:
+;	「*」フェイズかチェックします
+LD	A,(WASFLG)
+OR	A
+JR	NZ,GFLWLD
+
+LD	A,(DE)	;Ａｃｃ←１文字
+
+;	区切りに達したか調べます
+OR	A	;ＮＵＬ
+JR	Z,GFLESC
+CP	0DH	;ＲＥＴ
+JR	Z,GFLESC
+CP	':'
+JR	Z,GFLESC
+CP	'.'
+JR	Z,GFLESC
+
+;	コントロール･コードとスペースをスキップします
+LD	A,(DE)
+CP	7FH	;ＤＥＬ
+JR	Z,GFLLP
+CP	21H	;00H～20H
+JR	C,GFLLP
+
+;	「*」かチェックします
+CP	'*'
+JR	Z,GFLAST
+
+;	通常終了
+INC	DE	;ＤＥのカウント･アップ
+JP	TOUPR
+
+;	「*」を発見しました
+GFLAST:	LD	A,0FFH
+LD	(WASFLG),A
+INC	DE
+
+;	「*」フェイズ
+GFLWLD:	LD	A,'?'
+RET
+
+;	ピリオドかファイル名の最後に達しました
+GFLESC:	LD	A,' '
+RET
+SKPLP:	INC	DE
+
+SKPPRD:
+LD	A,(DE)	;Ａｃｃ←１文字
+
+;	区切りに達したか調べます
+OR	A	;ＮＵＬ
+RET	Z
+CP	0DH	;ＲＥＴ
+RET	Z
+CP	':'
+RET	Z
+
+;	ピリオドに達したか調べます
+CP	'.'
+JR	NZ,SKPLP
+
+;	ピリオドをスキップ
+INC	DE
+RET
+
+
+; @name FSEEK
+; @calls LSXCALLS,FWORK,LSXFILE,NEGHL
+; HL=fnum DE=offset BC=mode(0=head, 1=current, 2=tail)
+CALL LSXFCHECKNUM
+JP C,.fseek1
+; return $FF
+LD HL,255
+RET
+
+.fseek1
+; LSXFCB=fnum*37+LSXFCBS
+CALL LSXCALCFCB
+LD (LSXFCB),HL
+
+LD A,C
+CP 1
+JP Z,.fseek_current
+JP C,.fseek_head
+
+; fseek_tail
+PUSH DE
+PUSH HL
+LD BC,33
+ADD HL,BC
+EX DE,HL    ; DE=(FCB)Random record
+POP HL
+LD BC,16
+ADD HL,BC   ; HL=(FCB)File size
+EX (SP),HL
+CALL NEGHL
+EX (SP),HL
+POP BC      ; BC=-offset
+
+LD A,(HL)
+INC HL
+SUB C
+LD (DE),A
+INC DE
+
+LD A,(HL)
+INC HL
+SBC A,B
+LD (DE),A
+INC DE
+
+LD A,(HL)
+INC HL
+SBC A,0
+LD (DE),A
+INC DE
+
+LD A,(HL)
+SBC A,0
+LD (DE),A
+JP .fseek_end
+
+.fseek_head
+LD BC,33
+ADD HL,BC
+LD (HL),E ; FCB+33
+INC HL
+LD (HL),D ; FCB+34
+INC HL
+LD (HL),0 ; FCB+35
+INC HL
+LD (HL),0 ; FCB=36
+
+JP .fseek_end
+
+.fseek_current
+LD BC,33
+ADD HL,BC
+
+; FCB+33-36 += DE
+LD A,E
+ADD A,(HL)
+LD (HL),A
+LD A,D
+INC HL
+ADC A,(HL)
+LD (HL),A
+INC HL
+LD A,0
+ADC A,(HL)
+LD (HL),A
+INC HL
+LD A,0
+ADC A,(HL)
+LD (HL),A
+
+.fseek_end
+LD HL,0
+RET
+
+
+; @name FGETC
+; @calls LSXCALLS,FWORK,LSXFILE
+; HL=fnum
+
+CALL LSXFCHECKNUM
+JP C,.fgetc1
+; return $FF
+LD HL,255
+RET
+
+.fgetc1
+; LSXFCB=fnum*37+LSXFCBS
+CALL LSXCALCFCB
+LD (LSXFCB),HL
+
+; SET DTA
+PUSH HL
+LD  DE,.fgetbuf
+LD  C,$1A ; _SETDTA
+CALL  BDOS
+POP HL
+
+; FCB head to DE
+LD E,L
+LD D,H
+
+; SET RECORD SIZE(FCB+14)
+LD BC,14
+ADD HL,BC
+LD (HL),1
+INC HL
+LD (HL),0
+
+LD HL,1     ; read record size
+
+LD C,$27    ; _RDBLK
+PUSH IY
+CALL BDOS
+POP IY
+CP 0
+JR NZ,.fgeterr
+
+; ok
+LD A,(.fgetbuf)
+LD L,A
+LD H,0
+LD A,0
+RET
+
+.fgeterr
+LD H,$FF
+LD L,1    ; error code (tekito-)
+LD A,L
+SCF
+RET
+
+.fgetbuf
+DS  1
+
+
+; @name FPUTC
+; @calls LSXCALLS,FWORK,LSXFILE
+; HL=fnum DE=chr
+
+CALL LSXFCHECKNUM
+JP C,.fgetc1
+; return $FF
+LD HL,255
+RET
+
+.fgetc1
+; LSXFCB=fnum*37+LSXFCBS
+CALL LSXCALCFCB
+LD (LSXFCB),HL
+
+
+; SET DTA
+PUSH HL
+
+LD HL,.fputbuf
+LD (HL),E
+
+LD  DE,.fputbuf
+LD  C,$1A ; _SETDTA
+CALL  BDOS
+POP HL
+
+; FCB head to DE
+LD E,L
+LD D,H
+
+; SET RECORD SIZE(FCB+14)
+LD BC,14
+ADD HL,BC
+LD (HL),1
+INC HL
+LD (HL),0
+
+LD HL,1     ; write record size
+
+LD C,$26    ; _WRBLK
+PUSH IY
+CALL BDOS
+POP IY
+CP 0
+JR NZ,.fputerr
+
+; ok
+LD A,(.fputbuf)
+LD L,A
+LD H,0
+LD A,0
+RET
+
+.fputerr
+LD H,$FF
+LD L,1    ; error code (tekito-)
+LD A,L
+SCF
+RET
+
+.fputbuf
+DS  1
+
+
+; @name FCLOSE
+; @calls LSXCALLS,FWORK,LSXFILE
+; HL=fnum
+CALL LSXCALCFCB
+EX DE,HL
+LD C,$10  ; _FCLOSE
+PUSH IY
+CALL BDOS
+POP IY
+LD L,A
+LD H,0
+RET
+
+
+; @name FREADWRITE
+; SET DTA (DE)
+PUSH BC
+LD  C,$1A ; _SETDTA
+PUSH IY
+CALL  BDOS
+POP IY
+
+; SET RECORD SIZE(FCB+14)
+LD HL,(LSXFCB)
+LD BC,14
+ADD HL,BC
+LD (HL),1
+INC HL
+LD (HL),0
+
+POP BC
+
+LD HL,(LSXFCB)  ; DE->FCB
+EX DE,HL
+
+LD L,C          ; HL->read record size
+LD H,B
+
+RET
+
+
+; @name FREAD
+; @calls LSXCALLS,FWORK,LSXFILE,FREADWRITE
+; HL=fnum DE=address BC=size
+
+CALL LSXFCHECKNUM
+JP C,.fread1
+; return $FF
+LD HL,255
+RET
+
+.fread1
+; LSXFCB=fnum*37+LSXFCBS
+CALL LSXCALCFCB
+LD (LSXFCB),HL
+
+CALL FREADWRITE
+
+LD C,$27
+PUSH IY
+CALL BDOS
+POP IY
+ADD A,1
+SBC A,A
+RET NC
+LD L,A
+LD H,A  ;HL=$FFFF CF=1
+RET
+
+
+; @name FWRITE
+; @calls LSXCALLS,FWORK,LSXFILE,FREADWRITE
+; HL=fnum DE=address BC=size
+
+CALL LSXFCHECKNUM
+JP C,.fread1
+; return $FF
+LD HL,255
+RET
+
+.fread1
+; LSXFCB=fnum*37+LSXFCBS
+CALL LSXCALCFCB
+LD (LSXFCB),HL
+
+CALL FREADWRITE
+
+LD C,$26
+PUSH IY
+CALL BDOS
+POP IY
+
+LD L,A
+LD H,0
+
+RET
+
+
+; @name FWORK
+; @works LSXFCBS:296,LSXFCB:2,LSXFMODE:2
+;
+
+

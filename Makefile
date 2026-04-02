@@ -1,168 +1,205 @@
 # SLANG Compiler Makefile
-# ===========================
-# make              - コンパイラをビルド
-# make release      - リリースビルド
-# make install      - インストール (PREFIX=/usr/local)
-# make uninstall    - アンインストール
-# make publish      - 全プラットフォーム向けリリース作成 (VERSION必須)
-# make setup-tools  - 開発ツール(AILZ80ASM等)のダウンロード
-# make clean        - クリーンアップ
+# ===================================
+# make                               - SLANGTEST.SLをコンパイル→アセンブル
+# make run                           - CPMエミュで実行 (LSX環境)
+# make asm                           - アセンブルのみ
+# make TARGET=examples/STARS         - 別ソース指定
+# make ENV=msxrom TARGET=examples/MSXROM  - MSX ROM環境
+# make compare                       - 旧コンパイラ出力と比較
+# make clean                         - 成果物削除
+# make publish VERSION=x.x.x         - 全プラットフォーム向けリリース作成
+# make setup-tools                    - 開発ツール(AILZ80ASM等)のダウンロード
 
-# 設定
+# === 設定 ===
+TARGET ?= SLANGTEST
+ENV ?= lsx
+
+# ツール
 DOTNET = dotnet
-VERSION ?=
-PREFIX ?= /usr/local
-BINDIR = $(PREFIX)/bin
-CONFIG_DIR = $(HOME)/.config/SLANG
+SLANGC_NEW = $(DOTNET) run --project src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj -c Release --
+SLANGC_OLD = $(DOTNET) run --project SLANGCompiler.csproj -c Release --
+ASM = AILZ80ASM
+NDC = ndc
+HUDISK = HuDisk
+MODSPLIT = ModuleSplitter
 
-# OS検出
-ifeq ($(OS),Windows_NT)
-    DETECTED_OS = Windows
-    MKDIR = mkdir
-    RM = del /Q
-    RMDIR = rmdir /S /Q
-    CP = copy
-    XCOPY = xcopy /E /Y
-    PATHSEP = \\
-    EXE_EXT = .exe
-    SHELL_EXT = bat
+# ファイル
+SRC = $(TARGET).SL
+ASM_NEW = $(TARGET).ASM
+ASM_OLD = $(TARGET).OLD.ASM
+BIN_EXT = .bin
+OUTPROG = $(dir $(TARGET))PROG.bin
+LST = $(TARGET).lst
+SYM = $(TARGET).sym
+
+# CP/M環境
+ifeq ($(ENV),cpm)
+  SLANGENV = lsx
 else
-    UNAME_S := $(shell uname -s)
-    ifeq ($(UNAME_S),Darwin)
-        DETECTED_OS = macOS
-        ARCH := $(shell uname -m)
-        ifeq ($(ARCH),arm64)
-            RID = osx-arm64
-        else
-            RID = osx-x64
-        endif
-    else
-        DETECTED_OS = Linux
-        RID = linux-x64
-    endif
-    MKDIR = mkdir -p
-    RM = rm -f
-    RMDIR = rm -rf
-    CP = cp
-    XCOPY = cp -R
-    PATHSEP = /
-    EXE_EXT =
-    SHELL_EXT = sh
+  SLANGENV = $(ENV)
 endif
 
-# ターゲット
-.PHONY: all build release install uninstall publish setup-tools clean help
+# ASMオプション、エミュレータ、ディスクイメージを環境に応じて設定
+ASM_OPT =
+BIN_EXT_ENV = $(BIN_EXT)
 
-all: build
+ifeq ($(ENV), lsx)
+  EMU = cpm
+  DISK_IMAGE = $(OUTPROG)
+  BIN_EXT_ENV = .com
+else ifeq ($(ENV), cpm)
+  EMU = cpm
+  DISK_IMAGE = $(OUTPROG)
+  BIN_EXT_ENV = .com
+else ifeq ($(ENV), x1)
+  # EMU = ~/emu/X1/X1.exe
+  EMU = @echo "X1 emulator not configured. Set EMU variable" \#
+  DISK_IMAGE = images/LSXPROG.D88
+  BIN_EXT_ENV = .com
+else ifeq ($(ENV), sos)
+  # EMU = ~/emu/X1/X1.exe
+  EMU = @echo "S-OS emulator not configured. Set EMU variable" \#
+  DISK_IMAGE = images/SOSPROG.D88
+else ifeq ($(ENV), msxrom)
+  # EMU = /Applications/openMSX.app/Contents/MacOS/openmsx
+  EMU = @echo "MSX emulator not configured. Set EMU variable" \#
+  EMUOPT = -cart
+  DISK_IMAGE = $(OUTPROG)
+else ifeq ($(ENV), msx2)
+  # EMU = /Applications/openMSX.app/Contents/MacOS/openmsx
+  EMU = @echo "MSX emulator not configured. Set EMU variable" \#
+  DISK_IMAGE = images/dosformsx.dsk
+  BIN_EXT_ENV = .com
+  EMUOPT = -diska
+else ifeq ($(findstring $(ENV),pc80mk2 pc80mk2x),$(ENV))
+  # EMU = ~/emu/PC8001mkII/pc8001mk2.exe
+  EMU = @echo "PC-8001 emulator not configured. Set EMU variable" \#
+  BIN_EXT = .cmt
+  BIN_EXT_ENV = .cmt
+  ASM_OPT = -cmt -gap 0
+endif
 
-# ビルド (Debug)
-build:
-	$(DOTNET) build
-	cd ModuleSplitter && $(DOTNET) build
+IMGPROG = $(basename $(OUTPROG))$(BIN_EXT_ENV)
 
-# ビルド (Release)
-release:
-	$(DOTNET) build -c Release
-	cd ModuleSplitter && $(DOTNET) build -c Release
+.PHONY: all compile asm run compare clean help old-compile publish setup-tools
 
-# ローカルインストール用にpublish (self-contained)
-publish-local:
-ifeq ($(DETECTED_OS),Windows)
-	$(DOTNET) publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true
-	cd ModuleSplitter && $(DOTNET) publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=true
+all: asm
+
+# === 新コンパイラでコンパイル ===
+compile: $(ASM_NEW)
+
+$(ASM_NEW): $(SRC)
+	$(SLANGC_NEW) -E $(SLANGENV) -I include -o $@ $<
+
+# === AILZ80ASMでアセンブル ===
+asm: $(OUTPROG)
+
+$(OUTPROG): $(ASM_NEW)
+	$(ASM) $< -f -o $@ -bin -sym -lst $(ASM_OPT)
+	@echo "=== Assemble OK: $@ ==="
+	@ls -la $@
+
+# === バイナリ拡張子変換（.bin→.com等） ===
+ifneq ($(BIN_EXT),$(BIN_EXT_ENV))
+$(IMGPROG): $(OUTPROG)
+	mv $< $@
+endif
+
+# === ディスクイメージ作成+エミュレータ実行 ===
+ifeq ($(ENV),$(filter $(ENV),lsx cpm))
+# LSX/CPM: cpmエミュで直接実行
+run: $(OUTPROG)
+	$(EMU) $<
+else ifeq ($(ENV), msxrom)
+# MSX ROM: カートリッジとして実行
+run: $(OUTPROG)
+	$(EMU) $(EMUOPT) $(DISK_IMAGE)
+else ifeq ($(ENV), sos)
+# S-OS: HuDiskでD88イメージに格納
+run: $(IMGPROG)
+	$(HUDISK) -d $(DISK_IMAGE) PROG.bin
+	$(HUDISK) -a $(DISK_IMAGE) $(IMGPROG) -r 3000 -g 3000
+	$(EMU) $(DISK_IMAGE)
+else ifeq ($(ENV),$(filter $(ENV),x1 msx2 msxlsx))
+# X1/MSX: ndcでディスクイメージに格納
+run: $(IMGPROG)
+	- $(NDC) D $(DISK_IMAGE) 0 PROG$(BIN_EXT_ENV)
+	$(NDC) P $(DISK_IMAGE) 0 $(IMGPROG)
+	$(EMU) $(EMUOPT) $(DISK_IMAGE)
 else
-	$(DOTNET) publish -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
-	cd ModuleSplitter && $(DOTNET) publish -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true /p:PublishTrimmed=true
+run: $(OUTPROG)
+	@echo "Run: ENV=$(ENV) — use appropriate emulator manually with $(OUTPROG)"
 endif
 
-# インストール
-install: publish-local install-bin install-lib
-	@echo "Installation complete!"
-	@echo "  Binaries: $(BINDIR)"
-	@echo "  Libraries: $(CONFIG_DIR)"
+# === 旧コンパイラでコンパイル（比較用） ===
+old-compile: $(ASM_OLD)
 
-install-bin:
-ifeq ($(DETECTED_OS),Windows)
-	@echo "Windows: Please add bin directory to PATH manually"
-	@if not exist "$(BINDIR)" $(MKDIR) "$(BINDIR)"
-	$(CP) bin\Release\net6.0\win-x64\publish\SLANGCompiler.exe "$(BINDIR)\"
-	$(CP) ModuleSplitter\ModuleSplitter\bin\Release\net6.0\win-x64\publish\ModuleSplitter.exe "$(BINDIR)\"
-else
-	$(MKDIR) $(BINDIR)
-	$(CP) bin/Release/net6.0/$(RID)/publish/SLANGCompiler $(BINDIR)/
-	$(CP) ModuleSplitter/ModuleSplitter/bin/Release/net6.0/$(RID)/publish/ModuleSplitter $(BINDIR)/
-	chmod +x $(BINDIR)/SLANGCompiler
-	chmod +x $(BINDIR)/ModuleSplitter
-endif
+$(ASM_OLD): $(SRC)
+	$(SLANGC_OLD) -O $@ $<
 
-install-lib:
-ifeq ($(DETECTED_OS),Windows)
-	@if not exist "$(CONFIG_DIR)" $(MKDIR) "$(CONFIG_DIR)"
-	@if not exist "$(CONFIG_DIR)\include" $(MKDIR) "$(CONFIG_DIR)\include"
-	@if not exist "$(CONFIG_DIR)\lib" $(MKDIR) "$(CONFIG_DIR)\lib"
-	$(XCOPY) include "$(CONFIG_DIR)\include"
-	$(XCOPY) lib "$(CONFIG_DIR)\lib"
-else
-	$(MKDIR) $(CONFIG_DIR)
-	$(XCOPY) include $(CONFIG_DIR)/
-	$(XCOPY) lib $(CONFIG_DIR)/
-endif
+# === 新旧ASM出力比較 ===
+compare: $(ASM_NEW) $(ASM_OLD)
+	@echo "=== Diff: $(ASM_OLD) vs $(ASM_NEW) ==="
+	@echo "Old: $$(wc -l < $(ASM_OLD)) lines"
+	@echo "New: $$(wc -l < $(ASM_NEW)) lines"
+	@diff $(ASM_OLD) $(ASM_NEW) | head -60 || true
+	@echo "..."
+	@echo "Total diff lines: $$(diff $(ASM_OLD) $(ASM_NEW) | wc -l)"
 
-# アンインストール
-uninstall:
-ifeq ($(DETECTED_OS),Windows)
-	$(RM) "$(BINDIR)\SLANGCompiler.exe"
-	$(RM) "$(BINDIR)\ModuleSplitter.exe"
-	$(RMDIR) "$(CONFIG_DIR)"
-else
-	$(RM) $(BINDIR)/SLANGCompiler
-	$(RM) $(BINDIR)/ModuleSplitter
-	$(RMDIR) $(CONFIG_DIR)
-endif
-	@echo "Uninstallation complete!"
+# === 未解決シンボルチェック ===
+check-symbols: $(ASM_NEW)
+	@echo "=== Undefined symbols check ==="
+	@grep 'CALL\s' $(ASM_NEW) | sed 's/.*CALL[[:space:]]*//' | sort -u | while read f; do \
+		case "$$f" in \$$*|.*|NZ,*|Z,*|C,*|NC,*|P,*|M,*|PE,*|PO,*) continue;; esac; \
+		if ! grep -q "^$${f}:" $(ASM_NEW); then \
+			echo "  MISSING: $$f"; \
+		fi; \
+	done
+	@echo "Done."
 
-# パブリッシュ (全プラットフォーム向けリリース作成)
-publish:
-ifndef VERSION
-	$(error VERSION is required. Usage: make publish VERSION=1.0.0)
-endif
-	./publish.sh $(VERSION)
-
-# 開発ツールのセットアップ
-setup-tools:
-ifeq ($(DETECTED_OS),Windows)
-	setupenv.bat
-else ifeq ($(DETECTED_OS),macOS)
-	./setupenv.sh mac
-else
-	./setupenv.sh linux
-endif
-
-# クリーンアップ
+# === クリーンアップ ===
 clean:
-	$(DOTNET) clean
-	cd ModuleSplitter && $(DOTNET) clean
-	$(RMDIR) bin obj publish
-	$(RMDIR) ModuleSplitter/ModuleSplitter/bin ModuleSplitter/ModuleSplitter/obj
+	rm -f $(ASM_NEW) $(ASM_OLD) $(OUTPROG) $(IMGPROG) $(LST) $(SYM)
+	rm -f $(dir $(TARGET))PROG.bin $(dir $(TARGET))PROG.com $(dir $(TARGET))PROG.cmt
+	rm -f $(TARGET).lst $(TARGET).sym
 
-# ヘルプ
+# === ヘルプ ===
 help:
 	@echo "SLANG Compiler Makefile"
 	@echo ""
 	@echo "Usage:"
-	@echo "  make              - Build compiler (Debug)"
-	@echo "  make release      - Build compiler (Release)"
-	@echo "  make install      - Install to $(PREFIX)"
-	@echo "  make uninstall    - Uninstall from $(PREFIX)"
-	@echo "  make publish VERSION=x.x.x - Create release packages"
-	@echo "  make setup-tools  - Download development tools"
-	@echo "  make clean        - Clean build artifacts"
+	@echo "  make                          - コンパイル+アセンブル (SLANGTEST.SL)"
+	@echo "  make run                      - CPMエミュで実行"
+	@echo "  make compile                  - コンパイルのみ (.ASM生成)"
+	@echo "  make asm                      - アセンブルまで (.bin生成)"
+	@echo "  make compare                  - 旧コンパイラ出力との比較"
+	@echo "  make check-symbols            - 未解決シンボルチェック"
+	@echo "  make clean                    - 成果物削除"
+	@echo "  make publish VERSION=x.x.x    - 全プラットフォーム向けリリース作成"
+	@echo "  make setup-tools              - 開発ツールのダウンロード"
 	@echo ""
 	@echo "Options:"
-	@echo "  PREFIX=path       - Installation prefix (default: /usr/local)"
-	@echo "  VERSION=x.x.x     - Version for publish target"
+	@echo "  TARGET=path  - ソースファイル (拡張子なし, default: SLANGTEST)"
+	@echo "  ENV=name     - 環境名 (default: lsx)"
 	@echo ""
-	@echo "Detected OS: $(DETECTED_OS)"
-ifeq ($(DETECTED_OS),macOS)
-	@echo "Runtime ID: $(RID)"
+	@echo "Examples:"
+	@echo "  make TARGET=examples/STARS"
+	@echo "  make ENV=msxrom TARGET=examples/MSXROM compile"
+	@echo "  make compare"
+
+# === リリースパッケージ作成 ===
+publish:
+ifndef VERSION
+	$(error VERSION is required. Usage: make publish VERSION=0.20.0)
+endif
+	./publish.sh $(VERSION)
+
+# === 開発ツールのダウンロード ===
+setup-tools:
+ifeq ($(OS),Windows_NT)
+	setupenv.bat
+else ifeq ($(shell uname -s),Darwin)
+	./setupenv.sh mac
+else
+	./setupenv.sh linux
 endif

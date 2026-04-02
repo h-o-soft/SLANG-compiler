@@ -273,7 +273,12 @@ VAR     _TILE1=65535,_TILE2=65535,_MSCREEN=0,
     _MSCREEN=0;
     _BSWITCH=0; _DEMODE=2;
     @PALET(0,1,2,3,4,5,6,7);
+
+#IF (ENV_TYPE<=1)
+    _LSXCLS();
+#ELSE
     PRINT("\C");
+#ENDIF
 
 #IF (_FLOAT==1)
 
@@ -669,4 +674,20 @@ VAR     _TILE1=65535,_TILE2=65535,_MSCREEN=0,
         ]
     ]
 
+#ENDIF
+
+#IF (ENV_TYPE<=1)
+_LSXCLS()
+{
+#ASM
+    LD  C,$09
+    LD  DE,_CLSLSX
+    CALL    $0005
+#END
+}
+
+#ASM
+_CLSLSX:
+    db $1b,"j$"
+#END
 #ENDIF

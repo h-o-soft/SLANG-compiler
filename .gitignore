@@ -47,3 +47,17 @@ msbuild.wrn
 
 # Visual Studio 2015
 .vs/
+
+# SLANG compiler build artifacts
+*.ASM
+*.LST
+*.SYM
+PROG.*
+examples/*.asm
+examples/*.bin
+examples/*.com
+apps/*.ASM
+apps/*.LST
+apps/*.SYM
+apps/*.bin
+apps/PROG.*
