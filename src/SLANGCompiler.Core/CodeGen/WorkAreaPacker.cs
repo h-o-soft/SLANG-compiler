@@ -61,11 +61,11 @@ public class WorkAreaPacker
             cursor = alignedOffset + block.TotalSize;
 
             // ブロック末尾〜次の境界までの隙間も記録
+            // cursorは進めない（隙間にunalignedブロックを詰められるように）
             int nextBoundary = AlignUp(cursor, block.Alignment);
             if (nextBoundary > cursor)
             {
                 gaps.Add((cursor, nextBoundary - cursor));
-                cursor = nextBoundary;
             }
         }
 

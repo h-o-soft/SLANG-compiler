@@ -569,24 +569,66 @@ public class CodeGenerator
         if (_runtimeManager != null)
         {
             // ランタイム関数ごとのworksブロックを収集
+            // ラベル単位で重複排除しつつ、ブロックの連続性を維持。
+            // 同じラベルを含む複数ブロック（libmsx_spdrv等）では
+            // 大きい方のブロックを採用し、小さい方のラベルはマージする。
             var packer = new WorkAreaPacker();
             var blocks = new List<WorkAreaPacker.PlacedBlock>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenLabels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase); // label → block index
 
             foreach (var func in _runtimeManager.GetUsedFunctions())
             {
                 if (func.Works == null || func.Works.Count == 0) continue;
 
-                // 重複排除（同じworksブロックを複数関数が参照する場合）
-                var blockKey = string.Join(",", func.Works.Select(w => $"{w.Label}:{w.Size}"));
-                if (!seen.Add(blockKey)) continue;
-
-                blocks.Add(new WorkAreaPacker.PlacedBlock
+                // このブロックのラベルが既存ブロックと重複するか確認
+                int? mergeTarget = null;
+                foreach (var (label, _) in func.Works)
                 {
-                    Items = func.Works.ToList(),
-                    LibName = func.LibName,
-                    Alignment = func.WorksAlignment,
-                });
+                    if (seenLabels.TryGetValue(label, out int existingIdx))
+                    {
+                        mergeTarget = existingIdx;
+                        break;
+                    }
+                }
+
+                if (mergeTarget.HasValue)
+                {
+                    // 既存ブロックとラベルが重複 → 大きい方を採用
+                    var existing = blocks[mergeTarget.Value];
+                    var newSize = func.Works.Sum(w => w.Size);
+                    var existingSize = existing.TotalSize;
+                    if (newSize > existingSize)
+                    {
+                        // 新しい方が大きい → 既存を置換
+                        blocks[mergeTarget.Value] = new WorkAreaPacker.PlacedBlock
+                        {
+                            Items = func.Works.ToList(),
+                            LibName = func.LibName,
+                            Alignment = Math.Max(existing.Alignment, func.WorksAlignment),
+                        };
+                        // ラベル→ブロック索引を更新
+                        foreach (var (label, _) in func.Works)
+                            seenLabels[label] = mergeTarget.Value;
+                    }
+                    else
+                    {
+                        // 既存の方が大きい → アライン要件だけマージ
+                        existing.Alignment = Math.Max(existing.Alignment, func.WorksAlignment);
+                    }
+                }
+                else
+                {
+                    // 新規ブロック
+                    int idx = blocks.Count;
+                    blocks.Add(new WorkAreaPacker.PlacedBlock
+                    {
+                        Items = func.Works.ToList(),
+                        LibName = func.LibName,
+                        Alignment = func.WorksAlignment,
+                    });
+                    foreach (var (label, _) in func.Works)
+                        seenLabels[label] = idx;
+                }
             }
 
             // __IYWORK (256バイト, align256) をブロックとして追加
