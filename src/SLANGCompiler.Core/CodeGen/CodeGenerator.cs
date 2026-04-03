@@ -568,67 +568,43 @@ public class CodeGenerator
         // 4. ランタイムworks変数（アライン対応テトリス配置）
         if (_runtimeManager != null)
         {
-            // ランタイム関数ごとのworksブロックを収集
-            // ラベル単位で重複排除しつつ、ブロックの連続性を維持。
-            // 同じラベルを含む複数ブロック（libmsx_spdrv等）では
-            // 大きい方のブロックを採用し、小さい方のラベルはマージする。
-            var packer = new WorkAreaPacker();
-            var blocks = new List<WorkAreaPacker.PlacedBlock>();
-            var seenLabels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase); // label → block index
+            // Step 1: 旧実装互換のラベル単位dedupe（フラット化）
+            // 同名ラベルは先着順。ブロック境界は無視。
+            // これにより libmsx_spdrv の sprite_page 共有パターンが正しく処理される。
+            var seenLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var flatItems = new List<(string Label, int Size, string? LibName, int Alignment)>();
 
             foreach (var func in _runtimeManager.GetUsedFunctions())
             {
                 if (func.Works == null || func.Works.Count == 0) continue;
+                foreach (var (label, size) in func.Works)
+                {
+                    if (seenLabels.Add(label))
+                        flatItems.Add((label, size, func.LibName, func.WorksAlignment));
+                }
+            }
 
-                // このブロックのラベルが既存ブロックと重複するか確認
-                int? mergeTarget = null;
-                foreach (var (label, _) in func.Works)
-                {
-                    if (seenLabels.TryGetValue(label, out int existingIdx))
-                    {
-                        mergeTarget = existingIdx;
-                        break;
-                    }
-                }
+            // Step 2: LibName + Alignment でグループ化してブロックに
+            // 同じLibName+Alignmentの連続するラベルを1ブロックにまとめる
+            var packer = new WorkAreaPacker();
+            var blocks = new List<WorkAreaPacker.PlacedBlock>();
 
-                if (mergeTarget.HasValue)
+            WorkAreaPacker.PlacedBlock? currentBlock = null;
+            foreach (var (label, size, libName, alignment) in flatItems)
+            {
+                if (currentBlock == null
+                    || currentBlock.LibName != libName
+                    || currentBlock.Alignment != alignment)
                 {
-                    // 既存ブロックとラベルが重複 → 大きい方を採用
-                    var existing = blocks[mergeTarget.Value];
-                    var newSize = func.Works.Sum(w => w.Size);
-                    var existingSize = existing.TotalSize;
-                    if (newSize > existingSize)
+                    // 新規ブロック開始
+                    currentBlock = new WorkAreaPacker.PlacedBlock
                     {
-                        // 新しい方が大きい → 既存を置換
-                        blocks[mergeTarget.Value] = new WorkAreaPacker.PlacedBlock
-                        {
-                            Items = func.Works.ToList(),
-                            LibName = func.LibName,
-                            Alignment = Math.Max(existing.Alignment, func.WorksAlignment),
-                        };
-                        // ラベル→ブロック索引を更新
-                        foreach (var (label, _) in func.Works)
-                            seenLabels[label] = mergeTarget.Value;
-                    }
-                    else
-                    {
-                        // 既存の方が大きい → アライン要件だけマージ
-                        existing.Alignment = Math.Max(existing.Alignment, func.WorksAlignment);
-                    }
+                        LibName = libName,
+                        Alignment = alignment,
+                    };
+                    blocks.Add(currentBlock);
                 }
-                else
-                {
-                    // 新規ブロック
-                    int idx = blocks.Count;
-                    blocks.Add(new WorkAreaPacker.PlacedBlock
-                    {
-                        Items = func.Works.ToList(),
-                        LibName = func.LibName,
-                        Alignment = func.WorksAlignment,
-                    });
-                    foreach (var (label, _) in func.Works)
-                        seenLabels[label] = idx;
-                }
+                currentBlock.Items.Add((label, size));
             }
 
             // __IYWORK (256バイト, align256) をブロックとして追加
