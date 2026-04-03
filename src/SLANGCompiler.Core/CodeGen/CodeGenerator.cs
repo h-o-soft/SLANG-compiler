@@ -565,33 +565,79 @@ public class CodeGenerator
         // _A = _AF + 1 (エイリアス、領域を消費しない)
         _e.Raw($"_A EQU (_AF + 1)");
 
-        // 4. ランタイムworks変数（LibNameがある場合はnamespace内で定義）
+        // 4. ランタイムworks変数（アライン対応テトリス配置）
         if (_runtimeManager != null)
         {
-            string? currentNs = null;
-            foreach (var (label, size, libName) in _runtimeManager.GetUsedWorkVariablesWithLib())
+            // ランタイム関数ごとのworksブロックを収集
+            var packer = new WorkAreaPacker();
+            var blocks = new List<WorkAreaPacker.PlacedBlock>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var func in _runtimeManager.GetUsedFunctions())
             {
-                if (libName != currentNs)
+                if (func.Works == null || func.Works.Count == 0) continue;
+
+                // 重複排除（同じworksブロックを複数関数が参照する場合）
+                var blockKey = string.Join(",", func.Works.Select(w => $"{w.Label}:{w.Size}"));
+                if (!seen.Add(blockKey)) continue;
+
+                blocks.Add(new WorkAreaPacker.PlacedBlock
                 {
-                    if (libName != null)
-                        _e.Raw($"[{libName}]");
+                    Items = func.Works.ToList(),
+                    LibName = func.LibName,
+                    Alignment = func.WorksAlignment,
+                });
+            }
+
+            // __IYWORK (256バイト, align256) をブロックとして追加
+            blocks.Add(new WorkAreaPacker.PlacedBlock
+            {
+                Items = new List<(string, int)> { ("__IYWORK", 256) },
+                Alignment = 256,
+            });
+
+            // テトリス配置
+            var (placed, totalSize) = packer.Pack(blocks, workOffset);
+
+            // 出力
+            string? currentNs = null;
+            foreach (var block in placed)
+            {
+                // namespace切替
+                if (block.LibName != currentNs)
+                {
+                    if (block.LibName != null)
+                        _e.Raw($"[{block.LibName}]");
                     else if (currentNs != null)
                         _e.Raw("[NAME_SPACE_DEFAULT]");
-                    currentNs = libName;
+                    currentNs = block.LibName;
                 }
                 var workRef = currentNs != null ? "NAME_SPACE_DEFAULT.__WORK__" : "__WORK__";
-                _e.Raw($"{label} EQU ({workRef} + {workOffset})");
-                workOffset += size;
+
+                // ブロック内の各変数をEQU出力
+                int itemOffset = block.Offset;
+                foreach (var (label, size) in block.Items)
+                {
+                    _e.Raw($"{label} EQU ({workRef} + {itemOffset})");
+                    itemOffset += size;
+                }
             }
             if (currentNs != null)
                 _e.Raw("[NAME_SPACE_DEFAULT]");
+
+            workOffset = totalSize;
+        }
+        else
+        {
+            // ランタイムなし → __IYWORKだけ配置
+            _e.Raw($"__IYWORK EQU (__WORK__ + {workOffset})");
+            workOffset += 256;
         }
 
-        // 5. __IYWORK (256バイト)
-        _e.Raw($"__IYWORK EQU (__WORK__ + {workOffset})");
-        _e.Raw($"WORKEND EQU (__WORK__ + {workOffset + 256})");
+        // WORKEND
+        _e.Raw($"WORKEND EQU (__WORK__ + {workOffset})");
         _e.Blank();
-        _e.Raw($"__WORKEND__ EQU (__WORK__ + {workOffset + 256})");
+        _e.Raw($"__WORKEND__ EQU (__WORK__ + {workOffset})");
     }
 
     private void EmitStringData(string text)
