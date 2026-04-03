@@ -822,8 +822,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var contLabel = NewLabel();
         var endLabel = NewLabel();
 
-        // FOR変数のアクセス方法を決定
-        var forVi = ResolveVarInfo(node.Variable);
+        // FOR変数のアクセス方法を決定（未定義チェック付き）
+        var forVi = CheckDefined(node.Variable, node.Span);
         var forVarInfo = forVi.Local;
         bool forVarIsLocal = forVarInfo != null;
         int forVarDs = forVi.VarDataSize;
