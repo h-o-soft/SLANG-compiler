@@ -1,3 +1,4 @@
+using SLANGCompiler.Lexer;
 using SLANGCompiler.Parser.Ast;
 using SLANGCompiler.Semantics;
 
@@ -53,7 +54,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         {
             int varDs = li.ByteSize;
             int elemSz = li.Kind == VarKind.Scalar ? varDs : (li.IsByte ? 1 : 2);
-            return new VarInfo { Kind = li.Kind, ElemSize = elemSz, VarDataSize = varDs, Local = li };
+            return new VarInfo { IsResolved = true, Kind = li.Kind, ElemSize = elemSz, VarDataSize = varDs, Local = li };
         }
         // 2. 関数内static変数
         if (_staticVarSizes?.ContainsKey(name) == true)
@@ -62,7 +63,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             int varDs = _staticVarSizes[name];
             int elemSz = kind == VarKind.Scalar ? varDs
                        : (_staticElemSizes?.TryGetValue(name, out int e) == true ? e : 2);
-            return new VarInfo { Kind = kind, ElemSize = elemSz, VarDataSize = varDs };
+            return new VarInfo { IsResolved = true, Kind = kind, ElemSize = elemSz, VarDataSize = varDs };
         }
         // 3. グローバルシンボル
         var sym = _globalSymbols?.Resolve(name);
@@ -76,10 +77,19 @@ public class IrGenerator : IAstVisitor<IrOperand>
                          :                                                 VarKind.Scalar;
             int varDs = sym.Type?.ByteSize ?? 2;
             int elemSz = kind == VarKind.Scalar ? varDs : (isByte ? 1 : 2);
-            return new VarInfo { Kind = kind, ElemSize = elemSz, VarDataSize = varDs, GlobalSym = sym };
+            return new VarInfo { IsResolved = true, Kind = kind, ElemSize = elemSz, VarDataSize = varDs, GlobalSym = sym };
         }
         // 4. 未解決
-        return new VarInfo { Kind = VarKind.Scalar, ElemSize = 2, VarDataSize = 2 };
+        return new VarInfo { IsResolved = false, Kind = VarKind.Scalar, ElemSize = 2, VarDataSize = 2 };
+    }
+
+    /// <summary>未定義変数チェック付きResolveVarInfo。未定義ならエラーを出しつつVarInfoを返す。</summary>
+    private VarInfo CheckDefined(string name, SourceSpan span)
+    {
+        var vi = ResolveVarInfo(name);
+        if (!vi.IsResolved)
+            _diagnostics?.Error($"Undefined variable: {name}", span);
+        return vi;
     }
 
     private enum VarKind { Scalar, Array, Pointer }
@@ -93,6 +103,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// <summary>変数/配列の統合情報（3つのソースを優先順に解決）。</summary>
     private readonly record struct VarInfo
     {
+        public bool IsResolved { get; init; }
         public VarKind Kind { get; init; }
         /// <summary>Array/Pointerでは要素幅(1 or 2)、ScalarではVarDataSizeと同値。</summary>
         public int ElemSize { get; init; }
@@ -1171,8 +1182,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
         else
         {
-            // ResolveVarInfoで種別を判定
-            var vi = ResolveVarInfo(node.Name);
+            // ResolveVarInfoで種別を判定（未定義チェック付き）
+            var vi = CheckDefined(node.Name, node.Span);
             if (vi.Kind == VarKind.Array)
             {
                 Emit(IrOp.LoadAddr, t, IrOperand.Sym(ResolveAsmLabel(node.Name)));
@@ -1527,7 +1538,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         bool isByteAccess = arraySym?.Type is MemoryArrayType mat && mat.ElementType == SlangType.Byte;
 
         // ResolveVarInfoで種別・要素サイズを統合判定
-        var arrVi = arrayName != null ? ResolveVarInfo(arrayName) : default;
+        var arrVi = arrayName != null ? CheckDefined(arrayName, node.Span) : default;
         bool isIndirect = arrVi.Kind == VarKind.Pointer;
         bool isIndirectByte = isIndirect && arrVi.ElemSize == 1;
         bool isArrayByte = arrVi.Kind == VarKind.Array && arrVi.ElemSize == 1;
@@ -1600,6 +1611,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private IrOperand ComputeArrayAccess(ArrayAccessExpr node, bool loadValue)
     {
         var arrayName = (node.Array as IdentifierExpr)?.Name;
+        // 呼び出し元(VisitArrayAccessExpr/VisitAddressOfExpr)でCheckDefined済み
         var vi = arrayName != null ? ResolveVarInfo(arrayName) : default;
         var arraySym = vi.GlobalSym;
         var arrInfo = vi.Local;
@@ -1753,6 +1765,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     $"\tPUSH\tIY\n\tPOP\tHL\n\tLD\tDE,${localInfo.Offset:X4}\n\tADD\tHL,DE"));
                 return t;
             }
+            CheckDefined(id.Name, id.Span);
             Emit(IrOp.LoadAddr, t, IrOperand.Sym(ResolveAsmLabel(id.Name)));
             return t;
         }
@@ -1771,7 +1784,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 return arr.Indices[0].Accept(this);
 
             // 間接変数: &p[i] → p + i*elemSize のアドレス
-            var addrVi = arrName != null ? ResolveVarInfo(arrName) : default;
+            var addrVi = arrName != null ? CheckDefined(arrName, arr.Span) : default;
             if (addrVi.Kind == VarKind.Pointer)
             {
                 var baseAddr = arr.Array.Accept(this); // ポインタ値
@@ -1989,7 +2002,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         if (target is IdentifierExpr id)
         {
-            var vi = ResolveVarInfo(id.Name);
+            var vi = CheckDefined(id.Name, id.Span);
             int storeDs = vi.VarDataSize;
             value = EmitTypeConversion(value, storeDs);
             if (vi.Local != null)
@@ -2000,7 +2013,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         else if (target is ArrayAccessExpr arr)
         {
             var arrayName = (arr.Array as IdentifierExpr)?.Name;
-            var stVi = arrayName != null ? ResolveVarInfo(arrayName) : default;
+            var stVi = arrayName != null ? CheckDefined(arrayName, arr.Span) : default;
             var arraySym = stVi.GlobalSym;
             bool isMemArray = arraySym?.Type is MemoryArrayType;
             bool isByteAccess = arraySym?.Type is MemoryArrayType mt && mt.ElementType == SlangType.Byte;
