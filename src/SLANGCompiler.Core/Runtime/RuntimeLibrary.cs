@@ -29,6 +29,7 @@ public class RuntimeFunction
     public string SourceFile { get; set; } = "";
     public int LoadOrder { get; set; }                        // ファイル内定義順
     public List<(string Label, int Size)>? Works { get; set; }  // @works (順序付き)
+    public int WorksAlignment { get; set; }                      // @works_align N (ブロック先頭アライン)
     public bool CalleeCleanup { get; set; }                    // @stack_cleanup callee
     public List<string> Aliases { get; set; } = new();          // @alias (元の名前)
 }
@@ -265,6 +266,11 @@ public static class RuntimeParser
                                 }
                             }
                         }
+                        break;
+
+                    case "works_align":
+                        if (current != null && int.TryParse(value, out int alignment))
+                            current.WorksAlignment = alignment;
                         break;
 
                     case "init_code":
