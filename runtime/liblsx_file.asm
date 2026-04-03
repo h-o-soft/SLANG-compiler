@@ -56,6 +56,19 @@ LD (LSXFCB),HL
 ; CALL BDOS
 CALL PPATH
 
+; FCB+12(セクタインデックス)と+32(カレントレコード)をクリア
+; _FOPENはFCB+12をセクタインデックスとして使用するため、0にしておく必要がある
+PUSH HL
+LD HL,(LSXFCB)
+LD BC,12
+ADD HL,BC
+LD (HL),0
+LD HL,(LSXFCB)
+LD BC,32
+ADD HL,BC
+LD (HL),0
+POP HL
+
 LD HL,(LSXFMODE)
 ; mode >= 3
 LD DE,3
