@@ -32,6 +32,7 @@ public class RuntimeFunction
     public int WorksAlignment { get; set; }                      // @works_align N (ブロック先頭アライン)
     public bool CalleeCleanup { get; set; }                    // @stack_cleanup callee
     public List<string> Aliases { get; set; } = new();          // @alias (元の名前)
+    public string? ResultType { get; set; }                      // @result_type (float等)
 }
 
 /// <summary>
@@ -293,6 +294,11 @@ public static class RuntimeParser
                     case "alias":
                         if (current != null && !string.IsNullOrEmpty(value))
                             current.Aliases.Add(value);
+                        break;
+
+                    case "result_type":
+                        if (current != null && !string.IsNullOrEmpty(value))
+                            current.ResultType = value.ToLowerInvariant();
                         break;
                 }
                 continue;

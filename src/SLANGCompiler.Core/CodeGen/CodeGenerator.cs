@@ -754,6 +754,19 @@ public class CodeGenerator
                     skipEmit.Add(s1);
                     reverseHalfDirectOps.Add(i);
                 }
+                // FLOAT版: src2が単純FLOATロード → CDE直接ロード (PUSH/POP回避)
+                else if (inst.DataSize == 3 && IsSimpleFloatLoad(insts[s2]) && !IsSimpleFloatLoad(insts[s1]))
+                {
+                    skipEmit.Add(s2);
+                    halfDirectOps.Add(i);
+                }
+                // FLOAT版: src1が単純FLOATロード + 可換演算(Add/Mul) → 左右入替でCDE直接ロード
+                else if (inst.DataSize == 3 && IsSimpleFloatLoad(insts[s1]) && !IsSimpleFloatLoad(insts[s2])
+                         && IsCommutativeOp(inst.Op))
+                {
+                    skipEmit.Add(s1);
+                    reverseHalfDirectOps.Add(i);
+                }
             }
         }
 
@@ -1160,6 +1173,28 @@ public class CodeGenerator
                 continue;
             }
 
+            // FLOAT halfDirectOps: src1がAHLに残っている、src2をCDEに直接ロード
+            if (halfDirectOps.Contains(i) && inst.DataSize == 3)
+            {
+                var s2Inst = insts[tempDef[inst.Src2.TempIndex]];
+                EmitFloatSrc2ToCDE(s2Inst);
+                EmitBinaryDirect(inst);
+                if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                    EmitPushValue(3);
+                continue;
+            }
+
+            // FLOAT reverseHalfDirectOps: src2がAHLに残っている、src1をCDEに直接ロード（可換演算のみ: Add/Mul）
+            if (reverseHalfDirectOps.Contains(i) && inst.DataSize == 3)
+            {
+                var s1Inst = insts[tempDef[inst.Src1.TempIndex]];
+                EmitFloatSrc2ToCDE(s1Inst);
+                EmitBinaryDirect(inst);
+                if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                    EmitPushValue(3);
+                continue;
+            }
+
             // src1のみ単純ロード（可換演算）: src2結果がHL、src1をDE直接ロード
             if (reverseHalfDirectOps.Contains(i) && inst.DataSize != 3)
             {
@@ -1316,10 +1351,15 @@ public class CodeGenerator
         _currentFunction = null;
     }
 
-    /// <summary>単純ロード命令かどうか</summary>
+    /// <summary>単純ロード命令かどうか（整数用、FLOATは対象外）</summary>
     private static bool IsSimpleLoad(IrInstruction inst) =>
-        inst.DataSize != 3 && inst.Op is  // FLOATはdirect最適化対象外
+        inst.DataSize != 3 && inst.Op is
         IrOp.LoadVar or IrOp.LoadConst or IrOp.LoadLocal or IrOp.LoadAddr;
+
+    /// <summary>FLOAT単純ロード命令かどうか（LoadFloatConst/LoadVar dataSize:3）</summary>
+    /// <remarks>LoadLocal(ローカルFLOAT)は対象外。IY+offsetの3バイトアクセスが複雑なため。</remarks>
+    private static bool IsSimpleFloatLoad(IrInstruction inst) =>
+        inst.DataSize == 3 && inst.Op is IrOp.LoadFloatConst or IrOp.LoadVar;
 
     /// <summary>ロード命令をDEレジスタ版で出力</summary>
     private void EmitLoadToDE(IrInstruction inst)
@@ -1407,6 +1447,14 @@ public class CodeGenerator
             {
                 var addrName = inst.Src1.Kind == IrOperandKind.Symbol ? AsmLabel(inst.Src1.Name!) : inst.Src1.Name!;
                 _e.Instruction("LD", $"HL,{addrName}");
+                break;
+            }
+            case IrOp.LoadFloatConst:
+            {
+                int hlVal = (int)(inst.Src1.ImmediateValue & 0xFFFF);
+                int aVal = (int)(inst.Src2.ImmediateValue & 0xFF);
+                _e.Instruction("LD", $"HL,${hlVal:X4}");
+                _e.Instruction("LD", $"A,${aVal:X2}");
                 break;
             }
         }
@@ -1888,6 +1936,9 @@ public class CodeGenerator
             case IrOp.LoadConst:
                 EmitLoadConst(inst);
                 break;
+            case IrOp.LoadFloatConst:
+                EmitLoadFloatConst(inst);
+                break;
             case IrOp.LoadVar:
                 EmitLoadVar(inst);
                 break;
@@ -2112,6 +2163,47 @@ public class CodeGenerator
             else
             {
                 _e.Instruction("LD", $"HL,${val:X4}");
+            }
+        }
+    }
+
+    /// <summary>FLOAT即値をAHLにロード</summary>
+    private void EmitLoadFloatConst(IrInstruction inst)
+    {
+        int hlVal = (int)(inst.Src1.ImmediateValue & 0xFFFF);
+        int aVal = (int)(inst.Src2.ImmediateValue & 0xFF);
+        _e.Instruction("LD", $"HL,${hlVal:X4}");
+        _e.Instruction("LD", $"A,${aVal:X2}");
+    }
+
+    /// <summary>
+    /// FLOAT src2 を CDE にロード。src1 が AHL に生きている前提。
+    /// 即値(LoadFloatConst)の場合は A を壊さず LD DE,imm / LD C,imm。
+    /// メモリ(LoadVar)の場合は EX AF,AF' で A を一時退避して CDE をロード。
+    /// AF' は compiler 管理下で一時退避専用に使用する。
+    /// ※ ローカルFLOAT変数(LoadLocal)は対象外（IY+offset の3バイトアクセスが複雑なため）
+    /// </summary>
+    private void EmitFloatSrc2ToCDE(IrInstruction inst)
+    {
+        switch (inst.Op)
+        {
+            case IrOp.LoadFloatConst:
+            {
+                int hlVal = (int)(inst.Src1.ImmediateValue & 0xFFFF);
+                int aVal = (int)(inst.Src2.ImmediateValue & 0xFF);
+                _e.Instruction("LD", $"DE,${hlVal:X4}");
+                _e.Instruction("LD", $"C,${aVal:X2}");
+                break;
+            }
+            case IrOp.LoadVar:
+            {
+                var label = AsmLabel(inst.Src1.Name!);
+                _e.Instruction("EX", "AF,AF'");
+                _e.Instruction("LD", $"A,({label}+2)");
+                _e.Instruction("LD", "C,A");
+                _e.Instruction("LD", $"DE,({label})");
+                _e.Instruction("EX", "AF,AF'");
+                break;
             }
         }
     }

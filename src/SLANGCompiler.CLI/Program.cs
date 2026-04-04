@@ -147,8 +147,12 @@ class Program
                 return 1;
             }
 
+            // Load runtime (needed for IR generation to know function return types)
+            var runtimeManager = new Runtime.RuntimeManager();
+            var envConfig = LoadEnvironment(envName, runtimeManager, pathResolver);
+
             // Phase 4: IR Generation
-            var irGen = new IrGenerator(diagnostics, analyzer.Symbols);
+            var irGen = new IrGenerator(diagnostics, analyzer.Symbols, runtimeManager);
             var irModule = irGen.Generate(ast);
 
             if (diagnostics.HasErrors)
@@ -163,8 +167,6 @@ class Program
             }
 
             // Phase 5: Code Generation
-            var runtimeManager = new Runtime.RuntimeManager();
-            var envConfig = LoadEnvironment(envName, runtimeManager, pathResolver);
 
             if (envConfig != null)
             {

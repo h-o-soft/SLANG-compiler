@@ -239,9 +239,19 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             }
             else
             {
-                // アセンブラ式定数: CONST X=SOROBAN, CONST X=LABEL+$14等
-                // AST保持のみ。文字列化はIR段階で（前方参照対応）
-                sym.ConstAst = node.Value;
+                // FLOAT定数式を試行: CONST DEG2RAD = 3.14 / 180.0 等
+                var floatVal = _constEval.EvaluateFloat(node.Value);
+                if (floatVal.HasValue)
+                {
+                    sym.ConstFloatValue = floatVal.Value;
+                    sym.Type = SlangType.Float;
+                }
+                else
+                {
+                    // アセンブラ式定数: CONST X=SOROBAN, CONST X=LABEL+$14等
+                    // AST保持のみ。文字列化はIR段階で（前方参照対応）
+                    sym.ConstAst = node.Value;
+                }
             }
         }
         return null;

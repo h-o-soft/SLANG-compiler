@@ -13,6 +13,7 @@ public enum IrOp
     LoadLocal,          // dest = (IY+offset), offset in Src1.ImmediateValue
     StoreLocal,         // (IY+offset) = src, offset in Dest.ImmediateValue
     LoadAddr,           // dest = address of variable
+    LoadFloatConst,     // dest = FLOAT即値: Src1.Imm=mantissa(HL), Src2.Imm=exponent(A)
     LoadIndirect,       // dest = mem[src]
     StoreIndirect,      // mem[dest] = src
 
