@@ -165,6 +165,7 @@ ret
 
 
 ; @name f24sub
+; @result_type float
 ; @calls f24add
 ;AHL - CDE ==> AHL
 ;Destroys BC,DE
@@ -184,6 +185,7 @@ xor $80
 
 
 ; @name f24add
+; @result_type float
 ;AHL + CDE ==> AHL
 ;Destroys BC,DE
 ;
@@ -416,6 +418,7 @@ ret
 
 
 ; @name f24mul
+; @result_type float
 ; @calls mul16
 ;AHL * CDE ==> AHL
 ;Destroys BC,DE
@@ -562,6 +565,7 @@ ret
 
 
 ; @name f24mul2
+; @result_type float
 ;AHL * 2.0 ==> AHL
 ;Destroys B
 ;
@@ -579,6 +583,7 @@ ret
 
 
 ; @name f24mul3
+; @result_type float
 ;AHL*3 ==> AHL
 ;0*3 ==> 0
 ld c,a
@@ -616,6 +621,7 @@ ret
 
 
 ; @name i16tof24
+; @result_type float
 ; @calls u16tof24
 ;Inputs:
 ;   HL holds a 16-bit signed integer, (-32768 to 32767)
@@ -636,6 +642,7 @@ db $11     ;start of `ld de,**`, eats the next two bytes
 
 
 ; @name u16tof24
+; @result_type float
 i16tof24_pos:
 ld b,$3F+16    ;Initial exponent and sign
 
@@ -812,6 +819,7 @@ ret
 
 
 ; @name f24neg
+; @result_type float
 ;-AHL ==> AHL
 
 ;-(+0) ==> +0
@@ -1395,6 +1403,7 @@ db "0", 0
 
 
 ; @name f24inv
+; @result_type float
 ; @calls f24div
 ld c,a
 ex de,hl
@@ -1403,6 +1412,7 @@ ld hl,0
 
 
 ; @name f24div
+; @result_type float
 ;AHL * CDE ==> AHL
 ;Destroys BC,DE
 ;
@@ -1603,6 +1613,7 @@ ret
 
 
 ; @name f24sqr
+; @result_type float
 ; @calls f24mul
 ;AHL * AHL ==> AHL
 ;Destroys BC,DE
@@ -1638,12 +1649,14 @@ jp f24mul_significand
 
 
 ; @name FABS
+; @result_type float
 ;abs(AHL) ==> AHL
 and $7F
 ret
 
 
 ; @name FACOSH
+; @result_type float
 ; @calls FLOG,f24sqr,f24add
 f24acosh:
 ;acosh(AHL) ==> AHL
@@ -1670,6 +1683,7 @@ jp f24log
 
 
 ; @name FACOS
+; @result_type float
 ; @calls f24sub,f24bg,f24sqr,f24rsub
 f24acos:
 ;acos(AHL) ==> AHL
@@ -1719,6 +1733,7 @@ jp f24mul
 
 
 ; @name f24div2
+; @result_type float
 ; @calls f24div2
 ld b,a
 and $7F
@@ -1735,6 +1750,7 @@ ret
 
 
 ; @name f24amean
+; @result_type float
 ; @calls f24add,f24div2
 ;(AHL+CDE) ==> AHL
 
@@ -1775,6 +1791,7 @@ jp f24add
 
 
 ; @name FASINH
+; @result_type float
 ; @calls FLOG,f24sqr,f24add
 f24asinh:
 ;asinh(AHL) ==> AHL
@@ -1801,6 +1818,7 @@ jp f24log
 
 
 ; @name FASIN
+; @result_type float
 ; @calls f24sub,f24bg,f24sqr
 f24asin:
 ;asin(AHL) ==> AHL
@@ -1842,6 +1860,7 @@ jp f24mul
 
 
 ; @name FATANH
+; @result_type float
 ; @calls f24sub,f24div,FLOG
 f24atanh:
 ;atanh(AHL) ==> AHL
@@ -1878,6 +1897,7 @@ jp f24div2
 
 
 ; @name FATAN
+; @result_type float
 ; @calls f24sub,f24bg,f24sqr,f24mul,f24inv
 f24atan:
 ;atan(AHL) ==> AHL
@@ -1923,6 +1943,7 @@ jp f24mul
 
 
 ; @name f24bg
+; @result_type float
 ; @calls f24amean,f24add,f24geomean,f24div,f24div_pow2,f24mul3
 ;1/BG(AHL,CDE) ==> AHL
 ;
@@ -2001,6 +2022,7 @@ jp f24div
 
 
 ; @name FCOSH
+; @result_type float
 ; @calls FEXP,f24amean
 f24cosh:
 ;cosh(x) ==> AHL
@@ -2028,6 +2050,7 @@ jp f24amean
 
 
 ; @name FCOS
+; @result_type float
 ; @calls FSIN,f24sqr,f24mod1,f24sub
 f24cos:
 ;cos(AHL) ==> AHL
@@ -2147,6 +2170,7 @@ jp f24add
 
 
 ; @name f24div_pow2
+; @result_type float
 ;AHL/2^B ==> AHL
 ld c,a
 and $7F
@@ -2160,6 +2184,7 @@ ret
 
 
 ; @name FEXP
+; @result_type float
 ; @calls f24mul,f24add,f24inv
 f24exp:
 
@@ -2288,6 +2313,7 @@ ret
 
 
 ; @name f24geomean
+; @result_type float
 ; @calls f24mul,f24sqrt
 ;sqrt(AHL*CDE) ==> AHL
 
@@ -2333,6 +2359,7 @@ jp f24sqrt
 
 
 ; @name FLOG10
+; @result_type float
 ; @calls FLOG,f24mul
 f24log10:
 ;log10(x) ==> AHL
@@ -2344,6 +2371,7 @@ jp f24mul
 
 
 ; @name FLOG2
+; @result_type float
 ; @calls FLOG,f24mul
 f24log2:
 ;log2(x) ==> AHL
@@ -2355,6 +2383,7 @@ jp f24mul
 
 
 ; @name FLOGY
+; @result_type float
 ; @calls FLOG,f24div
 f24logy:
 ;log_y(x) ==> AHL
@@ -2383,6 +2412,7 @@ ld c,b
 
 
 ; @name FLOG
+; @result_type float
 ; @calls f24bg
 f24log:
 ;log(AHL) ==> AHL
@@ -2507,6 +2537,7 @@ jp f24add
 
 
 ; @name f24mod1
+; @result_type float
 ;AHL % 1 ==> AHL
 
 ; save A
@@ -2560,6 +2591,7 @@ jp f24rsub
 
 
 ; @name FPOW10
+; @result_type float
 ; @calls FEXP,f24mul
 f24pow10:
 ;10^x ==> AHL
@@ -2571,6 +2603,7 @@ jp f24exp
 
 
 ; @name FPOW2
+; @result_type float
 ; @calls FEXP,f24mul
 f24pow2:
 ;2^x ==> AHL
@@ -2582,6 +2615,7 @@ jp f24exp
 
 
 ; @name FPOW
+; @result_type float
 ; @calls FEXP,FLOG,f24mul
 f24pow:
 ;x^y ==> AHL
@@ -2646,6 +2680,7 @@ ret
 
 
 ; @name FRAND
+; @result_type float
 ; @calls z80rand
 ; @init_code
 PUSH AF
@@ -2708,6 +2743,7 @@ ret
 
 
 ; @name FSINH
+; @result_type float
 ; @calls FEXP,f24amean
 f24sinh:
 ;sinh(x) ==> AHL
@@ -2736,6 +2772,7 @@ jp f24amean
 
 
 ; @name FSIN
+; @result_type float
 ; @calls FCOS,f24sqr,f24div,f24mod1
 f24sin:
 ;sin(AHL) ==> AHL
@@ -2926,6 +2963,7 @@ ret           ; 10 /
 
 
 ; @name FSQRT
+; @result_type float
 ; @calls sqrt16
 f24sqrt:
 ;sqrt(AHL) ==> AHL
@@ -3135,6 +3173,7 @@ ret
 
 
 ; @name FTANH
+; @result_type float
 ; @calls FEXP,f24mul2,f24div
 f24tanh:
 ;tanh(x) ==> AHL
@@ -3160,6 +3199,7 @@ jp f24add
 
 
 ; @name FTAN
+; @result_type float
 ; @calls FCOS,f24div
 f24tan:
 ;tan(AHL) ==> AHL

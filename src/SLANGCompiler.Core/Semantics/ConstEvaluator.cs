@@ -113,4 +113,61 @@ public class ConstEvaluator
         if (cond == null) return null;
         return cond.Value != 0 ? Evaluate(expr.TrueExpr) : Evaluate(expr.FalseExpr);
     }
+
+    /// <summary>
+    /// 式をFLOAT定数として評価。定数であればdouble値を返す。
+    /// </summary>
+    public double? EvaluateFloat(Expression expr)
+    {
+        return expr switch
+        {
+            IntegerLiteral lit => (double)lit.Value,
+            FloatLiteral flt => flt.Value,
+            IdentifierExpr id => EvaluateFloatIdentifier(id),
+            UnaryExpr unary => EvaluateFloatUnary(unary),
+            BinaryExpr binary => EvaluateFloatBinary(binary),
+            CastExpr cast => EvaluateFloat(cast.Operand),
+            _ => null,
+        };
+    }
+
+    private double? EvaluateFloatIdentifier(IdentifierExpr id)
+    {
+        var sym = _symbols?.Resolve(id.Name);
+        if (sym?.Kind == SymbolKind.Constant)
+        {
+            if (sym.ConstFloatValue.HasValue) return sym.ConstFloatValue.Value;
+            if (sym.ConstValue is int val) return (double)val;
+        }
+        return null;
+    }
+
+    private double? EvaluateFloatUnary(UnaryExpr expr)
+    {
+        var operand = EvaluateFloat(expr.Operand);
+        if (operand == null) return null;
+        return expr.Op switch
+        {
+            UnaryOp.Negate => -operand.Value,
+            UnaryOp.Plus => operand.Value,
+            _ => null,
+        };
+    }
+
+    private double? EvaluateFloatBinary(BinaryExpr expr)
+    {
+        var left = EvaluateFloat(expr.Left);
+        var right = EvaluateFloat(expr.Right);
+        if (left == null || right == null) return null;
+
+        double l = left.Value, r = right.Value;
+        return expr.Op switch
+        {
+            BinaryOp.Add => l + r,
+            BinaryOp.Sub => l - r,
+            BinaryOp.Mul => l * r,
+            BinaryOp.Div => r != 0 ? l / r : null,
+            _ => null,
+        };
+    }
 }

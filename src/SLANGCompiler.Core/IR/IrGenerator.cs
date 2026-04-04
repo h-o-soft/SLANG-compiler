@@ -11,6 +11,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 {
     private readonly DiagnosticBag _diagnostics;
     private readonly SymbolTable? _globalSymbols;
+    private readonly Runtime.RuntimeManager? _runtimeManager;
     private readonly IrModule _module = new();
     private IrFunction? _currentFunction;
     private int _labelCount;
@@ -29,10 +30,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
     // 関数内静的変数の種別マップ（Scalar/Array/Pointer）
     private Dictionary<string, VarKind>? _staticVarKinds;
 
-    public IrGenerator(DiagnosticBag diagnostics, SymbolTable? symbols = null)
+    public IrGenerator(DiagnosticBag diagnostics, SymbolTable? symbols = null,
+                       Runtime.RuntimeManager? runtimeManager = null)
     {
         _diagnostics = diagnostics;
         _globalSymbols = symbols;
+        _runtimeManager = runtimeManager;
     }
 
     /// <summary>シンボル名からASMラベルを解決。関数内静的変数→グローバルシンボル→デフォルトの順。</summary>
@@ -1100,6 +1103,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PTAB"));
                         break;
+                    case "FL$":
+                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PFLOAT"));
+                        break;
                     default:
                         foreach (var a in sf.Arguments) a.Accept(this);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym($"PRINT_{sf.FuncName}"));
@@ -1131,21 +1138,19 @@ public class IrGenerator : IAstVisitor<IrOperand>
         return t;
     }
 
-    private int _floatConstCount;
-
     public IrOperand VisitFloatLiteral(FloatLiteral node)
     {
-        // FLOAT定数をconstant poolに格納し、LoadVar(dataSize:3)で読む
-        var f24 = LabelUtils.ConvertToF24(node.Value);
-        var label = $"_FC{_floatConstCount++}";
-        _module.GlobalVars.Add(new GlobalVarInfo
-        {
-            Name = label, AsmLabel = label, ByteSize = 3,
-            InitialItems = new List<InitItem> { InitItem.Byte(f24[0]), InitItem.Byte(f24[1]), InitItem.Byte(f24[2]) },
-            StorageKind = VarStorageKind.CodeConst,
-        });
+        return EmitLoadFloatConst(node.Value);
+    }
+
+    /// <summary>FLOAT即値をLoadFloatConstとしてemit（VisitFloatLiteralとConstFloatValue共通）</summary>
+    private IrOperand EmitLoadFloatConst(double value)
+    {
+        var f24 = LabelUtils.ConvertToF24(value);
+        int hlVal = f24[0] | (f24[1] << 8);  // mantissa
+        int aVal = f24[2];                     // exponent
         var t = IrOperand.Temp(AllocTemp());
-        Emit(IrOp.LoadVar, t, IrOperand.Sym(label), dataSize: 3);
+        Emit(IrOp.LoadFloatConst, t, IrOperand.Imm(hlVal), IrOperand.Imm(aVal), dataSize: 3);
         _tempDataSize[t.TempIndex] = 3;
         return t;
     }
@@ -1193,6 +1198,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstValue is int constVal)
         {
             Emit(IrOp.LoadConst, t, IrOperand.Imm(constVal));
+        }
+        else if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstFloatValue.HasValue)
+        {
+            // FLOAT定数: 即値ロード
+            return EmitLoadFloatConst(sym.ConstFloatValue.Value);
         }
         else if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstAst != null)
         {
@@ -1543,7 +1553,16 @@ public class IrGenerator : IAstVisitor<IrOperand>
             {
                 asmName = funcSym?.AsmLabel ?? LabelUtils.SanitizeLabel(funcName!);
             }
-            Emit(IrOp.Call, dest, IrOperand.Sym(asmName), IrOperand.Imm(machineParamCount.Value));
+            // ランタイム関数のFLOAT戻り値: DataSizeを3に設定（CodeGeneratorがPUSH AF+PUSH HLを生成するため）
+            int resultDs = 2;
+            if (funcName != null && _runtimeManager?.Functions.TryGetValue(funcName, out var rtFunc) == true
+                && rtFunc.ResultType == "float")
+            {
+                resultDs = 3;
+            }
+            Emit(IrOp.Call, dest, IrOperand.Sym(asmName), IrOperand.Imm(machineParamCount.Value), dataSize: resultDs);
+            if (resultDs == 3)
+                _tempDataSize[dest.TempIndex] = 3;
             return dest;
         }
         else

@@ -26,6 +26,7 @@ public class Symbol
     public int? Address { get; set; }       // 固定アドレス指定
     public int Offset { get; set; }         // ローカル変数のスタックオフセット
     public object? ConstValue { get; set; }  // 定数値(int)
+    public double? ConstFloatValue { get; set; }  // FLOAT定数値
     public bool IsGlobal { get; set; }
     public bool IsCodeBlock { get; set; }    // CODEブロック定数（アドレス参照）
     public string? AsmLabel { get; set; }    // アセンブリラベル名
