@@ -676,6 +676,12 @@ VAR     _TILE1=65535,_TILE2=65535,_MSCREEN=0,
 
 #ENDIF
 
+@MASK(t1,t2)
+  begin
+    _TILE1=t1;
+    _TILE2=t2;
+  end;
+
 #IF (ENV_TYPE<=1)
 _LSXCLS()
 {
