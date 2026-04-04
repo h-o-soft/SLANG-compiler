@@ -698,9 +698,10 @@ public class Parser
                 Expression? rangeEnd = null;
 
                 // Handle comma-separated case values: 'H','h': or 6,7,8:
+                var commaValues = new List<Expression>();
                 while (Match(TokenKind.Comma))
                 {
-                    branches.Add(new CaseBranch(val, null, new Block(new List<AstNode>(), s)));
+                    commaValues.Add(val);
                     val = ParseNcExpr();
                 }
 
@@ -709,6 +710,9 @@ public class Parser
                 Match(TokenKind.Colon);
                 {
                     var body = ParseStmt()!;
+                    // カンマ区切りの全値に同じbodyを割り当て
+                    foreach (var cv in commaValues)
+                        branches.Add(new CaseBranch(cv, null, body));
                     branches.Add(new CaseBranch(val, rangeEnd, body));
                 }
             }
