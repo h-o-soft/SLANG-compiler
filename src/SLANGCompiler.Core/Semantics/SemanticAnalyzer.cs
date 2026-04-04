@@ -362,7 +362,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         {
             b.Value?.Accept(this);
             b.RangeEnd?.Accept(this);
-            b.Body.Accept(this);
+            b.Body?.Accept(this);
         }
         return null;
     }

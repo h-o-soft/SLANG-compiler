@@ -710,9 +710,9 @@ public class Parser
                 Match(TokenKind.Colon);
                 {
                     var body = ParseStmt()!;
-                    // カンマ区切りの全値に同じbodyを割り当て
+                    // カンマ先行値はbody=null（IrGeneratorでフォールスルー処理）
                     foreach (var cv in commaValues)
-                        branches.Add(new CaseBranch(cv, null, body));
+                        branches.Add(new CaseBranch(cv, null, null));
                     branches.Add(new CaseBranch(val, rangeEnd, body));
                 }
             }
