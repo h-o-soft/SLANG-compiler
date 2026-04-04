@@ -126,9 +126,9 @@ public class CaseBranch
 {
     public Expression? Value { get; }           // null = OTHERS
     public Expression? RangeEnd { get; }        // TO 指定がある場合の終端
-    public AstNode Body { get; }
+    public AstNode? Body { get; }               // null = カンマ先行値（次のbody付きブランチにフォールスルー）
 
-    public CaseBranch(Expression? value, Expression? rangeEnd, AstNode body)
+    public CaseBranch(Expression? value, Expression? rangeEnd, AstNode? body)
     {
         Value = value;
         RangeEnd = rangeEnd;

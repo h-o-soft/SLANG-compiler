@@ -880,47 +880,85 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
         PushLoop(endLabel, endLabel); // EXIT in CASE goes to end
 
-        foreach (var branch in node.Branches)
+        // Phase 1: 各ブランチの bodyLabel を前計算
+        // body==null のブランチ（カンマ先行値）は次の body!=null ブランチの bodyLabel を共有
+        var bodyLabels = new string?[node.Branches.Count];
+        string? othersLabel = null;
+
+        // 後ろから走査して bodyLabel を伝播
+        string? currentBodyLabel = null;
+        for (int i = node.Branches.Count - 1; i >= 0; i--)
         {
-            if (branch.Value == null)
+            var branch = node.Branches[i];
+            if (branch.Body != null)
             {
-                // OTHERS
-                branch.Body.Accept(this);
-                Emit(IrOp.Jump, IrOperand.Lbl(endLabel));
+                currentBodyLabel = NewLabel();
+                bodyLabels[i] = currentBodyLabel;
+                if (branch.Value == null)
+                    othersLabel = currentBodyLabel;
             }
             else
             {
-                var nextLabel = NewLabel();
-                var branchVal = branch.Value.Accept(this);
-
-                if (branch.RangeEnd != null)
-                {
-                    // Range: value TO rangeEnd — 短絡ジャンプ化
-                    var rangeEnd = branch.RangeEnd.Accept(this);
-                    // CmpGe: exprVal >= branchVal（exprVal再評価: fusedSBCでHL破壊されるため）
-                    var reloadedExpr1 = node.Expr.Accept(this);
-                    var cmpLo = IrOperand.Temp(AllocTemp());
-                    Emit(IrOp.CmpGe, cmpLo, reloadedExpr1, branchVal);
-                    Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), cmpLo);
-                    // CmpLe: exprVal <= rangeEnd（同様に再評価）
-                    var reloadedExpr2 = node.Expr.Accept(this);
-                    var cmpHi = IrOperand.Temp(AllocTemp());
-                    Emit(IrOp.CmpLe, cmpHi, reloadedExpr2, rangeEnd);
-                    Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), cmpHi);
-                }
-                else
-                {
-                    // exprValを再ロード（fusedSBCでHL破壊されるため）
-                    var reloadedExpr = node.Expr.Accept(this);
-                    var cmp = IrOperand.Temp(AllocTemp());
-                    Emit(IrOp.CmpEq, cmp, reloadedExpr, branchVal);
-                    Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), cmp);
-                }
-
-                branch.Body.Accept(this);
-                Emit(IrOp.Jump, IrOperand.Lbl(endLabel));
-                Emit(IrOp.Label, IrOperand.Lbl(nextLabel));
+                // カンマ先行値: 次の body 付きブランチの bodyLabel を共有
+                bodyLabels[i] = currentBodyLabel;
             }
+        }
+
+        // Phase 2: 比較コード出力
+        for (int i = 0; i < node.Branches.Count; i++)
+        {
+            var branch = node.Branches[i];
+            if (branch.Value == null)
+            {
+                // OTHERS — Phase 2 では何も出力しない（Phase 3 で body を出力）
+                continue;
+            }
+
+            var nextLabel = NewLabel();
+            var branchVal = branch.Value.Accept(this);
+
+            if (branch.RangeEnd != null)
+            {
+                // Range: value TO rangeEnd — 短絡ジャンプ化
+                var rangeEnd = branch.RangeEnd.Accept(this);
+                // CmpGe: exprVal >= branchVal（exprVal再評価: fusedSBCでHL破壊されるため）
+                var reloadedExpr1 = node.Expr.Accept(this);
+                var cmpLo = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.CmpGe, cmpLo, reloadedExpr1, branchVal);
+                Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), cmpLo);
+                // CmpLe: exprVal <= rangeEnd（同様に再評価）
+                var reloadedExpr2 = node.Expr.Accept(this);
+                var cmpHi = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.CmpLe, cmpHi, reloadedExpr2, rangeEnd);
+                Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), cmpHi);
+            }
+            else
+            {
+                // exprValを再ロード（fusedSBCでHL破壊されるため）
+                var reloadedExpr = node.Expr.Accept(this);
+                var cmp = IrOperand.Temp(AllocTemp());
+                Emit(IrOp.CmpEq, cmp, reloadedExpr, branchVal);
+                Emit(IrOp.JumpIfZero, IrOperand.Lbl(nextLabel), cmp);
+            }
+
+            // マッチ時: 対応する bodyLabel へジャンプ
+            Emit(IrOp.Jump, IrOperand.Lbl(bodyLabels[i]!));
+            Emit(IrOp.Label, IrOperand.Lbl(nextLabel));
+        }
+
+        // 全比較不一致時: OTHERS があればそこへ、なければ endLabel へ
+        Emit(IrOp.Jump, IrOperand.Lbl(othersLabel ?? endLabel));
+
+        // Phase 3: body コード出力（body!=null のブランチだけ）
+        for (int i = 0; i < node.Branches.Count; i++)
+        {
+            var branch = node.Branches[i];
+            if (branch.Body == null)
+                continue;
+
+            Emit(IrOp.Label, IrOperand.Lbl(bodyLabels[i]!));
+            branch.Body.Accept(this);
+            Emit(IrOp.Jump, IrOperand.Lbl(endLabel));
         }
 
         Emit(IrOp.Label, IrOperand.Lbl(endLabel));
