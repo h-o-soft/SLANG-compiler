@@ -1632,6 +1632,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
         int elemSize = isArrayByte ? 1 : 2;
 
+        // 部分配列参照: 指定インデックス数 < 配列の次元数 → アドレスを返す
+        int arrayRank = 0;
+        if (isLocalArray && arrInfo?.Dims != null)
+            arrayRank = arrInfo.Dims.Count;
+        else if (arraySym?.Type is ArrayType atRank)
+            arrayRank = atRank.Rank;
+        if (arrayRank > 0 && node.Indices.Count < arrayRank)
+            loadValue = false;
+
         // ローカル配列の定数インデックス最適化
         if (isLocalArray)
         {
