@@ -497,6 +497,14 @@ public class Parser
 
     private AstNode? ParseStmt()
     {
+        // 空文（セミコロンのみ）: repeat ; until ... や while expr ; に対応
+        if (Check(TokenKind.Semicolon))
+        {
+            var span = Current.Span;
+            Advance(); // セミコロンを消費
+            return new Block(new List<AstNode>(), span);
+        }
+
         switch (Current.Kind)
         {
             case TokenKind.If: return ParseIf();
@@ -689,18 +697,9 @@ public class Parser
                 var val = ParseNcExpr();
                 Expression? rangeEnd = null;
 
-                // Handle comma-separated case values: 6,7,8:
+                // Handle comma-separated case values: 'H','h': or 6,7,8:
                 while (Match(TokenKind.Comma))
                 {
-                    // For now, treat comma-separated as individual branches
-                    // The last one gets the body
-                    Match(TokenKind.Colon);
-                    if (!Check(TokenKind.IntegerLiteral) && !Check(TokenKind.Identifier))
-                    {
-                        var body = ParseStmt()!;
-                        branches.Add(new CaseBranch(val, rangeEnd, body));
-                        goto nextBranch;
-                    }
                     branches.Add(new CaseBranch(val, null, new Block(new List<AstNode>(), s)));
                     val = ParseNcExpr();
                 }
@@ -712,7 +711,6 @@ public class Parser
                     var body = ParseStmt()!;
                     branches.Add(new CaseBranch(val, rangeEnd, body));
                 }
-                nextBranch:;
             }
         }
         ExpectBlockClose();
