@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.20.0
+SLANG Compiler (Z80) 0.20.1
 
 # 概要
 
@@ -14,7 +14,7 @@ SLANG Compiler (Z80) 0.20.0
 # 使い方
 
 ```
-SLANG Compiler v0.20.0
+SLANG Compiler v0.20.1
 Usage: slangc [options] <input.sl>
 
 Options:

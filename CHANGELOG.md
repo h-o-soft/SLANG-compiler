@@ -1,5 +1,19 @@
 # 更新履歴
 
+## Version 0.20.1
+- CASE文のカンマ区切り値（`6,7,8: body`）でbodyコードが重複生成される問題を修正
+- FLOAT対応の強化
+  - CONST定数式でFLOAT演算に対応（`CONST DEG2RAD = 3.14 / 180.0`）
+  - ランタイム関数（FCOS, FSIN等）の戻り値型をFLOATとして正しく追跡
+  - FL$()関数のPRINT出力に対応
+  - FLOAT定数の即値ロード最適化（constant pool廃止、LD DE,imm / LD C,imm 方式）
+  - FLOAT二項演算の直接レジスタロード最適化（halfDirectOps/reverseHalfDirectOps対応）
+  - FLOAT比較演算の融合ジャンプ対応（fusedCompareJumps）
+- x1環境の改善
+  - _TXADRをLSX-Dodgers 1.62cの$EE8Eと共有化（GETLIN後のカーソル位置同期）
+  - 改行時のスクロール処理をLSX-DodgersのBDOSに委譲（24行スクロール対応）
+  - WIDTH(40/80)切替時にLSX-Dodgersのワーク変数を同期
+
 ## Version 0.20.0
 - 新コンパイラ(slangc)への移行
   - IR(中間表現)ベースのコンパイラに全面書き換え（Parser → SemanticAnalyzer → IrGenerator → CodeGenerator）
