@@ -292,15 +292,17 @@ DS  4
 
 
 ; @name CTRL0D
-; @calls CSR,AT_VRCALC
-CALL _POS
-LD L,0
-INC H
-
-PUSH	BC
-CALL AT_VRCALC
-LD (_TXADR),HL
-POP	BC
+; @calls LSXCALLS
+; BDOSにCR+LFを送りLSX-Dodgersに改行・スクロールを委譲
+; _TXADR($EE8E)はLSX-Dodgersと共有しているため自動的に同期される
+PUSH DE
+LD E,$0D
+LD C,$06
+CALL $0005
+LD E,$0A
+LD C,$06
+CALL $0005
+POP DE
 
 RET
 
@@ -451,7 +453,8 @@ RET
 
 
 ; @name X1WORK
-_TXADR: DW 0
+; LSX-Dodgers 1.62c
+_TXADR	EQU	$EE8E
 
 AT_COLORF:
 DB	7
