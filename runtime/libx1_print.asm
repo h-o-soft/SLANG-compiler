@@ -56,6 +56,20 @@ LD	A,(WK1FD0)
 LD	(_WK1FD0),A
 LD	A,(_CRTCD+1)
 LD	(AT_WIDTH),A
+; LSX-Dodgers 1.62c のワーク変数を同期
+LD	(LSX_WIDTH),A		; _WIDTH ($EEB1)
+NEG
+LD	L,A
+LD	H,$FF			; HL = -(WIDTH) (符号拡張)
+LD	(LSX_WIDTH_MINUS),HL	; _WIDTH_MINUS ($EEBC)
+; _PAGE_MINUS = -(WIDTH*24)
+LD	D,H
+LD	E,L			; DE = -(WIDTH)
+LD	B,23			; 24倍 = 元の1倍 + 23回加算
+.wlsx1
+ADD	HL,DE
+DJNZ	.wlsx1
+LD	(LSX_PAGE_MINUS),HL	; _PAGE_MINUS ($EEBA)
 AND	A
 RET
 
@@ -453,8 +467,11 @@ RET
 
 
 ; @name X1WORK
-; LSX-Dodgers 1.62c
-_TXADR	EQU	$EE8E
+; LSX-Dodgers 1.62c ワーク共有
+_TXADR		EQU	$EE8E	; テキストカーソルVRAMアドレス
+LSX_PAGE_MINUS	EQU	$EEBA	; -(WIDTH*24) ページ末尾判定
+LSX_WIDTH	EQU	$EEB1	; 画面幅(40/80)
+LSX_WIDTH_MINUS	EQU	$EEBC	; -(WIDTH) 行送り用
 
 AT_COLORF:
 DB	7
