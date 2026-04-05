@@ -304,6 +304,7 @@ lsx環境およびx1環境のランタイムは **LSX-Dodgers 1.62c** の内部�
 |----------|------|-------------|
 | `runtime/liblsx_base.asm` | CTCベクタ初期化 | `$EEC0`（CTC0ベクタアドレス） |
 | `runtime/liblsx_base.asm` | INKEY(0)リアルタイムキー入力 | `$EE92`（キーデータ）。初回呼び出し時にバージョン判定し、1.62c以外では無効化 |
+| `runtime/libx1_print.asm` | テキストカーソルVRAMアドレス | `$EE8E`（`_TXADR`）。BDOS入力とVRAM直接出力のカーソル位置を同期 |
 | `runtime/libx1_psg.asm` | PSG再生ライブラリ | LSX-Dodgers内部のCTCアドレス |
 
 LSX-Dodgers 1.62c は [LSX-Dodgersのリリースページ](https://github.com/tablacus/LSX-Dodgers) から入手できます。
