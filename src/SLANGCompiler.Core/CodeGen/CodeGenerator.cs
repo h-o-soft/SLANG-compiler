@@ -1195,10 +1195,21 @@ public class CodeGenerator
                 continue;
             }
 
-            // FLOAT reverseHalfDirectOps: src2がAHLに残っている、src1をCDEに直接ロード（可換演算のみ: Add/Mul）
+            // FLOAT reverseHalfDirectOps: src2がAHLに残っている、src1をCDEに直接ロード（可換演算のみ: Add/Mul/CmpEq/CmpNeq）
             if (reverseHalfDirectOps.Contains(i) && inst.DataSize == 3)
             {
                 var s1Inst = insts[tempDef[inst.Src1.TempIndex]];
+
+                // 融合比較ジャンプ: CmpXx + JumpIfZero/NonZero → 直接条件ジャンプ
+                if (fusedCompareJumps.TryGetValue(i, out int frJumpIdx))
+                {
+                    var jumpInst = insts[frJumpIdx];
+                    bool jumpOnTrue = jumpInst.Op == IrOp.JumpIfNonZero;
+                    EmitFloatSrc2ToCDE(s1Inst);
+                    EmitFusedCompareJump(inst, jumpInst.Dest.Name!, jumpOnTrue);
+                    continue;
+                }
+
                 EmitFloatSrc2ToCDE(s1Inst);
                 EmitBinaryDirect(inst);
                 if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
