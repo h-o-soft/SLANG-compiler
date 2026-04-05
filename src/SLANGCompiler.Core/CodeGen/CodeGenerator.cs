@@ -1177,6 +1177,17 @@ public class CodeGenerator
             if (halfDirectOps.Contains(i) && inst.DataSize == 3)
             {
                 var s2Inst = insts[tempDef[inst.Src2.TempIndex]];
+
+                // 融合比較ジャンプ: CmpXx + JumpIfZero/NonZero → 直接条件ジャンプ
+                if (fusedCompareJumps.TryGetValue(i, out int fhJumpIdx))
+                {
+                    var jumpInst = insts[fhJumpIdx];
+                    bool jumpOnTrue = jumpInst.Op == IrOp.JumpIfNonZero;
+                    EmitFloatSrc2ToCDE(s2Inst);
+                    EmitFusedCompareJump(inst, jumpInst.Dest.Name!, jumpOnTrue);
+                    continue;
+                }
+
                 EmitFloatSrc2ToCDE(s2Inst);
                 EmitBinaryDirect(inst);
                 if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
@@ -1184,10 +1195,21 @@ public class CodeGenerator
                 continue;
             }
 
-            // FLOAT reverseHalfDirectOps: src2がAHLに残っている、src1をCDEに直接ロード（可換演算のみ: Add/Mul）
+            // FLOAT reverseHalfDirectOps: src2がAHLに残っている、src1をCDEに直接ロード（可換演算のみ: Add/Mul/CmpEq/CmpNeq）
             if (reverseHalfDirectOps.Contains(i) && inst.DataSize == 3)
             {
                 var s1Inst = insts[tempDef[inst.Src1.TempIndex]];
+
+                // 融合比較ジャンプ: CmpXx + JumpIfZero/NonZero → 直接条件ジャンプ
+                if (fusedCompareJumps.TryGetValue(i, out int frJumpIdx))
+                {
+                    var jumpInst = insts[frJumpIdx];
+                    bool jumpOnTrue = jumpInst.Op == IrOp.JumpIfNonZero;
+                    EmitFloatSrc2ToCDE(s1Inst);
+                    EmitFusedCompareJump(inst, jumpInst.Dest.Name!, jumpOnTrue);
+                    continue;
+                }
+
                 EmitFloatSrc2ToCDE(s1Inst);
                 EmitBinaryDirect(inst);
                 if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
@@ -1780,27 +1802,48 @@ public class CodeGenerator
                 _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "NZ,$+3"); _e.Instruction("INC", "HL");
                 break;
             case IrOp.CmpNeq:
-                _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                if (isFloat) { CallRuntime("f24cmp"); }
+                else { _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE"); }
                 _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "Z,$+3"); _e.Instruction("INC", "HL");
                 break;
             case IrOp.CmpLt:
-                // src1 < src2 → src1-src2: C=true → JR NC(false)でスキップ
-                _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                // src1 < src2 → C=true
+                if (isFloat) { CallRuntime("f24cmp"); }
+                else { _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE"); }
                 _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "NC,$+3"); _e.Instruction("INC", "HL");
                 break;
             case IrOp.CmpGe:
-                // src1 >= src2 → src1-src2: NC=true → JR C(false)でスキップ
-                _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                // src1 >= src2 → NC=true
+                if (isFloat) { CallRuntime("f24cmp"); }
+                else { _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE"); }
                 _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "C,$+3"); _e.Instruction("INC", "HL");
                 break;
             case IrOp.CmpGt:
-                // src1 > src2 → src2-src1: C=true → JR NC(false)でスキップ
-                _e.Instruction("EX", "DE,HL"); _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                // src1 > src2 → swap and use C
+                if (isFloat)
+                {
+                    _e.Instruction("EX", "DE,HL");
+                    _e.Instruction("LD", "B,A"); _e.Instruction("LD", "A,C"); _e.Instruction("LD", "C,B");
+                    CallRuntime("f24cmp");
+                }
+                else
+                {
+                    _e.Instruction("EX", "DE,HL"); _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                }
                 _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "NC,$+3"); _e.Instruction("INC", "HL");
                 break;
             case IrOp.CmpLe:
-                // src1 <= src2 → src2 - src1: carryならsrc1>src2(false)
-                _e.Instruction("EX", "DE,HL"); _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                // src1 <= src2 → swap and check C
+                if (isFloat)
+                {
+                    _e.Instruction("EX", "DE,HL");
+                    _e.Instruction("LD", "B,A"); _e.Instruction("LD", "A,C"); _e.Instruction("LD", "C,B");
+                    CallRuntime("f24cmp");
+                }
+                else
+                {
+                    _e.Instruction("EX", "DE,HL"); _e.Instruction("OR", "A"); _e.Instruction("SBC", "HL,DE");
+                }
                 _e.Instruction("LD", "HL,$0000"); _e.Instruction("JR", "C,$+3"); _e.Instruction("INC", "HL");
                 break;
 

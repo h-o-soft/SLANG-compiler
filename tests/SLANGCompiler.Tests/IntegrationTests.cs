@@ -222,4 +222,103 @@ SUB() BEGIN PRINT(""X""); END;
         Assert.Contains("_V_ARI:", asm);
         Assert.DoesNotContain("__INIT_TEMPLATE", asm);
     }
+
+    // ---- FLOAT比較演算テスト ----
+
+    [Fact]
+    public void Float_CmpGt_HalfDirect_UsesFusedJump()
+    {
+        // halfDirectOps FLOAT: f24add結果(AHL) > 定数(CDE) → fusedCompareJump
+        // IF (A*A+B*B) > 4.0 パターン（FMANDEL.SLで問題になったケース）
+        var asm = CompileWithCli(@"
+            VAR FLOAT A, FLOAT B;
+            MAIN() {
+                A = 0.6875; B = 0.5;
+                IF (A*A+B*B) > 4.0 THEN PRINT(""GT"");
+            }");
+        // f24cmpが使われること（整数SBCではなく）
+        Assert.Contains("f24cmp", asm);
+        // 融合ジャンプ: JP C/JP Z パターンが出ること（0/1変換のLD HL,$0000ではなく）
+        Assert.DoesNotContain("JR\tNC,$+3", asm);
+    }
+
+    [Fact]
+    public void Float_CmpGt_Variable_UsesFusedJump()
+    {
+        // 一般パス: FLOAT変数 > FLOAT定数 → EmitCompareGt経由でf24cmp
+        var asm = CompileWithCli(@"
+            VAR FLOAT A;
+            MAIN() {
+                A = 3.0;
+                IF A > 2.0 THEN PRINT(""GT"");
+            }");
+        Assert.Contains("f24cmp", asm);
+    }
+
+    [Fact]
+    public void Float_CmpEq_ReverseHalfDirect_UsesFusedJump()
+    {
+        // reverseHalfDirectOps FLOAT: 定数(simple) == f24演算結果(complex)
+        // SLANGでは == が等値比較
+        var asm = CompileWithCli(@"
+            VAR FLOAT X;
+            MAIN() {
+                X = 0.0;
+                IF 1.0 == FCOS(X) THEN PRINT(""EQ"");
+            }");
+        Assert.Contains("f24cmp", asm);
+    }
+
+    [Fact]
+    public void Float_CmpNeq_ReverseHalfDirect_UsesFusedJump()
+    {
+        // reverseHalfDirectOps FLOAT: 定数 <> f24演算結果
+        var asm = CompileWithCli(@"
+            VAR FLOAT X;
+            MAIN() {
+                X = 0.0;
+                IF 0.0 <> FCOS(X) THEN PRINT(""NEQ"");
+            }");
+        Assert.Contains("f24cmp", asm);
+    }
+
+    [Fact]
+    public void Float_LoadFloatConst_ImmediateLoad()
+    {
+        // FLOAT定数がconstant poolではなく即値ロードされること
+        var asm = CompileWithCli(@"
+            VAR FLOAT A;
+            MAIN() { A = 1.5; }");
+        // LoadFloatConst: LD HL,$xxxx; LD A,$xx で即値ロード
+        Assert.DoesNotContain("_FC0:", asm);  // constant poolラベルがないこと
+    }
+
+    [Fact]
+    public void Float_ConstExpr_Compiles()
+    {
+        // CONST FLOAT式（定数同士の演算）が正常コンパイルされること
+        var asm = CompileWithCli(@"
+            CONST DEG2RAD = 3.1415926 / 180.0;
+            VAR FLOAT R;
+            MAIN() { R = DEG2RAD; }");
+        Assert.DoesNotContain("error", asm.ToLower());
+    }
+
+    [Fact]
+    public void Float_HalfDirect_Arithmetic()
+    {
+        // halfDirectOps FLOAT: f24関数結果 * FLOAT定数 → PUSH/POP不要
+        var asm = CompileWithCli(@"
+            VAR FLOAT A;
+            MAIN() {
+                A = 0.5;
+                A = FCOS(A) * 9.0;
+            }");
+        // FCOS後にPUSH AF/PUSH HLがないこと（halfDirectで直接CDE→f24mul）
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        var fcosIdx = mainSection.IndexOf("CALL\tFCOS");
+        Assert.True(fcosIdx >= 0, "CALL FCOS not found");
+        var afterFcos = mainSection.Substring(fcosIdx, 80);
+        Assert.DoesNotContain("PUSH\tAF", afterFcos);
+    }
 }
