@@ -451,9 +451,9 @@ public class CodeGenTests
     }
 
     [Fact]
-    public void Case_ExprValue_NotDestroyed()
+    public void Case_ExprValue_NotDestroyed_Local()
     {
-        // CASE文で式の値がSBC連鎖で破壊されないこと
+        // CASE文で式の値がSBC連鎖で破壊されないこと（ローカル変数）
         var asm = Compile(@"
             MAIN() BEGIN
                 VAR X; X=2;
@@ -466,6 +466,25 @@ public class CodeGenTests
         // 少なくとも3回X値をロードする（case 0, 1, 2の比較）
         var loadCount = System.Text.RegularExpressions.Regex.Matches(body, @"LD\tL,\(IY\+").Count;
         Assert.True(loadCount >= 3, $"Expected >= 3 loads of X, got {loadCount}");
+    }
+
+    [Fact]
+    public void Case_ExprValue_NotDestroyed_Global()
+    {
+        // CASE文で式の値がSBC連鎖で破壊されないこと（グローバル変数）
+        // 最初のブランチはpeephole/directBinaryOpsで再ロードが省略されうるが、
+        // SBCでHL破壊後の2番目以降は必ず再ロードが必要
+        var asm = Compile(@"
+            VAR X;
+            MAIN() BEGIN
+                X=2;
+                CASE X { 0: X=10; 1: X=20; 2: X=30; }
+            END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        // グローバル変数: LD HL,(_V_X) で再ロード
+        // 最初の比較はHL残り値利用で省略されうるが、2番目以降は再ロード必須
+        var loadCount = System.Text.RegularExpressions.Regex.Matches(body, @"LD\tHL,\(_V_X\)").Count;
+        Assert.True(loadCount >= 2, $"Expected >= 2 reloads of _V_X after SBC, got {loadCount}");
     }
 
     [Fact]

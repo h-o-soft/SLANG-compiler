@@ -879,7 +879,6 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitCaseStmt(CaseStmt node)
     {
         var endLabel = NewLabel();
-        var exprVal = node.Expr.Accept(this);
 
         PushLoop(endLabel, endLabel); // EXIT in CASE goes to end
 
