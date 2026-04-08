@@ -565,12 +565,12 @@ public class CodeGenerator
         // _A = _AF + 1 (エイリアス、領域を消費しない)
         _e.Raw($"_A EQU (_AF + 1)");
 
-        // 4. ランタイムworks変数（アライン対応テトリス配置）
+        // 4. ランタイムworks変数（アライン対応: 2プール方式）
+        // アラインなしブロック → __WORK__ + offset (従来通り)
+        // アライン付きブロック → __WORK_ALIGNED_<N>__ + offset (EQU仮想ベース)
         if (_runtimeManager != null)
         {
             // Step 1: 旧実装互換のラベル単位dedupe（フラット化）
-            // 同名ラベルは先着順。ブロック境界は無視。
-            // これにより libmsx_spdrv の sprite_page 共有パターンが正しく処理される。
             var seenLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var flatItems = new List<(string Label, int Size, string? LibName, int Alignment)>();
 
@@ -585,10 +585,7 @@ public class CodeGenerator
             }
 
             // Step 2: LibName + Alignment でグループ化してブロックに
-            // 同じLibName+Alignmentの連続するラベルを1ブロックにまとめる
-            var packer = new WorkAreaPacker();
             var blocks = new List<WorkAreaPacker.PlacedBlock>();
-
             WorkAreaPacker.PlacedBlock? currentBlock = null;
             foreach (var (label, size, libName, alignment) in flatItems)
             {
@@ -596,7 +593,6 @@ public class CodeGenerator
                     || currentBlock.LibName != libName
                     || currentBlock.Alignment != alignment)
                 {
-                    // 新規ブロック開始
                     currentBlock = new WorkAreaPacker.PlacedBlock
                     {
                         LibName = libName,
@@ -607,55 +603,117 @@ public class CodeGenerator
                 currentBlock.Items.Add((label, size));
             }
 
-            // __IYWORK (256バイト, align256) をブロックとして追加
-            blocks.Add(new WorkAreaPacker.PlacedBlock
+            // Step 3: アラインなし/アライン付きに分離
+            // __IYWORK は __WORK__ 側専用ブロック（相対配置の align 256 で十分、
+            // ld h, label >> 8 型の絶対ページアライン依存はない）
+            var unalignedBlocks = blocks.Where(b => b.Alignment <= 1).ToList();
+            var alignedBlocks = blocks.Where(b => b.Alignment > 1).ToList();
+
+            // __IYWORK をアラインなし側に追加
+            unalignedBlocks.Add(new WorkAreaPacker.PlacedBlock
             {
                 Items = new List<(string, int)> { ("__IYWORK", 256) },
                 Alignment = 256,
             });
 
-            // テトリス配置
-            var (placed, totalSize) = packer.Pack(blocks, workOffset);
-
-            // 出力
-            string? currentNs = null;
-            foreach (var block in placed)
+            // @works_align の 2 の冪バリデーション
+            foreach (int align in alignedBlocks.Select(b => b.Alignment).Distinct())
             {
-                // namespace切替
-                if (block.LibName != currentNs)
-                {
-                    if (block.LibName != null)
-                        _e.Raw($"[{block.LibName}]");
-                    else if (currentNs != null)
-                        _e.Raw("[NAME_SPACE_DEFAULT]");
-                    currentNs = block.LibName;
-                }
-                var workRef = currentNs != null ? "NAME_SPACE_DEFAULT.__WORK__" : "__WORK__";
-
-                // ブロック内の各変数をEQU出力
-                int itemOffset = block.Offset;
-                foreach (var (label, size) in block.Items)
-                {
-                    _e.Raw($"{label} EQU ({workRef} + {itemOffset})");
-                    itemOffset += size;
-                }
+                if ((align & (align - 1)) != 0)
+                    _diagnostics.Error($"@works_align {align} must be a power of 2", default);
             }
-            if (currentNs != null)
-                _e.Raw("[NAME_SPACE_DEFAULT]");
+            if (_diagnostics.HasErrors) return;
 
-            workOffset = totalSize;
+            // Step 4a: __WORK__ 側 (アラインなしブロック + __IYWORK) を配置
+            var packer1 = new WorkAreaPacker();
+            var (placed1, totalSize1) = packer1.Pack(unalignedBlocks, workOffset);
+            EmitWorksEqu(placed1, "__WORK__");
+            workOffset = totalSize1;
+
+            // Step 4b: アライン付きブロック → EQU 仮想ベース方式で絶対アライン
+            if (alignedBlocks.Count > 0)
+            {
+                // 降順ソート: 大きいアライン値を先に配置してパディング削減
+                var sortedGroups = alignedBlocks
+                    .GroupBy(b => b.Alignment)
+                    .OrderByDescending(g => g.Key)
+                    .ToList();
+
+                string prevEnd = $"__WORK__ + {workOffset}";
+
+                foreach (var alignGroup in sortedGroups)
+                {
+                    int align = alignGroup.Key;
+                    string alignedBase = $"__WORK_ALIGNED_{align}__";
+                    int mask = ~(align - 1) & 0xFFFF;
+
+                    // 仮想ベース EQU: ビットマスクで切り上げ
+                    _e.Raw($"{alignedBase} EQU (({prevEnd} + ${align - 1:X4}) & ${mask:X4})");
+
+                    // このグループ内のブロックを baseOffset=0 で配置
+                    var groupBlocks = alignGroup.ToList();
+                    var packer2 = new WorkAreaPacker();
+                    var (placed2, totalSize2) = packer2.Pack(groupBlocks, baseOffset: 0);
+                    EmitWorksEqu(placed2, alignedBase);
+
+                    prevEnd = $"{alignedBase} + {totalSize2}";
+                }
+
+                // WORKEND: アライン付き領域の終端
+                _e.Raw($"WORKEND EQU ({prevEnd})");
+                _e.Blank();
+                _e.Raw($"__WORKEND__ EQU ({prevEnd})");
+            }
+            else
+            {
+                // アライン付きブロックなし → 従来通り
+                _e.Raw($"WORKEND EQU (__WORK__ + {workOffset})");
+                _e.Blank();
+                _e.Raw($"__WORKEND__ EQU (__WORK__ + {workOffset})");
+            }
         }
         else
         {
             // ランタイムなし → __IYWORKだけ配置
             _e.Raw($"__IYWORK EQU (__WORK__ + {workOffset})");
             workOffset += 256;
-        }
 
-        // WORKEND
-        _e.Raw($"WORKEND EQU (__WORK__ + {workOffset})");
-        _e.Blank();
-        _e.Raw($"__WORKEND__ EQU (__WORK__ + {workOffset})");
+            _e.Raw($"WORKEND EQU (__WORK__ + {workOffset})");
+            _e.Blank();
+            _e.Raw($"__WORKEND__ EQU (__WORK__ + {workOffset})");
+        }
+    }
+
+    /// <summary>
+    /// WorkAreaPacker の配置結果を EQU として出力する。
+    /// workRef は __WORK__ または __WORK_ALIGNED_N__ のようなベースラベル名。
+    /// </summary>
+    private void EmitWorksEqu(List<WorkAreaPacker.PlacedBlock> placed, string workRef)
+    {
+        string? currentNs = null;
+        foreach (var block in placed)
+        {
+            // namespace切替
+            if (block.LibName != currentNs)
+            {
+                if (block.LibName != null)
+                    _e.Raw($"[{block.LibName}]");
+                else if (currentNs != null)
+                    _e.Raw("[NAME_SPACE_DEFAULT]");
+                currentNs = block.LibName;
+            }
+            var actualRef = currentNs != null ? $"NAME_SPACE_DEFAULT.{workRef}" : workRef;
+
+            // ブロック内の各変数をEQU出力
+            int itemOffset = block.Offset;
+            foreach (var (label, size) in block.Items)
+            {
+                _e.Raw($"{label} EQU ({actualRef} + {itemOffset})");
+                itemOffset += size;
+            }
+        }
+        if (currentNs != null)
+            _e.Raw("[NAME_SPACE_DEFAULT]");
     }
 
     private void EmitStringData(string text)
