@@ -617,12 +617,15 @@ public class CodeGenerator
             });
 
             // @works_align の 2 の冪バリデーション
-            foreach (int align in alignedBlocks.Select(b => b.Alignment).Distinct())
+            if (_diagnostics != null)
             {
-                if ((align & (align - 1)) != 0)
-                    _diagnostics.Error($"@works_align {align} must be a power of 2", default);
+                foreach (int align in alignedBlocks.Select(b => b.Alignment).Distinct())
+                {
+                    if ((align & (align - 1)) != 0)
+                        _diagnostics.Error($"@works_align {align} must be a power of 2", default);
+                }
+                if (_diagnostics.HasErrors) return;
             }
-            if (_diagnostics.HasErrors) return;
 
             // Step 4a: __WORK__ 側 (アラインなしブロック + __IYWORK) を配置
             var packer1 = new WorkAreaPacker();
