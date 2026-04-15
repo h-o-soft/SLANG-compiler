@@ -180,6 +180,11 @@ public class RuntimeManager
 
         if (_functions.TryGetValue(name, out var func))
         {
+            // エイリアス経由で呼ばれた場合に正規名(@name)も visited に記録して二重追加を防ぐ
+            if (!string.Equals(name, func.Name, StringComparison.OrdinalIgnoreCase)
+                && !visited.Add(func.Name))
+                return;
+
             foreach (var dep in func.Dependencies)
             {
                 CollectDependencies(dep, visited, result);

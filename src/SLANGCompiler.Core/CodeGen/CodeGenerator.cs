@@ -2436,6 +2436,12 @@ public class CodeGenerator
 
     private void EmitNeg(IrInstruction inst)
     {
+        if (inst.DataSize == 3)
+        {
+            // FLOAT (f24): 符号ビット (Aレジスタの bit7) を反転
+            _e.Instruction("XOR", "$80");
+            return;
+        }
         // HL = -HL
         _e.Instruction("LD", "A,H");
         _e.Instruction("CPL");
