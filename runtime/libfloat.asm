@@ -621,6 +621,7 @@ ret
 
 
 ; @name i16tof24
+; @alias ITOF
 ; @result_type float
 ; @calls u16tof24
 ;Inputs:
@@ -642,6 +643,7 @@ db $11     ;start of `ld de,**`, eats the next two bytes
 
 
 ; @name u16tof24
+; @alias UTOF
 ; @result_type float
 i16tof24_pos:
 ld b,$3F+16    ;Initial exponent and sign
