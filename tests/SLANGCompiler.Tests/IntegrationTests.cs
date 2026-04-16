@@ -453,4 +453,128 @@ SUB() BEGIN PRINT(""X""); END;
             MAIN() BEGIN END;");
         Assert.Contains("MACHINE functions", stderr);
     }
+
+    // ==== FLOAT 配列 ====
+
+    [Fact]
+    public void FloatArray_WordByteRegression_NoChange()
+    {
+        // T0: WORD/BYTE 配列は変化しないこと (2バイト/1バイト格納のまま)
+        var asm = CompileWithCli(@"
+            ARRAY WORD WA[3];
+            ARRAY BYTE BA[3];
+            MAIN() BEGIN WA[0] = 100; BA[0] = 7; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        // WORD: LD HL,$0064; LD (_V_WA),HL
+        Assert.Contains("LD\t(_V_WA),HL", mainSection);
+        Assert.DoesNotContain("(_V_WA+2)", mainSection);
+        // BYTE: LD A,$07; LD (_V_BA),A
+        Assert.Contains("(_V_BA)", mainSection);
+    }
+
+    [Fact]
+    public void FloatArray_GlobalConstIndex_Store()
+    {
+        // T1: グローバル FLOAT 配列への定数インデックス代入 = 3バイト格納 (HL+A)
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT GA[3];
+            MAIN() BEGIN GA[0] = 1.5; GA[1] = 2.5; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        // GA[0]: _V_GA に mantissa と exponent
+        Assert.Contains("LD\t(_V_GA),HL", mainSection);
+        Assert.Contains("LD\t(_V_GA+2),A", mainSection);
+        // GA[1]: _V_GA+3 (FLOAT ストライド 3)
+        Assert.Contains("LD\t(_V_GA+3),HL", mainSection);
+        Assert.Contains("LD\t(_V_GA+3+2),A", mainSection);
+    }
+
+    [Fact]
+    public void FloatArray_GlobalConstIndex_Load()
+    {
+        // T2: グローバル FLOAT 配列からの定数インデックス読み込み (HL+A 両方)
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT GA[3];
+            VAR FLOAT R;
+            MAIN() BEGIN R = GA[1]; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        Assert.Contains("LD\tHL,(_V_GA+3)", mainSection);
+        Assert.Contains("LD\tA,(_V_GA+3+2)", mainSection);
+    }
+
+    [Fact]
+    public void FloatArray_GlobalDynamicIndex_Store()
+    {
+        // T3: 動的インデックスでの代入 = IndirStore dataSize=3
+        //     PUSH AF + PUSH HL → POP DE + POP AF → LD (HL),E / INC HL / LD (HL),D / INC HL / LD (HL),A
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT GA[5];
+            VAR I;
+            MAIN() BEGIN FOR I = 0 TO 4 BEGIN GA[I] = I + 0.5; END; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        // 動的 IndirStore path で POP AF と INC HL + LD (HL),A が出現
+        Assert.Contains("POP\tAF", mainSection);
+        Assert.Contains("LD\t(HL),A", mainSection);
+    }
+
+    [Fact]
+    public void FloatArray_GlobalDynamicIndex_Load()
+    {
+        // T4: 動的インデックスでの読み込み = IndirLoad dataSize=3
+        //     LD E,(HL) / INC HL / LD D,(HL) / INC HL / LD A,(HL) / EX DE,HL
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT GA[5];
+            VAR FLOAT R;
+            VAR I;
+            MAIN() BEGIN R = GA[I]; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        // 3バイト読み込みパターン
+        Assert.Contains("LD\tE,(HL)", mainSection);
+        Assert.Contains("LD\tD,(HL)", mainSection);
+        Assert.Contains("LD\tA,(HL)", mainSection);
+    }
+
+    [Fact]
+    public void FloatArray_LocalConstIndex_Store()
+    {
+        // T5: ローカル FLOAT 配列への定数インデックス代入
+        var asm = CompileWithCli(@"
+            FOO() BEGIN VAR I; ARRAY FLOAT LA[3]; LA[1] = 3.5; END;
+            MAIN() BEGIN FOO(); END;");
+        // IY+offset への 3バイト格納 (mantissa+exponent)
+        var fooSection = asm.Substring(asm.IndexOf("FOO:"));
+        fooSection = fooSection.Substring(0, fooSection.IndexOf("_FOO_EXIT"));
+        // ローカル FLOAT 配列: LD (IY+off),L / LD (IY+off+1),H / LD (IY+off+2),A
+        Assert.Matches(@"LD\s+\(IY\+\$[0-9A-F]+\),L", fooSection);
+        Assert.Matches(@"LD\s+\(IY\+\$[0-9A-F]+\),H", fooSection);
+        Assert.Matches(@"LD\s+\(IY\+\$[0-9A-F]+\),A", fooSection);
+    }
+
+    [Fact]
+    public void FloatArray_IntToFloat_AutoConversion()
+    {
+        // T9: 整数→FLOAT 配列への代入で i16tof24 が挿入されること
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT GA[3];
+            MAIN() BEGIN GA[0] = 7; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        Assert.Contains("CALL\ti16tof24", mainSection);
+        Assert.Contains("LD\t(_V_GA),HL", mainSection);
+        Assert.Contains("LD\t(_V_GA+2),A", mainSection);
+    }
+
+    [Fact]
+    public void FloatArray_StaticArray_Store()
+    {
+        // T12: 関数内 static ARRAY FLOAT (BEGIN 前宣言) のストア
+        var asm = CompileWithCli(@"
+            FOO() ARRAY FLOAT SA[3]; BEGIN SA[0] = 1.5; SA[1] = 2.5; END;
+            MAIN() BEGIN FOO(); END;");
+        // 関数内 static は __FOO_SA のようなラベル。3バイト格納が 2 要素分出る
+        var fooSection = asm.Substring(asm.IndexOf("FOO:"));
+        fooSection = fooSection.Substring(0, fooSection.IndexOf("_FOO_EXIT"));
+        Assert.Matches(@"LD\s+\(_V_FOO_SA\),HL", fooSection);
+        Assert.Matches(@"LD\s+\(_V_FOO_SA\+2\),A", fooSection);
+        Assert.Matches(@"LD\s+\(_V_FOO_SA\+3\),HL", fooSection);
+        Assert.Matches(@"LD\s+\(_V_FOO_SA\+3\+2\),A", fooSection);
+    }
 }

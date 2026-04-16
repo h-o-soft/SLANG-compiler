@@ -2718,12 +2718,22 @@ public class CodeGenerator
 
     private void EmitIndirLoad(IrInstruction inst)
     {
-        // HL = *HL
+        // HL = *HL (dataSize=1: byte, =2: word, =3: float f24→AHL)
         bool isByte = inst.DataSize == 1;
+        bool isFloat = inst.DataSize == 3;
         if (isByte)
         {
             _e.Instruction("LD", "L,(HL)");
             _e.Instruction("LD", "H,$00");
+        }
+        else if (isFloat)
+        {
+            _e.Instruction("LD", "E,(HL)");
+            _e.Instruction("INC", "HL");
+            _e.Instruction("LD", "D,(HL)");
+            _e.Instruction("INC", "HL");
+            _e.Instruction("LD", "A,(HL)");
+            _e.Instruction("EX", "DE,HL");
         }
         else
         {
@@ -2737,9 +2747,11 @@ public class CodeGenerator
     private void EmitIndirStore(IrInstruction inst)
     {
         // HL=addr (最後に評価された値), スタック上にvalue
-        // POP DE(=value) → *(HL) = DE
+        // dataSize=3: PUSH AF + PUSH HL の順で積まれている → POP DE, POP AF の順で復元
         bool isByte = inst.DataSize == 1;
+        bool isFloat = inst.DataSize == 3;
         _e.Instruction("POP", "DE");
+        if (isFloat) _e.Instruction("POP", "AF");
         if (isByte)
         {
             _e.Instruction("LD", "(HL),E");
@@ -2749,6 +2761,11 @@ public class CodeGenerator
             _e.Instruction("LD", "(HL),E");
             _e.Instruction("INC", "HL");
             _e.Instruction("LD", "(HL),D");
+            if (isFloat)
+            {
+                _e.Instruction("INC", "HL");
+                _e.Instruction("LD", "(HL),A");
+            }
         }
     }
 
