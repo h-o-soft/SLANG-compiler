@@ -44,16 +44,26 @@ ASM_OPT =
 BIN_EXT_ENV = $(BIN_EXT)
 
 ifeq ($(ENV), lsx)
-  EMU = cpm
+  # RunCPM wrapper (tools/runcpm.sh on Unix, tools/runcpm.bat on Windows)
+  ifeq ($(OS),Windows_NT)
+    EMU = tools\runcpm.bat
+  else
+    EMU = ./tools/runcpm.sh
+  endif
   DISK_IMAGE = $(OUTPROG)
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), cpm)
-  EMU = cpm
+  ifeq ($(OS),Windows_NT)
+    EMU = tools\runcpm.bat
+  else
+    EMU = ./tools/runcpm.sh
+  endif
   DISK_IMAGE = $(OUTPROG)
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), x1)
   # EMU = ~/emu/X1/X1.exe
-  EMU = @echo "X1 emulator not configured. Set EMU variable" \#
+  EMU = wine ~/Emus/X1/x1.exe
+  # EMU = @echo "X1 emulator not configured. Set EMU variable" \#
   DISK_IMAGE = images/LSXPROG.D88
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), sos)
