@@ -83,7 +83,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else if (sym.Type is ArrayType at)
                 elemSz = at.ElementType.ByteSize;  // BYTE=1 / WORD=2 / FLOAT=3
             else if (sym.Type is PointerType pt)
-                elemSz = (pt.ElementType == SlangType.Byte ? 1 : 2);  // 既存維持 (FLOAT ポインタは別スコープ)
+                elemSz = pt.ElementType.ByteSize;  // BYTE=1 / WORD=2 / FLOAT=3
             else
                 elemSz = 2;
             return new VarInfo { IsResolved = true, Kind = kind, ElemSize = elemSz, VarDataSize = varDs, GlobalSym = sym };
@@ -126,6 +126,25 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     // 各tempのデータサイズを追跡（FLOAT判定用）
     private readonly Dictionary<int, int> _tempDataSize = new();
+
+    /// <summary>idx を要素サイズ倍に拡大した temp を返す (間接変数経路の共通化)。
+    /// elemSize=1 はそのまま、=2 は ADD HL,HL、それ以外は LoadConst+Mul。</summary>
+    private IrOperand ScaleIndexByElemSize(IrOperand idx, int elemSize)
+    {
+        if (elemSize == 1) return idx;
+        var scaled = IrOperand.Temp(AllocTemp());
+        if (elemSize == 2)
+        {
+            Emit(IrOp.Add, scaled, idx, idx);
+        }
+        else
+        {
+            var c = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.LoadConst, c, IrOperand.Imm(elemSize));
+            Emit(IrOp.Mul, scaled, idx, c);
+        }
+        return scaled;
+    }
 
     public IrModule Generate(CompilationUnit unit)
     {
@@ -1741,23 +1760,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
             var idx = node.Indices[0].Accept(this);
 
             // base + idx * elemSize のアドレスを計算
-            int elemSize = isIndirectByte ? 1 : 2;
-            IrOperand scaledIdx;
-            if (elemSize == 1)
-            {
-                scaledIdx = idx;
-            }
-            else
-            {
-                scaledIdx = IrOperand.Temp(AllocTemp());
-                Emit(IrOp.Add, scaledIdx, idx, idx); // ×2
-            }
+            int elemSize = arrVi.ElemSize;
+            IrOperand scaledIdx = ScaleIndexByElemSize(idx, elemSize);
             var addr = IrOperand.Temp(AllocTemp());
             Emit(IrOp.Add, addr, baseAddr, scaledIdx);
 
             // アドレスから値を読む
             var dest = IrOperand.Temp(AllocTemp());
             Emit(IrOp.IndirLoad, dest, addr, dataSize: elemSize);
+            if (elemSize == 3) _tempDataSize[dest.TempIndex] = 3;
             return dest;
         }
         else
@@ -1967,15 +1978,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             {
                 var baseAddr = arr.Array.Accept(this); // ポインタ値
                 var idx = arr.Indices[0].Accept(this);
-                int eSize = addrVi.ElemSize;
-                IrOperand scaledIdx;
-                if (eSize == 1)
-                    scaledIdx = idx;
-                else
-                {
-                    scaledIdx = IrOperand.Temp(AllocTemp());
-                    Emit(IrOp.Add, scaledIdx, idx, idx);
-                }
+                IrOperand scaledIdx = ScaleIndexByElemSize(idx, addrVi.ElemSize);
                 var addr = IrOperand.Temp(AllocTemp());
                 Emit(IrOp.Add, addr, baseAddr, scaledIdx);
                 return addr; // アドレスのみ（IndirLoadなし）
@@ -2256,6 +2259,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else if (isIndirect)
             {
                 // 間接変数ストア: *(base + idx * elemSize) = value
+                int elemSize = stVi.ElemSize;
+                value = EmitTypeConversion(value, elemSize);
+
                 var baseAddr = IrOperand.Temp(AllocTemp());
                 if (stVi.Local != null)
                     Emit(IrOp.LoadLocal, baseAddr, IrOperand.Imm(stVi.Local.Offset));
@@ -2263,16 +2269,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     Emit(IrOp.LoadVar, baseAddr, IrOperand.Sym(ResolveAsmLabel(arrayName!)));
 
                 var idx = arr.Indices[0].Accept(this);
-                int elemSize = stVi.ElemSize;
-
-                IrOperand scaledIdx;
-                if (elemSize == 1)
-                    scaledIdx = idx;
-                else
-                {
-                    scaledIdx = IrOperand.Temp(AllocTemp());
-                    Emit(IrOp.Add, scaledIdx, idx, idx);
-                }
+                IrOperand scaledIdx = ScaleIndexByElemSize(idx, elemSize);
                 var addr = IrOperand.Temp(AllocTemp());
                 Emit(IrOp.Add, addr, baseAddr, scaledIdx);
                 Emit(IrOp.IndirStore, addr, value, dataSize: elemSize);

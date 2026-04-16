@@ -680,4 +680,147 @@ SUB() BEGIN PRINT(""X""); END;
         var expected = ExpectedFloatBytes(6.0);
         Assert.Contains($"DB\t{expected}", asm);
     }
+
+    // ==== FLOAT を指す PointerType (間接変数) ====
+
+    [Fact]
+    public void FloatPointer_BytePointerRegression_NoChange()
+    {
+        // T0: 既存の BYTE 間接変数 (VAR BYTE BP[]) の動的ストアが変わらない
+        var asm = CompileWithCli(@"
+            ARRAY BYTE BBUF[5];
+            VAR BYTE BP[];
+            VAR I;
+            MAIN() BEGIN BP = &BBUF[0]; FOR I = 0 TO 4 BP[I] = I + 100; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        // ScaleIndexByElemSize で elemSize=1 はそのまま (×なし) → idx 加算のみ
+        // BYTE pointer の場合 ×3 化されないことの間接確認
+        Assert.DoesNotContain("CALL\tMULHLDE", mainSection); // ×N runtime call が出ない
+    }
+
+    [Fact]
+    public void FloatPointer_GlobalConstIndex_Store()
+    {
+        // T1: グローバル FLOAT pointer 定数 idx ストア → IndirStore dataSize=3
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT BUF[3];
+            VAR FLOAT FP[];
+            MAIN() BEGIN FP = &BUF[0]; FP[0] = 1.5; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        // FP の値 (ポインタ) をロードしてアドレス計算に使う + 3バイトストア
+        Assert.Contains("(_V_FP)", mainSection); // FP の中身参照 (HL でも DE でも)
+        Assert.Contains("LD\t(HL),A", mainSection); // exponent も書く = dataSize=3
+    }
+
+    [Fact]
+    public void FloatPointer_GlobalConstIndex_Load()
+    {
+        // T2: グローバル FLOAT pointer 定数 idx ロード → IndirLoad dataSize=3
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT BUF[3];
+            VAR FLOAT FP[];
+            VAR FLOAT R;
+            MAIN() BEGIN FP = &BUF[0]; R = FP[0]; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        // 3 バイトロード: LD A,(HL) で exponent も読む
+        Assert.Contains("LD\tA,(HL)", mainSection);
+    }
+
+    [Fact]
+    public void FloatPointer_GlobalDynamicIndex_Store()
+    {
+        // T3: 動的 idx → idx × 3 スケーリング (LoadConst $03 + Mul、最適形は ADD HL,HL + ADD HL,DE)
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT BUF[5];
+            VAR FLOAT FP[];
+            VAR I;
+            MAIN() BEGIN FP = &BUF[0]; FOR I = 0 TO 4 FP[I] = I * 0.5; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        // ×3 が ADD HL,HL + ADD HL,DE に展開されるか、LD DE,$0003 + MULHLDE のどちらか
+        bool hasOptimized = mainSection.Contains("ADD\tHL,HL") && mainSection.Contains("ADD\tHL,DE");
+        bool hasGeneric = mainSection.Contains("LD\tDE,$0003") && mainSection.Contains("CALL\tMULHLDE");
+        Assert.True(hasOptimized || hasGeneric, "×3 scaling not found");
+        Assert.Contains("LD\t(HL),A", mainSection); // FLOAT 3バイト書き
+    }
+
+    [Fact]
+    public void FloatPointer_GlobalDynamicIndex_Load()
+    {
+        // T4: 動的 idx ロード
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT BUF[5];
+            VAR FLOAT FP[];
+            VAR FLOAT R;
+            VAR I;
+            MAIN() BEGIN FP = &BUF[0]; R = FP[I]; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        Assert.Contains("LD\tA,(HL)", mainSection);
+    }
+
+    [Fact]
+    public void FloatPointer_IntToFloat_AutoConversion()
+    {
+        // T5: FP[0] = 7 で i16tof24 が挿入される (EmitTypeConversion 追加の確認)
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT BUF[3];
+            VAR FLOAT FP[];
+            MAIN() BEGIN FP = &BUF[0]; FP[0] = 7; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        Assert.Contains("CALL\ti16tof24", mainSection);
+    }
+
+    [Fact]
+    public void FloatPointer_AddressOf()
+    {
+        // T6: &FP[1] で base + 1*3 のアドレス計算 (定数畳み込みで 3 になる)
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT BUF[3];
+            VAR FLOAT FP[];
+            VAR R;
+            MAIN() BEGIN FP = &BUF[0]; R = &FP[1]; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        // 1*3 が定数畳み込みされて LD HL,$0003 + ADD HL,(_V_FP) が出る
+        Assert.Contains("LD\tHL,$0003", mainSection);
+        Assert.Contains("(_V_FP)", mainSection);
+    }
+
+    [Fact]
+    public void FloatPointer_Local_LoadStore()
+    {
+        // T7: 関数内 static 間接変数 (BEGIN 前 VAR FLOAT LP[]) でロード/ストア
+        var asm = CompileWithCli(@"
+            FOO()
+              VAR FLOAT LP[];
+              ARRAY FLOAT LBUF[3];
+            BEGIN
+              LP = &LBUF[0];
+              LP[0] = 11.5;
+            END;
+            MAIN() BEGIN FOO(); END;");
+        var fooSection = asm.Substring(asm.IndexOf("FOO:"));
+        fooSection = fooSection.Substring(0, fooSection.IndexOf("_FOO_EXIT"));
+        // 関数内 static は __FOO_LP のラベル + 3バイト書き
+        Assert.Contains("(_V_FOO_LP)", fooSection);
+        Assert.Contains("LD\t(HL),A", fooSection);
+    }
+
+    [Fact]
+    public void FloatPointer_LoadResult_NoTypeConversion()
+    {
+        // T8: ロード結果を FLOAT 変数に代入する際、i16tof24 が挿入されない
+        // (= _tempDataSize 登録が機能している証拠)
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT BUF[3];
+            VAR FLOAT FP[];
+            VAR FLOAT R;
+            MAIN() BEGIN FP = &BUF[0]; R = FP[0]; END;");
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        // R = FP[0] のロードは既に FLOAT (3byte) なので i16tof24 は不要
+        // BUT: FP = &BUF[0] や FP[0] = ... の他の整数式で i16tof24 が出ることはある
+        // ここでは "ロード→代入" の前後で余分な i16tof24 が無いことを部分的に確認
+        // → R 代入前後に i16tof24 が無いことを正確にチェックするのは難しいため、
+        //   全 mainSection で i16tof24 が 1 回も出ないことを Assert する
+        //   (このプログラムには整数→FLOAT 変換が必要な箇所がないため)
+        Assert.DoesNotContain("CALL\ti16tof24", mainSection);
+    }
 }
