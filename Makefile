@@ -18,8 +18,15 @@ ENV ?= lsx
 DOTNET = dotnet
 SLANGC_NEW = $(DOTNET) run --project src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj -c Release --
 SLANGC_OLD = $(DOTNET) run --project SLANGCompiler.csproj -c Release --
-ASM = AILZ80ASM
-NDC = ndc
+
+# tools/ 配下のバイナリを直接参照 (PATH 環境に依存しない)。setup-tools で配置済みの想定。
+ifeq ($(OS),Windows_NT)
+  ASM = tools\AILZ80ASM.exe
+  NDC = tools\NDC.exe
+else
+  ASM = tools/AILZ80ASM
+  NDC = tools/ndc
+endif
 HUDISK = HuDisk
 MODSPLIT = ModuleSplitter
 
@@ -168,10 +175,17 @@ check-symbols: $(ASM_NEW)
 	@echo "Done."
 
 # === クリーンアップ ===
+ifeq ($(OS),Windows_NT)
+clean:
+	-del /Q $(subst /,\,$(ASM_NEW)) $(subst /,\,$(ASM_OLD)) $(subst /,\,$(OUTPROG)) $(subst /,\,$(IMGPROG)) $(subst /,\,$(LST)) $(subst /,\,$(SYM)) 2>nul
+	-del /Q $(subst /,\,$(dir $(TARGET)))PROG.bin $(subst /,\,$(dir $(TARGET)))PROG.com $(subst /,\,$(dir $(TARGET)))PROG.cmt 2>nul
+	-del /Q $(subst /,\,$(TARGET)).lst $(subst /,\,$(TARGET)).sym 2>nul
+else
 clean:
 	rm -f $(ASM_NEW) $(ASM_OLD) $(OUTPROG) $(IMGPROG) $(LST) $(SYM)
 	rm -f $(dir $(TARGET))PROG.bin $(dir $(TARGET))PROG.com $(dir $(TARGET))PROG.cmt
 	rm -f $(TARGET).lst $(TARGET).sym
+endif
 
 # === ヘルプ ===
 help:

@@ -45,10 +45,13 @@ copy /Y "%COM_PATH%" "%STAGE%\A\0\%BASE%.COM" >nul
 REM AUTOEXEC.TXT: stem only
 echo %BASE%> "%STAGE%\AUTOEXEC.TXT"
 
-REM Run from the staging dir. Pipe EXIT so CCP terminates after the
-REM program returns, and filter boot banner with findstr.
+REM Run from the staging dir. RunCPM の Windows ビルドはコンソール pipe からの
+REM stdin 読み込みが安定しないため、EXIT を一時ファイルに書き出して < で
+REM リダイレクトする (echo EXIT | ... よりも確実)。
+REM 出力は findstr /V で起動バナーをフィルタ。
 pushd "%STAGE%"
-echo EXIT | "%RUNCPM_BIN%" 2>&1 | findstr /V /C:"by Marcelo" /C:"Built " /C:"CPU is " /C:"T-states " /C:"clock speed" /C:"BIOS at " /C:"BIOS/BDOS" /C:"CCP CCP" /C:"FILEBASE " /C:"CP/M Emulator" /C:"Terminating" /C:"CPU Halted" /C:"RunCPM Version" /C:"----------" /C:"A0>EXIT"
+echo EXIT> stdin.tmp
+"%RUNCPM_BIN%" <stdin.tmp 2>&1 | findstr /V /C:"by Marcelo" /C:"Built " /C:"CPU is " /C:"T-states " /C:"clock speed" /C:"BIOS at " /C:"BIOS/BDOS" /C:"CCP CCP" /C:"FILEBASE " /C:"CP/M Emulator" /C:"Terminating" /C:"CPU Halted" /C:"RunCPM Version" /C:"----------" /C:"A0>EXIT"
 popd
 
 rmdir /S /Q "%STAGE%" >nul 2>&1
