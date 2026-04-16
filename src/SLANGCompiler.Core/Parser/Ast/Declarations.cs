@@ -175,6 +175,7 @@ public class FuncDef : AstNode
 {
     public string Name { get; }
     public Expression? Address { get; }
+    public DataSize ReturnSize { get; }  // 戻り値の型 (デフォルト Word)
     public List<ParamDecl> Parameters { get; }
     public List<AstNode> StaticDeclarations { get; }  // BEGINの前
     public List<AstNode> LocalDeclarations { get; }   // BEGINの後
@@ -183,10 +184,12 @@ public class FuncDef : AstNode
 
     public FuncDef(string name, Expression? address, List<ParamDecl> parameters,
                    List<AstNode> staticDecls, List<AstNode> localDecls,
-                   Block body, Expression? returnValue, SourceSpan span) : base(span)
+                   Block body, Expression? returnValue, SourceSpan span,
+                   DataSize returnSize = DataSize.Word) : base(span)
     {
         Name = name;
         Address = address;
+        ReturnSize = returnSize;
         Parameters = parameters;
         StaticDeclarations = staticDecls;
         LocalDeclarations = localDecls;

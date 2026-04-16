@@ -353,15 +353,35 @@ public class Parser
         var start = Current.Span;
         var name = Advance().StringValue; // identifier
         Expression? address = null;
+        DataSize returnSize = DataSize.Word;
 
         if (Match(TokenKind.Colon))
-            address = ParseNcExpr();
+        {
+            // 直後が型キーワード(BYTE/WORD/FLOAT/!)なら戻り値型、それ以外はMACHINEアドレス式
+            if (Check(TokenKind.Byte) || Check(TokenKind.Word)
+                || Check(TokenKind.Float) || Check(TokenKind.Exclamation))
+            {
+                returnSize = ParseOptionalDataSize();
+            }
+            else
+            {
+                address = ParseNcExpr();
+            }
+        }
 
         Expect(TokenKind.LParen, "Expected '('");
 
         // MACHINE CODE定義: @FUNC(引数数) [static decls] [CODE(...);] → 早期return
         if (Check(TokenKind.IntegerLiteral))
         {
+            // MACHINE関数の戻り値型は未サポート (WORD 固定)。
+            // :TYPE が指定されていた場合はエラーで拒否する (気づかず使われて誤動作するのを防ぐ)。
+            if (returnSize != DataSize.Word)
+            {
+                _diagnostics.Error(
+                    "Return type specifier is not supported on MACHINE functions (WORD only)",
+                    start);
+            }
             var paramCount = (int)Advance().IntValue;
             Expect(TokenKind.RParen, "Expected ')'");
 
@@ -465,7 +485,7 @@ public class Parser
         }
         Match(TokenKind.Semicolon);
 
-        return new FuncDef(name, address, parms, staticDecls, localDecls, body, retVal, start);
+        return new FuncDef(name, address, parms, staticDecls, localDecls, body, retVal, start, returnSize);
     }
 
     private AstNode ParseLocalDecl()

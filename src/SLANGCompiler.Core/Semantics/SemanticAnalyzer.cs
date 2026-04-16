@@ -289,7 +289,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     {
         // 関数自体をグローバルに登録
         var paramTypes = node.Parameters.Select(p => DataSizeToType(p.Size)).ToList();
-        var funcType = new FunctionType(SlangType.Word, paramTypes);
+        var returnType = DataSizeToType(node.ReturnSize);
+        var funcType = new FunctionType(returnType, paramTypes);
         var funcSym = _symbols.Define(node.Name, SymbolKind.Function, funcType);
         funcSym.IsGlobal = true;
         funcSym.AsmLabel = LabelUtils.SanitizeLabel(node.Name);
