@@ -370,62 +370,93 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (node.InitialCode != null)
             {
                 initItems = new List<InitItem>();
-                foreach (var expr in node.InitialCode)
+
+                if (node.Size == DataSize.Float)
                 {
-                    var initExpr = expr;
-                    int itemSize = 1; // 配列初期値はデフォルトBYTE（%付きでWORD）
-                    if (initExpr is CastExpr cast)
+                    // FLOAT配列専用パス: 全要素3バイトf24で展開
+                    var constEval = new ConstEvaluator(_globalSymbols);
+                    foreach (var expr in node.InitialCode)
                     {
-                        initExpr = cast.Operand;
-                        itemSize = cast.TargetSize == DataSize.Byte ? 1 : cast.TargetSize == DataSize.Float ? 3 : 2;
-                    }
-
-                    // 定数式の評価を試みる（BinaryExpr, CONST参照なども含む）
-                    var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
-                    var constVal = constEval?.Evaluate(initExpr);
-                    if (initExpr is IntegerLiteral ilit)
-                        constVal = (int)ilit.Value; // IntegerLiteralは直接使用
-
-                    if (constVal.HasValue)
-                    {
-                        int v = constVal.Value;
-                        if (itemSize == 1)
-                            initItems.Add(InitItem.Byte((byte)(v & 0xFF)));
-                        else if (itemSize == 3)
+                        // トップレベル要素として CastExpr (%X 等) を置くのは禁止。
+                        // BYTE/WORD 要素混在の意図を防ぐためで、式の内部に含まれる
+                        // CastExpr は EvaluateFloat が再帰的に評価するため許容される。
+                        if (expr is CastExpr)
                         {
-                            initItems.Add(InitItem.Byte((byte)(v & 0xFF)));
-                            initItems.Add(InitItem.Byte((byte)((v >> 8) & 0xFF)));
-                            initItems.Add(InitItem.Byte((byte)((v >> 16) & 0xFF)));
+                            _diagnostics?.Error("Cast expression not allowed in FLOAT array initializer", expr.Span);
+                            continue;
+                        }
+                        double? val = constEval.EvaluateFloat(expr);
+                        if (!val.HasValue)
+                        {
+                            _diagnostics?.Error("FLOAT array initializer must be a constant expression", expr.Span);
+                            continue;
+                        }
+                        var bytes = LabelUtils.ConvertToF24(val.Value);
+                        initItems.Add(InitItem.Byte(bytes[0]));
+                        initItems.Add(InitItem.Byte(bytes[1]));
+                        initItems.Add(InitItem.Byte(bytes[2]));
+                    }
+                }
+                else
+                {
+                    foreach (var expr in node.InitialCode)
+                    {
+                        var initExpr = expr;
+                        int itemSize = 1; // 配列初期値はデフォルトBYTE（%付きでWORD）
+                        if (initExpr is CastExpr cast)
+                        {
+                            initExpr = cast.Operand;
+                            itemSize = cast.TargetSize == DataSize.Byte ? 1 : cast.TargetSize == DataSize.Float ? 3 : 2;
+                        }
+
+                        // 定数式の評価を試みる（BinaryExpr, CONST参照なども含む）
+                        var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+                        var constVal = constEval?.Evaluate(initExpr);
+                        if (initExpr is IntegerLiteral ilit)
+                            constVal = (int)ilit.Value; // IntegerLiteralは直接使用
+
+                        if (constVal.HasValue)
+                        {
+                            int v = constVal.Value;
+                            if (itemSize == 1)
+                                initItems.Add(InitItem.Byte((byte)(v & 0xFF)));
+                            else if (itemSize == 3)
+                            {
+                                initItems.Add(InitItem.Byte((byte)(v & 0xFF)));
+                                initItems.Add(InitItem.Byte((byte)((v >> 8) & 0xFF)));
+                                initItems.Add(InitItem.Byte((byte)((v >> 16) & 0xFF)));
+                            }
+                            else
+                            {
+                                initItems.Add(InitItem.Byte((byte)(v & 0xFF)));
+                                initItems.Add(InitItem.Byte((byte)((v >> 8) & 0xFF)));
+                            }
+                        }
+                        else if (initExpr is StringLiteral slit)
+                        {
+                            var sjisBytes = StringEncoder.ToShiftJisBytes(slit.Value, _diagnostics);
+                            foreach (var b in sjisBytes)
+                                initItems.Add(InitItem.Byte(b));
                         }
                         else
                         {
-                            initItems.Add(InitItem.Byte((byte)(v & 0xFF)));
-                            initItems.Add(InitItem.Byte((byte)((v >> 8) & 0xFF)));
-                        }
-                    }
-                    else if (initExpr is StringLiteral slit)
-                    {
-                        var sjisBytes = StringEncoder.ToShiftJisBytes(slit.Value, _diagnostics);
-                        foreach (var b in sjisBytes)
-                            initItems.Add(InitItem.Byte(b));
-                    }
-                    else
-                    {
-                        // 非定数式: ExprToAsmStringでアセンブラ式に変換
-                        var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics);
-                        if (asmResult.HasValue && itemSize == 2)
-                        {
-                            initItems.Add(InitItem.Word(asmResult.Value.Expr));
-                            foreach (var dep in asmResult.Value.Deps)
-                                _module.AddressSymbolDeps.Add(dep);
-                        }
-                        else if (itemSize == 1)
-                        {
-                            _diagnostics?.Error("Non-constant BYTE expression in CODE block not supported",
-                                initExpr.Span);
+                            // 非定数式: ExprToAsmStringでアセンブラ式に変換
+                            var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics);
+                            if (asmResult.HasValue && itemSize == 2)
+                            {
+                                initItems.Add(InitItem.Word(asmResult.Value.Expr));
+                                foreach (var dep in asmResult.Value.Deps)
+                                    _module.AddressSymbolDeps.Add(dep);
+                            }
+                            else if (itemSize == 1)
+                            {
+                                _diagnostics?.Error("Non-constant BYTE expression in CODE block not supported",
+                                    initExpr.Span);
+                            }
                         }
                     }
                 }
+
                 // totalSizeに満たない場合は0で埋める
                 int currentSize = initItems.Sum(i => i.ByteSize);
                 while (currentSize < totalSize)
