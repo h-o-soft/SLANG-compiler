@@ -1,5 +1,21 @@
 # 更新履歴
 
+## Version 0.20.2
+- CASE文の冗長なexprVal初回評価を削除（生成コードのサイズ縮小、JS版コンパイラとの整合性向上）
+- x1環境で SGL ライブラリ（libx1_sgl_lsx）が使用可能に
+  - LSX-Dodgers のシステム領域と衝突する固定アドレス依存を排除
+  - VRAM_ADRS_TBL/BITLINE_BUFFER を @works に統合
+  - BitLine の OR-trick を AND+ADD 方式に置換（64箇所）
+- @works_align を絶対アドレスでアライン保証
+  - EQU 仮想ベース方式 (`__WORK_ALIGNED_<N>__`) で実現
+  - __WORK__ 自体は動かさず、WORK 指定の意味を壊さない
+  - @works_align は 2 の冪のみ受け付け（不正値はエラー）
+- FLOAT 周辺のバグ修正
+  - `f24add` の指数差ちょうど18ビット時の誤分岐を修正（FCOS(3.1447)=0.31201 等の異常値を解消）
+  - FLOAT 単項マイナスが整数演算として展開されていたバグを修正（`-T` で f24 値が破壊されていた）
+  - `@alias` と `@name` 両方使用時に関数本体が重複出力される問題を修正
+- ITOF/UTOF エイリアス追加（i16tof24/u16tof24 を呼びやすく）
+
 ## Version 0.20.1
 - CASE文のカンマ区切り値（`6,7,8: body`）でbodyコードが重複生成される問題を修正
 - FLOAT対応の強化
