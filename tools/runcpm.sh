@@ -4,11 +4,11 @@
 # Usage: tools/runcpm.sh <path/to/program.com>
 #
 # Sets up a staging directory under $TMPDIR (or /tmp) with the CP/M
-# drive-A user-0 layout that RunCPM requires, writes an AUTOEXEC.TXT
-# that runs the program, launches the platform's pre-built RunCPM
-# binary from tools/runcpm/, pipes EXIT into stdin so RunCPM shuts
-# down after the program returns, and filters RunCPM's boot banner
-# from stdout.
+# drive-A user-0 layout that RunCPM requires. AUTOEXEC.TXT runs
+# `SUBMIT BOOT`, and BOOT.SUB contains two lines: the program name and
+# `EXIT`. SUBMIT.COM and EXIT.COM are bundled under tools/runcpm/cpm/.
+# This way RunCPM auto-terminates after the program returns, without
+# needing stdin redirection (which is unreliable on Windows).
 #
 # Requires: tools/runcpm/RunCPM-<platform> (placed by the repo; see
 # tools/runcpm/README.md).
@@ -28,6 +28,7 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUNCPM_DIR="$SCRIPT_DIR/runcpm"
+CPM_UTILS_DIR="$RUNCPM_DIR/cpm"
 
 # Detect platform and pick the right binary
 UNAME_S="$(uname -s)"
@@ -58,6 +59,11 @@ if [ ! -x "$RUNCPM_BIN" ]; then
     exit 1
 fi
 
+if [ ! -f "$CPM_UTILS_DIR/EXIT.COM" ] || [ ! -f "$CPM_UTILS_DIR/SUBMIT.COM" ]; then
+    echo "Error: EXIT.COM / SUBMIT.COM not found under $CPM_UTILS_DIR" >&2
+    exit 1
+fi
+
 # Staging directory (unique per invocation to avoid collisions)
 STAGE="${TMPDIR:-/tmp}/slang-runcpm-$$"
 mkdir -p "$STAGE/A/0"
@@ -69,16 +75,23 @@ BASE="$(basename "$COM_PATH")"
 STEM="$(echo "${BASE%.*}" | tr '[:lower:]' '[:upper:]')"
 cp "$COM_PATH" "$STAGE/A/0/$STEM.COM"
 
-# AUTOEXEC.TXT contains just the program's stem (no extension).
-printf '%s\n' "$STEM" > "$STAGE/AUTOEXEC.TXT"
+# Bundle SUBMIT.COM and EXIT.COM so the CCP can chain commands.
+cp "$CPM_UTILS_DIR/SUBMIT.COM" "$STAGE/A/0/SUBMIT.COM"
+cp "$CPM_UTILS_DIR/EXIT.COM"   "$STAGE/A/0/EXIT.COM"
 
-# Launch. Pipe `EXIT` so RunCPM's CCP terminates after the program
-# returns control and drops back to the A0> prompt.
+# BOOT.SUB drives the CCP: run the program, then EXIT. CP/M text files
+# use CR LF line endings.
+printf '%s\r\nEXIT\r\n' "$STEM" > "$STAGE/A/0/BOOT.SUB"
+
+# AUTOEXEC.TXT kicks off SUBMIT, which expands BOOT.SUB into $$$.SUB
+# for the CCP to read on subsequent loop iterations.
+printf 'SUBMIT BOOT\n' > "$STAGE/AUTOEXEC.TXT"
+
 # Filter RunCPM's boot banner so only the program output is shown.
 cd "$STAGE"
-echo "EXIT" | "$RUNCPM_BIN" 2>&1 | tr -d '\r' | awk '
+"$RUNCPM_BIN" 2>&1 | tr -d '\r' | awk '
     /by Marcelo|Built |CPU is |T-states |clock speed|BIOS at |BIOS\/BDOS |CCP CCP|FILEBASE |CP\/M Emulator|Terminating|CPU Halted|RunCPM Version/ { next }
     /^-+$/ { next }
-    /^A0>EXIT/ { next }
+    /^A0[>$](SUBMIT BOOT|EXIT|[A-Z][A-Z0-9]*)$/ { next }
     { sub(/\x1b\[[0-9]*[JH]/, ""); sub(/\x1b\[[0-9]*[JH]/, ""); print }
 '

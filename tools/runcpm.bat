@@ -3,11 +3,10 @@ REM RunCPM wrapper for `make run ENV=cpm|lsx` on Windows.
 REM
 REM Usage: tools\runcpm.bat <path\to\program.com>
 REM
-REM Mirrors tools/runcpm.sh. Sets up a staging directory under
-REM %TEMP%, places the target .COM under A\0\<NAME>.COM, writes
-REM AUTOEXEC.TXT, launches tools\runcpm\RunCPM-win-x64.exe, pipes
-REM EXIT into stdin so RunCPM shuts down after the program returns,
-REM and filters RunCPM's boot banner from stdout via findstr.
+REM Mirrors tools/runcpm.sh. AUTOEXEC.TXT runs `SUBMIT BOOT` and
+REM BOOT.SUB drives the CCP through `<PROG>` then `EXIT`. SUBMIT.COM
+REM and EXIT.COM are bundled under tools\runcpm\cpm\. This avoids
+REM relying on stdin redirection, which is unreliable on Windows.
 
 setlocal enabledelayedexpansion
 
@@ -24,10 +23,20 @@ if not exist "%COM_PATH%" (
 
 set SCRIPT_DIR=%~dp0
 set RUNCPM_BIN=%SCRIPT_DIR%runcpm\RunCPM-win-x64.exe
+set CPM_UTILS_DIR=%SCRIPT_DIR%runcpm\cpm
 
 if not exist "%RUNCPM_BIN%" (
     echo Error: RunCPM binary not found: %RUNCPM_BIN% 1^>^&2
     echo See tools\runcpm\README.md for build instructions. 1^>^&2
+    exit /b 1
+)
+
+if not exist "%CPM_UTILS_DIR%\EXIT.COM" (
+    echo Error: EXIT.COM not found under %CPM_UTILS_DIR% 1^>^&2
+    exit /b 1
+)
+if not exist "%CPM_UTILS_DIR%\SUBMIT.COM" (
+    echo Error: SUBMIT.COM not found under %CPM_UTILS_DIR% 1^>^&2
     exit /b 1
 )
 
@@ -42,16 +51,24 @@ for %%F in ("%COM_PATH%") do set BASE=%%~nF
 REM Copy as A\0\<STEM>.COM (CP/M requires .COM extension)
 copy /Y "%COM_PATH%" "%STAGE%\A\0\%BASE%.COM" >nul
 
-REM AUTOEXEC.TXT: stem only
-echo %BASE%> "%STAGE%\AUTOEXEC.TXT"
+REM Bundle SUBMIT.COM and EXIT.COM so the CCP can chain commands.
+copy /Y "%CPM_UTILS_DIR%\SUBMIT.COM" "%STAGE%\A\0\SUBMIT.COM" >nul
+copy /Y "%CPM_UTILS_DIR%\EXIT.COM"   "%STAGE%\A\0\EXIT.COM"   >nul
 
-REM Run from the staging dir. RunCPM's Windows build doesn't reliably read
-REM stdin via console pipe, so write EXIT to a temp file and redirect it
-REM with `<` (more reliable than `echo EXIT | ...`). Filter the boot
-REM banner from stdout via findstr /V.
+REM BOOT.SUB drives the CCP: run the program, then EXIT. CP/M text
+REM files use CR LF line endings, which is the Windows default for echo.
+(
+echo %BASE%
+echo EXIT
+)> "%STAGE%\A\0\BOOT.SUB"
+
+REM AUTOEXEC.TXT kicks off SUBMIT, which expands BOOT.SUB into $$$.SUB
+REM for the CCP to read on subsequent loop iterations.
+echo SUBMIT BOOT> "%STAGE%\AUTOEXEC.TXT"
+
+REM Filter RunCPM's boot banner with findstr /V.
 pushd "%STAGE%"
-echo EXIT> stdin.tmp
-"%RUNCPM_BIN%" <stdin.tmp 2>&1 | findstr /V /C:"by Marcelo" /C:"Built " /C:"CPU is " /C:"T-states " /C:"clock speed" /C:"BIOS at " /C:"BIOS/BDOS" /C:"CCP CCP" /C:"FILEBASE " /C:"CP/M Emulator" /C:"Terminating" /C:"CPU Halted" /C:"RunCPM Version" /C:"----------" /C:"A0>EXIT"
+"%RUNCPM_BIN%" 2>&1 | findstr /V /C:"by Marcelo" /C:"Built " /C:"CPU is " /C:"T-states " /C:"clock speed" /C:"BIOS at " /C:"BIOS/BDOS" /C:"CCP CCP" /C:"FILEBASE " /C:"CP/M Emulator" /C:"Terminating" /C:"CPU Halted" /C:"RunCPM Version" /C:"----------" /C:"A0>SUBMIT BOOT" /C:"A0$SUBMIT BOOT" /C:"A0$%BASE%" /C:"A0$EXIT" /C:"A0>EXIT"
 popd
 
 rmdir /S /Q "%STAGE%" >nul 2>&1
