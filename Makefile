@@ -69,8 +69,7 @@ else ifeq ($(ENV), cpm)
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), x1)
   # EMU = ~/emu/X1/X1.exe
-  EMU = wine ~/Emus/X1/x1.exe
-  # EMU = @echo "X1 emulator not configured. Set EMU variable" \#
+  EMU = @echo "X1 emulator not configured. Set EMU variable" \#
   DISK_IMAGE = images/LSXPROG.D88
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), sos)
