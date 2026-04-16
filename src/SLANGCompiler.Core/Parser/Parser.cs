@@ -374,6 +374,14 @@ public class Parser
         // MACHINE CODE定義: @FUNC(引数数) [static decls] [CODE(...);] → 早期return
         if (Check(TokenKind.IntegerLiteral))
         {
+            // MACHINE関数の戻り値型は未サポート (WORD 固定)。
+            // :TYPE が指定されていた場合はエラーで拒否する (気づかず使われて誤動作するのを防ぐ)。
+            if (returnSize != DataSize.Word)
+            {
+                _diagnostics.Error(
+                    "Return type specifier is not supported on MACHINE functions (WORD only)",
+                    start);
+            }
             var paramCount = (int)Advance().IntValue;
             Expect(TokenKind.RParen, "Expected ')'");
 

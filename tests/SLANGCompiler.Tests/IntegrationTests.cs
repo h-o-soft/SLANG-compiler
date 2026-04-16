@@ -442,4 +442,15 @@ SUB() BEGIN PRINT(""X""); END;
             MAIN() BEGIN END;");
         Assert.Contains("Cannot return FLOAT", stderr);
     }
+
+    [Fact]
+    public void MachineFunc_ReturnTypeSpecifier_Error()
+    {
+        // MACHINE関数 (FOO:type(N) 形式) で戻り値型を指定するとエラー
+        // (現状WORD固定でしか動かないため、誤動作を防ぐため拒否する)
+        var stderr = CompileExpectError(@"
+            FOO:FLOAT(2);
+            MAIN() BEGIN END;");
+        Assert.Contains("MACHINE functions", stderr);
+    }
 }
