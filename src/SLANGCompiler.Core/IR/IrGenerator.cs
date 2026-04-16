@@ -377,6 +377,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     var constEval = new ConstEvaluator(_globalSymbols);
                     foreach (var expr in node.InitialCode)
                     {
+                        // トップレベル要素として CastExpr (%X 等) を置くのは禁止。
+                        // BYTE/WORD 要素混在の意図を防ぐためで、式の内部に含まれる
+                        // CastExpr は EvaluateFloat が再帰的に評価するため許容される。
                         if (expr is CastExpr)
                         {
                             _diagnostics?.Error("Cast expression not allowed in FLOAT array initializer", expr.Span);

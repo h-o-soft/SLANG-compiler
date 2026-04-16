@@ -659,12 +659,25 @@ SUB() BEGIN PRINT(""X""); END;
     }
 
     [Fact]
-    public void FloatArrayInit_CastExpr_Error()
+    public void FloatArrayInit_TopLevelCastExpr_Error()
     {
-        // T5b: FLOAT 配列に CastExpr (%X 等) は禁止
+        // T5b: トップレベル要素として CastExpr (%X 等) を置くのは禁止
+        // (BYTE/WORD 要素混在の意図を防ぐため)
         var stderr = CompileExpectError(@"
             ARRAY FLOAT FA[1] = {%5};
             MAIN() BEGIN END;");
         Assert.Contains("Cast expression not allowed in FLOAT array initializer", stderr);
+    }
+
+    [Fact]
+    public void FloatArrayInit_CastInsideExpression_OK()
+    {
+        // T5c: 式の内部に CastExpr が含まれていても、結果が定数式として
+        // double 評価できれば許容する (混在禁止はトップレベル要素のみが対象)
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT FA[1] = {(%5) + 1.0};
+            MAIN() BEGIN END;");
+        var expected = ExpectedFloatBytes(6.0);
+        Assert.Contains($"DB\t{expected}", asm);
     }
 }
