@@ -49,6 +49,23 @@ cp RunCPM /path/to/SLANG-compiler/tools/runcpm/RunCPM-linux-x64
 
 ## Windows (x64)
 
+### macOS/Linux から mingw-w64 でクロスビルド (推奨)
+
+Homebrew の `x86_64-w64-mingw32-gcc` 等がある場合:
+
+```sh
+git clone --depth 1 https://github.com/MockbaTheBorg/RunCPM.git
+cd RunCPM/RunCPM
+sed -i.bak 's/#define BOOTONLY FALSE/#define BOOTONLY TRUE/' globals.h
+# Makefile.mingw は clean で `del /Q` を使うので直接は呼ばない。
+# main.o を手動で消してから CC 上書きでビルド:
+rm -f main.o RunCPM.exe
+make -f Makefile.mingw CC=x86_64-w64-mingw32-gcc
+cp RunCPM.exe /path/to/SLANG-compiler/tools/runcpm/RunCPM-win-x64.exe
+```
+
+### Windows 上で直接ビルド
+
 MinGW-w64 がインストール済みの前提:
 
 ```cmd

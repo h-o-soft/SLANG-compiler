@@ -8,9 +8,9 @@ licensed under the MIT License. See `LICENSE` for full terms.
 Pre-built binaries are placed here for convenience:
 
 - `RunCPM-macos-arm64` — macOS Apple Silicon
-- `RunCPM-macos-x64`   — macOS Intel
-- `RunCPM-linux-x64`   — Linux x86_64
-- `RunCPM-win-x64.exe` — Windows x86_64
+- `RunCPM-macos-x64`   — macOS Intel (cross-built with `-arch x86_64`)
+- `RunCPM-linux-x64`   — Linux x86_64 (built on Linux host)
+- `RunCPM-win-x64.exe` — Windows x86_64 (cross-built with x86_64-w64-mingw32-gcc)
 
 All binaries were built from RunCPM's official upstream source
 with one single modification: `BOOTONLY` in `globals.h` is set to
