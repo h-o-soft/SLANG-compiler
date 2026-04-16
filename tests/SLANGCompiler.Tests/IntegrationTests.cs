@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Xunit;
+using SLANGCompiler;
 
 namespace SLANGCompiler.Tests;
 
@@ -576,5 +577,94 @@ SUB() BEGIN PRINT(""X""); END;
         Assert.Matches(@"LD\s+\(_V_FOO_SA\+2\),A", fooSection);
         Assert.Matches(@"LD\s+\(_V_FOO_SA\+3\),HL", fooSection);
         Assert.Matches(@"LD\s+\(_V_FOO_SA\+3\+2\),A", fooSection);
+    }
+
+    // ==== ARRAY FLOAT 初期値付き宣言 ====
+
+    /// <summary>FLOAT 値の f24 バイト列を DB 出力期待文字列 "$XX,$YY,..." に変換</summary>
+    private static string ExpectedFloatBytes(params double[] values)
+    {
+        var allBytes = values.SelectMany(v => LabelUtils.ConvertToF24(v));
+        return string.Join(",", allBytes.Select(b => $"${b:X2}"));
+    }
+
+    [Fact]
+    public void FloatArrayInit_WordArrayRegression_NoChange()
+    {
+        // T0: 既存 BYTE/WORD CODE ブロック初期値が変わらないこと
+        // 1,2,3 は BYTE で 1byte ずつ、%4/%5 は WORD で 2byte ずつ ($04,$00 / $05,$00)
+        var asm = CompileWithCli(@"
+            ARRAY ARI[5] = {1, 2, 3, %4, %5};
+            MAIN() BEGIN END;");
+        Assert.Contains("DB\t$01,$02,$03,$04,$00,$05,$00", asm);
+    }
+
+    [Fact]
+    public void FloatArrayInit_FloatLiterals()
+    {
+        // T1: グローバル ARRAY FLOAT に FloatLiteral 初期値
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT FA[3] = {1.5, 2.5, 3.5};
+            MAIN() BEGIN END;");
+        var expected = ExpectedFloatBytes(1.5, 2.5, 3.5);
+        Assert.Contains($"DB\t{expected}", asm);
+    }
+
+    [Fact]
+    public void FloatArrayInit_IntegerToFloat_AutoConversion()
+    {
+        // T2: IntegerLiteral が FLOAT に自動変換される
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT FA[3] = {1, 2, 3};
+            MAIN() BEGIN END;");
+        var expected = ExpectedFloatBytes(1.0, 2.0, 3.0);
+        Assert.Contains($"DB\t{expected}", asm);
+    }
+
+    [Fact]
+    public void FloatArrayInit_ConstAndExpression()
+    {
+        // T3: CONST 参照と FLOAT 定数式 (CONST に型指定構文は無いので CONST PI = 3.14)
+        var asm = CompileWithCli(@"
+            CONST PI = 3.14;
+            ARRAY FLOAT FA[2] = {PI, PI / 2.0};
+            MAIN() BEGIN END;");
+        var expected = ExpectedFloatBytes(3.14, 3.14 / 2.0);
+        Assert.Contains($"DB\t{expected}", asm);
+    }
+
+    [Fact]
+    public void FloatArrayInit_PartialInit_ZeroPadding()
+    {
+        // T4: 要素数不足分は 0.0 で埋める (3 バイトの 0 = $00,$00,$00)
+        var asm = CompileWithCli(@"
+            ARRAY FLOAT FA[5] = {1.5, 2.5};
+            MAIN() BEGIN END;");
+        // 5 要素 (dim=6) × 3 = 18 バイト。1.5 と 2.5 で 6 バイト + 残り 12 バイトの 0
+        var head = ExpectedFloatBytes(1.5, 2.5);
+        // 残り 12 バイト分の 0 が続く
+        var zeros = string.Join(",", Enumerable.Repeat("$00", 12));
+        Assert.Contains($"DB\t{head},{zeros}", asm);
+    }
+
+    [Fact]
+    public void FloatArrayInit_NonConstantExpr_Error()
+    {
+        // T5: 非定数式 (定義済み変数の参照等) はエラー
+        var stderr = CompileExpectError(@"
+            VAR X;
+            ARRAY FLOAT FA[1] = {X};
+            MAIN() BEGIN END;");
+        Assert.Contains("FLOAT array initializer must be a constant expression", stderr);
+    }
+
+    [Fact]
+    public void FloatArrayInit_CastExpr_Error()
+    {
+        // T5b: FLOAT 配列に CastExpr (%X 等) は禁止
+        var stderr = CompileExpectError(@"
+            ARRAY FLOAT FA[1] = {%5};
+            MAIN() BEGIN END;");
+        Assert.Contains("Cast expression not allowed in FLOAT array initializer", stderr);
     }
 }
