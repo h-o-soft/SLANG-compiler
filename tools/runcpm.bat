@@ -45,10 +45,10 @@ copy /Y "%COM_PATH%" "%STAGE%\A\0\%BASE%.COM" >nul
 REM AUTOEXEC.TXT: stem only
 echo %BASE%> "%STAGE%\AUTOEXEC.TXT"
 
-REM Run from the staging dir. RunCPM の Windows ビルドはコンソール pipe からの
-REM stdin 読み込みが安定しないため、EXIT を一時ファイルに書き出して < で
-REM リダイレクトする (echo EXIT | ... よりも確実)。
-REM 出力は findstr /V で起動バナーをフィルタ。
+REM Run from the staging dir. RunCPM's Windows build doesn't reliably read
+REM stdin via console pipe, so write EXIT to a temp file and redirect it
+REM with `<` (more reliable than `echo EXIT | ...`). Filter the boot
+REM banner from stdout via findstr /V.
 pushd "%STAGE%"
 echo EXIT> stdin.tmp
 "%RUNCPM_BIN%" <stdin.tmp 2>&1 | findstr /V /C:"by Marcelo" /C:"Built " /C:"CPU is " /C:"T-states " /C:"clock speed" /C:"BIOS at " /C:"BIOS/BDOS" /C:"CCP CCP" /C:"FILEBASE " /C:"CP/M Emulator" /C:"Terminating" /C:"CPU Halted" /C:"RunCPM Version" /C:"----------" /C:"A0>EXIT"
