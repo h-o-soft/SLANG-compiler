@@ -57,7 +57,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (_localVars?.TryGetValue(name, out var li) == true)
         {
             int varDs = li.ByteSize;
-            int elemSz = li.Kind == VarKind.Scalar ? varDs : (li.IsByte ? 1 : 2);
+            int elemSz = li.Kind == VarKind.Scalar ? varDs : li.ElemSize;
             return new VarInfo { IsResolved = true, Kind = li.Kind, ElemSize = elemSz, VarDataSize = varDs, Local = li };
         }
         // 2. 関数内static変数
@@ -73,14 +73,19 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var sym = _globalSymbols?.Resolve(name);
         if (sym != null)
         {
-            bool isByte = sym.Type is ArrayType at ? at.ElementType == SlangType.Byte
-                        : sym.Type is PointerType pt ? pt.ElementType == SlangType.Byte
-                        : false;
             VarKind kind = sym.Type is PointerType && !sym.IsArrayDecl ? VarKind.Pointer
                          : sym.Type is ArrayType || sym.IsArrayDecl     ? VarKind.Array
                          :                                                 VarKind.Scalar;
             int varDs = sym.Type?.ByteSize ?? 2;
-            int elemSz = kind == VarKind.Scalar ? varDs : (isByte ? 1 : 2);
+            int elemSz;
+            if (kind == VarKind.Scalar)
+                elemSz = varDs;
+            else if (sym.Type is ArrayType at)
+                elemSz = at.ElementType.ByteSize;  // BYTE=1 / WORD=2 / FLOAT=3
+            else if (sym.Type is PointerType pt)
+                elemSz = (pt.ElementType == SlangType.Byte ? 1 : 2);  // 既存維持 (FLOAT ポインタは別スコープ)
+            else
+                elemSz = 2;
             return new VarInfo { IsResolved = true, Kind = kind, ElemSize = elemSz, VarDataSize = varDs, GlobalSym = sym };
         }
         // 4. 未解決
@@ -98,7 +103,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     private enum VarKind { Scalar, Array, Pointer }
 
-    private record LocalVarInfo(int Offset, int ByteSize, VarKind Kind = VarKind.Scalar, bool IsByte = false, List<int>? Dims = null)
+    private record LocalVarInfo(int Offset, int ByteSize, VarKind Kind = VarKind.Scalar, bool IsByte = false, List<int>? Dims = null, int ElemSize = 2)
     {
         public bool IsArray => Kind == VarKind.Array;
         public bool IsPointer => Kind == VarKind.Pointer;
@@ -109,7 +114,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         public bool IsResolved { get; init; }
         public VarKind Kind { get; init; }
-        /// <summary>Array/Pointerでは要素幅(1 or 2)、ScalarではVarDataSizeと同値。</summary>
+        /// <summary>Array/Pointerでは要素幅(1, 2 or 3)、ScalarではVarDataSizeと同値。</summary>
         public int ElemSize { get; init; }
         /// <summary>変数自体のサイズ (1/2/3)。</summary>
         public int VarDataSize { get; init; }
@@ -313,7 +318,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitArrayDecl(ArrayDecl node)
     {
-        int elemSize = node.Size == DataSize.Byte ? 1 : 2;
+        int elemSize = node.Size switch
+        {
+            DataSize.Byte => 1,
+            DataSize.Float => 3,
+            _ => 2,
+        };
         bool isByte = node.Size == DataSize.Byte;
 
         // 次元情報を計算
@@ -434,7 +444,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 _staticVarLabels![node.Name] = label;
                 bool isPointerType = dims.All(d => d == 0);
                 _staticVarSizes![node.Name] = 2; // 配列/ポインタ変数は常にWORD
-                _staticElemSizes![node.Name] = isByte ? 1 : 2;
+                _staticElemSizes![node.Name] = elemSize;
                 _staticVarKinds![node.Name] = isPointerType ? VarKind.Pointer : VarKind.Array;
             }
 
@@ -462,7 +472,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             _localOffset += allocSize;
             int offset = 0x70 - _localOffset;
             var kind = isPointerVar ? VarKind.Pointer : VarKind.Array;
-            _localVars![node.Name] = new LocalVarInfo(offset, allocSize, Kind: kind, IsByte: isByte, Dims: dims);
+            _localVars![node.Name] = new LocalVarInfo(offset, allocSize, Kind: kind, IsByte: isByte, Dims: dims, ElemSize: elemSize);
         }
         return IrOperand.None;
     }
@@ -1745,15 +1755,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
         bool isLocalArray = arrInfo != null && arrInfo.Kind == VarKind.Array && arrInfo.Dims != null;
         if (isLocalArray)
         {
-            strides = ComputeStridesFromDims(arrInfo!.Dims!, arrInfo.IsByte ? 1 : 2, node.Indices.Count);
-            isArrayByte = arrInfo.IsByte;
+            strides = ComputeStridesFromDims(arrInfo!.Dims!, arrInfo.ElemSize, node.Indices.Count);
+            isArrayByte = arrInfo.ElemSize == 1;
         }
         else
         {
             strides = ComputeStrides(arraySym, node.Indices.Count, arrayName);
         }
 
-        int elemSize = isArrayByte ? 1 : 2;
+        int elemSize = vi.ElemSize;
 
         // 部分配列参照: 指定インデックス数 < 配列の次元数 → アドレスを返す
         int arrayRank = 0;
@@ -1774,6 +1784,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 if (loadValue)
                 {
                     Emit(IrOp.LoadLocal, result, IrOperand.Imm(directOffset.Value), dataSize: elemSize);
+                    if (elemSize == 3) _tempDataSize[result.TempIndex] = 3;
                 }
                 else
                 {
@@ -1795,7 +1806,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 string label = ResolveAsmLabel(arrayName);
                 string sym = globalOffset.Value == 0 ? label : $"{label}+{globalOffset.Value}";
                 if (loadValue)
+                {
                     Emit(IrOp.LoadVar, result, IrOperand.Sym(sym), dataSize: elemSize);
+                    if (elemSize == 3) _tempDataSize[result.TempIndex] = 3;
+                }
                 else
                     Emit(IrOp.LoadAddr, result, IrOperand.Sym(sym));
                 return result;
@@ -1852,6 +1866,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         {
             var result = IrOperand.Temp(AllocTemp());
             Emit(IrOp.IndirLoad, result, addr, dataSize: elemSize);
+            if (elemSize == 3) _tempDataSize[result.TempIndex] = 3;
             return result;
         }
         return addr; // アドレスのみ
@@ -2234,6 +2249,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else
             {
                 // 通常配列のストア（多次元対応）
+                // 要素サイズに応じた型変換 (int→float の i16tof24 等を挟む)
+                value = EmitTypeConversion(value, stVi.ElemSize);
                 bool storeIsByte = stVi.Kind == VarKind.Array && stVi.ElemSize == 1;
 
                 // 多次元ストライド計算（定数最適化でも使用）
@@ -2242,8 +2259,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 bool isLocalStoreArray = stArrLi != null && stArrLi.Kind == VarKind.Array && stArrLi.Dims != null;
                 if (isLocalStoreArray)
                 {
-                    strides = ComputeStridesFromDims(stArrLi!.Dims!, stArrLi.IsByte ? 1 : 2, arr.Indices.Count);
-                    storeIsByte = stArrLi.IsByte;
+                    strides = ComputeStridesFromDims(stArrLi!.Dims!, stArrLi.ElemSize, arr.Indices.Count);
+                    storeIsByte = stArrLi.ElemSize == 1;
                 }
                 else
                 {
@@ -2254,7 +2271,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 bool localStoreHandled = false;
                 if (isLocalStoreArray)
                 {
-                    int elemSize = stArrLi!.IsByte ? 1 : 2;
+                    int elemSize = stArrLi!.ElemSize;
                     var directOffset = TryComputeLocalArrayOffset(stArrLi, arr.Indices, strides, elemSize);
                     if (directOffset.HasValue)
                     {
@@ -2266,7 +2283,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 // グローバル/static配列の定数インデックス最適化: label+offset 直接ストア
                 if (!localStoreHandled && !isLocalStoreArray && arrayName != null && stVi.Kind == VarKind.Array)
                 {
-                    int gElemSize = storeIsByte ? 1 : 2;
+                    int gElemSize = stVi.ElemSize;
                     var globalOffset = TryComputeConstArrayOffset(arr.Indices, strides);
                     if (globalOffset.HasValue)
                     {
@@ -2326,7 +2343,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 }
 
                 // 最終アドレスに値を書き込み
-                Emit(IrOp.IndirStore, addr, value, dataSize: storeIsByte ? 1 : 2);
+                Emit(IrOp.IndirStore, addr, value, dataSize: stVi.ElemSize);
 
                 } // end else (non-const index path)
             }
