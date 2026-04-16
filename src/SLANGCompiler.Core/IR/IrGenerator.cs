@@ -1443,9 +1443,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 return dest;
             }
         }
+        // FLOAT即値の単項マイナスは符号反転して定数化
+        if (node.Op == UnaryOp.Negate && node.Operand is FloatLiteral fLit)
+        {
+            return EmitLoadFloatConst(-fLit.Value);
+        }
 
         var operand = node.Operand.Accept(this);
         if (node.Op == UnaryOp.Plus) return operand;
+
+        int operandDs = operand.Kind == IrOperandKind.Temp
+            && _tempDataSize.TryGetValue(operand.TempIndex, out int ods) ? ods : 2;
 
         var dest2 = IrOperand.Temp(AllocTemp());
         var op = node.Op switch
@@ -1455,7 +1463,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
             UnaryOp.Cpl => IrOp.Not,
             _ => IrOp.Nop,
         };
-        Emit(op, dest2, operand);
+        // FLOATの単項マイナスは f24 符号ビットを反転 (DataSize=3 で識別)
+        int destDs = (op == IrOp.Neg && operandDs == 3) ? 3 : 2;
+        Emit(op, dest2, operand, dataSize: destDs);
+        if (destDs == 3) _tempDataSize[dest2.TempIndex] = 3;
         return dest2;
     }
 

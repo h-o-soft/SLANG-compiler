@@ -376,6 +376,8 @@ cp 18
 ret c
 return_exp_b:
 ld a,b
+or a       ; ZフラグをクリアしてC=0にする (差>=18時に
+           ; jr z,f24add_subtract_same_exp 等の誤発火を防ぐ)
 ret
 
 f24add_op1_inf_nan:
