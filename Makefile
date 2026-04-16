@@ -114,19 +114,33 @@ asm: $(OUTPROG)
 $(OUTPROG): $(ASM_NEW)
 	$(ASM) $< -f -o $@ -bin -sym -lst $(ASM_OPT)
 	@echo "=== Assemble OK: $@ ==="
+ifeq ($(OS),Windows_NT)
+	@dir $(subst /,\,$@)
+else
 	@ls -la $@
+endif
 
 # === バイナリ拡張子変換（.bin→.com等） ===
 ifneq ($(BIN_EXT),$(BIN_EXT_ENV))
+ifeq ($(OS),Windows_NT)
+$(IMGPROG): $(OUTPROG)
+	move $(subst /,\,$<) $(subst /,\,$@)
+else
 $(IMGPROG): $(OUTPROG)
 	mv $< $@
+endif
 endif
 
 # === ディスクイメージ作成+エミュレータ実行 ===
 ifeq ($(ENV),$(filter $(ENV),lsx cpm))
-# LSX/CPM: cpmエミュで直接実行
+# LSX/CPM: cpmエミュで直接実行 (Windows は引数のパス区切りを \ に変換)
+ifeq ($(OS),Windows_NT)
+run: $(OUTPROG)
+	$(EMU) $(subst /,\,$<)
+else
 run: $(OUTPROG)
 	$(EMU) $<
+endif
 else ifeq ($(ENV), msxrom)
 # MSX ROM: カートリッジとして実行
 run: $(OUTPROG)
