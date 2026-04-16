@@ -353,9 +353,21 @@ public class Parser
         var start = Current.Span;
         var name = Advance().StringValue; // identifier
         Expression? address = null;
+        DataSize returnSize = DataSize.Word;
 
         if (Match(TokenKind.Colon))
-            address = ParseNcExpr();
+        {
+            // 直後が型キーワード(BYTE/WORD/FLOAT/!)なら戻り値型、それ以外はMACHINEアドレス式
+            if (Check(TokenKind.Byte) || Check(TokenKind.Word)
+                || Check(TokenKind.Float) || Check(TokenKind.Exclamation))
+            {
+                returnSize = ParseOptionalDataSize();
+            }
+            else
+            {
+                address = ParseNcExpr();
+            }
+        }
 
         Expect(TokenKind.LParen, "Expected '('");
 
@@ -465,7 +477,7 @@ public class Parser
         }
         Match(TokenKind.Semicolon);
 
-        return new FuncDef(name, address, parms, staticDecls, localDecls, body, retVal, start);
+        return new FuncDef(name, address, parms, staticDecls, localDecls, body, retVal, start, returnSize);
     }
 
     private AstNode ParseLocalDecl()

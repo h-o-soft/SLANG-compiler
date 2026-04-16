@@ -2129,7 +2129,7 @@ public class CodeGenerator
             case IrOp.Return:
                 if (inst.Dest.Kind != IrOperandKind.None)
                 {
-                    _e.Comment($"return value in HL");
+                    _e.Comment(inst.DataSize == 3 ? "return value in AHL" : "return value in HL");
                 }
                 _e.Instruction("JP", _currentFuncExitLabel);
                 break;
@@ -2882,15 +2882,39 @@ public class CodeGenerator
 
         if (callArgMode < 0)
         {
-            // ユーザー関数: POP → IY+$70〜 に逆順で格納（引数はWORD前提）
+            // ユーザー関数: POP → IY+$70〜 に逆順で格納。
+            // ArgSizes が指定されていれば各引数のサイズ(2=WORD, 3=FLOAT)に応じて処理。
+            // null の場合は従来通り全WORD扱い (互換性維持)。
             int userArgCount = -callArgMode;
-            int argOffset = 0x70 + (userArgCount - 1) * 2;
+            int[] sizes = inst.ArgSizes ?? Enumerable.Repeat(2, userArgCount).ToArray();
+
+            // caller側の各引数格納オフセット:
+            //   receiver 側は argOff_i = 0x70 - paramTotal + Σ_{j<i} sizes[j]
+            //   caller 側は ADD IY,BC 前なので offset_i = 0x70 + Σ_{j<i} sizes[j]
+            int[] offsets = new int[userArgCount];
+            int acc = 0x70;
+            for (int i = 0; i < userArgCount; i++) { offsets[i] = acc; acc += sizes[i]; }
+
+            // スタック先頭 = 最後の引数なので後ろから POP
             for (int i = userArgCount - 1; i >= 0; i--)
             {
-                _e.Instruction("POP", "HL");
-                _e.Instruction("LD", $"(IY+${argOffset:X2}),L");
-                _e.Instruction("LD", $"(IY+${argOffset + 1:X2}),H");
-                argOffset -= 2;
+                int sz = sizes[i];
+                int off = offsets[i];
+                if (sz == 3)
+                {
+                    // FLOAT: PushArg は PUSH AF; PUSH HL の順 → POP HL; POP AF の順
+                    _e.Instruction("POP", "HL");
+                    _e.Instruction("LD", $"(IY+${off:X2}),L");
+                    _e.Instruction("LD", $"(IY+${off + 1:X2}),H");
+                    _e.Instruction("POP", "AF");
+                    _e.Instruction("LD", $"(IY+${off + 2:X2}),A");
+                }
+                else  // WORD (または BYTE を WORD として扱う)
+                {
+                    _e.Instruction("POP", "HL");
+                    _e.Instruction("LD", $"(IY+${off:X2}),L");
+                    _e.Instruction("LD", $"(IY+${off + 1:X2}),H");
+                }
             }
         }
         else if (callArgMode > 0)

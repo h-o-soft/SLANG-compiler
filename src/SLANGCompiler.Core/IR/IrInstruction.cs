@@ -156,7 +156,8 @@ public class IrInstruction
     public IrOperand Dest { get; set; }
     public IrOperand Src1 { get; set; }
     public IrOperand Src2 { get; set; }
-    public int DataSize { get; set; } = 2;   // 1=byte, 2=word, 4=float
+    public int DataSize { get; set; } = 2;   // 1=byte, 2=word, 3=float
+    public int[]? ArgSizes { get; set; }     // IrOp.Call のユーザー関数引数の各サイズ。null=全WORD互換
 
     public IrInstruction(IrOp op, IrOperand dest = default, IrOperand src1 = default, IrOperand src2 = default)
     {

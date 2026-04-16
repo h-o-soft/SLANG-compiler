@@ -18,6 +18,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private bool _inStaticDecl;
     private string? _currentFuncName;
     private bool _emitToGlobalData;
+    private int _currentReturnDataSize = 2;  // 現在処理中の関数の戻り値型 (RETURN/END(expr) で参照)
 
     // 関数内ローカルシンボル（IrGenerator自身が管理）
     private Dictionary<string, LocalVarInfo>? _localVars;
@@ -606,6 +607,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _currentFunction = new IrFunction { Name = LabelUtils.SanitizeLabel(node.Name) };
         _tempDataSize.Clear();
 
+        // 関数の戻り値型を保存 (ネスト関数定義に備えて prev/restore 形式)
+        int prevReturnDs = _currentReturnDataSize;
+        _currentReturnDataSize = node.ReturnSize == DataSize.Float ? 3 : 2;
+
         // ローカルシンボルテーブルを構築
         var prevLocalVars = _localVars;
         var prevOffset = _localOffset;
@@ -621,11 +626,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _localOffset = 0;
 
         // 仮引数を仮登録（オフセットはLocalDeclarations走査後に確定）
+        // 各引数のバイトサイズを ParamDecl.Size から取得 (FLOAT=3, BYTE/WORD=2)
         var paramNames = new List<string>();
+        var paramSizes = new List<int>();
         foreach (var p in node.Parameters)
         {
-            _localVars[p.Name] = new LocalVarInfo(0, 2); // 仮オフセット
+            int sz = p.Size == DataSize.Float ? 3 : 2;
+            _localVars[p.Name] = new LocalVarInfo(0, sz); // 仮オフセット、正しいサイズ
             paramNames.Add(p.Name);
+            paramSizes.Add(sz);
         }
 
         Emit(IrOp.FuncBegin, IrOperand.Sym(LabelUtils.SanitizeLabel(node.Name)));
@@ -638,16 +647,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
         foreach (var d in node.LocalDeclarations) d.Accept(this);
 
         // ローカル変数確定後、引数のオフセットを計算
-        // ADD IY, (localOffset + paramCount*2) でIYがずれるため:
-        // 引数は 0x70 - localOffset - paramCount*2 から配置
+        // ADD IY, (localOffset + paramTotalBytes) でIYがずれるため:
+        // 引数は 0x70 - localOffset - paramTotalBytes から配置
         // ローカル変数は 0x70 - localOffset から 0x70 - 1 まで
         {
-            int totalFrameSize = _localOffset + paramNames.Count * 2;
+            int paramTotalBytes = paramSizes.Sum();
+            int totalFrameSize = _localOffset + paramTotalBytes;
             int argOff = 0x70 - totalFrameSize;
-            foreach (var pn in paramNames)
+            for (int i = 0; i < paramNames.Count; i++)
             {
-                _localVars[pn] = new LocalVarInfo(argOff, 2);
-                argOff += 2;
+                _localVars[paramNames[i]] = new LocalVarInfo(argOff, paramSizes[i]);
+                argOff += paramSizes[i];
             }
             // localOffsetに引数分も加算（ADD IY,BCのフレームサイズ）
             _localOffset = totalFrameSize;
@@ -660,7 +670,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (node.ReturnValue != null)
         {
             var retVal = node.ReturnValue.Accept(this);
-            Emit(IrOp.Return, retVal);
+            retVal = ConvertReturnValue(retVal, node.ReturnValue.Span);
+            Emit(IrOp.Return, retVal, dataSize: _currentReturnDataSize);
         }
 
         Emit(IrOp.FuncEnd);
@@ -673,6 +684,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _staticElemSizes = prevStaticElemSizes;
         _staticVarKinds = prevStaticVarKinds;
         _localOffset = prevOffset;
+        _currentReturnDataSize = prevReturnDs;
         return IrOperand.None;
     }
 
@@ -1000,7 +1012,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (node.Value != null)
         {
             var val = node.Value.Accept(this);
-            Emit(IrOp.Return, val);
+            val = ConvertReturnValue(val, node.Value.Span);
+            Emit(IrOp.Return, val, dataSize: _currentReturnDataSize);
         }
         else
         {
@@ -1362,7 +1375,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // rightがFLOATかどうかを事前推定（AcceptしないとtempDataSizeは不明だが、
         // FloatLiteralやFLOAT変数は先に型が分かる）
         bool rightMightBeFloat = node.Right is FloatLiteral
-            || (node.Right is IdentifierExpr rid && _globalSymbols?.Resolve(rid.Name)?.Type?.ByteSize == 3);
+            || (node.Right is IdentifierExpr rid
+                && (_globalSymbols?.Resolve(rid.Name)?.Type?.ByteSize == 3
+                    || (_localVars?.TryGetValue(rid.Name, out var rli) == true && rli.ByteSize == 3)));
 
         // leftが整数でrightがFLOATの場合、leftの変換をright Accept前に行う
         if (leftDs != 3 && rightMightBeFloat)
@@ -1580,17 +1595,58 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // ユーザー関数: PushArgでスタックに退避してからCALL
             // 引数評価中に別の関数呼び出しがIYワークを壊す問題の防止
             // （MACHINE関数と同じPushArg方式、codegenでPOP→IY格納に展開）
+            var funcType = funcSym?.Type as FunctionType;
+            var paramTypes = funcType?.ParameterTypes;
+            var returnType = funcType?.ReturnType;
+            int returnDs = (returnType is PrimitiveType pt && pt.Kind == PrimitiveKind.Float) ? 3 : 2;
+
+            // 引数個数チェック (型情報がある関数のみ)
+            if (paramTypes != null && paramTypes.Count != node.Arguments.Count)
+            {
+                _diagnostics.Error(
+                    $"Function '{funcName}' expects {paramTypes.Count} arguments, got {node.Arguments.Count}",
+                    node.Span);
+            }
+
+            var argSizes = new int[node.Arguments.Count];
             for (int i = 0; i < node.Arguments.Count; i++)
             {
+                // パラメータ型から targetDs を決定 (FLOAT=3, それ以外=2)
+                int targetDs = 2;
+                if (paramTypes != null && i < paramTypes.Count
+                    && paramTypes[i] is PrimitiveType ppt && ppt.Kind == PrimitiveKind.Float)
+                    targetDs = 3;
+
                 var argVal = node.Arguments[i].Accept(this);
-                Emit(IrOp.PushArg, argVal, IrOperand.Imm(i));
+                int valueDs = argVal.Kind == IrOperandKind.Temp
+                    && _tempDataSize.TryGetValue(argVal.TempIndex, out int vds) ? vds : 2;
+
+                // FLOAT → WORD (縮小) はエラー
+                if (valueDs == 3 && targetDs != 3)
+                {
+                    _diagnostics.Error(
+                        "Cannot pass FLOAT value to non-FLOAT parameter (use FTOI for explicit conversion)",
+                        node.Arguments[i].Span);
+                }
+                // 拡大方向 (WORD→FLOAT) のみ自動変換
+                argVal = EmitTypeConversionExpand(argVal, targetDs);
+                Emit(IrOp.PushArg, argVal, IrOperand.Imm(i), dataSize: targetDs);
+                argSizes[i] = targetDs;
             }
 
             var dest = IrOperand.Temp(AllocTemp());
             var asmName = funcSym?.AsmLabel ?? LabelUtils.SanitizeLabel(funcName ?? "__indirect_call");
             // 負の引数数 = ユーザー関数のIY渡し（0は引数なしで共通）
-            Emit(IrOp.Call, dest, IrOperand.Sym(asmName),
-                IrOperand.Imm(node.Arguments.Count > 0 ? -node.Arguments.Count : 0));
+            // ArgSizes はユーザー関数 (callArgMode<0) のみ設定
+            var callInst = new IrInstruction(IrOp.Call, dest, IrOperand.Sym(asmName),
+                IrOperand.Imm(node.Arguments.Count > 0 ? -node.Arguments.Count : 0))
+            {
+                DataSize = returnDs,
+                ArgSizes = node.Arguments.Count > 0 ? argSizes : null,
+            };
+            _currentFunction!.Instructions.Add(callInst);
+            if (returnDs == 3)
+                _tempDataSize[dest.TempIndex] = 3;
             return dest;
         }
     }
@@ -2051,7 +2107,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     // ==== Helpers: Store to lvalue ====
 
-    /// <summary>代入先の型に合わせてFLOAT変換を挿入</summary>
+    /// <summary>代入先の型に合わせてFLOAT変換を挿入 (双方向: WORD↔FLOAT)。
+    /// 代入文での暗黙縮小 (FLOAT→WORD) は FTOI を自動挿入する。</summary>
     private IrOperand EmitTypeConversion(IrOperand value, int targetDs)
     {
         int valueDs = value.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(value.TempIndex, out int vds) ? vds : 2;
@@ -2072,6 +2129,43 @@ public class IrGenerator : IAstVisitor<IrOperand>
             return conv;
         }
         return value;
+    }
+
+    /// <summary>関数引数/戻り値用: 拡大方向 (WORD→FLOAT) のみ自動変換。
+    /// 縮小方向 (FLOAT→WORD) はそのまま返す (呼び出し側で別途エラー判定)。</summary>
+    private IrOperand EmitTypeConversionExpand(IrOperand value, int targetDs)
+    {
+        int valueDs = value.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(value.TempIndex, out int vds) ? vds : 2;
+        if (targetDs == 3 && valueDs != 3)
+        {
+            // Word → Float: i16tof24 を挿入
+            var conv = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.Call, conv, IrOperand.Sym("i16tof24"), IrOperand.Imm(0), dataSize: 3);
+            _tempDataSize[conv.TempIndex] = 3;
+            return conv;
+        }
+        // 同サイズ or 縮小方向はそのまま (縮小は呼び出し側でエラー)
+        return value;
+    }
+
+    /// <summary>関数戻り値の型変換 (拡大のみ、縮小はエラー)。
+    /// _currentReturnDataSize に従って RETURN/END(expr) の値を変換する。</summary>
+    private IrOperand ConvertReturnValue(IrOperand val, SourceSpan errSpan)
+    {
+        int returnDs = _currentReturnDataSize;
+        int valueDs = val.Kind == IrOperandKind.Temp
+            && _tempDataSize.TryGetValue(val.TempIndex, out int vds) ? vds : 2;
+
+        // FLOAT → WORD はエラー (FTOI を明示要求)
+        if (valueDs == 3 && returnDs != 3)
+        {
+            _diagnostics.Error(
+                "Cannot return FLOAT from non-FLOAT function (use FTOI for explicit conversion)",
+                errSpan);
+            return val;
+        }
+        // 拡大方向 (WORD→FLOAT) のみ自動変換
+        return EmitTypeConversionExpand(val, returnDs);
     }
 
     private void EmitStore(Expression target, IrOperand value)

@@ -30,6 +30,13 @@ public class IntegrationTests : IDisposable
 
     private string CompileWithCli(string source, string env = "lsx")
     {
+        var (asm, _) = CompileWithCliDetail(source, env);
+        return asm;
+    }
+
+    /// <summary>コンパイル結果(ASM)とstderr両方を返す。失敗時は例外送出。</summary>
+    private (string Asm, string Stderr) CompileWithCliDetail(string source, string env = "lsx")
+    {
         var inputPath = Path.Combine(_tempDir, "test.sl");
         var outputPath = Path.Combine(_tempDir, "test.asm");
         File.WriteAllText(inputPath, source);
@@ -52,7 +59,34 @@ public class IntegrationTests : IDisposable
 
         Assert.Equal(0, proc.ExitCode);
         Assert.True(File.Exists(outputPath), $"Output file not created. stderr: {stderr}");
-        return File.ReadAllText(outputPath);
+        return (File.ReadAllText(outputPath), stderr);
+    }
+
+    /// <summary>コンパイル失敗を期待する。stderr を返す。</summary>
+    private string CompileExpectError(string source, string env = "lsx")
+    {
+        var inputPath = Path.Combine(_tempDir, "test.sl");
+        var outputPath = Path.Combine(_tempDir, "test.asm");
+        File.WriteAllText(inputPath, source);
+
+        var cliProject = Path.Combine(_projectRoot, "src", "SLANGCompiler.CLI", "SLANGCompiler.CLI.csproj");
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            Arguments = $"run --project \"{cliProject}\" -c Release -- -E {env} -o \"{outputPath}\" \"{inputPath}\"",
+            WorkingDirectory = _projectRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        using var proc = Process.Start(psi)!;
+        var stderr = proc.StandardError.ReadToEnd();
+        proc.WaitForExit(30000);
+
+        Assert.NotEqual(0, proc.ExitCode);
+        return stderr;
     }
 
     /// <summary>
@@ -320,5 +354,92 @@ SUB() BEGIN PRINT(""X""); END;
         Assert.True(fcosIdx >= 0, "CALL FCOS not found");
         var afterFcos = mainSection.Substring(fcosIdx, 80);
         Assert.DoesNotContain("PUSH\tAF", afterFcos);
+    }
+
+    // ---- 関数引数/戻り値の型対応テスト ----
+
+    [Fact]
+    public void UserFunc_FloatArg_CompilesAndPassesAsThreeBytes()
+    {
+        // FLOAT引数がIY+offsetに3バイトで格納されること
+        var asm = CompileWithCli(@"
+            FX:FLOAT(FLOAT X) BEGIN RETURN X * X; END;
+            VAR FLOAT R;
+            MAIN() BEGIN R = FX(2.5); END;");
+        // 呼び出し側: 2.5のFLOAT即値 + FX 呼び出し
+        Assert.Contains("CALL\tFX", asm);
+        // 関数内: IY+offsetから3バイト(mantissa L/H + exponent A)を読む
+        var fxSection = asm.Substring(asm.IndexOf("FX:"));
+        Assert.Matches(@"LD\s+L,\(IY\+\$[0-9A-F]+\)\s*\n\s*LD\s+H,\(IY\+\$[0-9A-F]+\)\s*\n\s*LD\s+A,\(IY\+\$[0-9A-F]+\)", fxSection);
+    }
+
+    [Fact]
+    public void UserFunc_FloatReturn_CallMarksDataSize3()
+    {
+        // FLOAT戻り値の関数呼び出しで、戻り値が3バイトとしてstoreされること
+        var asm = CompileWithCli(@"
+            PI:FLOAT() BEGIN RETURN 3.14; END;
+            VAR FLOAT R;
+            MAIN() BEGIN R = PI(); END;");
+        // MAINでPIを呼んだ後、AHLを_V_R+2にも格納すること (FLOAT戻り値)
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        Assert.Contains("CALL\tPI", mainSection);
+        Assert.Contains("LD\t(_V_R+2),A", mainSection);
+    }
+
+    [Fact]
+    public void UserFunc_IntToFloatAutoConversion()
+    {
+        // 整数引数→FLOAT引数で i16tof24 自動挿入
+        var asm = CompileWithCli(@"
+            FX:FLOAT(FLOAT X) BEGIN RETURN X; END;
+            MAIN() BEGIN FX(3); END;");
+        // MAIN内で引数評価時に i16tof24 が呼ばれること
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        Assert.Contains("CALL\ti16tof24", mainSection);
+    }
+
+    [Fact]
+    public void UserFunc_WordReturnRegression_NoChange()
+    {
+        // 既存のWORD-only関数が変わらずコンパイルできること(regression)
+        var asm = CompileWithCli(@"
+            ADD1(WORD X) BEGIN RETURN X + 1; END;
+            VAR WORD R;
+            MAIN() BEGIN R = ADD1(10); END;");
+        // CALL後にAHL書き込みが無いこと (WORD戻り値なので)
+        var mainSection = asm.Substring(asm.IndexOf("MAIN:"));
+        Assert.Contains("CALL\tADD1", mainSection);
+        Assert.DoesNotContain("LD\t(_V_R+2),A", mainSection);
+    }
+
+    [Fact]
+    public void UserFunc_FloatToWordArg_Error()
+    {
+        // FLOAT値をWORD引数に渡すとコンパイルエラー
+        var stderr = CompileExpectError(@"
+            FW(WORD X) BEGIN RETURN X + 1; END;
+            MAIN() BEGIN FW(2.5); END;");
+        Assert.Contains("Cannot pass FLOAT", stderr);
+    }
+
+    [Fact]
+    public void UserFunc_ArgCountMismatch_Error()
+    {
+        // 引数個数不一致でコンパイルエラー
+        var stderr = CompileExpectError(@"
+            ADD2:FLOAT(FLOAT A, FLOAT B) BEGIN RETURN A + B; END;
+            MAIN() BEGIN ADD2(1.0); END;");
+        Assert.Contains("expects 2 arguments", stderr);
+    }
+
+    [Fact]
+    public void UserFunc_FloatReturnFromWord_Error()
+    {
+        // WORD戻り値関数でFLOATをRETURNするとエラー
+        var stderr = CompileExpectError(@"
+            BAD(WORD X) BEGIN RETURN 2.5; END;
+            MAIN() BEGIN END;");
+        Assert.Contains("Cannot return FLOAT", stderr);
     }
 }
