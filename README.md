@@ -80,9 +80,17 @@ WIDTH関数が正常に動作し、文字表示について高速化されます
 
 ## sos ( S-OS )
 
-元々のSLANGの標準環境であるS-OS向けの環境です。
+機種非依存のS-OS環境です。S-OSの標準BIOSコールのみを使用し、特定の機種（X1等）のハードウェアには依存しません。
 
-比較的安定して動作すると思われます。
+S-OSを搭載した各種機種（X1、MZ-2500、PC-8801、FM-7等）で動作することを想定しています。
+
+X1専用のグラフィックス（libx1_grp、libx1_sgl）、PSG、MAGIC、PCG、CTC割り込みパッチなどは含まれません。それらが必要な場合は `sosx1` 環境を使用してください。
+
+## sosx1 ( S-OS for SHARP X1 )
+
+従来の `sos` 環境相当。S-OSとX1固有のライブラリ（グラフィックス、PSG、MAGIC、PCG等）を同梱し、SLANGINIT時にX1 CTCの検出やX1turbo向け割り込みベクタパッチも行います。
+
+X1/X1turbo上のS-OSで動作させる場合はこちらを選択してください。なお、他機種のS-OSでは動作しません。
 
 ## msx2 ( MSX / MSX2 )
 
@@ -166,10 +174,12 @@ SLANG Compilerはランタイムライブラリとして、`runtime/` フォル�
 * liblsx_file.asm — ファイル入出力関連処理
 
 ## S-OS関連ライブラリ
-* libsos_base.asm — S-OS用の標準的な処理
+* libsos_base.asm — 機種非依存S-OS用の標準的な処理
+* libsosx1_base.asm — X1（およびX1turbo）用S-OSの標準処理（CTC検出・割り込みベクタパッチ付き）
 * libsos_print.asm — 文字表示関連処理
 * libsos_input.asm — 入力関連処理
 * libsos_file.asm — ファイル入出力関連処理
+* libsos_pcg.asm — PCG関連処理（X1依存のため `sosx1` 環境でのみ利用可）
 
 ## X1関連ライブラリ
 * libx1_base.asm — X1固有のライブラリ（VSYNC_CHECK、VSYNC、VSYNC1）
@@ -271,7 +281,8 @@ make TARGET=examples/STARS ENV=x1 run
 |-----|---------|
 | lsx | LSX-Dodgers (標準) |
 | x1 | SHARP X1 (LSX-Dodgers + X1専用最適化) |
-| sos | S-OS |
+| sos | S-OS（機種非依存） |
+| sosx1 | S-OS for SHARP X1（X1固有ライブラリ同梱・従来のsos互換） |
 | msx2 | MSX-DOS2 |
 | msxrom | MSX ROMカートリッジ |
 | msxlsx | MSX + LSX-Dodgers |
