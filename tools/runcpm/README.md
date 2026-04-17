@@ -26,10 +26,25 @@ used by `make run ENV=cpm|lsx`. They:
 
 1. Prepare a staging directory under the user's temp folder
 2. Copy the target `.COM` into `A/0/<NAME>.COM`
-3. Write the .COM's basename into `AUTOEXEC.TXT`
-4. Launch the platform-appropriate RunCPM binary
-5. Pipe `EXIT` into stdin so RunCPM shuts down after the program returns
-6. Filter RunCPM's boot banner from stdout
+3. Copy `cpm/SUBMIT.COM` and `cpm/EXIT.COM` into `A/0/`
+4. Write a 2-line `A/0/BOOT.SUB` containing `<NAME>` then `EXIT` (CR/LF)
+5. Write `SUBMIT BOOT` into `AUTOEXEC.TXT`
+6. Launch the platform-appropriate RunCPM binary
+7. The CCP runs `SUBMIT BOOT` (from AUTOEXEC), which expands `BOOT.SUB`
+   into `$$$.SUB`. The CCP then executes the program and finally `EXIT`,
+   which terminates RunCPM
+8. Filter RunCPM's boot banner from stdout
+
+Using SUBMIT/EXIT avoids relying on stdin redirection, which is
+unreliable on Windows (RunCPM's Windows console build doesn't read
+stdin via console pipe).
+
+## Bundled CP/M utilities
+
+`cpm/EXIT.COM` and `cpm/SUBMIT.COM` are taken from RunCPM's official
+master disk image (`A0.ZIP`). Both are CP/M standard utilities (DRI
+compatible). They are bundled here so the wrappers above can be
+self-contained without requiring the user to download the master disk.
 
 ## Source and license
 
