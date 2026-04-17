@@ -134,10 +134,22 @@ VAR HENSUU, ABC;
 
 ### 間接変数（変数としても配列としても使える）
 ```
-VAR BYTE POINT[], %KANSETU[];
+VAR BYTE POINT[], %KANSETU[], FLOAT FP[];
 ```
 間接変数の値をアドレスとしてメモリをアクセスする。
-型省略時はWORD。
+型省略時はWORD。FLOAT 指定時はアクセス単位が 3 バイトになり、
+整数値の代入では自動的に `i16tof24` 変換が挿入される (クロスコンパイラ版拡張)。
+
+```
+VAR FLOAT FP[];
+ARRAY FLOAT BUF[5];
+MAIN() BEGIN
+  FP = &BUF[0];
+  FP[0] = 1.5;
+  FP[1] = 7;            (* 整数→FLOAT 自動変換 *)
+  PRINT(FL$(FP[0]));
+END;
+```
 
 ### アドレス指定
 ```
@@ -162,10 +174,11 @@ VAR F[][15];
 
 ### 基本
 ```
-ARRAY BYTE ABUF[5], WORD C[3];
+ARRAY BYTE ABUF[5], WORD C[3], FLOAT FA[3];
 ```
 **定数式+1個分** の配列が確保される（`ARRAY BYTE BUFF[10]` → BUFF[0]～BUFF[10] の11個）。
 添字省略時は0とみなされ、1個分確保。型省略時はWORD。
+FLOAT 配列は 1 要素あたり 3 バイト (mantissa 2byte + exponent 1byte) を確保する。
 
 ### 二次元配列
 ```
@@ -183,6 +196,17 @@ ARRAY ABC[]:$C000;     // 添字省略可
 ARRAY BYTE DT[4]={0, 1, 2, 3, 4};
 ```
 初期値が足りない場合は0で埋められる。多すぎる場合はエラー。
+
+### FLOAT 配列の初期化 (クロスコンパイラ版拡張)
+```
+CONST PI = 3.14;
+ARRAY FLOAT FA[3] = {1.5, 2.5, 3.5};
+ARRAY FLOAT FB[3] = {1, 2, 3};           (* 整数→FLOAT 自動変換 *)
+ARRAY FLOAT FC[2] = {PI, PI / 2.0};      (* CONST 参照 + FLOAT 定数式 *)
+```
+要素は全て FLOAT (3バイト) として展開される。足りない分は 0.0 で埋められる。
+`%` (BYTE/WORD キャスト) を FLOAT 配列のトップレベル要素に書くのは禁止
+(混在を防ぐため。式の内部に含まれる形 (`(%5) + 1.0` 等) は許容)。
 
 ---
 

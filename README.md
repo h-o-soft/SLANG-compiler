@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.20.2
+SLANG Compiler (Z80) 0.21.0
 
 # 概要
 
@@ -14,7 +14,7 @@ SLANG Compiler (Z80) 0.20.2
 # 使い方
 
 ```
-SLANG Compiler v0.20.2
+SLANG Compiler v0.21.0
 Usage: slangc [options] <input.sl>
 
 Options:
@@ -280,11 +280,13 @@ make TARGET=examples/STARS ENV=x1 run
 | pc88mk2sr | PC-8801mkIISR |
 | vgs0 | VGS-Zero |
 | zxn | ZX Spectrum Next |
-| cpm | CP/Mエミュレータ |
+| cpm | CP/Mエミュレータ (RunCPM 同梱) |
 
 ### エミュレータの設定
 
-`Makefile`内のEMU変数を環境に合わせて編集してください。
+`Makefile` 内の `EMU` 変数を環境に合わせて編集してください。
+ただし `ENV=cpm` および `ENV=lsx` は `tools/runcpm/` 以下に同梱された
+RunCPM (MIT) を自動的に使うため、特別な設定は不要です。
 
 ### ディスクイメージの準備
 

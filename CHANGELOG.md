@@ -1,5 +1,32 @@
 # 更新履歴
 
+## Version 0.21.0
+- ユーザー定義関数の FLOAT 引数・戻り値に対応
+  - 宣言構文: `FX:FLOAT(FLOAT X) BEGIN RETURN X * X; END;`
+  - 整数引数→FLOAT 引数の自動変換 (`i16tof24` 挿入)
+  - WORD 戻り値との混在を型エラーで検出 (`Cannot pass FLOAT`/`Cannot return FLOAT`)
+  - MACHINE 関数は戻り値型指定を拒否 (現状サポート外のため)
+- ARRAY FLOAT に対応
+  - ロード/ストアで 3 バイト単位の mantissa+exponent を正しく扱う
+  - グローバル/ローカル/static の全経路、定数/動的インデックス両対応
+  - `ARRAY FLOAT FA[3] = {1.5, 2.5, 3.5};` の初期値付き宣言をサポート
+    - 整数リテラルは FLOAT に自動変換 (`{1, 2, 3}` → 1.0, 2.0, 3.0)
+    - CONST 参照と FLOAT 定数式 (`{PI, PI/2.0}`) も評価可能
+  - 配列要素への代入で整数→FLOAT の自動変換が動作
+- FLOAT を指す間接変数 (PointerType) に対応
+  - `VAR FLOAT FP[]; FP = &BUF[0]; FP[i] = 1.5;` の形で外部メモリを FLOAT 配列として扱える
+  - ×3 スケーリング計算の共通ヘルパーで間接変数 3 経路 (load/AddressOf/store) を統一
+- CP/M 実行環境を RunCPM (MIT) に切り替え
+  - `make run ENV=cpm|lsx` の CP/M エミュレータを Homebrew 版 `cpm` から RunCPM に変更
+  - macOS (arm64/x64) / Linux (x64) / Windows (x64) 4 プラットフォーム分のプリビルド RunCPM バイナリを同梱
+  - SUBMIT/EXIT を使った自動終了方式で stdin リダイレクトに依存せず全 OS で動作
+  - 配布 zip (Makefile.dist + publish.sh) でも RunCPM 一式を同梱して即実行可能に
+- Makefile のクロスプラットフォーム対応強化
+  - ツールパスを OS 別に `tools/AILZ80ASM` / `tools\AILZ80ASM.exe` で直接参照 (PATH 依存を排除)
+  - `make clean` / 進捗表示 (`ls -la` vs `dir`) / ファイル移動 (`mv` vs `move`) を OS 別に分岐
+  - Windows で bat に渡す引数のパス区切りを `\` に自動変換
+  - `runcpm.bat` を ASCII + CRLF に統一
+
 ## Version 0.20.2
 - CASE文の冗長なexprVal初回評価を削除（生成コードのサイズ縮小、JS版コンパイラとの整合性向上）
 - x1環境で SGL ライブラリ（libx1_sgl_lsx）が使用可能に
