@@ -18,8 +18,15 @@ ENV ?= lsx
 DOTNET = dotnet
 SLANGC_NEW = $(DOTNET) run --project src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj -c Release --
 SLANGC_OLD = $(DOTNET) run --project SLANGCompiler.csproj -c Release --
-ASM = AILZ80ASM
-NDC = ndc
+
+# tools/ 配下のバイナリを直接参照 (PATH 環境に依存しない)。setup-tools で配置済みの想定。
+ifeq ($(OS),Windows_NT)
+  ASM = tools\AILZ80ASM.exe
+  NDC = tools\NDC.exe
+else
+  ASM = tools/AILZ80ASM
+  NDC = tools/ndc
+endif
 HUDISK = HuDisk
 MODSPLIT = ModuleSplitter
 
@@ -44,11 +51,20 @@ ASM_OPT =
 BIN_EXT_ENV = $(BIN_EXT)
 
 ifeq ($(ENV), lsx)
-  EMU = cpm
+  # RunCPM wrapper (tools/runcpm.sh on Unix, tools/runcpm.bat on Windows)
+  ifeq ($(OS),Windows_NT)
+    EMU = tools\runcpm.bat
+  else
+    EMU = ./tools/runcpm.sh
+  endif
   DISK_IMAGE = $(OUTPROG)
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), cpm)
-  EMU = cpm
+  ifeq ($(OS),Windows_NT)
+    EMU = tools\runcpm.bat
+  else
+    EMU = ./tools/runcpm.sh
+  endif
   DISK_IMAGE = $(OUTPROG)
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), x1)
@@ -97,19 +113,33 @@ asm: $(OUTPROG)
 $(OUTPROG): $(ASM_NEW)
 	$(ASM) $< -f -o $@ -bin -sym -lst $(ASM_OPT)
 	@echo "=== Assemble OK: $@ ==="
+ifeq ($(OS),Windows_NT)
+	@dir $(subst /,\,$@)
+else
 	@ls -la $@
+endif
 
 # === バイナリ拡張子変換（.bin→.com等） ===
 ifneq ($(BIN_EXT),$(BIN_EXT_ENV))
+ifeq ($(OS),Windows_NT)
+$(IMGPROG): $(OUTPROG)
+	move $(subst /,\,$<) $(subst /,\,$@)
+else
 $(IMGPROG): $(OUTPROG)
 	mv $< $@
+endif
 endif
 
 # === ディスクイメージ作成+エミュレータ実行 ===
 ifeq ($(ENV),$(filter $(ENV),lsx cpm))
-# LSX/CPM: cpmエミュで直接実行
+# LSX/CPM: cpmエミュで直接実行 (Windows は引数のパス区切りを \ に変換)
+ifeq ($(OS),Windows_NT)
+run: $(OUTPROG)
+	$(EMU) $(subst /,\,$<)
+else
 run: $(OUTPROG)
 	$(EMU) $<
+endif
 else ifeq ($(ENV), msxrom)
 # MSX ROM: カートリッジとして実行
 run: $(OUTPROG)
@@ -158,10 +188,17 @@ check-symbols: $(ASM_NEW)
 	@echo "Done."
 
 # === クリーンアップ ===
+ifeq ($(OS),Windows_NT)
+clean:
+	-del /Q $(subst /,\,$(ASM_NEW)) $(subst /,\,$(ASM_OLD)) $(subst /,\,$(OUTPROG)) $(subst /,\,$(IMGPROG)) $(subst /,\,$(LST)) $(subst /,\,$(SYM)) 2>nul
+	-del /Q $(subst /,\,$(dir $(TARGET)))PROG.bin $(subst /,\,$(dir $(TARGET)))PROG.com $(subst /,\,$(dir $(TARGET)))PROG.cmt 2>nul
+	-del /Q $(subst /,\,$(TARGET)).lst $(subst /,\,$(TARGET)).sym 2>nul
+else
 clean:
 	rm -f $(ASM_NEW) $(ASM_OLD) $(OUTPROG) $(IMGPROG) $(LST) $(SYM)
 	rm -f $(dir $(TARGET))PROG.bin $(dir $(TARGET))PROG.com $(dir $(TARGET))PROG.cmt
 	rm -f $(TARGET).lst $(TARGET).sym
+endif
 
 # === ヘルプ ===
 help:

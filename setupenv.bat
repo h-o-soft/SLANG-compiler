@@ -42,22 +42,8 @@ copy AILZ80ASM.exe %TOOLPATH%
 DEL AILZ80ASM.exe
 DEL %AILZNAME%
 
-REM cpm.exe���_�E�����[�h
-curl https://ftp.vector.co.jp/57/78/2156/cpm32_04.zip -OL
-IF not %errorlevel%==0 goto ERROR
-unzip -xo cpm32_04.zip
-copy cpm.exe %TOOLPATH%
-DEL cpm32_04.zip
-DEL cpm32_04.txt
-DEL cpm.exe
-DEL COPYING
-DEL INFO0P.COM
-DEL RCCP.COM
-DEL 4GCLOCK.COM
-del src\* /q
-del utl\* /q
-rmdir src /q
-rmdir utl /q
+REM (Old CP/M emulator cpm.exe is no longer downloaded; RunCPM is bundled
+REM under tools\runcpm\ instead. See tools\runcpm\README.md.)
 
 REM REM S-OS(X1)���_�E�����[�h
 curl http://www.retropc.net/ohishi/s-os/SWXCV110.zip -OL

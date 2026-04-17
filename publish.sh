@@ -25,6 +25,24 @@ createRelease() {
   cp ../../LICENSE .
   cp ../../setupenv.bat .
   cp ../../setupenv.sh .
+
+  # RunCPM bundle (per-platform binary + CP/M utilities + wrapper)
+  mkdir -p tools/runcpm/cpm
+  cp ../../tools/runcpm/LICENSE tools/runcpm/
+  cp ../../tools/runcpm/README.md tools/runcpm/
+  cp ../../tools/runcpm/cpm/EXIT.COM   tools/runcpm/cpm/
+  cp ../../tools/runcpm/cpm/SUBMIT.COM tools/runcpm/cpm/
+  case "$1" in
+    osx-arm64)   cp ../../tools/runcpm/RunCPM-macos-arm64 tools/runcpm/ ;;
+    osx-x64)     cp ../../tools/runcpm/RunCPM-macos-x64   tools/runcpm/ ;;
+    linux-x64)   cp ../../tools/runcpm/RunCPM-linux-x64   tools/runcpm/ ;;
+    win-x64)     cp ../../tools/runcpm/RunCPM-win-x64.exe tools/runcpm/ ;;
+  esac
+  case "$1" in
+    win-x64)     cp ../../tools/runcpm.bat tools/ ;;
+    *)           cp ../../tools/runcpm.sh tools/ ;;
+  esac
+
   zip -r SLANG-compiler-$3-$1.zip * -x '*/.DS_Store'
   mv SLANG-compiler-$3-$1.zip ../../
   cd ../..

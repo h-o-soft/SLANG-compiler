@@ -85,7 +85,11 @@ else ifeq ($(ENV), msx2)
   EMUOPT = -diska
 else ifeq ($(ENV), cpm)
   SLANGENV = lsx
-  EMU = tools/cpm$(EXE_EXT)
+  ifeq ($(OS),Windows_NT)
+    EMU = tools\runcpm.bat
+  else
+    EMU = ./tools/runcpm.sh
+  endif
   DISK_IMAGE = $(OUTPROG)
   BIN_EXT_ENV = .com
 endif
@@ -180,8 +184,19 @@ endif
 endif
 
 # サンプル実行
+ifeq ($(ENV), cpm)
+# cpm: RunCPM ラッパーに .bin (or .com) を直接渡す
+ifeq ($(OS),Windows_NT)
+run: $(OUTPROG)
+	$(EMU) $(subst /,\,$<)
+else
+run: $(OUTPROG)
+	$(EMU) $<
+endif
+else
 run: disk_image
 	$(EMU) $(EMUOPT) $(DISK_IMAGE)
+endif
 
 # ビルドのみ
 build: $(OUTPROG)
