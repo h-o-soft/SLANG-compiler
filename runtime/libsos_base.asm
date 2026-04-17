@@ -1,5 +1,8 @@
-; Converted from lib/libdef/libsos_base.yml
+; libsos_base.asm — 機種非依存 S-OS 共通ランタイム
 ; SLANG Runtime Library (new format)
+;
+; S-OS 標準 BIOS API のみを利用し、特定機種のハードウェアには依存しない。
+; X1 固有の CTC 検出・X1turbo 割り込みパッチが必要な場合は libsosx1_base を使用。
 
 ; @name SLANGINIT
 ; @calls RRET,SOSCALLS
@@ -30,8 +33,6 @@ DB 0,0,0
 
 <<CALLINITIALIZER>>
 
-CALL SEARCHCTC
-
 LD IY,__IYWORK
 
 CALL MAIN
@@ -48,138 +49,6 @@ POP BC
 JP $0000
 RETADR:
 
-; CTC CHECK
-SEARCHCTC:
-LD	BC,0
-LD	(_CTC),BC
-LD	BC,00A04H
-CALL	CHKCTC
-LD	BC,00704H
-CALL	CHKCTC
-LD	BC,01FA8H
-CALL	CHKCTC
-LD	BC,01FA0H
-CALL	CHKCTC
-
-; CTCが無い場合はCTC関連の初期化はしない
-LD BC,(_CTC)
-LD A,C
-OR B
-JP Z,SETCTCADREND
-
-; #VER
-; Hレジスタ
-; 機種別情報を元に割り込みベクタアドレスを決める
-; 20H	Ｘ１ →0058H
-; 21H	Ｘ１ｔｕｒｂｏ → F830H (IはF8のはずなのでいじらない……)
-; 22H	Ｘ１（筑紫版） →0058H
-CALL 1FF7H
-LD A,H
-AND 0F0H
-CP 20H
-JR NZ,SETCTCADREND
-LD A,H
-CP 21H
-JR Z,CTCX1TURBO
-
-; normal X1 S-OS or 筑紫版
-LD HL,0058H
-LD (_CTCVEC),HL
-
-; ここが0だとS-OS turbo以外であるという事(0000H-7FFFHが常にメインRAMの想定で良いはず)
-LD HL,0
-LD (_ISRADR),HL
-
-JR SETCTCADREND
-
-CTCX1TURBO:
-; X1turbo
-LD HL,F830H
-LD (_CTCVEC),HL
-
-; turbo用パッチ
-LD A,010H
-LD ($F850),A
-
-; MEMAXにturbo用の割り込み処理を転送してやる
-LD HL,(sMEMAX)
-LD BC,ISR_ENTRY_END - ISR_ENTRY
-OR A
-SBC HL,BC
-PUSH HL
-DEC HL
-; 割り込み処理ぶんMEMAXを減らす
-LD (sMEMAX),HL
-INC HL
-EX DE,HL
-LD HL,ISR_ENTRY
-LD BC,ISR_ENTRY_END - ISR_ENTRY
-LDIR
-
-; アドレスを書きかえてやる
-POP HL
-PUSH HL
-; 先頭アドレスを保存
-LD (_ISRADR),HL
-OR A
-LD BC,7
-ADD HL,BC ; 新しいISR_SAFEのアドレス
-EX DE,HL
-POP HL
-; HL = 転送したISR_ENTRYの先頭(割り込み先)
-INC HL
-INC HL
-LD (HL),E  ; LD HL,ISR_SAFEのISR_SAFEのところを正しいアドレスにしてやる
-INC HL
-LD (HL),D
-LD BC,9
-ADD HL,BC
-; HL = JP 0の、0の位置
-LD (_ISRHANDLER),HL ; _ISRHANDLERに入ったアドレスに割り込み先アドレスを書くとイイ
-
-SETCTCADREND:
-RET
-
-; 割り込みの一時ハンドラ
-ISR_ENTRY:
-PUSH HL
-ISR_SAFE_ADDR:
-LD HL,ISR_SAFE
-JP 0xf847
-ISR_SAFE:
-LD A,1Eh
-OUT (0x00),A
-ISR_HANDLER_ADDR:
-JP 0    ; 割り込み処理の飛び先(0000H-FFFFHどこでもいい)
-ISR_ENTRY_END:
-
-CHKCTC:
-PUSH	BC
-LD	DE,04703H
-.INICTC1
-INC	C
-OUT	(C),D
-DB	0EDH,071H	;OUT (C),0	Z80未定義命令
-DEC	E
-JR	NZ,.INICTC1
-POP	BC
-
-LD	DE,007FAH
-OUT	(C),D
-OUT	(C),E
-IN	A,(C)
-CP	E
-RET	NZ
-OUT	(C),D
-OUT	(C),D
-IN	A,(C)
-CP	D
-RET	NZ
-INC	C
-INC	C
-LD	(_CTC),BC
-RET
-
 
 ; @name STOP
 ; @param_count 0
@@ -188,7 +57,7 @@ JP RRET
 
 
 ; @name SOSCALLS
-; @works AT_WIDTH:1,_CTC:2,_CTCVEC:2,_ISRADR:2,_ISRHANDLER:2,_WK1FD0:1
+; @works AT_WIDTH:1,_WK1FD0:1
 sLPTOF  EQU 1FD6H
 sLPTON  EQU 1FD9H
 sLPRNT  EQU 1FDCH

@@ -73,6 +73,9 @@ else ifeq ($(ENV), x1)
   DISK_IMAGE = images/LSXPROG.D88
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), sos)
+  EMU = @echo "S-OS emulator not configured. Set EMU variable" \#
+  DISK_IMAGE = images/SOSPROG.D88
+else ifeq ($(ENV), sosx1)
   # EMU = ~/emu/X1/X1.exe
   EMU = @echo "S-OS emulator not configured. Set EMU variable" \#
   DISK_IMAGE = images/SOSPROG.D88
@@ -144,7 +147,7 @@ else ifeq ($(ENV), msxrom)
 # MSX ROM: カートリッジとして実行
 run: $(OUTPROG)
 	$(EMU) $(EMUOPT) $(DISK_IMAGE)
-else ifeq ($(ENV), sos)
+else ifeq ($(ENV),$(filter $(ENV),sos sosx1))
 # S-OS: HuDiskでD88イメージに格納
 run: $(IMGPROG)
 	$(HUDISK) -d $(DISK_IMAGE) PROG.bin
