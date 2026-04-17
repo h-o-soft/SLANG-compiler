@@ -17,7 +17,7 @@
   - `VAR FLOAT FP[]; FP = &BUF[0]; FP[i] = 1.5;` の形で外部メモリを FLOAT 配列として扱える
   - ×3 スケーリング計算の共通ヘルパーで間接変数 3 経路 (load/AddressOf/store) を統一
 - CP/M 実行環境を RunCPM (MIT) に切り替え
-  - `make run ENV=cpm|lsx` の CP/M エミュレータを Homebrew 版 `cpm` から RunCPM に変更
+  - `make run ENV=cpm|lsx` の CP/M エミュレータを従来の `cpm` 実行環境から RunCPM に変更
   - macOS (arm64/x64) / Linux (x64) / Windows (x64) 4 プラットフォーム分のプリビルド RunCPM バイナリを同梱
   - SUBMIT/EXIT を使った自動終了方式で stdin リダイレクトに依存せず全 OS で動作
   - 配布 zip (Makefile.dist + publish.sh) でも RunCPM 一式を同梱して即実行可能に
