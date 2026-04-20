@@ -1,0 +1,646 @@
+///
+/// SPRLIB.SL — X1 前景スプライトライブラリ (グラフィック VRAM)
+///
+/// 役割:
+///   前景スプライトレイヤ。ダブルバッファ + old1 erase 方式。
+///   グラフィック VRAM はスプライト専用層として扱い、背景は他のレイヤで管理する。
+///   背景は TILELIB (PCG/テキスト VRAM) または CHIPLIB (グラフィック VRAM 直接) と併用想定。
+///
+/// 特徴:
+///   - ダブルバッファ (CRTC reg12 でページ切替)
+///   - OR 描画: データ 0 = 透過 (背景/他スプライト保持)
+///   - 座標: X, Y ともに 4 ドット単位
+///   - old1 (2 フレーム前座標) を消去、now (現在) を描画、座標シフトでフレーム履歴管理
+///   - 最大 8 スプライト (SPR_MAX)
+///
+/// スプライトデータ形式 (96 bytes/sprite):
+///   B プレーン: 16 lines x 2 bytes = 32 bytes
+///   R プレーン: 32 bytes
+///   G プレーン: 32 bytes
+///
+/// SPR_INIT の副作用:
+///   - テキスト VRAM ($3000-$37FF) + GVRAM ($4000-$FFFF) を 0 クリア
+///     テキスト VRAM も消すのは、背面プライオリティで色 0 越しに
+///     テキスト残骸が透けてちらつくのを防ぐため。
+///   - CRTC reg12 = 0, reg13 = 0 (表示開始位置リセット)
+///   - パレット priority $1300 = $FE (パレット 0 のみ後面、1-7 は前面)
+///   - デフォルト draw page = 4 (back buffer)
+///   TILELIB と併用する場合: SPR_INIT() を先に呼んでから TILE_INIT() を
+///   呼ぶ順序が必須 (TILE_INIT がテキスト VRAM を再初期化するので
+///   SPR_INIT の text クリアは上書きされて問題なし)。
+///   WIDTH / GRPSETUP / GRDISP 後に呼ぶこと。
+///
+
+// --- API ---
+// SPR_SET_POS(id, x, y): x/y とも 4dot 単位。範囲は画面内に収める必要がある:
+//   x: 0..78 (= 0..312px, 16px幅ぶん余裕)
+//   y: 0..46 (= 0..184px, 16line幅ぶん余裕)
+// 範囲外を指定すると VRAM 表示外領域に描画してチラつきや表示崩れの原因になる。
+MACHINE SPR_INIT(0): SprInit;
+MACHINE SPR_SET_PATTERN(2): SprSetPattern;
+MACHINE SPR_SET_POS(3): SprSetPos;
+MACHINE SPR_SET_SHOW(2): SprSetShow;
+MACHINE SPR_IS_ACTIVE(1): SprIsActive;
+MACHINE SPR_UPDATE(0): SprUpdate;
+
+// ============================================================
+// ブロック 1: 実装
+// ============================================================
+#ASM
+
+SPR_GVRAM	EQU $4000
+SPR_MAX		EQU 8
+SPR_ENTRY	EQU 10
+
+; ============================================================
+; SprInit
+; ============================================================
+SprInit:
+	; テキスト VRAM ($3000-$37FF) を空白 ($20) でクリア
+	; (0x00 はグリフ 0 が見えてしまうので不可)。
+	; 色 0 の背面プライオリティ設定下で、WIDTH が 40×24 しか埋めない
+	; 残骸 (最下行など) が透けてちらつくのを防ぐため。
+	ld bc,$3000
+	ld e,$20
+.tclr:
+	out (c),e
+	inc c
+	jr nz,.tclr
+	inc b
+	ld a,b
+	cp $38
+	jr nz,.tclr
+
+	; GVRAM ($4000-$FFFF) を 0 クリア
+	ld bc,$4000
+	ld e,0
+.gclr:
+	out (c),e
+	inc bc
+	ld a,b
+	or c
+	jr nz,.gclr
+	ld bc,$1800
+	ld a,12
+	out (c),a
+	inc c
+	xor a
+	out (c),a
+	dec c
+	ld a,13
+	out (c),a
+	inc c
+	xor a
+	out (c),a
+
+	; グラフィック優先: パレット 1-7 を前面、0 は背面 (透過)
+	ld bc,$1300
+	ld a,$FE
+	out (c),a
+
+	ld a,4
+	ld (_SPR_PAGEOFS),a
+	ld hl,_SPR_TABLE
+	ld b,SPR_MAX * SPR_ENTRY
+	xor a
+.clr_tbl:
+	ld (hl),a
+	inc hl
+	djnz .clr_tbl
+	ret
+
+; ============================================================
+; SprSetPattern — HL=id, DE=pattern
+; ============================================================
+SprSetPattern:
+	push de
+	call _SprGetEntry
+	pop de
+	ld (hl),e
+	inc hl
+	ld (hl),d
+	ret
+
+; ============================================================
+; SprSetPos — HL=id, DE=x(4dot), BC=y(4dot)
+; ============================================================
+SprSetPos:
+	push de
+	push bc
+	call _SprGetEntry
+	pop bc
+	pop de
+	inc hl
+	inc hl
+	ld (hl),e
+	inc hl
+	ld (hl),c
+	ret
+
+; ============================================================
+; SprSetShow — HL=id, DE=visible
+; ============================================================
+SprSetShow:
+	push de
+	call _SprGetEntry
+	pop de
+	ld bc,8
+	add hl,bc		; → flags
+	ld a,e
+	or a
+	jr z,.hide
+	ld (hl),$01		; visible, old flags クリア
+	ret
+.hide:
+	ld a,(hl)
+	and $FE
+	ld (hl),a
+	ret
+
+; ============================================================
+; SprIsActive — fadeout 完了チェック
+; HL=id → HL: 0=完了(再利用可), 1=処理中
+; ============================================================
+SprIsActive:
+	call _SprGetEntry
+	ld bc,8
+	add hl,bc
+	ld a,(hl)
+	ld hl,0
+	or a
+	ret z			; flags==0 → 完了
+	inc hl			; flags!=0 → 処理中
+	ret
+
+; ============================================================
+; SprUpdate — 2 パス: 全消去 → 全描画+シフト → フリップ
+; ============================================================
+SprUpdate:
+	push ix
+
+	; === Pass 1: 全スプライト old1 消去 ===
+	ld ix,_SPR_TABLE
+	ld a,SPR_MAX
+	ld (.cnt1+1),a
+.loop1:
+	ld a,(ix+8)
+	bit 2,a			; old1_valid?
+	jr z,.skip1
+	ld a,(ix+6)
+	and 1
+	ld (_SPR_XODD),a
+	ld a,(ix+7)
+	and 1
+	ld (_SPR_YODD),a
+	ld d,(ix+6)
+	ld e,(ix+7)
+	push ix
+	call _SprCalcAddr
+	call _SprErase
+	pop ix
+.skip1:
+	ld bc,SPR_ENTRY
+	add ix,bc
+.cnt1:	ld a,0
+	dec a
+	ld (.cnt1+1),a
+	jp nz,.loop1
+
+	; === Pass 2: 全スプライト描画 + 座標シフト ===
+	ld ix,_SPR_TABLE
+	ld a,SPR_MAX
+	ld (.cnt2+1),a
+.loop2:
+	ld a,(ix+8)
+	or a
+	jp z,.skip2
+
+	; --- 描画 ---
+	bit 0,a
+	jr z,.no_draw
+	ld a,(ix+2)
+	and 1
+	ld (_SPR_XODD),a
+	ld a,(ix+3)
+	and 1
+	ld (_SPR_YODD),a
+	ld d,(ix+2)
+	ld e,(ix+3)
+	push ix
+	call _SprCalcAddr
+	ld l,(ix+0)
+	ld h,(ix+1)
+	call _SprDraw
+	pop ix
+.no_draw:
+
+	; --- 座標シフト ---
+	ld a,(ix+8)
+	bit 0,a
+	jr z,.fadeout
+	; visible: old1=old0, old0=now
+	ld d,(ix+4)
+	ld (ix+6),d
+	ld d,(ix+5)
+	ld (ix+7),d
+	ld d,(ix+2)
+	ld (ix+4),d
+	ld d,(ix+3)
+	ld (ix+5),d
+	bit 1,a
+	jr z,.first_frame
+	set 2,a
+.first_frame:
+	set 1,a
+	ld (ix+8),a
+	jr .skip2
+.fadeout:
+	bit 2,a
+	jr z,.fo_no_old1
+	bit 1,a
+	jr z,.fo_old1_only
+	ld d,(ix+4)
+	ld (ix+6),d
+	ld d,(ix+5)
+	ld (ix+7),d
+	res 1,a
+	ld (ix+8),a
+	jr .skip2
+.fo_old1_only:
+	res 2,a
+	ld (ix+8),a
+	jr .skip2
+.fo_no_old1:
+	bit 1,a
+	jr z,.fo_done
+	ld d,(ix+4)
+	ld (ix+6),d
+	ld d,(ix+5)
+	ld (ix+7),d
+	res 1,a
+	set 2,a
+	ld (ix+8),a
+	jr .skip2
+.fo_done:
+	ld (ix+8),0
+.skip2:
+	ld bc,SPR_ENTRY
+	add ix,bc
+.cnt2:	ld a,0
+	dec a
+	ld (.cnt2+1),a
+	jp nz,.loop2
+
+	; === ページフリップ ===
+	ld bc,$1800
+	ld a,12
+	out (c),a
+	inc c
+	ld a,(_SPR_PAGEOFS)
+	out (c),a
+	xor 4
+	ld (_SPR_PAGEOFS),a
+	pop ix
+	ret
+
+; ============================================================
+; 内部ユーティリティ
+; ============================================================
+
+_SprGetEntry:
+	ld h,0
+	add hl,hl
+	ld d,h
+	ld e,l
+	add hl,hl
+	add hl,hl
+	add hl,de
+	ld de,_SPR_TABLE
+	add hl,de
+	ret
+
+; _SprCalcAddr — D=X(4dot), E=Y(4dot) → BC=Bプレーン VRAM addr
+_SprCalcAddr:
+	ld a,e
+	srl a
+	ld l,a
+	ld h,0
+	ld c,l
+	ld b,h
+	add hl,hl
+	add hl,hl
+	add hl,bc
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	ld a,d
+	srl a
+	add a,l
+	ld c,a
+	ld a,0
+	adc a,h
+	ld b,a
+	ld a,e
+	and 1
+	rrca
+	rrca
+	rrca
+	add a,b
+	add a,$40
+	ld b,a
+	ld a,(_SPR_PAGEOFS)
+	add a,b
+	ld b,a
+	ret
+
+; キャラクタ行遷移
+_SprNextCharRow:
+	ld a,b
+	sub $40
+	ld b,a
+	ld a,c
+	add a,40
+	ld c,a
+	ret nc
+	inc b
+	ret
+
+; ============================================================
+; _SprDraw — OR 描画 (data=0 は透過)
+; HL=pattern, BC=Bプレーン addr
+; ============================================================
+_SprDraw:
+	ld a,(_SPR_XODD)
+	ld e,a
+	ld a,(_SPR_YODD)
+	add a,a
+	or e
+	or a
+	jr z,.sel_ee
+	dec a
+	jr z,.sel_oe
+	dec a
+	jr z,.sel_eo
+	ld de,.draw16_oo
+	jr .sel_done
+.sel_ee:
+	ld de,.draw16_ee
+	jr .sel_done
+.sel_oe:
+	ld de,.draw16_oe
+	jr .sel_done
+.sel_eo:
+	ld de,.draw16_eo
+.sel_done:
+	ld (.dc1+1),de
+	ld (.dc2+1),de
+	ld (.dj3+1),de
+	push bc
+.dc1:	call .draw16_ee
+	pop bc
+	ld a,b
+	add a,$40
+	ld b,a
+	push bc
+.dc2:	call .draw16_ee
+	pop bc
+	ld a,b
+	add a,$40
+	ld b,a
+.dj3:	jp .draw16_ee
+
+; --- draw16 variants ---
+.draw16_ee:
+	call .draw8
+	call _SprNextCharRow
+	jp .draw8
+.draw16_oe:
+	call .drawS8
+	call _SprNextCharRow
+	jp .drawS8
+.draw16_eo:
+	call .draw4
+	call _SprNextCharRow
+	call .draw8
+	call _SprNextCharRow
+	jp .draw4
+.draw16_oo:
+	call .drawS4
+	call _SprNextCharRow
+	call .drawS8
+	call _SprNextCharRow
+	jp .drawS4
+
+; --- Even X: OR 描画 (data=0 は透過) ---
+.draw8:	ld d,8
+	jr .dline
+.draw4:	ld d,4
+.dline:
+	in a,(c)
+	or (hl)
+	out (c),a
+	inc hl
+	inc bc
+	in a,(c)
+	or (hl)
+	out (c),a
+	inc hl
+	dec bc
+	ld a,b
+	add a,8
+	ld b,a
+	dec d
+	jr nz,.dline
+	ret
+
+; --- Odd X: ニブルシフト + OR 描画 ---
+.drawS8:
+	ld d,8
+	jr .dsline
+.drawS4:
+	ld d,4
+.dsline:
+	; data byte 0 → D'(>>4), E'(<<4)
+	ld a,(hl)
+	inc hl
+	exx
+	ld d,a
+	ld e,0
+	srl d
+	rr e
+	srl d
+	rr e
+	srl d
+	rr e
+	srl d
+	rr e
+	exx
+	; data byte 1 → H'(>>4), L'(<<4)
+	ld a,(hl)
+	inc hl
+	exx
+	ld h,a
+	ld l,0
+	srl h
+	rr l
+	srl h
+	rr l
+	srl h
+	rr l
+	srl h
+	rr l
+	exx			; → main に戻る
+	; 左端: OR (data upper nibble=0 → 隣接保護)
+	in a,(c)
+	exx
+	or d
+	exx
+	out (c),a
+	inc bc
+	; 中央: OR
+	exx
+	ld a,e
+	or h
+	exx
+	ld e,a
+	in a,(c)
+	or e
+	out (c),a
+	inc bc
+	; 右端: OR (data lower nibble=0 → 隣接保護)
+	in a,(c)
+	exx
+	or l
+	exx
+	out (c),a
+	dec bc
+	dec bc
+	; 次のスキャンライン
+	ld a,b
+	add a,8
+	ld b,a
+	dec d
+	jr nz,.dsline
+	ret
+
+; ============================================================
+; _SprErase — 消去 (0 クリア)
+; BC=Bプレーン addr
+; ============================================================
+_SprErase:
+	ld a,(_SPR_XODD)
+	ld e,a
+	ld a,(_SPR_YODD)
+	add a,a
+	or e
+	or a
+	jr z,.esel_ee
+	dec a
+	jr z,.esel_oe
+	dec a
+	jr z,.esel_eo
+	ld de,.erase16_oo
+	jr .esel_done
+.esel_ee:
+	ld de,.erase16_ee
+	jr .esel_done
+.esel_oe:
+	ld de,.erase16_oe
+	jr .esel_done
+.esel_eo:
+	ld de,.erase16_eo
+.esel_done:
+	ld (.ec1+1),de
+	ld (.ec2+1),de
+	ld (.ej3+1),de
+	push bc
+.ec1:	call .erase16_ee
+	pop bc
+	ld a,b
+	add a,$40
+	ld b,a
+	push bc
+.ec2:	call .erase16_ee
+	pop bc
+	ld a,b
+	add a,$40
+	ld b,a
+.ej3:	jp .erase16_ee
+
+.erase16_ee:
+	call .erase8
+	call _SprNextCharRow
+	jp .erase8
+.erase16_oe:
+	call .eraseS8
+	call _SprNextCharRow
+	jp .eraseS8
+.erase16_eo:
+	call .erase4
+	call _SprNextCharRow
+	call .erase8
+	call _SprNextCharRow
+	jp .erase4
+.erase16_oo:
+	call .eraseS4
+	call _SprNextCharRow
+	call .eraseS8
+	call _SprNextCharRow
+	jp .eraseS4
+
+; Even X erase
+.erase8:
+	ld d,8
+	jr .eline
+.erase4:
+	ld d,4
+.eline:
+	xor a
+	out (c),a
+	inc bc
+	out (c),a
+	dec bc
+	ld a,b
+	add a,8
+	ld b,a
+	dec d
+	jr nz,.eline
+	ret
+
+; Odd X erase (ニブル保護)
+.eraseS8:
+	ld d,8
+	jr .esline
+.eraseS4:
+	ld d,4
+.esline:
+	in a,(c)
+	and $F0
+	out (c),a
+	inc bc
+	xor a
+	out (c),a
+	inc bc
+	in a,(c)
+	and $0F
+	out (c),a
+	dec bc
+	dec bc
+	ld a,b
+	add a,8
+	ld b,a
+	dec d
+	jr nz,.esline
+	ret
+
+#END
+
+// ============================================================
+// ブロック 2: ワークエリア
+// ============================================================
+#ASM
+_SPR_PAGEOFS:	DB 4
+_SPR_XODD:	DB 0
+_SPR_YODD:	DB 0
+_SPR_TABLE:	DS 80
+#END

@@ -239,6 +239,26 @@ turboではないX1は、一定間隔でゲームなどの処理ループを回�
 
 VSYNC(num)及びVSYNC_CHECK()関数内でVBLANK期間に入った場合、自動的にSLANGで定義した関数「VSYNC_PROC()」が呼ばれます(各自定義してください)。
 
+## X1 グラフィックライブラリ (include/*.LIB)
+
+ランタイム ASM とは別に、X1 用のグラフィック層 SLANG ライブラリを `include/` に用意しています。`#include NAME.LIB` で取り込みます。
+
+| ライブラリ | 役割 | サンプル + リファレンス |
+|---|---|---|
+| `TILELIB.LIB` | PCG + テキスト VRAM を使った**背景タイルマップ**レイヤ | [examples/tile/README.md](examples/tile/README.md) |
+| `SPRLIB.LIB` | グラフィック VRAM にダブルバッファで描く**前景スプライト**レイヤ (最大 8 枚 / 16x16) | [examples/spr/README.md](examples/spr/README.md) |
+| `CHIPLIB.LIB` | マップ + チップスプライト + マスク + アニメを GVRAM 一括管理する**全部入り**総合描画 | [examples/chip/README.md](examples/chip/README.md) |
+| `TILESPR.LIB` | TILELIB + SPRLIB 併用時のページ同期ヘルパー (統合 shim) | [examples/tilespr/](examples/tilespr/) |
+| `UILIB.LIB` | GVRAM に文字・塗り・枠を描く**静的 HUD 専用**レイヤ (両ページ同時書き込み, 256 glyph フォント内蔵) | [examples/ui/README.md](examples/ui/README.md) |
+
+各 README が API リファレンス兼チュートリアルを兼ねています。データ
+フォーマット、引数の単位 (4 ドット / キャラクタ / スーパーチップ)、初期化
+順序、VVRAM 上書き手順などはそちらを参照してください。
+
+UILIB は SPRLIB と組み合わせる場合、UI 領域にスプライトを侵入させない
+制約があります (画面端に HUD を寄せる運用)。詳細は UILIB の README を
+参照してください。
+
 ## 環境ファイル及びランタイムのパスについて
 
 各環境ファイル(*.env)は `runtime/env/` フォルダに、ランタイムライブラリ(*.asm)は `runtime/` フォルダに配置されています。

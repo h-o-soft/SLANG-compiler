@@ -550,6 +550,26 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 StorageKind = VarStorageKind.CodeConst,
             });
         }
+        else if (node.IsAsmEqu)
+        {
+            // CONST ASM NAME = expr; → アセンブラの EQU として出力
+            // 値は SemanticAnalyzer で評価済み
+            var sym = _globalSymbols?.Resolve(node.Name);
+            if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstValue is int constVal)
+            {
+                Emit(IrOp.InlineAsm, IrOperand.Asm($"{node.Name} EQU ${constVal:X4}"));
+            }
+            else if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstAst != null)
+            {
+                // アセンブラ式定数 (シンボル参照含む)
+                var exprStr = LabelUtils.ExprToAsmString(sym.ConstAst, _globalSymbols, _diagnostics);
+                Emit(IrOp.InlineAsm, IrOperand.Asm($"{node.Name} EQU {exprStr}"));
+            }
+            else
+            {
+                _diagnostics.Error($"CONST ASM {node.Name} requires compile-time evaluable value", node.Span);
+            }
+        }
         else
         {
             Emit(IrOp.Comment, IrOperand.Asm($"CONST {node.Name}"));

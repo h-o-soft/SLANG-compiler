@@ -11,8 +11,32 @@ createRelease() {
   cp -r ../../include .
   cp -r ../../runtime .
   # examples: SLANGソースのみ（ビルド成果物除外）
+  # top-level の *.SL と、サブディレクトリ chip / spr / tile / tilespr / ui
+  # から *.SL / *.sl / README.md / *.json のみ whitelist 方式で拾う。
+  # *.ASM / *.LST / *.SYM / *.bin / PROG.com 等のビルド成果物は含めない。
   mkdir -p examples
   cp ../../examples/*.SL examples/ 2>/dev/null
+  for sub in chip spr tile tilespr ui; do
+    if [ -d "../../examples/$sub" ]; then
+      mkdir -p "examples/$sub"
+      cp ../../examples/$sub/*.SL        "examples/$sub/" 2>/dev/null
+      cp ../../examples/$sub/*.sl        "examples/$sub/" 2>/dev/null
+      cp ../../examples/$sub/README.md   "examples/$sub/" 2>/dev/null
+      cp ../../examples/$sub/*.json      "examples/$sub/" 2>/dev/null
+    fi
+  done
+
+  # assets: UILIB 用フォント / CHARMAP 再生成ソース (PNG, JSON)
+  if [ -d "../../assets" ]; then
+    cp -r ../../assets .
+  fi
+
+  # tools: ホストで動かす Python スクリプト (charmap-encode.py, png_to_asm.py)
+  # RunCPM 系は後段で追加するので、ここでは Python ツールだけ拾う。
+  mkdir -p tools
+  cp ../../tools/charmap-encode.py tools/ 2>/dev/null
+  cp ../../tools/png_to_asm.py     tools/ 2>/dev/null
+
   cp -r ../../env .
   # images: LSXPROG.d88のみ
   mkdir -p images

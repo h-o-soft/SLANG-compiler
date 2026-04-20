@@ -384,3 +384,24 @@ PC-8001 Attribute Library
 http://mydocuments.g2.xrea.com/html/p8/vraminfo.html
 ------
 Copyright (c) bookworm
+
+
+X1 compatible font (assets/ui/font_charset1.png / font_charset2.png)
+https://github.com/meister68k/X1_compatible_font
+------
+SHARP X1 CZ-800 series compatible free font ROM (meister68k によるリポジトリ経由)。
+元となったフォントは Num Kadoma さんの「美咲フォント (Misaki Font)」。
+  https://littlelimit.net/misaki.htm
+
+These fonts are free softwares.
+Unlimited permission is granted to use, copy, and distribute it, with or
+without modification, either commercially and noncommercially.
+THESE FONTS ARE PROVIDED "AS IS" WITHOUT WARRANTY.
+
+これらのフォントはフリー(自由な)ソフトウエアです。
+あらゆる改変の有無に関わらず、また商業的な利用であっても、自由にご利用、
+複製、再配布することができますが、全て無保証とさせていただきます。
+
+Copyright(C) 2002-2019 Num Kadoma
+
+※ 詳細は assets/ui/LICENSE.font を参照。
