@@ -91,10 +91,16 @@ JR .pstr1
 
 ; @name PCHR
 ; @calls PRT
+; 16-bit 値 HL のうち 0 バイトは出力しない。
+; 従来はゼロを出力していたため、BDOS 6 で NUL が出て CP/M 実機は
+; 問題なくても runcpm.sh の awk パイプ等で NUL 以降が欠落する。
 LD A, H
-CALL PRT
+OR A
+CALL NZ,PRT
 LD A, L
-JR PRT
+OR A
+JR NZ,PRT
+RET
 
 
 ; @name CRDISP
