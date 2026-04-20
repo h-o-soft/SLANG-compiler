@@ -40,8 +40,8 @@ MACHINE TILE_INVALIDATE(0): TileInvalidate;
 #ASM
 
 ; --- 定数 ---
-TILE_TVRAM	EQU	$3000	; テキスト VRAM (I/O)
-TILE_ATTR	EQU	$2800	; アトリビュート VRAM (I/O)
+TILE_TVRAM	EQU	$3000	; テキスト VRAM (I/O, $3000-$37FF)
+TILE_ATTR	EQU	$2000	; アトリビュート VRAM (I/O, $2000-$27FF)
 TILE_ATTR_PCG7	EQU	$27	; PCG 有効 + カラー 7
 TILE_WIDTH	EQU	40	; 画面横文字数
 TILE_HEIGHT	EQU	25	; 画面縦文字数
@@ -52,7 +52,7 @@ TILE_MAPWIDTH	EQU	20	; 横スーパーチップ数 (20×2=40 文字)
 ; TileInit — テキスト VRAM/アトリビュート初期化 (両ページ)
 ; ============================================================
 TileInit:
-	; アトリビュート $2800-$2FFF を $27 で埋める (両ページ分)
+	; アトリビュート $2000-$27FF を $27 で埋める (両ページ分)
 	ld bc,TILE_ATTR
 	ld d,TILE_ATTR_PCG7
 	ld hl,$0800
@@ -65,11 +65,17 @@ TileInit:
 	or l
 	jr nz,.attr_loop
 
-	; テキスト VRAM $3000-$37FF を 0 で埋める (両ページ分)
+	; テキスト VRAM $3000-$37FF を空白 ($20) で埋める (両ページ分)。
+	; attribute が PCG=1 の状態で char code $00 を置くと「定義済み PCG
+	; glyph 0 (= PCGDEF で最初に定義したタイル)」がそこに表示されてしまう。
+	; 特に TILE_SET_SIZE の表示範囲外は TileFillMap が描かないため
+	; そのままタイル 0 が残る (turbo/turboZ の CRTC では画面下端に露出)。
+	; $20 を入れておけば未定義 PCG glyph (通常 0 初期化) = ブランクとして扱われ、
+	; CTRL0C のテキストクリア値とも整合する。
 	ld bc,TILE_TVRAM
 	ld hl,$0800
 .text_loop:
-	xor a
+	ld a,$20
 	out (c),a
 	inc bc
 	dec hl
