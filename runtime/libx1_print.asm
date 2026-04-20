@@ -52,24 +52,36 @@ CALL	CTRL0C
 POP	HL
 POP	DE
 POP	BC
+
+; LSX-Dodgers の CRTCD 領域 (LSX_base + $B0, 16 byte) を同期する。
+; これにより LSX 内部の _WIDTH ($+$B1), _PAGE_MINUS ($+$BA),
+; _WIDTH_MINUS ($+$BC), WK1FD0 ($+$BF) が一括更新され、プログラム終了後
+; に LSX がプロンプト再描画で CRTC を再設定しても画面が崩れない
+; (refs/MODE.ASM X1 パスと同じ考え方)。
+; LSX 基底は WBOOT の JP 先アドレス ($0001 のワード) から動的に取得する。
+; WBOOTBK は SLANGINIT の直後に WORK ゼロクリアされて使えないため
+; 直接 ($0001) を読む必要がある。
+; ※ 本実装は LSX_HEIGHT を 25 に固定して運用する (X1 CRTC が 25 行表示
+;   なので物理画面を使い切れる形)。LSX デフォルト (24) から 25 に書き換え
+;   られるので、WIDTH 呼出し以降 LSX 内部の HEIGHT も 25 になる点に注意。
+LD	HL,($0001)		; HL = WBOOT の JP 先 (= LSX 基底 + 微小オフセット)
+LD	L,$B0			; HL = LSX_base + $B0 (CRTCD 先頭)
+EX	DE,HL			; DE = dest (LSX CRTCD)
+LD	HL,_CRTCD		; HL = source (ローカル 16 byte)
+LD	BC,16
+LDIR
+
+; LSX の _HEIGHT ($+$97) を 25 に書き込む。
+; テンプレート側の _PAGE_MINUS = -WIDTH*25 と整合が取れ、LSX が 25 行目も
+; 使い切るようになる。
+LD	HL,($0001)
+LD	L,$97
+LD	(HL),25
+
 LD	A,(WK1FD0)
 LD	(_WK1FD0),A
 LD	A,(_CRTCD+1)
 LD	(AT_WIDTH),A
-; LSX-Dodgers 1.62c のワーク変数を同期
-LD	(LSX_WIDTH),A		; _WIDTH ($EEB1)
-NEG
-LD	L,A
-LD	H,$FF			; HL = -(WIDTH) (符号拡張)
-LD	(LSX_WIDTH_MINUS),HL	; _WIDTH_MINUS ($EEBC)
-; _PAGE_MINUS = -(WIDTH*24)
-LD	D,H
-LD	E,L			; DE = -(WIDTH)
-LD	B,23			; 24倍 = 元の1倍 + 23回加算
-.wlsx1
-ADD	HL,DE
-DJNZ	.wlsx1
-LD	(LSX_PAGE_MINUS),HL	; _PAGE_MINUS ($EEBA)
 AND	A
 RET
 
@@ -469,9 +481,8 @@ RET
 ; @name X1WORK
 ; LSX-Dodgers 1.62c ワーク共有
 _TXADR		EQU	$EE8E	; テキストカーソルVRAMアドレス
-LSX_PAGE_MINUS	EQU	$EEBA	; -(WIDTH*24) ページ末尾判定
-LSX_WIDTH	EQU	$EEB1	; 画面幅(40/80)
-LSX_WIDTH_MINUS	EQU	$EEBC	; -(WIDTH) 行送り用
+; CRTCD 関連 (_WIDTH / _PAGE_MINUS / _WIDTH_MINUS / WK1FD0) は WIDTH 内で
+; LSX_base + $B0 へ 16 byte LDIR することで同期するため、個別 EQU は不要。
 
 AT_COLORF:
 DB	7
@@ -479,6 +490,9 @@ AT_WIDTH:
 DB	80
 _WK1FD0:DB  0
 
+; X1 の CRTC は 25 行表示。LSX-Dodgers のデフォルト _HEIGHT は 24 だが、
+; WIDTH 関数内で LSX の _HEIGHT を 25 に書き換えて整合を取り、25 行
+; すべてを使えるようにする (下記 WIDTH 末尾の _HEIGHT 書き込みを参照)。
 CRTC_LINE EQU 25
 _CRTCD:
 DB	06FH,050H,059H,038H,01FH,002H,019H,01CH
