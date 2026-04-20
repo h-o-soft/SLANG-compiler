@@ -1,6 +1,34 @@
 ; Converted from lib/libdef/libx1_pcg.yml
 ; SLANG Runtime Library (new format)
 
+; @name PCGDEFS
+; @param_count 3
+; @calls PCGDEF
+; HL = STARTIDX (ascii code), DE = ADDR (24 bytes/tile), BC = COUNT
+; ADDR から 24 バイト × COUNT バイトの連続 PCG パターンを STARTIDX から順に登録。
+; 各タイル定義毎に CRTC vblank 待ちが入るため COUNT 個の処理に約 COUNT/60 秒かかる。
+.pcgdefs_loop:
+LD A,B
+OR C
+RET Z
+
+PUSH HL
+PUSH DE
+PUSH BC
+CALL PCGDEF
+POP BC
+POP DE
+POP HL
+
+INC L
+PUSH HL
+LD HL,24
+ADD HL,DE
+EX DE,HL
+POP HL
+DEC BC
+JR .pcgdefs_loop
+
 ; @name PCGDEF
 ; HL = ascii code DE = address
 PUSH DE

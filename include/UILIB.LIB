@@ -1,0 +1,791 @@
+///
+/// UILIB.LIB — X1 GVRAM 静的 HUD ライブラリ
+///
+/// 役割:
+///   SPRLIB / TILELIB / CHIPLIB とは独立した「静的 HUD 専用」レイヤ。
+///   GVRAM (B/R/G 3 プレーン) にテキスト・塗り・枠を描画する。
+///   両ページ (page 0 / page 4) へ同時書き込みするので、1 回描けば
+///   SPRLIB のダブルバッファが切り替わっても消えない。
+///
+/// 前提 (重要):
+///   SPRLIB と併用する場合、SPR_INIT() は GVRAM を全クリアするため、
+///   UILIB の各描画は必ず SPR_INIT() の後に呼ぶこと。順序は
+///   WIDTH → GRPSETUP → GRDISP → SPR_INIT → UILIB 描画 → メインループ。
+///
+/// 制約 (重要):
+///   UI 領域にスプライトを侵入させないこと。SPRLIB の old1 erase 処理で
+///   スプライトが通った領域は 0 クリアされるため、UI が消える。
+///   HUD は画面端 (Y=0 や Y=24 等) に寄せてスプライト範囲と物理的に分離する。
+///
+/// 座標と色:
+///   座標: 8x8 チップ単位 (x: 0..39, y: 0..24)
+///   色:   3 bit BRG (bit0=B, bit1=R, bit2=G)。0 = 黒, 7 = 白
+///   描画モード: SET (色の bit が立つプレーンにパターン、立たないプレーンは 0)
+///
+/// 文字コード空間:
+///   glyph 0..255 (256 種)。ただし glyph 0 は UI_PUTS の終端予約。
+///   UI_PUTC(0) は単発描画として許可 (glyph 0 の内容を描く)。
+///   CHARMAP では 0 を割り当てないこと。
+///
+/// 公開 API:
+///   UI_AT(x, y)          カーソル位置設定
+///   UI_SET_COLOR(c)      色設定 (0..7, BRG)
+///   UI_PUTC(ch)          1 文字描画 (カーソル X+1)
+///   UI_PUTS(ptr)         ゼロ終端文字列描画 (画面右端で打ち止め)
+///   UI_FILL(w, h)        カーソル位置を左上に w×h チップ塗り
+///   UI_BOX(w, h)         外枠のみ描画 (w,h >= 2)
+///   UI_FONT_ADDR()       内蔵フォント先頭アドレス (HL)
+///
+
+// --- API ---
+MACHINE UI_AT(2):        UiAt;
+MACHINE UI_SET_COLOR(1): UiSetColor;
+MACHINE UI_PUTC(1):      UiPutC;
+MACHINE UI_PUTS(1):      UiPuts;
+MACHINE UI_FILL(2):      UiFill;
+MACHINE UI_BOX(2):       UiBox;
+MACHINE UI_FONT_ADDR(0): UiFontAddr;
+
+#ASM
+
+; ============================================================
+; UiAt — HL=x, DE=y
+; ============================================================
+UiAt:
+	ld a,l
+	ld (_UI_CURSOR_X),a
+	ld a,e
+	ld (_UI_CURSOR_Y),a
+	ret
+
+; ============================================================
+; UiSetColor — HL=color (0..7)
+; ============================================================
+UiSetColor:
+	ld a,l
+	and 7
+	ld (_UI_COLOR),a
+	ret
+
+; ============================================================
+; UiFontAddr — returns HL = &_UI_FONT_DATA
+; ============================================================
+UiFontAddr:
+	ld hl,_UI_FONT_DATA
+	ret
+
+; ============================================================
+; UiPutC — HL = char code. 1 文字描画してカーソル X++
+; ============================================================
+UiPutC:
+	ld a,l
+	call _UiSetFontFromChar
+	call _UiDrawAtCursor
+	ld a,(_UI_CURSOR_X)
+	inc a
+	ld (_UI_CURSOR_X),a
+	ret
+
+; ============================================================
+; UiPuts — HL = zero-terminated string.
+;   1 文字ずつ描画して X++, 0 で終了。x>=40 でも停止。
+; ============================================================
+UiPuts:
+.loop:
+	ld a,(hl)
+	or a
+	ret z
+	push hl
+	call _UiSetFontFromChar
+	call _UiDrawAtCursor
+	pop hl
+	inc hl
+	ld a,(_UI_CURSOR_X)
+	inc a
+	ld (_UI_CURSOR_X),a
+	cp 40
+	jr nc,.end
+	jr .loop
+.end:
+	ret
+
+; ============================================================
+; UiFill — HL=w, DE=h. カーソル位置を左上に w×h を fill パターンで塗る
+; ============================================================
+UiFill:
+	ld a,l
+	ld (_UI_TMP_W),a
+	ld a,e
+	ld (_UI_TMP_H),a
+	ld a,(_UI_CURSOR_X)
+	ld (_UI_TMP_OX),a
+	ld a,(_UI_CURSOR_Y)
+	ld (_UI_TMP_OY),a
+
+	; パターン = _UI_FILL_PATTERN (全 $FF)
+	ld hl,_UI_FILL_PATTERN
+	ld (_UI_PATTERN_PTR),hl
+
+.rowLoop:
+	; X = OX
+	ld a,(_UI_TMP_OX)
+	ld (_UI_CURSOR_X),a
+
+	ld a,(_UI_TMP_W)
+	or a
+	jr z,.nextRow
+	ld (_UI_TMP_CNT),a
+.colLoop:
+	call _UiDrawAtCursor
+	ld a,(_UI_CURSOR_X)
+	inc a
+	ld (_UI_CURSOR_X),a
+	ld a,(_UI_TMP_CNT)
+	dec a
+	ld (_UI_TMP_CNT),a
+	jr nz,.colLoop
+
+.nextRow:
+	ld a,(_UI_CURSOR_Y)
+	inc a
+	ld (_UI_CURSOR_Y),a
+	ld a,(_UI_TMP_H)
+	dec a
+	ld (_UI_TMP_H),a
+	jr nz,.rowLoop
+
+	; カーソルは (OX, OY + h) に残す (後続描画しやすい形)
+	ld a,(_UI_TMP_OX)
+	ld (_UI_CURSOR_X),a
+	ret
+
+; ============================================================
+; UiBox — HL=w, DE=h. 外周 8 箇所を _UI_BOX_DATA (9-slice) から描画。
+;   内部 (M 相当エリア) は描かない (呼び出し側で UI_FILL 等で塗る想定)。
+;   不透明な背景が欲しい場合は、パレットで 1 色を黒にリマップしてから
+;   その色で UI_FILL → UI_BOX → UI_PUTS の順で重ねる:
+;     UI_SET_COLOR(3); UI_AT(x,y); UI_FILL(w,h);  ; 背景 (色 3 = 黒に remap 済み)
+;     UI_SET_COLOR(7); UI_AT(x,y); UI_BOX(w,h);   ; 枠 (白)
+;     UI_SET_COLOR(7); UI_AT(x+1,y+1); UI_PUTS(S) ; テキスト
+;
+;   9-slice のスロット割り当て (_UI_BOX_DATA 内のインデックス):
+;     0=TL, 1=T,  2=TR
+;     3=L,  4=M,  5=R
+;     6=BL, 7=B,  8=BR
+;   フォントとは独立した 9 × 8 バイト = 72 バイトの画像データを参照する。
+;   window.png 等から tools/png_to_asm.py --box で再生成可能。
+;   w, h ≧ 2。
+; ============================================================
+; 9-slice スロットインデックス定数
+_UI_9S_TL EQU 0
+_UI_9S_T  EQU 1
+_UI_9S_TR EQU 2
+_UI_9S_L  EQU 3
+_UI_9S_M  EQU 4
+_UI_9S_R  EQU 5
+_UI_9S_BL EQU 6
+_UI_9S_B  EQU 7
+_UI_9S_BR EQU 8
+
+UiBox:
+	ld a,l
+	ld (_UI_TMP_W),a
+	ld a,e
+	ld (_UI_TMP_H),a
+	ld a,(_UI_CURSOR_X)
+	ld (_UI_TMP_OX),a
+	ld a,(_UI_CURSOR_Y)
+	ld (_UI_TMP_OY),a
+
+	; --- Top row ---
+	ld a,_UI_9S_TL
+	call _UiPutBoxAdvX
+
+	ld a,(_UI_TMP_W)
+	sub 2
+	jr z,.topDone
+	ld (_UI_TMP_CNT),a
+.topLoop:
+	ld a,_UI_9S_T
+	call _UiPutBoxAdvX
+	ld a,(_UI_TMP_CNT)
+	dec a
+	ld (_UI_TMP_CNT),a
+	jr nz,.topLoop
+.topDone:
+	ld a,_UI_9S_TR
+	call _UiPutBoxAdvX
+
+	; --- Middle rows (h-2 回, 内部 M で塗る) ---
+	ld a,(_UI_TMP_H)
+	sub 2
+	jr z,.noMid
+	ld (_UI_TMP_CNT),a
+.midLoop:
+	; 次行へ
+	ld a,(_UI_CURSOR_Y)
+	inc a
+	ld (_UI_CURSOR_Y),a
+	ld a,(_UI_TMP_OX)
+	ld (_UI_CURSOR_X),a
+
+	; L (left edge)
+	ld a,_UI_9S_L
+	call _UiPutBoxAdvX
+
+	; 内部は描画しない (呼び出し側で UI_FILL 等で塗る想定)。
+	; カーソルを右端列 (OX + W - 1) までスキップ。
+	ld a,(_UI_TMP_OX)
+	ld c,a
+	ld a,(_UI_TMP_W)
+	add a,c
+	dec a
+	ld (_UI_CURSOR_X),a
+
+	; R (right edge)
+	ld a,_UI_9S_R
+	call _UiPutBoxAdvX
+
+	ld a,(_UI_TMP_CNT)
+	dec a
+	ld (_UI_TMP_CNT),a
+	jr nz,.midLoop
+.noMid:
+
+	; --- Bottom row ---
+	ld a,(_UI_CURSOR_Y)
+	inc a
+	ld (_UI_CURSOR_Y),a
+	ld a,(_UI_TMP_OX)
+	ld (_UI_CURSOR_X),a
+
+	ld a,_UI_9S_BL
+	call _UiPutBoxAdvX
+
+	ld a,(_UI_TMP_W)
+	sub 2
+	jr z,.botDone
+	ld (_UI_TMP_CNT),a
+.botLoop:
+	ld a,_UI_9S_B
+	call _UiPutBoxAdvX
+	ld a,(_UI_TMP_CNT)
+	dec a
+	ld (_UI_TMP_CNT),a
+	jr nz,.botLoop
+.botDone:
+	ld a,_UI_9S_BR
+	call _UiPutBoxAdvX
+
+	; カーソルは開始位置に戻しておく
+	ld a,(_UI_TMP_OX)
+	ld (_UI_CURSOR_X),a
+	ld a,(_UI_TMP_OY)
+	ld (_UI_CURSOR_Y),a
+	ret
+
+; 内部: A = glyph code, カーソル位置に描画して X++
+_UiPutcAdvX:
+	call _UiSetFontFromChar
+	call _UiDrawAtCursor
+	ld a,(_UI_CURSOR_X)
+	inc a
+	ld (_UI_CURSOR_X),a
+	ret
+
+; 内部: A = 9-slice スロット index (0..8), _UI_BOX_DATA からパターンを取得し
+; カーソル位置に描画して X++
+_UiPutBoxAdvX:
+	ld h,0
+	ld l,a
+	add hl,hl
+	add hl,hl
+	add hl,hl		; HL = A*8
+	ld de,_UI_BOX_DATA
+	add hl,de
+	ld (_UI_PATTERN_PTR),hl
+	call _UiDrawAtCursor
+	ld a,(_UI_CURSOR_X)
+	inc a
+	ld (_UI_CURSOR_X),a
+	ret
+
+; ============================================================
+; _UiSetFontFromChar
+;   入力: A = char code (0..255)
+;   _UI_PATTERN_PTR = &_UI_FONT_DATA[A*8]
+; ============================================================
+_UiSetFontFromChar:
+	ld h,0
+	ld l,a
+	add hl,hl
+	add hl,hl
+	add hl,hl           ; HL = A*8
+	ld de,_UI_FONT_DATA
+	add hl,de
+	ld (_UI_PATTERN_PTR),hl
+	ret
+
+; ============================================================
+; _UiDrawAtCursor
+;   (_UI_PATTERN_PTR) の 8 バイトを (_UI_CURSOR_X, _UI_CURSOR_Y) に
+;   両ページ (page 0, page 4) で描画する。色は (_UI_COLOR)。
+; ============================================================
+_UiDrawAtCursor:
+	; HL = Y*40 + X (16-bit)
+	ld a,(_UI_CURSOR_Y)
+	ld h,0
+	ld l,a
+	add hl,hl           ; Y*2
+	add hl,hl           ; Y*4
+	add hl,hl           ; Y*8
+	ld b,h
+	ld c,l              ; BC = Y*8
+	add hl,hl           ; Y*16
+	add hl,hl           ; Y*32
+	add hl,bc           ; Y*40
+	ld a,(_UI_CURSOR_X)
+	add a,l
+	ld l,a
+	jr nc,.nocarry
+	inc h
+.nocarry:
+	; BC = $4000 + HL (page 0, B plane, line 0)
+	ld bc,$4000
+	add hl,bc
+	ld b,h
+	ld c,l
+
+	di
+	; --- Page 0 ---
+	push bc
+	call _UiDrawOnePage
+	pop bc
+	; --- Page 4 ---
+	ld a,b
+	add a,$04
+	ld b,a
+	call _UiDrawOnePage
+	ei
+	ret
+
+; ============================================================
+; _UiDrawOnePage
+;   入力: BC = 現ページ B プレーン line 0 の I/O アドレス
+;         (_UI_PATTERN_PTR) = 8 バイトパターン先頭
+;         (_UI_COLOR) = 3-bit BRG
+;   OR 描画: 色 bit が立っているプレーンだけ OR で書き込む。
+;   bit が立っていないプレーンは一切触らず既存のピクセルを保持する。
+;   関数終了時、BC は 3 プレーン分 ($C0 ぶん) B が進んでいる。
+; ============================================================
+_UiDrawOnePage:
+	ld a,(_UI_COLOR)
+	ld e,a              ; E = color bits (保存)
+
+	; Plane B (bit 0)
+	bit 0,e
+	jr z,.skipB
+	ld hl,(_UI_PATTERN_PTR)
+	call _UiWrite8Lines
+	jr .rPlane
+.skipB:
+	ld a,b
+	add a,$40
+	ld b,a
+
+.rPlane:
+	bit 1,e
+	jr z,.skipR
+	ld hl,(_UI_PATTERN_PTR)
+	call _UiWrite8Lines
+	jr .gPlane
+.skipR:
+	ld a,b
+	add a,$40
+	ld b,a
+
+.gPlane:
+	bit 2,e
+	jr z,.skipG
+	ld hl,(_UI_PATTERN_PTR)
+	call _UiWrite8Lines
+	ret
+.skipG:
+	ld a,b
+	add a,$40
+	ld b,a
+	ret
+
+; ============================================================
+; _UiWrite8Lines
+;   入力: HL = パターン先頭 (8 bytes)
+;         BC = I/O アドレス (line 0)
+;   OR 描画: IN → OR パターン → OUT で既存ピクセルを保持したまま
+;   パターン bit を足し込む。
+;   出力: HL += 8, BC: B += $40 (= 次プレーン line 0)
+; ============================================================
+_UiWrite8Lines:
+	in a,(c)
+	or (hl)
+	out (c),a
+	inc hl
+	ld a,b
+	add a,$08
+	ld b,a
+
+	in a,(c)
+	or (hl)
+	out (c),a
+	inc hl
+	ld a,b
+	add a,$08
+	ld b,a
+
+	in a,(c)
+	or (hl)
+	out (c),a
+	inc hl
+	ld a,b
+	add a,$08
+	ld b,a
+
+	in a,(c)
+	or (hl)
+	out (c),a
+	inc hl
+	ld a,b
+	add a,$08
+	ld b,a
+
+	in a,(c)
+	or (hl)
+	out (c),a
+	inc hl
+	ld a,b
+	add a,$08
+	ld b,a
+
+	in a,(c)
+	or (hl)
+	out (c),a
+	inc hl
+	ld a,b
+	add a,$08
+	ld b,a
+
+	in a,(c)
+	or (hl)
+	out (c),a
+	inc hl
+	ld a,b
+	add a,$08
+	ld b,a
+
+	in a,(c)
+	or (hl)
+	out (c),a
+	inc hl
+	ld a,b
+	add a,$08
+	ld b,a
+	ret
+
+; ============================================================
+; 内部状態
+; ============================================================
+_UI_CURSOR_X:     DB 0
+_UI_CURSOR_Y:     DB 0
+_UI_COLOR:        DB 7
+
+_UI_PATTERN_PTR:  DW 0
+
+_UI_TMP_OX:       DB 0
+_UI_TMP_OY:       DB 0
+_UI_TMP_W:        DB 0
+_UI_TMP_H:        DB 0
+_UI_TMP_CNT:      DB 0
+_UI_TMP_CNT2:     DB 0
+
+; ============================================================
+; パターンデータ
+; ============================================================
+_UI_ZERO_PATTERN:
+	DB $00, $00, $00, $00, $00, $00, $00, $00
+
+_UI_FILL_PATTERN:
+	DB $FF, $FF, $FF, $FF, $FF, $FF, $FF, $FF
+
+; === BOX DATA BEGIN (generated by tools/png_to_asm.py --box, do not edit) ===
+_UI_BOX_DATA:
+    DB $00, $1F, $30, $60, $40, $40, $40, $40	; slot 0: TL
+    DB $00, $FF, $00, $00, $00, $00, $00, $00	; slot 1: T
+    DB $00, $F8, $0C, $06, $02, $02, $02, $02	; slot 2: TR
+    DB $40, $40, $40, $40, $40, $40, $40, $40	; slot 3: L
+    DB $00, $00, $00, $00, $00, $00, $00, $00	; slot 4: M
+    DB $02, $02, $02, $02, $02, $02, $02, $02	; slot 5: R
+    DB $40, $40, $40, $40, $60, $30, $1F, $00	; slot 6: BL
+    DB $00, $00, $00, $00, $00, $00, $FF, $00	; slot 7: B
+    DB $02, $02, $02, $02, $06, $0C, $F8, $00	; slot 8: BR
+; === BOX DATA END ===
+
+; === FONT DATA BEGIN (generated by tools/png_to_asm.py, do not edit by hand) ===
+_UI_FONT_DATA:
+    DB $40, $A0, $8C, $12, $06, $0A, $0E, $00	; glyph 0
+    DB $40, $A0, $A4, $0A, $0E, $0A, $0A, $00	; glyph 1
+    DB $40, $A0, $AC, $0A, $0C, $0A, $0C, $00	; glyph 2
+    DB $40, $A0, $A6, $08, $08, $08, $06, $00	; glyph 3
+    DB $40, $A0, $AC, $0A, $0A, $0A, $0C, $00	; glyph 4
+    DB $40, $A0, $AE, $08, $0E, $08, $0E, $00	; glyph 5
+    DB $40, $A0, $AE, $08, $0E, $08, $08, $00	; glyph 6
+    DB $40, $A0, $AC, $10, $16, $12, $1E, $00	; glyph 7
+    DB $40, $A0, $AA, $0A, $0E, $0A, $0A, $00	; glyph 8
+    DB $40, $A0, $AE, $04, $04, $04, $0E, $00	; glyph 9
+    DB $40, $A0, $A2, $02, $12, $12, $0C, $00	; glyph 10
+    DB $40, $A0, $92, $14, $18, $14, $12, $00	; glyph 11
+    DB $40, $A0, $A8, $08, $08, $08, $0E, $00	; glyph 12
+    DB $40, $A0, $80, $22, $36, $2A, $22, $00	; glyph 13
+    DB $40, $A0, $A0, $12, $1A, $16, $12, $00	; glyph 14
+    DB $40, $A0, $AC, $12, $12, $12, $0C, $00	; glyph 15
+    DB $40, $A0, $AE, $0A, $0E, $08, $08, $00	; glyph 16
+    DB $40, $A0, $AC, $12, $12, $14, $0E, $00	; glyph 17
+    DB $40, $A0, $AC, $0A, $0C, $0A, $0A, $00	; glyph 18
+    DB $40, $A0, $A6, $08, $04, $02, $0C, $00	; glyph 19
+    DB $40, $A0, $AE, $04, $04, $04, $04, $00	; glyph 20
+    DB $40, $A0, $80, $12, $12, $12, $0C, $00	; glyph 21
+    DB $40, $A0, $80, $22, $12, $14, $08, $00	; glyph 22
+    DB $40, $A0, $80, $22, $2A, $36, $22, $00	; glyph 23
+    DB $40, $A0, $AA, $0A, $04, $0A, $0A, $00	; glyph 24
+    DB $40, $A0, $AA, $0A, $04, $04, $04, $00	; glyph 25
+    DB $40, $A0, $AE, $02, $04, $08, $0E, $00	; glyph 26
+    DB $E0, $80, $CC, $92, $F0, $12, $0C, $00	; glyph 27
+    DB $00, $08, $04, $FE, $04, $08, $00, $00	; glyph 28
+    DB $00, $20, $40, $FE, $40, $20, $00, $00	; glyph 29
+    DB $10, $38, $54, $10, $10, $10, $10, $00	; glyph 30
+    DB $10, $10, $10, $10, $54, $38, $10, $00	; glyph 31
+    DB $00, $00, $00, $00, $00, $00, $00, $00	; glyph 32
+    DB $10, $10, $10, $10, $10, $00, $10, $00	; glyph 33
+    DB $6C, $24, $48, $00, $00, $00, $00, $00	; glyph 34
+    DB $14, $7E, $28, $28, $28, $FC, $50, $00	; glyph 35
+    DB $08, $3E, $48, $3C, $12, $7C, $10, $00	; glyph 36
+    DB $42, $A4, $48, $10, $24, $4A, $84, $00	; glyph 37
+    DB $30, $48, $50, $24, $54, $88, $76, $00	; glyph 38
+    DB $60, $20, $40, $00, $00, $00, $00, $00	; glyph 39
+    DB $04, $08, $10, $10, $10, $08, $04, $00	; glyph 40
+    DB $40, $20, $10, $10, $10, $20, $40, $00	; glyph 41
+    DB $10, $54, $38, $10, $38, $54, $10, $00	; glyph 42
+    DB $10, $10, $10, $FE, $10, $10, $10, $00	; glyph 43
+    DB $00, $00, $00, $00, $60, $20, $40, $00	; glyph 44
+    DB $00, $00, $00, $FE, $00, $00, $00, $00	; glyph 45
+    DB $00, $00, $00, $00, $00, $60, $60, $00	; glyph 46
+    DB $00, $04, $08, $10, $20, $40, $00, $00	; glyph 47
+    DB $3C, $42, $46, $5A, $62, $42, $3C, $00	; glyph 48
+    DB $10, $30, $10, $10, $10, $10, $38, $00	; glyph 49
+    DB $3C, $42, $02, $0C, $30, $40, $7E, $00	; glyph 50
+    DB $3C, $42, $02, $1C, $02, $42, $3C, $00	; glyph 51
+    DB $04, $0C, $14, $24, $44, $7E, $04, $00	; glyph 52
+    DB $7E, $40, $7C, $42, $02, $42, $3C, $00	; glyph 53
+    DB $1C, $20, $40, $7C, $42, $42, $3C, $00	; glyph 54
+    DB $7E, $02, $04, $08, $08, $10, $10, $00	; glyph 55
+    DB $3C, $42, $42, $3C, $42, $42, $3C, $00	; glyph 56
+    DB $3C, $42, $42, $3E, $02, $04, $38, $00	; glyph 57
+    DB $00, $30, $30, $00, $30, $30, $00, $00	; glyph 58
+    DB $00, $30, $30, $00, $30, $10, $20, $00	; glyph 59
+    DB $04, $08, $10, $20, $10, $08, $04, $00	; glyph 60
+    DB $00, $00, $FE, $00, $FE, $00, $00, $00	; glyph 61
+    DB $40, $20, $10, $08, $10, $20, $40, $00	; glyph 62
+    DB $3C, $42, $02, $0C, $10, $00, $10, $00	; glyph 63
+    DB $38, $44, $9A, $AA, $B4, $40, $38, $00	; glyph 64
+    DB $10, $28, $28, $44, $7C, $82, $82, $00	; glyph 65
+    DB $7C, $42, $42, $7C, $42, $42, $7C, $00	; glyph 66
+    DB $3C, $42, $40, $40, $40, $42, $3C, $00	; glyph 67
+    DB $78, $44, $42, $42, $42, $44, $78, $00	; glyph 68
+    DB $7E, $40, $40, $7C, $40, $40, $7E, $00	; glyph 69
+    DB $7E, $40, $40, $7C, $40, $40, $40, $00	; glyph 70
+    DB $3C, $42, $40, $4E, $42, $42, $3C, $00	; glyph 71
+    DB $42, $42, $42, $7E, $42, $42, $42, $00	; glyph 72
+    DB $38, $10, $10, $10, $10, $10, $38, $00	; glyph 73
+    DB $02, $02, $02, $02, $02, $42, $3C, $00	; glyph 74
+    DB $42, $44, $48, $50, $68, $44, $42, $00	; glyph 75
+    DB $40, $40, $40, $40, $40, $40, $7E, $00	; glyph 76
+    DB $82, $C6, $AA, $AA, $92, $92, $82, $00	; glyph 77
+    DB $42, $62, $52, $4A, $46, $42, $42, $00	; glyph 78
+    DB $3C, $42, $42, $42, $42, $42, $3C, $00	; glyph 79
+    DB $7C, $42, $42, $7C, $40, $40, $40, $00	; glyph 80
+    DB $3C, $42, $42, $42, $4A, $44, $3A, $00	; glyph 81
+    DB $7C, $42, $42, $7C, $48, $44, $42, $00	; glyph 82
+    DB $3C, $42, $40, $3C, $02, $42, $3C, $00	; glyph 83
+    DB $FE, $10, $10, $10, $10, $10, $10, $00	; glyph 84
+    DB $42, $42, $42, $42, $42, $42, $3C, $00	; glyph 85
+    DB $82, $82, $44, $44, $28, $28, $10, $00	; glyph 86
+    DB $82, $92, $92, $AA, $AA, $44, $44, $00	; glyph 87
+    DB $82, $44, $28, $10, $28, $44, $82, $00	; glyph 88
+    DB $82, $44, $28, $10, $10, $10, $10, $00	; glyph 89
+    DB $7E, $02, $04, $08, $10, $20, $7E, $00	; glyph 90
+    DB $1C, $10, $10, $10, $10, $10, $1C, $00	; glyph 91
+    DB $44, $44, $28, $7C, $10, $7C, $10, $00	; glyph 92
+    DB $70, $10, $10, $10, $10, $10, $70, $00	; glyph 93
+    DB $10, $28, $00, $00, $00, $00, $00, $00	; glyph 94
+    DB $00, $00, $00, $00, $00, $00, $FE, $00	; glyph 95
+    DB $40, $20, $00, $00, $00, $00, $00, $00	; glyph 96
+    DB $00, $00, $38, $04, $3C, $44, $3C, $00	; glyph 97
+    DB $40, $40, $58, $64, $44, $44, $78, $00	; glyph 98
+    DB $00, $00, $38, $44, $40, $44, $38, $00	; glyph 99
+    DB $04, $04, $34, $4C, $44, $44, $3C, $00	; glyph 100
+    DB $00, $00, $38, $44, $7C, $40, $38, $00	; glyph 101
+    DB $0C, $10, $38, $10, $10, $10, $10, $00	; glyph 102
+    DB $00, $00, $3C, $44, $3C, $04, $38, $00	; glyph 103
+    DB $40, $40, $58, $64, $44, $44, $44, $00	; glyph 104
+    DB $10, $00, $10, $10, $10, $10, $10, $00	; glyph 105
+    DB $08, $00, $08, $08, $08, $48, $30, $00	; glyph 106
+    DB $20, $20, $24, $28, $30, $28, $24, $00	; glyph 107
+    DB $30, $10, $10, $10, $10, $10, $10, $00	; glyph 108
+    DB $00, $00, $68, $54, $54, $54, $54, $00	; glyph 109
+    DB $00, $00, $58, $64, $44, $44, $44, $00	; glyph 110
+    DB $00, $00, $38, $44, $44, $44, $38, $00	; glyph 111
+    DB $00, $00, $78, $44, $78, $40, $40, $00	; glyph 112
+    DB $00, $00, $3C, $44, $3C, $04, $04, $00	; glyph 113
+    DB $00, $00, $58, $64, $40, $40, $40, $00	; glyph 114
+    DB $00, $00, $3C, $40, $38, $04, $78, $00	; glyph 115
+    DB $00, $20, $78, $20, $20, $24, $18, $00	; glyph 116
+    DB $00, $00, $44, $44, $44, $4C, $34, $00	; glyph 117
+    DB $00, $00, $44, $44, $28, $28, $10, $00	; glyph 118
+    DB $00, $00, $44, $54, $54, $28, $28, $00	; glyph 119
+    DB $00, $00, $44, $28, $10, $28, $44, $00	; glyph 120
+    DB $00, $00, $44, $28, $28, $10, $60, $00	; glyph 121
+    DB $00, $00, $7C, $08, $10, $20, $7C, $00	; glyph 122
+    DB $0C, $10, $10, $20, $10, $10, $0C, $00	; glyph 123
+    DB $10, $10, $10, $00, $10, $10, $10, $00	; glyph 124
+    DB $60, $10, $10, $08, $10, $10, $60, $00	; glyph 125
+    DB $FE, $00, $00, $00, $00, $00, $00, $00	; glyph 126
+    DB $00, $00, $3E, $54, $14, $24, $46, $00	; glyph 127
+    DB $00, $00, $00, $00, $00, $00, $00, $FF	; glyph 128
+    DB $00, $00, $00, $00, $00, $00, $FF, $FF	; glyph 129
+    DB $00, $00, $00, $00, $00, $FF, $FF, $FF	; glyph 130
+    DB $00, $00, $00, $00, $FF, $FF, $FF, $FF	; glyph 131
+    DB $00, $00, $00, $FF, $FF, $FF, $FF, $FF	; glyph 132
+    DB $00, $00, $FF, $FF, $FF, $FF, $FF, $FF	; glyph 133
+    DB $00, $FF, $FF, $FF, $FF, $FF, $FF, $FF	; glyph 134
+    DB $FF, $FF, $FF, $FF, $FF, $FF, $FF, $FF	; glyph 135
+    DB $80, $80, $80, $80, $80, $80, $80, $80	; glyph 136
+    DB $C0, $C0, $C0, $C0, $C0, $C0, $C0, $C0	; glyph 137
+    DB $E0, $E0, $E0, $E0, $E0, $E0, $E0, $E0	; glyph 138
+    DB $F0, $F0, $F0, $F0, $F0, $F0, $F0, $F0	; glyph 139
+    DB $F8, $F8, $F8, $F8, $F8, $F8, $F8, $F8	; glyph 140
+    DB $FC, $FC, $FC, $FC, $FC, $FC, $FC, $FC	; glyph 141
+    DB $FE, $FE, $FE, $FE, $FE, $FE, $FE, $FE	; glyph 142
+    DB $01, $02, $04, $08, $10, $20, $40, $80	; glyph 143
+    DB $00, $00, $00, $FF, $00, $00, $00, $00	; glyph 144
+    DB $10, $10, $10, $10, $10, $10, $10, $10	; glyph 145
+    DB $10, $10, $10, $FF, $00, $00, $00, $00	; glyph 146
+    DB $00, $00, $00, $FF, $10, $10, $10, $10	; glyph 147
+    DB $10, $10, $10, $F0, $10, $10, $10, $10	; glyph 148
+    DB $10, $10, $10, $1F, $10, $10, $10, $10	; glyph 149
+    DB $10, $10, $10, $FF, $10, $10, $10, $10	; glyph 150
+    DB $00, $00, $00, $F0, $10, $10, $10, $10	; glyph 151
+    DB $10, $10, $10, $F0, $00, $00, $00, $00	; glyph 152
+    DB $10, $10, $10, $1F, $00, $00, $00, $00	; glyph 153
+    DB $00, $00, $00, $1F, $10, $10, $10, $10	; glyph 154
+    DB $00, $00, $00, $C0, $20, $10, $10, $10	; glyph 155
+    DB $10, $10, $08, $07, $00, $00, $00, $00	; glyph 156
+    DB $10, $10, $20, $C0, $00, $00, $00, $00	; glyph 157
+    DB $00, $00, $00, $07, $08, $10, $10, $10	; glyph 158
+    DB $80, $40, $20, $10, $08, $04, $02, $01	; glyph 159
+    DB $00, $00, $00, $00, $00, $00, $00, $00	; glyph 160
+    DB $00, $00, $00, $00, $40, $A0, $40, $00	; glyph 161
+    DB $1E, $10, $10, $10, $10, $10, $00, $00	; glyph 162
+    DB $00, $10, $10, $10, $10, $10, $F0, $00	; glyph 163
+    DB $00, $00, $00, $00, $00, $80, $40, $00	; glyph 164
+    DB $00, $00, $00, $30, $30, $00, $00, $00	; glyph 165
+    DB $7E, $02, $3E, $02, $04, $08, $30, $00	; glyph 166
+    DB $00, $00, $7C, $14, $18, $10, $20, $00	; glyph 167
+    DB $00, $00, $04, $08, $18, $68, $08, $00	; glyph 168
+    DB $00, $00, $10, $7C, $44, $08, $30, $00	; glyph 169
+    DB $00, $00, $00, $38, $10, $10, $7C, $00	; glyph 170
+    DB $00, $00, $08, $7C, $18, $68, $18, $00	; glyph 171
+    DB $00, $00, $20, $3C, $64, $10, $10, $00	; glyph 172
+    DB $00, $00, $00, $38, $08, $08, $7C, $00	; glyph 173
+    DB $00, $00, $3C, $04, $1C, $04, $3C, $00	; glyph 174
+    DB $00, $00, $00, $54, $54, $08, $30, $00	; glyph 175
+    DB $00, $00, $80, $7E, $00, $00, $00, $00	; glyph 176
+    DB $7E, $02, $14, $18, $10, $10, $20, $00	; glyph 177
+    DB $02, $04, $08, $18, $68, $08, $08, $00	; glyph 178
+    DB $10, $7E, $42, $02, $04, $08, $30, $00	; glyph 179
+    DB $00, $7C, $10, $10, $10, $FE, $00, $00	; glyph 180
+    DB $08, $FE, $08, $18, $28, $C8, $18, $00	; glyph 181
+    DB $10, $7E, $12, $12, $12, $22, $46, $00	; glyph 182
+    DB $10, $7C, $10, $10, $7E, $08, $08, $00	; glyph 183
+    DB $10, $1E, $22, $42, $04, $08, $30, $00	; glyph 184
+    DB $40, $7E, $48, $88, $08, $10, $20, $00	; glyph 185
+    DB $00, $7E, $02, $02, $02, $02, $7E, $00	; glyph 186
+    DB $24, $FE, $24, $24, $04, $08, $30, $00	; glyph 187
+    DB $40, $20, $42, $22, $04, $08, $70, $00	; glyph 188
+    DB $00, $7C, $04, $08, $08, $34, $C2, $00	; glyph 189
+    DB $20, $20, $FE, $22, $24, $20, $1E, $00	; glyph 190
+    DB $42, $22, $22, $02, $04, $08, $30, $00	; glyph 191
+    DB $10, $1E, $22, $5A, $04, $08, $30, $00	; glyph 192
+    DB $0C, $70, $10, $FE, $10, $10, $20, $00	; glyph 193
+    DB $00, $A2, $52, $52, $04, $08, $30, $00	; glyph 194
+    DB $7C, $00, $FE, $10, $10, $10, $20, $00	; glyph 195
+    DB $20, $20, $20, $38, $24, $20, $20, $00	; glyph 196
+    DB $10, $10, $FE, $10, $10, $20, $40, $00	; glyph 197
+    DB $00, $7C, $00, $00, $00, $FE, $00, $00	; glyph 198
+    DB $7C, $04, $34, $08, $18, $24, $C0, $00	; glyph 199
+    DB $10, $7C, $08, $10, $34, $D2, $10, $00	; glyph 200
+    DB $04, $04, $04, $08, $10, $20, $C0, $00	; glyph 201
+    DB $00, $28, $24, $24, $42, $42, $82, $00	; glyph 202
+    DB $40, $40, $46, $78, $40, $40, $3E, $00	; glyph 203
+    DB $00, $7E, $02, $02, $04, $08, $30, $00	; glyph 204
+    DB $00, $20, $50, $88, $04, $02, $00, $00	; glyph 205
+    DB $10, $10, $FE, $10, $54, $92, $30, $00	; glyph 206
+    DB $00, $FE, $02, $04, $28, $10, $08, $00	; glyph 207
+    DB $70, $0C, $20, $18, $00, $70, $0C, $00	; glyph 208
+    DB $10, $10, $20, $20, $48, $44, $FA, $00	; glyph 209
+    DB $04, $04, $74, $08, $14, $24, $C0, $00	; glyph 210
+    DB $3C, $10, $10, $7E, $10, $10, $0E, $00	; glyph 211
+    DB $20, $2E, $F2, $24, $10, $10, $10, $00	; glyph 212
+    DB $00, $78, $08, $08, $08, $FE, $00, $00	; glyph 213
+    DB $00, $7E, $02, $3E, $02, $02, $7E, $00	; glyph 214
+    DB $3C, $00, $7E, $02, $04, $08, $30, $00	; glyph 215
+    DB $44, $44, $44, $44, $04, $08, $30, $00	; glyph 216
+    DB $08, $28, $28, $28, $2A, $4C, $88, $00	; glyph 217
+    DB $20, $20, $20, $22, $24, $28, $30, $00	; glyph 218
+    DB $00, $7E, $42, $42, $42, $42, $7E, $00	; glyph 219
+    DB $00, $7E, $42, $02, $04, $08, $30, $00	; glyph 220
+    DB $40, $20, $02, $02, $04, $08, $70, $00	; glyph 221
+    DB $A0, $50, $00, $00, $00, $00, $00, $00	; glyph 222
+    DB $40, $A0, $40, $00, $00, $00, $00, $00	; glyph 223
+    DB $38, $7C, $FE, $FE, $FE, $7C, $38, $00	; glyph 224
+    DB $38, $44, $82, $82, $82, $44, $38, $00	; glyph 225
+    DB $10, $38, $7C, $FE, $FE, $10, $38, $00	; glyph 226
+    DB $6C, $FE, $FE, $FE, $7C, $38, $10, $00	; glyph 227
+    DB $10, $38, $7C, $FE, $7C, $38, $10, $00	; glyph 228
+    DB $38, $38, $D6, $FE, $D6, $10, $38, $00	; glyph 229
+    DB $01, $03, $07, $0F, $1F, $3F, $7F, $FF	; glyph 230
+    DB $80, $C0, $E0, $F0, $F8, $FC, $FE, $FF	; glyph 231
+    DB $81, $42, $24, $18, $18, $24, $42, $81	; glyph 232
+    DB $F0, $F0, $F0, $F0, $00, $00, $00, $00	; glyph 233
+    DB $00, $00, $00, $00, $F0, $F0, $F0, $F0	; glyph 234
+    DB $0F, $0F, $0F, $0F, $00, $00, $00, $00	; glyph 235
+    DB $00, $00, $00, $00, $0F, $0F, $0F, $0F	; glyph 236
+    DB $0F, $0F, $0F, $0F, $F0, $F0, $F0, $F0	; glyph 237
+    DB $F0, $F0, $F0, $F0, $0F, $0F, $0F, $0F	; glyph 238
+    DB $FF, $81, $81, $81, $81, $81, $81, $FF	; glyph 239
+    DB $AA, $55, $AA, $55, $AA, $55, $AA, $55	; glyph 240
+    DB $10, $10, $7C, $10, $10, $10, $FE, $00	; glyph 241
+    DB $10, $28, $FE, $10, $FE, $54, $FE, $00	; glyph 242
+    DB $10, $FE, $10, $38, $54, $92, $10, $00	; glyph 243
+    DB $10, $12, $F4, $38, $54, $92, $30, $00	; glyph 244
+    DB $10, $10, $54, $58, $10, $28, $C6, $00	; glyph 245
+    DB $3E, $22, $3E, $22, $3E, $42, $86, $00	; glyph 246
+    DB $7E, $42, $42, $7E, $42, $42, $7E, $00	; glyph 247
+    DB $08, $FC, $A8, $FE, $A4, $FE, $14, $00	; glyph 248
+    DB $28, $28, $44, $BE, $14, $24, $CC, $00	; glyph 249
+    DB $C8, $5C, $DA, $68, $CA, $C4, $58, $00	; glyph 250
+    DB $40, $7E, $90, $7C, $50, $FE, $10, $00	; glyph 251
+    DB $FE, $92, $92, $FE, $82, $82, $86, $00	; glyph 252
+    DB $10, $10, $10, $28, $28, $44, $82, $00	; glyph 253
+    DB $50, $7E, $90, $10, $7C, $10, $FE, $00	; glyph 254
+    DB $FE, $00, $FE, $10, $10, $10, $10, $00	; glyph 255
+; === FONT DATA END ===
+
+#END
