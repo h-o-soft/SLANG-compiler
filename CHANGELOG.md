@@ -1,5 +1,28 @@
 # 更新履歴
 
+## Version 0.22.0
+
+- X1 グラフィックライブラリ群を include/ に新設 (#139)
+  - **TILELIB.LIB**: PCG タイル背景 (スーパーチップ 2×2 + マップ + スクロール + アニメ + ダブルバッファ)
+  - **SPRLIB.LIB**: GVRAM 前景スプライト 最大 8 枚 / 16×16 (ダブルバッファ + old1 erase, 4 dot 単位座標)
+  - **CHIPLIB.LIB**: GVRAM 直描画の全部入り (VVRAM 差分転送 + チップスプライト合成 + マスク + アニメ + スクロール)
+  - **TILESPR.LIB**: TILELIB + SPRLIB 併用時のページ同期 shim
+  - **UILIB.LIB**: GVRAM 静的 HUD (両ページ同時書き込み + OR 描画 + 9-slice 枠 + 256 glyph フォント内蔵)
+  - 各ライブラリのサンプル + API リファレンスを examples/{chip,spr,tile,tilespr,ui}/ に配置
+  - assets/ui/ に UILIB 用フォント資産 (font_charset1.png ASCII / font_charset2.png 日本語拡張 / window.png 9-slice / uicharset*.json CHARMAP) を同梱。美咲フォント由来、改変・商用・再配布自由の free software permit
+  - tools/ にホスト側 Python ツール (png_to_asm.py / charmap-encode.py) を追加
+- ランタイムに `PCGDEFS(startidx, ptr, count)` を追加 — 連続 PCG 定義の一括登録
+- コンパイラに `CONST ASM` のコード生成を実装 — ライブラリ内パラメータをユーザー側 CONST ASM で上書き可能 (例: `_CHIP_VVRAMW_MAX`)
+- x1 環境の `WIDTH()` を LSX-Dodgers と整合するよう修正 (#138)
+  - LSX-Dodgers の CRTCD 領域に 16 byte LDIR で同期。プログラム終了後に LSX がプロンプト再描画しても画面が崩れない
+  - X1 CRTC の 25 行表示を使い切るよう LSX `_HEIGHT` を 25 に書き込み
+  - 従来の誤った `_PAGE_MINUS = -WIDTH*24` 固定計算も修正
+- lsx 環境の PCHR が NUL バイトを出力していた問題を修正 (#138) — `make ENV=cpm run` で画面に何も出ない問題の原因
+- sos 環境を機種非依存化、従来の X1 依存版は `sosx1` 環境として分離 (#137)
+- TILELIB の TILE_ATTR アドレスと TileInit テキスト初期値を修正 (#140)
+  - TILE_ATTR を X1 仕様通りの `$2000` に (従来 `$2800` はミラー経由で結果的に動作)
+  - TileInit のテキスト VRAM 初期値を `$20` (空白) に (PCG glyph 0 = 定義済みタイル 0 が画面下端に露出する問題, X1 turbo / turboZ で顕著)
+
 ## Version 0.21.0
 - ユーザー定義関数の FLOAT 引数・戻り値に対応
   - 宣言構文: `FX:FLOAT(FLOAT X) BEGIN RETURN X * X; END;`
