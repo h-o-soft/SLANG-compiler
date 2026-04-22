@@ -217,6 +217,36 @@ CONST PC=$8001, MZ=2000;
 ```
 静的宣言と局所宣言の差異はなく、どちらも局所的な記号定数の宣言となる。
 
+### CONST ASM (大域宣言のみ)
+
+```
+CONST ASM _CHIP_VVRAMW_MAX = 42;
+CONST ASM _CHIP_VVRAMH_MAX = 28;
+```
+
+通常の CONST に加えて ASM のキーワードを付けると、コンパイラが出力 ASM
+ソース中に `EQU` 疑似命令として定数値を書き出す。ライブラリ内の `#ASM`
+ブロックや MACHINE 実装から同名ラベルとして参照できるようになるため、
+ライブラリが提供するパラメータ (例えばバッファ最大サイズ) を、ユーザー側
+SLANG ソースの CONST ASM で `#include` より前に再定義することで上書き
+できる。
+
+```
+// ユーザーコード
+CONST _CHIP_VVRAM_OVERRIDE = 1;
+CONST ASM _CHIP_VVRAMW_MAX = 50;
+CONST ASM _CHIP_VVRAMH_MAX = 30;
+#include CHIPLIB.LIB
+
+// ライブラリ側 (概念図)
+#IF (_CHIP_VVRAM_OVERRIDE != 1)
+CONST ASM _CHIP_VVRAMW_MAX = 42;
+CONST ASM _CHIP_VVRAMH_MAX = 28;
+#ENDIF
+```
+
+値はコンパイル時定数でなければならない (リテラル、既定義 CONST の式など)。
+
 ---
 
 ## MACHINE宣言（大域宣言のみ）
