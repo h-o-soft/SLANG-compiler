@@ -93,6 +93,10 @@ internal static class LabelUtils
     public static string StaticVarLabel(string funcName, string varName)
         => $"_V_{SanitizeLabel(funcName)}_{SanitizeLabel(varName)}";
 
+    /// <summary>オーバーレイモジュール内プライベート変数のASMラベル (`_V_M&lt;idx&gt;_&lt;name&gt;`)</summary>
+    public static string OverlayVarLabel(int overlayIndex, string name)
+        => $"_V_M{overlayIndex}_{SanitizeLabel(name)}";
+
     /// <summary>ユーザー定義ラベル(LABEL/GOTO)のASMラベル</summary>
     public static string UserLabel(string name) => $"_LBL_{SanitizeLabel(name)}";
 

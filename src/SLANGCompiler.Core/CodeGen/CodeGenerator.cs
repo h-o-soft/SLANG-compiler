@@ -118,6 +118,28 @@ public class CodeGenerator
             }
         }
 
+        // モジュール専用ワークエリア: __WORK_M<Index>__ に VAR/ARRAY を連続配置。
+        // WorkAddress 指定時は ORG を吐いて絶対位置固定、未指定なら overlay コード末尾。
+        if (overlay.LocalVars.Count > 0)
+        {
+            _e.Blank();
+            _e.Comment($"=== Overlay {overlay.Index} Private Work Area ===");
+            if (overlay.WorkAddress.HasValue)
+            {
+                _e.Instruction("ORG", $"${overlay.WorkAddress.Value:X4}");
+                _e.Blank();
+            }
+            var workLabel = $"__WORK_M{overlay.Index}__";
+            _e.Label(workLabel);
+            int offset = 0;
+            foreach (var v in overlay.LocalVars)
+            {
+                _e.Raw($"{v.AsmLabel} EQU ({workLabel} + {offset})");
+                offset += v.ByteSize;
+            }
+            _e.Raw($"__WORKEND_M{overlay.Index}__ EQU ({workLabel} + {offset})");
+        }
+
         // 共有シンボル: メイン部のグローバル変数をEQUまたはEXTERN宣言
         _e.Blank();
         _e.Comment("=== Shared Symbols (from main) ===");
