@@ -312,7 +312,7 @@ public class CodeGenerator
         {
             // SLANGINIT を inline 展開し、通常 runtime 出力からは除外する
             // (plan が確定していれば MainInlineFunctions 経由、そうでなければ既存パス)
-            var slanginit = _runtimePlan?.GetAndConsumeInline("SLANGINIT");
+            var slanginit = _runtimePlan?.GetInlineFunction("SLANGINIT");
             var code = slanginit?.Code ?? _runtimeManager.GetAndExclude("SLANGINIT");
             if (code != null)
             {

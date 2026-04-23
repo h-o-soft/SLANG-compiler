@@ -1192,17 +1192,16 @@ SUB() BEGIN END;
     }
 
     [Fact]
-    public void Overlay_RuntimePolicy_TypoIdentifier_DoesNotSilentlyFallback()
+    public void Overlay_RuntimePolicy_TypoIdentifier_RaisesUnknownPolicyError()
     {
-        // RESIDNT (typo) は予約語化されていないので Identifier として扱われ、
-        // ParseTopLevel に流れる → 関数定義として括弧不在等のパースエラーで止まる
-        // (= 黙って Local 化しない、Codex 指摘の安全側挙動)
+        // RESIDNT (typo) はヘッダ位置で識別子として現れ、直後が `(` でないので
+        // 「Unknown #MODULE policy」として専用エラーが出る (黙って Local 化しない)。
         var stderr = CompileExpectError(@"
 MAIN() BEGIN END;
 #MODULE $8000 RESIDNT
 SUB() BEGIN END;
 ");
-        // typo に対して何かしらのコンパイルエラーが出る (具体メッセージは Parser 依存)
-        Assert.False(string.IsNullOrEmpty(stderr));
+        Assert.Contains("Unknown #MODULE policy", stderr);
+        Assert.Contains("RESIDNT", stderr);
     }
 }

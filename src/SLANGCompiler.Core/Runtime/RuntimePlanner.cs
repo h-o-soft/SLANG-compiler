@@ -57,9 +57,11 @@ public class RuntimePlan
             .OrderBy(f => f!.LoadOrder)!;
     }
 
-    /// <summary>main 用: inline 展開する関数を取得 (= 既存 GetAndExclude のラッパー)。
-    /// `MainInlineFunctions` に登録されていれば関数本体を返す。</summary>
-    public RuntimeFunction? GetAndConsumeInline(string name)
+    /// <summary>main 用: inline 展開する関数を取得 (= 既存 GetAndExclude の plan 版)。
+    /// `MainInlineFunctions` に登録されていれば関数本体を返す。
+    /// 副作用なし (plan からは除去しない) — exclude 効果は GetMainOutputFunctions が
+    /// MainInlineFunctions を返さないことで担保している。</summary>
+    public RuntimeFunction? GetInlineFunction(string name)
     {
         var canonical = Normalize(name, _runtime);
         if (MainInlineFunctions.Contains(canonical)

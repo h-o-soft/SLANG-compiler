@@ -275,7 +275,7 @@ public class RuntimePlannerTests
     }
 
     [Fact]
-    public void Test12_GetAndConsumeInline_OnlyReturnsMainInlineFunctions()
+    public void Test12_GetInlineFunction_OnlyReturnsMainInlineFunctions()
     {
         var rt = BuildRuntime(
             ("SLANGINIT", RuntimeResidency.Local, new string[0], new string[0], null, null),
@@ -286,7 +286,7 @@ public class RuntimePlannerTests
             new Dictionary<int, HashSet<string>>(),
             rt, new[] { "SLANGINIT" });
 
-        Assert.NotNull(plan.GetAndConsumeInline("SLANGINIT"));
-        Assert.Null(plan.GetAndConsumeInline("MPRNT")); // resident 側は対象外
+        Assert.NotNull(plan.GetInlineFunction("SLANGINIT"));
+        Assert.Null(plan.GetInlineFunction("MPRNT")); // resident 側は対象外
     }
 }
