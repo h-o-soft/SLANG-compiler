@@ -70,6 +70,7 @@ public class SymbolTable
     }
 
     public Scope CurrentScope => _scopes.Peek();
+    public Scope GlobalScope => _scopes.ElementAt(_scopes.Count - 1);
     public bool IsGlobalScope => _scopes.Count == 1;
     public int ScopeCount => _scopes.Count;
 
@@ -89,6 +90,17 @@ public class SymbolTable
     {
         var symbol = new Symbol(name, kind, type) { IsGlobal = IsGlobalScope };
         CurrentScope.Define(symbol);
+        return symbol;
+    }
+
+    /// <summary>
+    /// overlay scope を push 中でも global (最外) scope にシンボルを登録する。
+    /// #MODULE 内の関数/MACHINE/CONST を main から参照可能に保つための API。
+    /// </summary>
+    public Symbol DefineInGlobal(string name, SymbolKind kind, SlangType type)
+    {
+        var symbol = new Symbol(name, kind, type) { IsGlobal = true };
+        GlobalScope.Define(symbol);
         return symbol;
     }
 

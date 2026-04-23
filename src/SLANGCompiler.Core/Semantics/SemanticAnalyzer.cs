@@ -18,6 +18,10 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     private bool _inStaticDecl;
     private string? _currentFuncName;
     private FuncInfo? _currentFunc;
+    // #MODULE 処理中のオーバーレイインデックス。null = メイン側。VAR/ARRAY はこれで
+    // overlay scope の private シンボル化 + AsmLabel を `_V_M<idx>_<name>` に切替える。
+    private int? _currentOverlayIndex;
+    private int _overlayCount;
 
     public SymbolTable Symbols => _symbols;
 
@@ -128,17 +132,22 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         if (_currentFunc != null && _symbols.IsGlobalScope == false && !_inStaticDecl)
         {
             // ローカル変数(動的): BYTE/WORDとも2バイト、FLOATは3バイト
+            // #MODULE 内関数のローカルも IY オフセットに割り付ける (overlay private 化は
+            // "モジュール直下" 宣言だけの話)
             sym.IsGlobal = false;
             sym.Offset = _currentFunc.AllocLocal(type.ByteSize, isFloat: node.Size == DataSize.Float);
             sym.AsmLabel = null; // IYオフセットでアクセス
         }
         else
         {
-            // グローバル変数 or 関数内静的宣言: __WORK__に配置
+            // グローバル変数 or 関数内静的宣言 or オーバーレイ モジュール直下: __WORK__ に配置
             sym.IsGlobal = true;
-            sym.AsmLabel = (_inStaticDecl && _currentFuncName != null)
-                ? LabelUtils.StaticVarLabel(_currentFuncName, node.Name)
-                : LabelUtils.UserVarLabel(node.Name);
+            if (_currentOverlayIndex.HasValue && !_inStaticDecl && _currentFunc == null)
+                sym.AsmLabel = LabelUtils.OverlayVarLabel(_currentOverlayIndex.Value, node.Name);
+            else if (_inStaticDecl && _currentFuncName != null)
+                sym.AsmLabel = LabelUtils.StaticVarLabel(_currentFuncName, node.Name);
+            else
+                sym.AsmLabel = LabelUtils.UserVarLabel(node.Name);
             if (node.Address != null)
             {
                 // アドレス固定
@@ -202,6 +211,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
 
         if (_currentFunc != null && !_symbols.IsGlobalScope && !_inStaticDecl)
         {
+            // #MODULE 内関数のローカル ARRAY も通常のローカル扱い (IY フレーム)
             sym.IsGlobal = false;
             sym.Offset = _currentFunc.AllocLocal(type.ByteSize, isArray: true);
             sym.AsmLabel = null;
@@ -209,9 +219,12 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         else
         {
             sym.IsGlobal = true;
-            sym.AsmLabel = (_inStaticDecl && _currentFuncName != null)
-                ? LabelUtils.StaticVarLabel(_currentFuncName, node.Name)
-                : LabelUtils.UserVarLabel(node.Name);
+            if (_currentOverlayIndex.HasValue && !_inStaticDecl && _currentFunc == null)
+                sym.AsmLabel = LabelUtils.OverlayVarLabel(_currentOverlayIndex.Value, node.Name);
+            else if (_inStaticDecl && _currentFuncName != null)
+                sym.AsmLabel = LabelUtils.StaticVarLabel(_currentFuncName, node.Name);
+            else
+                sym.AsmLabel = LabelUtils.UserVarLabel(node.Name);
         }
 
         return null;
@@ -222,7 +235,10 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         if (node.Value is CodeExpr)
         {
             // CODEブロック型CONST: ラベル付きデータブロック（参照時はアドレスが渡される）
-            var sym = _symbols.Define(node.Name, SymbolKind.Variable, SlangType.Word);
+            // overlay 配下でも global scope に登録 (main から参照可能に保つ)
+            var sym = _currentOverlayIndex.HasValue
+                ? _symbols.DefineInGlobal(node.Name, SymbolKind.Variable, SlangType.Word)
+                : _symbols.Define(node.Name, SymbolKind.Variable, SlangType.Word);
             sym.IsGlobal = true;
             sym.IsCodeBlock = true;
             sym.AsmLabel = (_inStaticDecl && _currentFuncName != null)
@@ -231,7 +247,9 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         }
         else
         {
-            var sym = _symbols.Define(node.Name, SymbolKind.Constant, SlangType.Word);
+            var sym = _currentOverlayIndex.HasValue
+                ? _symbols.DefineInGlobal(node.Name, SymbolKind.Constant, SlangType.Word)
+                : _symbols.Define(node.Name, SymbolKind.Constant, SlangType.Word);
             var val = _constEval.Evaluate(node.Value);
             if (val.HasValue)
             {
@@ -266,7 +284,9 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         if (node.ParamCount.HasValue)
             paramTypes = Enumerable.Repeat(SlangType.Word, node.ParamCount.Value).ToList();
         var funcType = new FunctionType(SlangType.Word, paramTypes);
-        var sym = _symbols.Define(node.Name, SymbolKind.MachineFunction, funcType);
+        var sym = _currentOverlayIndex.HasValue
+            ? _symbols.DefineInGlobal(node.Name, SymbolKind.MachineFunction, funcType)
+            : _symbols.Define(node.Name, SymbolKind.MachineFunction, funcType);
         sym.IsGlobal = true;
         sym.AsmLabel = $"_{LabelUtils.SanitizeLabel(node.Name)}";
         if (node.Address != null)
@@ -287,11 +307,13 @@ public class SemanticAnalyzer : IAstVisitor<object?>
 
     public object? VisitFuncDef(FuncDef node)
     {
-        // 関数自体をグローバルに登録
+        // 関数自体をグローバルに登録 (overlay 配下でも main と共有する global scope へ)
         var paramTypes = node.Parameters.Select(p => DataSizeToType(p.Size)).ToList();
         var returnType = DataSizeToType(node.ReturnSize);
         var funcType = new FunctionType(returnType, paramTypes);
-        var funcSym = _symbols.Define(node.Name, SymbolKind.Function, funcType);
+        var funcSym = _currentOverlayIndex.HasValue
+            ? _symbols.DefineInGlobal(node.Name, SymbolKind.Function, funcType)
+            : _symbols.Define(node.Name, SymbolKind.Function, funcType);
         funcSym.IsGlobal = true;
         funcSym.AsmLabel = LabelUtils.SanitizeLabel(node.Name);
 
@@ -439,8 +461,50 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     public object? VisitOffsetDirective(OffsetDirective node) => null;
     public object? VisitModuleBlock(ModuleBlock node)
     {
-        foreach (var def in node.Definitions) def.Accept(this);
+        // #MODULE 直下での非対応構文を検出 (モジュール内関数本体は走査対象外)
+        foreach (var def in node.Definitions)
+            ValidateModuleTopLevelDecl(def);
+
+        int idx = _overlayCount++;
+        var prevIndex = _currentOverlayIndex;
+        _symbols.PushScope($"overlay_{idx}");
+        _currentOverlayIndex = idx;
+        try
+        {
+            foreach (var def in node.Definitions) def.Accept(this);
+        }
+        finally
+        {
+            _currentOverlayIndex = prevIndex;
+            _symbols.PopScope();
+        }
         return null;
+    }
+
+    private void ValidateModuleTopLevelDecl(AstNode def)
+    {
+        switch (def)
+        {
+            case VarDecl vd:
+                if (vd.InitialValue != null || vd.InitialCode != null)
+                    _diagnostics.Error(
+                        $"Module-level VAR '{vd.Name}' cannot have initializer inside #MODULE", vd.Span);
+                if (vd.Address != null)
+                    _diagnostics.Error(
+                        $"Module-level VAR '{vd.Name}' cannot have fixed address inside #MODULE", vd.Span);
+                break;
+            case ArrayDecl ad:
+                if (ad.InitialValue != null || ad.InitialCode != null)
+                    _diagnostics.Error(
+                        $"Module-level ARRAY '{ad.Name}' cannot have initializer inside #MODULE", ad.Span);
+                if (ad.Address != null)
+                    _diagnostics.Error(
+                        $"Module-level ARRAY '{ad.Name}' cannot have fixed address inside #MODULE", ad.Span);
+                break;
+            case PlainAsm pa:
+                _diagnostics.Error("Top-level #ASM block is not allowed inside #MODULE", pa.Span);
+                break;
+        }
     }
     public object? VisitPlainAsm(PlainAsm node) => null;
 

@@ -823,4 +823,307 @@ SUB() BEGIN PRINT(""X""); END;
         //   (このプログラムには整数→FLOAT 変換が必要な箇所がないため)
         Assert.DoesNotContain("CALL\ti16tof24", mainSection);
     }
+
+    // ---- #MODULE オーバーレイ専用ワーク / プライベート変数 ----
+
+    [Fact]
+    public void Overlay_PrivateScalar_AllocatedInModuleWorkArea()
+    {
+        // #MODULE 直下の VAR は overlay 専用ワーク __WORK_M0__ に EQU 配置。
+        // main __WORK__ 側には漏れず、`_V_M0_<name>` ラベルで解決される。
+        var source = @"
+VAR X;
+MAIN() BEGIN X=1; END;
+#MODULE $8000
+VAR Y;
+SUB() BEGIN Y=$42; END;
+#END
+";
+        var (mainAsm, overlays) = CompileWithOverlays(source);
+        Assert.Single(overlays);
+        var ov = overlays.Values.First();
+
+        Assert.Contains("__WORK_M0__:", ov);
+        Assert.Contains("_V_M0_Y EQU (__WORK_M0__ + 0)", ov);
+        Assert.Contains("LD\t(_V_M0_Y),HL", ov);
+
+        // main 側に private ラベルが漏れていないこと
+        Assert.DoesNotContain("_V_M0_", mainAsm);
+        Assert.DoesNotContain("_V_Y EQU", mainAsm);
+    }
+
+    [Fact]
+    public void Overlay_WorkDirective_AddressExpr_SetsOrg()
+    {
+        // #MODULE 内 `WORK <定数式>` でワーク ORG を明示。CONST 式も受理される。
+        var source = @"
+CONST WA = $9000;
+MAIN() BEGIN END;
+#MODULE $8000
+WORK WA
+VAR Y;
+SUB() BEGIN Y=2; END;
+#END
+";
+        var (_, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+
+        // overlay 専用ワークに ORG $9000 が発行される
+        var workIdx = ov.IndexOf("=== Overlay 0 Private Work Area ===");
+        Assert.True(workIdx >= 0, "private work area comment missing");
+        var afterWork = ov.Substring(workIdx);
+        Assert.Contains("ORG\t$9000", afterWork);
+        Assert.Contains("__WORK_M0__:", afterWork);
+    }
+
+    [Fact]
+    public void Overlay_SameNameScalar_MainAndOverlay_AreIndependent()
+    {
+        // 同名 VAR X が main と overlay に同居しても、ラベルが分離されて別領域に配置される。
+        var source = @"
+VAR X;
+MAIN() BEGIN X=1; END;
+#MODULE $8000
+VAR X;
+SUB() BEGIN X=2; END;
+#END
+";
+        var (mainAsm, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+
+        // main: _V_X (__WORK__ 配下)
+        Assert.Contains("_V_X EQU (__WORK__", mainAsm);
+        Assert.Contains("LD\t(_V_X),HL", mainAsm);
+        Assert.DoesNotContain("_V_M0_X", mainAsm);
+
+        // overlay: _V_M0_X (__WORK_M0__ 配下)
+        Assert.Contains("_V_M0_X EQU (__WORK_M0__", ov);
+        Assert.Contains("LD\t(_V_M0_X),HL", ov);
+    }
+
+    [Fact]
+    public void Overlay_PrivateArrayByte_UsesElemSize1()
+    {
+        // ARRAY BYTE A[16] → _V_M0_A EQU (__WORK_M0__+0)、A[3] は _V_M0_A+3 (ElemSize=1)
+        var source = @"
+MAIN() BEGIN END;
+#MODULE $8000
+ARRAY BYTE A[16];
+SUB() BEGIN A[3]=$77; END;
+#END
+";
+        var (_, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+
+        Assert.Contains("_V_M0_A EQU (__WORK_M0__ + 0)", ov);
+        // 17 = ARRAY BYTE A[16] → 16+1 要素 × BYTE 1 = 17 バイト
+        Assert.Contains("__WORKEND_M0__ EQU (__WORK_M0__ + 17)", ov);
+        // A[3] は BYTE オフセット 3
+        Assert.Contains("(_V_M0_A+3)", ov);
+    }
+
+    [Fact]
+    public void Overlay_PrivateArrayWord_UsesElemSize2()
+    {
+        // ARRAY WORD W[8] → ElemSize=2 が overlay.LocalVars に残り、W[3] → _V_M0_W+6
+        var source = @"
+MAIN() BEGIN END;
+#MODULE $8000
+ARRAY WORD W[8];
+SUB() BEGIN W[3]=$1234; END;
+#END
+";
+        var (_, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+
+        Assert.Contains("_V_M0_W EQU (__WORK_M0__ + 0)", ov);
+        // 9 要素 × WORD 2 = 18
+        Assert.Contains("__WORKEND_M0__ EQU (__WORK_M0__ + 18)", ov);
+        // W[3] = 3*2 = 6
+        Assert.Contains("(_V_M0_W+6)", ov);
+    }
+
+    [Fact]
+    public void Overlay_SameNameArray_MainAndOverlay_AreIndependent()
+    {
+        // 同名 ARRAY が main と overlay に同居しても、ラベル + サイズが独立する。
+        var source = @"
+ARRAY BYTE A[4];
+MAIN() BEGIN A[1]=1; END;
+#MODULE $8000
+ARRAY BYTE A[8];
+SUB() BEGIN A[2]=2; END;
+#END
+";
+        var (mainAsm, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+
+        // main 側: _V_A (BYTE, 5 要素)
+        Assert.Contains("_V_A EQU (__WORK__", mainAsm);
+        Assert.Contains("(_V_A+1)", mainAsm);
+        Assert.DoesNotContain("_V_M0_A", mainAsm);
+
+        // overlay 側: _V_M0_A + オフセット
+        Assert.Contains("_V_M0_A EQU (__WORK_M0__ + 0)", ov);
+        Assert.Contains("(_V_M0_A+2)", ov);
+        // 9 要素 × BYTE 1 = 9
+        Assert.Contains("__WORKEND_M0__ EQU (__WORK_M0__ + 9)", ov);
+    }
+
+    [Fact]
+    public void Overlay_PrivatePointerArray_AllocatedAsWord()
+    {
+        // ARRAY BYTE P[] (=間接配列/ポインタ) は 2 バイト確保、VarDataSize=2 で扱われる。
+        var source = @"
+ARRAY BYTE BUF[8];
+MAIN() BEGIN END;
+#MODULE $8000
+ARRAY BYTE P[];
+SUB() BEGIN P = BUF; END;
+#END
+";
+        var (_, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+
+        Assert.Contains("_V_M0_P EQU (__WORK_M0__ + 0)", ov);
+        // ポインタは 2 バイト
+        Assert.Contains("__WORKEND_M0__ EQU (__WORK_M0__ + 2)", ov);
+    }
+
+    [Fact]
+    public void Overlay_TopLevelInitializer_IsError()
+    {
+        var stderr1 = CompileExpectError(@"
+MAIN() BEGIN END;
+#MODULE $8000
+VAR X = 10;
+#END
+");
+        Assert.Contains("cannot have initializer", stderr1);
+
+        var stderr2 = CompileExpectError(@"
+MAIN() BEGIN END;
+#MODULE $8000
+ARRAY BYTE A[4]={1,2,3,4};
+#END
+");
+        Assert.Contains("cannot have initializer", stderr2);
+
+        var stderr3 = CompileExpectError(@"
+MAIN() BEGIN END;
+#MODULE $8000
+VAR X:$9000;
+#END
+");
+        Assert.Contains("cannot have fixed address", stderr3);
+
+        // #ASM ... #END は lexer 内で #END を終端として読む。以下は module 直下の
+        // #ASM で、その中身に NOP が入り、最外 #END が MODULE の終端を兼ねる。
+        var stderr4 = CompileExpectError(@"
+MAIN() BEGIN END;
+#MODULE $8000
+#ASM
+NOP
+#END
+#END
+");
+        Assert.Contains("Top-level #ASM block is not allowed", stderr4);
+    }
+
+    [Fact]
+    public void Overlay_InFunctionLocalScalar_IsAllocatedOnIYFrame()
+    {
+        // #MODULE 内関数本体の VAR は overlay private ではなく、通常のローカル変数
+        // (IY フレーム割り付け) として扱われる必要がある。
+        var source = @"
+MAIN() BEGIN END;
+#MODULE $8000
+SUB()
+BEGIN
+    VAR L;
+    L = $55;
+END;
+#END
+";
+        var (_, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+
+        // overlay private ラベルは生成されない
+        Assert.DoesNotContain("_V_M0_L", ov);
+        Assert.DoesNotContain("_V_L", ov);
+        // module 内関数ローカルが overlay work area に登録されない
+        Assert.DoesNotContain("__WORK_M0__", ov);
+        // IY フレーム経由のストアが出ている (LD (IY+<offset>),...)
+        Assert.Matches(@"LD\s+\(IY[+-]", ov);
+    }
+
+    [Fact]
+    public void Overlay_InFunctionLocalArray_IsAllocatedOnIYFrame()
+    {
+        // #MODULE 内関数本体の ARRAY も IY フレームのローカル配列として扱われる。
+        var source = @"
+MAIN() BEGIN END;
+#MODULE $8000
+SUB()
+BEGIN
+    ARRAY BYTE LBUF[4];
+    LBUF[0] = $11;
+END;
+#END
+";
+        var (_, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+
+        Assert.DoesNotContain("_V_M0_LBUF", ov);
+        Assert.DoesNotContain("_V_LBUF", ov);
+        Assert.DoesNotContain("__WORK_M0__", ov);
+        // IY フレーム経由 (LD HL,IY→ADD 等) でインデックスされる
+        Assert.Matches(@"(IY[+-]|PUSH\s+IY|LD\s+L,IY|LD\s+H,IY)", ov);
+    }
+
+    [Fact]
+    public void Overlay_InFunctionStaticVar_UsesStaticLabel()
+    {
+        // #MODULE 内関数の静的宣言 (BEGIN の前) は従来どおり `_V_<func>_<name>` で
+        // main __WORK__ に配置される。overlay private にはしない。
+        var source = @"
+MAIN() BEGIN END;
+#MODULE $8000
+SUB()
+    VAR S;
+BEGIN
+    S = $77;
+END;
+#END
+";
+        var (mainAsm, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+
+        // static ラベル `_V_SUB_S` が使われ、main __WORK__ に EQU される
+        Assert.Contains("_V_SUB_S", ov);
+        Assert.Contains("_V_SUB_S EQU (__WORK__", mainAsm);
+        Assert.DoesNotContain("_V_M0_S", ov);
+    }
+
+    [Fact]
+    public void Overlay_InlineAsmInsideFunction_IsAllowed()
+    {
+        // 対比: モジュール内関数本体のインライン #ASM は従来どおり許可される。
+        // lexer は #ASM ... #END を 1 つの PlainAsm トークンにまとめる。
+        var source = @"
+MAIN() BEGIN END;
+#MODULE $8000
+SUB()
+BEGIN
+#ASM
+NOP
+#END
+END;
+#END
+";
+        var (_, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+        Assert.Contains("SUB:", ov);
+        Assert.Contains("NOP", ov);
+    }
 }

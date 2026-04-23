@@ -234,6 +234,9 @@ public class IrModule
 /// </summary>
 public enum VarStorageKind { Bss, InitArray, CodeConst }
 
+/// <summary>スカラー / 配列 / ポインタの種別 (overlay ResolveVarInfo 向け)</summary>
+public enum GlobalVarKind { Scalar, Array, Pointer }
+
 /// <summary>初期化データの1要素: バイト値 or アセンブラ式DW</summary>
 public record struct InitItem(byte? ByteValue, string? AsmExpr)
 {
@@ -247,12 +250,15 @@ public class GlobalVarInfo
     public string Name { get; set; } = "";
     public string AsmLabel { get; set; } = "";
     public int ByteSize { get; set; } = 2;
+    /// <summary>配列/ポインタの要素サイズ (BYTE=1/WORD=2/FLOAT=3)、スカラーでは ByteSize と同値</summary>
+    public int ElemSize { get; set; } = 2;
     public int? FixedAddress { get; set; }
     /// <summary>ラベルベースの固定アドレス (例: ARRAY X[]:LABEL)</summary>
     public string? FixedAddressLabel { get; set; }
     public List<InitItem>? InitialItems { get; set; }
     public bool HasInitializer => InitialItems != null && InitialItems.Count > 0;
     public bool IsArray { get; set; }
+    public GlobalVarKind VarKind { get; set; } = GlobalVarKind.Scalar;
     public VarStorageKind StorageKind { get; set; } = VarStorageKind.Bss;
 }
 
@@ -264,6 +270,8 @@ public class OverlayModule
 {
     public int Index { get; set; }
     public int OrgAddress { get; set; }
+    /// <summary>モジュール専用ワークエリア (__WORK_M&lt;Index&gt;__) の ORG。null なら overlay コード末尾に配置。</summary>
+    public int? WorkAddress { get; set; }
     public List<IrFunction> Functions { get; } = new();
     public List<GlobalVarInfo> LocalVars { get; } = new();
     public Dictionary<string, string> StringTable { get; } = new();

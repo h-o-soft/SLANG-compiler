@@ -31,6 +31,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
     // 関数内静的変数の種別マップ（Scalar/Array/Pointer）
     private Dictionary<string, VarKind>? _staticVarKinds;
 
+    // #MODULE 内で IR を生成中のオーバーレイモジュール (null = メイン部)。
+    // モジュール private な VAR/ARRAY は ここの LocalVars に振り分けられ、
+    // ResolveAsmLabel / ResolveVarInfo は main global より先にここを引く。
+    private OverlayModule? _currentOverlay;
+    // overlay.LocalVars の name → info 逆引き（ResolveVarInfo の O(1) 化）
+    private Dictionary<string, GlobalVarInfo>? _currentOverlayLookup;
+
     public IrGenerator(DiagnosticBag diagnostics, SymbolTable? symbols = null,
                        Runtime.RuntimeManager? runtimeManager = null)
     {
@@ -39,18 +46,21 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _runtimeManager = runtimeManager;
     }
 
-    /// <summary>シンボル名からASMラベルを解決。関数内静的変数→グローバルシンボル→デフォルトの順。</summary>
+    /// <summary>シンボル名からASMラベルを解決。関数内静的変数→overlay private→グローバルシンボル→デフォルトの順。</summary>
     private string ResolveAsmLabel(string name)
     {
         // 関数内静的変数（__FUNC_VAR形式）
         if (_staticVarLabels != null && _staticVarLabels.TryGetValue(name, out var staticLabel))
             return staticLabel;
+        // オーバーレイ private 変数 (`_V_M<n>_<name>`)
+        if (_currentOverlayLookup != null && _currentOverlayLookup.TryGetValue(name, out var ovInfo))
+            return ovInfo.AsmLabel;
         // グローバルシンボルテーブル
         var sym = _globalSymbols?.Resolve(name);
         return sym?.AsmLabel ?? LabelUtils.UserVarLabel(name);
     }
 
-    /// <summary>変数名から統合情報を解決。優先順: local → static → global。</summary>
+    /// <summary>変数名から統合情報を解決。優先順: local → static → overlay private → global。</summary>
     private VarInfo ResolveVarInfo(string name)
     {
         // 1. ローカル変数
@@ -69,7 +79,20 @@ public class IrGenerator : IAstVisitor<IrOperand>
                        : (_staticElemSizes?.TryGetValue(name, out int e) == true ? e : 2);
             return new VarInfo { IsResolved = true, Kind = kind, ElemSize = elemSz, VarDataSize = varDs };
         }
-        // 3. グローバルシンボル
+        // 3. overlay private 変数 (#MODULE 内のプライベート VAR/ARRAY)
+        if (_currentOverlayLookup != null && _currentOverlayLookup.TryGetValue(name, out var ov))
+        {
+            var kind = ov.VarKind switch
+            {
+                GlobalVarKind.Pointer => VarKind.Pointer,
+                GlobalVarKind.Array   => VarKind.Array,
+                _                     => VarKind.Scalar,
+            };
+            int varDs = ov.VarKind == GlobalVarKind.Scalar ? ov.ByteSize : 2;
+            int elemSz = kind == VarKind.Scalar ? varDs : ov.ElemSize;
+            return new VarInfo { IsResolved = true, Kind = kind, ElemSize = elemSz, VarDataSize = varDs };
+        }
+        // 4. グローバルシンボル
         var sym = _globalSymbols?.Resolve(name);
         if (sym != null)
         {
@@ -88,7 +111,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 elemSz = 2;
             return new VarInfo { IsResolved = true, Kind = kind, ElemSize = elemSz, VarDataSize = varDs, GlobalSym = sym };
         }
-        // 4. 未解決
+        // 5. 未解決
         return new VarInfo { IsResolved = false, Kind = VarKind.Scalar, ElemSize = 2, VarDataSize = 2 };
     }
 
@@ -277,6 +300,23 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         int ds = node.Size == DataSize.Byte ? 1 : (node.Size == DataSize.Float ? 3 : 2);
 
+        // オーバーレイ モジュール直下の VAR → overlay.LocalVars に登録 (main __WORK__ を汚さない)
+        if (_currentOverlay != null && _currentFunction == null && !_inStaticDecl)
+        {
+            var ovLabel = LabelUtils.OverlayVarLabel(_currentOverlay.Index, node.Name);
+            var info = new GlobalVarInfo
+            {
+                Name = node.Name,
+                AsmLabel = ovLabel,
+                ByteSize = ds,
+                ElemSize = ds,
+                VarKind = GlobalVarKind.Scalar,
+            };
+            _currentOverlay.LocalVars.Add(info);
+            _currentOverlayLookup![node.Name] = info;
+            return IrOperand.None;
+        }
+
         // グローバルスコープ or 関数内静的宣言 → __WORK__に配置
         if (_currentFunction == null || _inStaticDecl)
         {
@@ -302,7 +342,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 Name = node.Name,
                 AsmLabel = label,
                 ByteSize = ds,
+                ElemSize = ds,
                 FixedAddress = fixedAddr,
+                VarKind = GlobalVarKind.Scalar,
             });
 
             // 初期値付き: _emitToGlobalDataでGlobalDataに積む（起動時1回だけ初期化）
@@ -363,6 +405,28 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
             dims.Add(dimSize);
             if (dimSize > 0) totalSize *= dimSize;
+        }
+
+        // オーバーレイ モジュール直下の ARRAY → overlay.LocalVars (InitialValue / 固定アドレスは
+        // Semantic 段階でエラー判定済みなので、ここでは BSS の純粋配列/ポインタのみ扱う)
+        if (_currentOverlay != null && _currentFunction == null && !_inStaticDecl)
+        {
+            bool isPtr = dims.All(d => d == 0);
+            int byteSize = isPtr ? 2 : totalSize;
+            var ovLabel = LabelUtils.OverlayVarLabel(_currentOverlay.Index, node.Name);
+            var info = new GlobalVarInfo
+            {
+                Name = node.Name,
+                AsmLabel = ovLabel,
+                ByteSize = byteSize,
+                ElemSize = elemSize,
+                IsArray = true,
+                VarKind = isPtr ? GlobalVarKind.Pointer : GlobalVarKind.Array,
+                StorageKind = VarStorageKind.Bss,
+            };
+            _currentOverlay.LocalVars.Add(info);
+            _currentOverlayLookup![node.Name] = info;
+            return IrOperand.None;
         }
 
         if (_currentFunction == null || _inStaticDecl)
@@ -2106,22 +2170,36 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitOrgDirective(OrgDirective node)
     {
-        if (node.Value is IntegerLiteral lit)
-            _module.OrgAddress = (int)lit.Value;
+        int? addr = EvaluateAddress(node.Value);
+        if (addr.HasValue) _module.OrgAddress = addr.Value;
         return IrOperand.None;
     }
 
     public IrOperand VisitWorkDirective(WorkDirective node)
     {
-        if (node.Value is IntegerLiteral lit)
-            _module.WorkAddress = (int)lit.Value;
+        int? addr = EvaluateAddress(node.Value);
+        if (!addr.HasValue) return IrOperand.None;
+
+        if (_currentOverlay != null)
+            _currentOverlay.WorkAddress = addr.Value;
+        else
+            _module.WorkAddress = addr.Value;
         return IrOperand.None;
+    }
+
+    /// <summary>ORG/WORK/OFFSET 用の定数式評価 (IntegerLiteral の高速パス付き)。</summary>
+    private int? EvaluateAddress(Expression expr)
+    {
+        if (expr is IntegerLiteral lit) return (int)lit.Value;
+        if (_globalSymbols == null) return null;
+        var ce = new ConstEvaluator(_globalSymbols);
+        return ce.Evaluate(expr);
     }
 
     public IrOperand VisitOffsetDirective(OffsetDirective node)
     {
-        if (node.Value is IntegerLiteral lit)
-            _module.OffsetAddress = (int)lit.Value;
+        int? addr = EvaluateAddress(node.Value);
+        if (addr.HasValue) _module.OffsetAddress = addr.Value;
         return IrOperand.None;
     }
 
@@ -2130,15 +2208,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // オーバーレイモジュール: 別のコンテキストに切り替えてIR生成
         // シンボルテーブルは共有のまま（メイン部と相互参照可能）
 
-        int orgAddr = 0;
-        if (node.Name is IntegerLiteral lit)
-            orgAddr = (int)lit.Value;
-        else
-        {
-            var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
-            var val = constEval?.Evaluate(node.Name);
-            if (val.HasValue) orgAddr = val.Value;
-        }
+        int orgAddr = EvaluateAddress(node.Name) ?? 0;
 
         var overlay = new OverlayModule
         {
@@ -2146,22 +2216,32 @@ public class IrGenerator : IAstVisitor<IrOperand>
             OrgAddress = orgAddr,
         };
 
-        // メイン部のFunctionsリストを退避して、オーバーレイ用に切り替え
-        var savedFunctions = _module.Functions;
-        var overlayFunctions = overlay.Functions;
+        // VAR/ARRAY/WORK の振り分け先を切り替え
+        var prevOverlay = _currentOverlay;
+        var prevOverlayLookup = _currentOverlayLookup;
+        _currentOverlay = overlay;
+        _currentOverlayLookup = new Dictionary<string, GlobalVarInfo>(StringComparer.OrdinalIgnoreCase);
 
-        // モジュール内の定義をIR化（関数はoverlayのリストに追加される）
-        foreach (var def in node.Definitions)
+        try
         {
-            var prevCount = _module.Functions.Count;
-            def.Accept(this);
-            // 新たに追加された関数をoverlayに移動
-            while (_module.Functions.Count > prevCount)
+            // モジュール内の定義をIR化（関数はoverlayのリストに追加される）
+            foreach (var def in node.Definitions)
             {
-                var func = _module.Functions[^1];
-                _module.Functions.RemoveAt(_module.Functions.Count - 1);
-                overlayFunctions.Add(func);
+                var prevCount = _module.Functions.Count;
+                def.Accept(this);
+                // 新たに追加された関数をoverlayに移動
+                while (_module.Functions.Count > prevCount)
+                {
+                    var func = _module.Functions[^1];
+                    _module.Functions.RemoveAt(_module.Functions.Count - 1);
+                    overlay.Functions.Add(func);
+                }
             }
+        }
+        finally
+        {
+            _currentOverlay = prevOverlay;
+            _currentOverlayLookup = prevOverlayLookup;
         }
 
         _module.Overlays.Add(overlay);
