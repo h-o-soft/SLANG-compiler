@@ -1,5 +1,6 @@
 using System.Text;
 using SLANGCompiler.IR;
+using SLANGCompiler.Runtime;
 
 namespace SLANGCompiler.CodeGen;
 
@@ -26,6 +27,15 @@ public class CodeGenerator
     private int _currentFuncLocalSize;
     private readonly HashSet<string> _calledFunctions = new(StringComparer.OrdinalIgnoreCase);
     private int _genLabelCount;
+
+    // ランタイム集約 plan (PrepareRuntimePlan で確定)。null なら従来挙動 (= 全関数 Local
+    // 等価) にフォールバックする。GenerateAll 経由なら必ず確定する。
+    private RuntimePlan? _runtimePlan;
+
+    /// <summary>GenerateAll 完了後に得られる runtime 集約 plan。
+    /// CLI 側 (.inc 生成等) で shared runtime 関数のラベルを引くために露出。null の場合は
+    /// runtime manager がない (= test 単独 Generate 等)。</summary>
+    public RuntimePlan? RuntimePlan => _runtimePlan;
     private bool IsCodeReadonly => _envConfig?.CodeReadonly == true;
 
     public CodeGenerator(IrModule module, Runtime.RuntimeManager? runtimeManager = null,
@@ -44,6 +54,12 @@ public class CodeGenerator
     /// </summary>
     public (string MainAsm, List<(string Name, string Asm)> Overlays) GenerateAll()
     {
+        // Phase 1 (collect): main + 全 overlay の関数本体を temp emit して
+        // _calledFunctions を per-target で集計し、RuntimePlanner で plan を確定する。
+        // 本番出力 (Phase 2) は plan 経由で main resident / overlay local / EXTERN を
+        // 振り分ける。
+        PrepareRuntimePlan();
+
         var mainAsm = Generate();
         var overlays = new List<(string, string)>();
 
@@ -53,6 +69,55 @@ public class CodeGenerator
         }
 
         return (mainAsm, overlays);
+    }
+
+    /// <summary>
+    /// 関数本体を全 target で dry-run emit して呼び出し集合を集計し、
+    /// RuntimePlanner.Build() で _runtimePlan を確定する。
+    ///
+    /// 副作用: 一時 emitter / _calledFunctions を退避→復元し、出力には影響しない。
+    /// 関数本体は本番 (Generate / GenerateOverlay 内) で再度 emit される (= 二重 emit)
+    /// が、決定論的なので結果は同一。
+    /// </summary>
+    private void PrepareRuntimePlan()
+    {
+        if (_runtimeManager == null) return;
+
+        var savedEmitter = _e;
+        var savedCalled = new HashSet<string>(_calledFunctions, StringComparer.OrdinalIgnoreCase);
+
+        // main の calls 収集
+        _calledFunctions.Clear();
+        _e = new Z80Emitter();
+        foreach (var f in _module.Functions) EmitFunction(f);
+        var mainCalled = new HashSet<string>(_calledFunctions, StringComparer.OrdinalIgnoreCase);
+
+        // address symbol deps (CONST 式等で参照される runtime ラベル)
+        foreach (var dep in _module.AddressSymbolDeps)
+            if (_runtimeManager.Functions.ContainsKey(dep)) mainCalled.Add(dep);
+
+        // 各 overlay の calls 収集
+        var overlayCalled = new Dictionary<int, HashSet<string>>();
+        foreach (var overlay in _module.Overlays)
+        {
+            _calledFunctions.Clear();
+            _e = new Z80Emitter();
+            foreach (var f in overlay.Functions) EmitFunction(f);
+            overlayCalled[overlay.Index] = new HashSet<string>(_calledFunctions, StringComparer.OrdinalIgnoreCase);
+        }
+
+        // 状態復元
+        _e = savedEmitter;
+        _calledFunctions.Clear();
+        foreach (var n in savedCalled) _calledFunctions.Add(n);
+
+        // SLANGINIT は環境にあれば main inline 候補 (= 既存 GetAndExclude 相当)
+        var inlineNames = _runtimeManager.Functions.ContainsKey("SLANGINIT")
+            ? new[] { "SLANGINIT" }
+            : Array.Empty<string>();
+
+        _runtimePlan = RuntimePlanner.Build(mainCalled, _module.Overlays,
+            overlayCalled, _runtimeManager, inlineNames);
     }
 
     private string GenerateOverlay(OverlayModule overlay)
@@ -92,7 +157,11 @@ public class CodeGenerator
             foreach (var f in _module.Functions)
                 userFuncs.Add(f.Name);
 
-            var overlayRuntime = _runtimeManager.ResolveForNames(_calledFunctions, userFuncs).ToList();
+            // plan があれば overlay 用 local 集合を採用 (shared promoted は extern に分離済み)、
+            // ない場合は従来の依存解決にフォールバック。
+            var overlayRuntime = _runtimePlan != null
+                ? _runtimePlan.GetOverlayOutputFunctions(overlay.Index).ToList()
+                : _runtimeManager.ResolveForNames(_calledFunctions, userFuncs).ToList();
             if (overlayRuntime.Count > 0)
             {
                 _e.Blank();
@@ -138,6 +207,27 @@ public class CodeGenerator
                 offset += v.ByteSize;
             }
             _e.Raw($"__WORKEND_M{overlay.Index}__ EQU ({workLabel} + {offset})");
+        }
+
+        // 共有 runtime 関数: shared promoted な main resident 関数を overlay 側から
+        // EXTERN 参照する。AILZ80ASM には EXTERN がないため、現状はコメント形式で出力し、
+        // PR-B (二段アセンブル toolchain) で main の .sym を読んで `<name> EQU $XXXX`
+        // を本ファイル先頭に注入する形で実シンボル解決される予定。
+        var externNames = _runtimePlan?.GetOverlayExternNames(overlay.Index).ToList()
+                          ?? new List<string>();
+        if (externNames.Count > 0)
+        {
+            _e.Blank();
+            _e.Comment("=== Shared Runtime References (resolved via two-stage assembly) ===");
+            foreach (var name in externNames)
+            {
+                // namespace 付き表記もコメントに残す (PR-B での EQU 注入時に役立つ)
+                var ns = _runtimeManager?.Functions.TryGetValue(name, out var func) == true
+                    ? func!.LibName
+                    : null;
+                var nsHint = ns != null ? $"  ; [{ns}].{name}" : "";
+                _e.Raw($"; EXTERN {name}{nsHint}");
+            }
         }
 
         // 共有シンボル: メイン部のグローバル変数をEQUまたはEXTERN宣言
@@ -187,7 +277,10 @@ public class CodeGenerator
         _e = savedEmitter;
 
         // === Phase 2: ランタイム使用関数の確定 ===
-        if (_runtimeManager != null)
+        // _runtimePlan がある場合 (= GenerateAll 経由) は plan に集約済みなので MarkUsed
+        // は不要。Generate() 単体呼び出し (test 等) で plan が null なら従来パスで MarkUsed
+        // する (既存挙動互換)。
+        if (_runtimeManager != null && _runtimePlan == null)
         {
             var userFuncs = new HashSet<string>(_module.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
             foreach (var name in _calledFunctions)
@@ -195,7 +288,6 @@ public class CodeGenerator
                 if (!userFuncs.Contains(name))
                     _runtimeManager.MarkUsed(name);
             }
-            // アドレス式の依存シンボルもランタイムリンク
             foreach (var dep in _module.AddressSymbolDeps)
             {
                 if (_runtimeManager.Functions.ContainsKey(dep))
@@ -218,8 +310,10 @@ public class CodeGenerator
         // === Phase 4: エントリポイント生成 ===
         if (_runtimeManager?.Functions.ContainsKey("SLANGINIT") == true)
         {
-            // SLANGINITをインライン展開し、通常出力から除外
-            var code = _runtimeManager.GetAndExclude("SLANGINIT");
+            // SLANGINIT を inline 展開し、通常 runtime 出力からは除外する
+            // (plan が確定していれば MainInlineFunctions 経由、そうでなければ既存パス)
+            var slanginit = _runtimePlan?.GetAndConsumeInline("SLANGINIT");
+            var code = slanginit?.Code ?? _runtimeManager.GetAndExclude("SLANGINIT");
             if (code != null)
             {
                 var callinitReplacement = BuildCallInitializerCode();
@@ -341,7 +435,11 @@ public class CodeGenerator
             // RUNTIME_INIT（常に出力）
             EmitRuntimeInit();
 
-            var outputFuncs = _runtimeManager.GetOutputFunctions().ToList();
+            // plan があれば main resident 集合 (alias 正規化 + inline 除外済み) を採用、
+            // ない場合は従来の使用済み集合 + exclude フィルタにフォールバック。
+            var outputFuncs = _runtimePlan != null
+                ? _runtimePlan.GetMainOutputFunctions().ToList()
+                : _runtimeManager.GetOutputFunctions().ToList();
             if (outputFuncs.Count > 0)
             {
                 _e.Blank();
@@ -496,33 +594,42 @@ public class CodeGenerator
     {
         _e.Blank();
         _e.Label("RUNTIME_INIT");
-        if (_runtimeManager != null)
+        // plan があれば main resident + inline 両方の InitCode を集約 (shared promoted
+        // 関数の @init_code が main RUNTIME_INIT に乗ることを保証)。
+        var initFuncs = GetInitFunctions();
+        foreach (var func in initFuncs)
         {
-            foreach (var func in _runtimeManager.GetUsedFunctions())
-            {
-                if (!string.IsNullOrEmpty(func.InitCode))
-                    _e.Instruction("CALL", $"{func.Name}_INITIALIZE");
-            }
+            if (!string.IsNullOrEmpty(func.InitCode))
+                _e.Instruction("CALL", $"{func.Name}_INITIALIZE");
         }
         _e.Instruction("RET");
 
         // 各initializer本体
-        if (_runtimeManager != null)
+        foreach (var func in initFuncs)
         {
-            foreach (var func in _runtimeManager.GetUsedFunctions())
+            if (!string.IsNullOrEmpty(func.InitCode))
             {
-                if (!string.IsNullOrEmpty(func.InitCode))
+                _e.Blank();
+                _e.Label($"{func.Name}_INITIALIZE");
+                foreach (var line in func.InitCode.Split('\n'))
                 {
-                    _e.Blank();
-                    _e.Label($"{func.Name}_INITIALIZE");
-                    foreach (var line in func.InitCode.Split('\n'))
-                    {
-                        if (!string.IsNullOrWhiteSpace(line))
-                            _e.Raw(line);
-                    }
+                    if (!string.IsNullOrWhiteSpace(line))
+                        _e.Raw(line);
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// RUNTIME_INIT 対象の関数集合を返す。plan があれば plan 経由 (shared promoted を
+    /// 含む)、ない場合は従来の使用済み集合。
+    /// </summary>
+    private List<RuntimeFunction> GetInitFunctions()
+    {
+        if (_runtimeManager == null) return new List<RuntimeFunction>();
+        if (_runtimePlan != null)
+            return _runtimePlan.GetMainInitFunctions().ToList();
+        return _runtimeManager.GetUsedFunctions().ToList();
     }
 
     /// <summary>
@@ -531,6 +638,9 @@ public class CodeGenerator
     private bool HasRuntimeInitializers()
     {
         if (_runtimeManager == null) return false;
+        // plan があれば plan 経由で判定 (shared promoted 関数の InitCode も含む)
+        if (_runtimePlan != null)
+            return _runtimePlan.GetMainInitFunctions().Any();
         return _runtimeManager.GetUsedFunctions().Any(f => !string.IsNullOrEmpty(f.InitCode));
     }
 
@@ -593,10 +703,15 @@ public class CodeGenerator
         if (_runtimeManager != null)
         {
             // Step 1: 旧実装互換のラベル単位dedupe（フラット化）
+            // plan があれば main resident + inline 両方の @works を集約 (shared promoted
+            // 関数の作業変数も main __WORK__ に確保することを保証)。
             var seenLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var flatItems = new List<(string Label, int Size, string? LibName, int Alignment)>();
+            var worksSourceFuncs = _runtimePlan != null
+                ? _runtimePlan.GetMainWorksFunctions()
+                : _runtimeManager.GetUsedFunctions();
 
-            foreach (var func in _runtimeManager.GetUsedFunctions())
+            foreach (var func in worksSourceFuncs)
             {
                 if (func.Works == null || func.Works.Count == 0) continue;
                 foreach (var (label, size) in func.Works)

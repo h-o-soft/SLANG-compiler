@@ -1126,4 +1126,83 @@ END;
         Assert.Contains("SUB:", ov);
         Assert.Contains("NOP", ov);
     }
+
+    // ---- #MODULE ランタイム集約ポリシー (PR-A 内部設計) ----
+
+    [Fact]
+    public void Overlay_RuntimePolicy_Omitted_BackwardCompat()
+    {
+        // ポリシー省略 = Local モード (現状互換)。PR-A 後も既存 overlay 出力は変わらず、
+        // overlay 内に runtime 関数 (MPRNT 等) が複製展開される。
+        var source = @"
+MAIN() BEGIN BEEP(); END;
+#MODULE $8000
+SUB() BEGIN PRINT(""X""); END;
+";
+        var (_, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+        // Overlay_OnlyOwnRuntime と同じ: overlay に MPRNT が local 展開される
+        Assert.Contains("MPRNT:", ov);
+        // 共有用 EXTERN セクションは関数側 @resident shared が無いので空
+        Assert.DoesNotContain("Shared Runtime References", ov);
+    }
+
+    [Fact]
+    public void Overlay_RuntimePolicy_Resident_DefaultRuntimes_StillLocal()
+    {
+        // RESIDENT 指定でも、現状の runtime ライブラリは @resident 未付与 (= default Local)
+        // のため何も共有されない。挙動は Local モードと同じになる (PR-C 待ち)。
+        var source = @"
+MAIN() BEGIN END;
+#MODULE $8000 RESIDENT
+SUB() BEGIN PRINT(""X""); END;
+";
+        var (_, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+        // 関数側が default Local なので shared 化されず、overlay に local 展開される
+        Assert.Contains("MPRNT:", ov);
+        // EXTERN セクションは空 (shared promoted ゼロ)
+        Assert.DoesNotContain("Shared Runtime References", ov);
+    }
+
+    [Fact]
+    public void Overlay_RuntimePolicy_SelfContain_NotImplementedError()
+    {
+        // SELFCONTAIN は enum のみ予約、現時点はコンパイルエラー
+        var stderr = CompileExpectError(@"
+MAIN() BEGIN END;
+#MODULE $8000 SELFCONTAIN
+SUB() BEGIN END;
+");
+        Assert.Contains("not implemented", stderr);
+        Assert.Contains("SelfContain", stderr);
+    }
+
+    [Fact]
+    public void Overlay_RuntimePolicy_Auto_NotImplementedError()
+    {
+        // AUTO も同様に未実装エラー
+        var stderr = CompileExpectError(@"
+MAIN() BEGIN END;
+#MODULE $8000 AUTO
+SUB() BEGIN END;
+");
+        Assert.Contains("not implemented", stderr);
+        Assert.Contains("Auto", stderr);
+    }
+
+    [Fact]
+    public void Overlay_RuntimePolicy_TypoIdentifier_DoesNotSilentlyFallback()
+    {
+        // RESIDNT (typo) は予約語化されていないので Identifier として扱われ、
+        // ParseTopLevel に流れる → 関数定義として括弧不在等のパースエラーで止まる
+        // (= 黙って Local 化しない、Codex 指摘の安全側挙動)
+        var stderr = CompileExpectError(@"
+MAIN() BEGIN END;
+#MODULE $8000 RESIDNT
+SUB() BEGIN END;
+");
+        // typo に対して何かしらのコンパイルエラーが出る (具体メッセージは Parser 依存)
+        Assert.False(string.IsNullOrEmpty(stderr));
+    }
 }

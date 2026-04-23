@@ -755,3 +755,50 @@ ORG を明示できる:
   — overlay GlobalData 未サポート。必要なら関数本体にインライン展開する
 
 （関数内ローカル `VAR` / `ARRAY` やインライン `#ASM` はこの制限の対象外）
+
+### モジュールのランタイム集約ポリシー (v0.23 PR-A: 内部設計)
+
+`#MODULE` ヘッダ位置に optional のポリシー識別子を書ける:
+
+```slang
+#MODULE $8000             /* = Local (省略時、現状互換)         */
+#MODULE $8000 RESIDENT    /* = Resident (main 集約モード)        */
+#MODULE $8000 SELFCONTAIN /* = SelfContain (将来予約、現時点エラー) */
+#MODULE $8000 AUTO        /* = Auto (将来予約、現時点エラー)        */
+```
+
+組み合わせは **ランタイム関数側 `@resident` 属性** との 2 軸で決まる:
+
+```asm
+; runtime/foo.asm 内で関数ヘッダに付与
+; @name MPRNT
+; @resident shared        ← main 常駐に向く (PRINT 系の大物等)
+; ...
+; @name FRAGILE
+; @resident local         ← 各 ASM に local 強制 (override)
+; ...
+```
+
+#### コンフリクト解決マトリクス
+
+| Module ↓ \ Function → | Local (default = 未指定) | Shared |
+|---|---|---|
+| Local (module default)     | local | local (module 側 Local が勝つ) |
+| Resident                   | local (override 効く) | **shared** ← メモリ節約効果 |
+
+メモリ節約効果は `RESIDENT` × `@resident shared` の交点のみ。安全な
+関数だけ opt-in で集約され、`@resident local` を明示した関数は #MODULE
+RESIDENT でも overlay 内に local 展開される (self-modifying / overlay-
+specific WORK を持つ関数を守る安全策)。
+
+#### 現時点 (PR-A) の制約
+
+- 本機能は **ランタイム共有の内部設計まで** が PR-A スコープ。実バイナリ
+  でリンクされるには別 PR (PR-B = 二段アセンブル toolchain) が必要
+- 既存 runtime ライブラリには `@resident shared` がまだ付いていないので、
+  `#MODULE $addr RESIDENT` を書いても現時点では **何も共有されない**
+  (動作は完全に現状互換)。共有効果は別 PR (PR-C) で `MPRNT` / `P10` /
+  `VTOS` 等に段階的に `@resident shared` を付与してから出る
+- 未実装ポリシー (`SELFCONTAIN` / `AUTO`) はコンパイルエラーになる
+- overlay ASM 末尾に `; === Shared Runtime References ===` という EXTERN
+  コメントが出力される (= PR-B での EQU 注入の入力リスト)

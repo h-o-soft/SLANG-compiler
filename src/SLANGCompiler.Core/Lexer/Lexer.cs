@@ -51,6 +51,10 @@ public class Lexer
         ["ORG"] = TokenKind.Org,
         ["WORK"] = TokenKind.Work,
         ["OFFSET"] = TokenKind.Offset,
+        // #MODULE ヘッダのランタイム集約ポリシー
+        ["RESIDENT"] = TokenKind.Resident,
+        ["SELFCONTAIN"] = TokenKind.SelfContain,
+        ["AUTO"] = TokenKind.Auto,
         ["PRINT"] = TokenKind.Print,
         ["CODE"] = TokenKind.Code,
         ["HIGH"] = TokenKind.High,
