@@ -175,7 +175,8 @@ public class Driver
         string mainAsm, string mainBin, string mainSym,
         List<string> overlayAsms, string outputDir, List<string> intermediates)
     {
-        var mainResult = runner.AssembleMain(mainAsm, mainBin, mainSym);
+        var mainLst = Path.ChangeExtension(mainBin, ".LST");
+        var mainResult = runner.AssembleMain(mainAsm, mainBin, mainSym, lstPath: mainLst);
         if (!mainResult.Success)
         {
             Console.Error.Write(mainResult.Stderr);
@@ -190,6 +191,7 @@ public class Driver
             var importsAsm = Path.Combine(outputDir, overlayBase + ".imports.asm");
             var overlayBin = Path.Combine(outputDir, overlayBase + ".bin");
             var overlaySym = Path.Combine(outputDir, overlayBase + ".sym");
+            var overlayLst = Path.Combine(outputDir, overlayBase + ".LST");
 
             var (_, unresolved) = OverlayImportsBuilder.Build(mainSym, overlayAsm, importsAsm);
             intermediates.Add(importsAsm);
@@ -201,7 +203,8 @@ public class Driver
                     + "(main.sym lacks: " + string.Join(", ", unresolved) + ")");
             }
 
-            var ovResult = runner.AssembleOverlay(importsAsm, overlayAsm, overlayBin, overlaySym);
+            var ovResult = runner.AssembleOverlay(importsAsm, overlayAsm, overlayBin, overlaySym,
+                                                  lstPath: overlayLst);
             if (!ovResult.Success)
             {
                 Console.Error.Write(ovResult.Stderr);
@@ -277,20 +280,22 @@ public class Driver
             }
 
             // 本番出力ファイル名: main は <prefix>.bin、overlay は <prefix>._mN.bin
-            string outBin, outSym;
+            string outBin, outSym, outLst;
             if (t.Label == "main")
             {
                 outBin = mainBin;
                 outSym = mainSym;
+                outLst = Path.ChangeExtension(mainBin, ".LST");
             }
             else
             {
                 outBin = Path.Combine(outputDir, baseName + ".bin");
                 outSym = Path.Combine(outputDir, baseName + ".sym");
+                outLst = Path.Combine(outputDir, baseName + ".LST");
             }
 
             var result = runner.AssembleOverlay(importsAsm, t.AsmPath, outBin, outSym,
-                                                superAssemble: false);
+                                                superAssemble: false, lstPath: outLst);
             if (!result.Success)
             {
                 Console.Error.Write(result.Stderr);

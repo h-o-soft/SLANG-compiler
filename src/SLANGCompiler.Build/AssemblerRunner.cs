@@ -28,10 +28,13 @@ public class AssemblerRunner
     /// <param name="superAssemble">true (default) = 既存挙動 (JR/JP 自動最適化)。
     /// false = `-nsa` 付与で命令長を固定 (PR-B2 prelink Pass 1/3 用、Pass 1 と
     /// Pass 3 で同じファイル内ラベルアドレスを一致させるため)</param>
+    /// <param name="lstPath">non-null なら `-lst &lt;path&gt;` を付与してリスト
+    /// ファイルを出力。本番アセンブル (単段モード or prelink Pass 3) では指定し、
+    /// prelink Pass 1 (中間用) では null にして無駄な出力を避ける。</param>
     public AssemblerResult AssembleMain(string asmPath, string outBinPath, string outSymPath,
-                                        bool superAssemble = true)
+                                        bool superAssemble = true, string? lstPath = null)
     {
-        var args = BuildArgs(new[] { asmPath }, outBinPath, outSymPath, superAssemble);
+        var args = BuildArgs(new[] { asmPath }, outBinPath, outSymPath, superAssemble, lstPath);
         return Run(args);
     }
 
@@ -42,21 +45,23 @@ public class AssemblerRunner
     /// </summary>
     /// <param name="superAssemble">true (default) = 既存挙動 (PR-B 単段フロー用)、
     /// false = `-nsa` 付与 (PR-B2 prelink Pass 1/3 用)</param>
+    /// <param name="lstPath">non-null なら `-lst &lt;path&gt;` を付与</param>
     public AssemblerResult AssembleOverlay(string importsAsmPath, string overlayAsmPath,
                                            string outBinPath, string outSymPath,
-                                           bool superAssemble = true)
+                                           bool superAssemble = true, string? lstPath = null)
     {
         var args = BuildArgs(new[] { importsAsmPath, overlayAsmPath },
-                             outBinPath, outSymPath, superAssemble);
+                             outBinPath, outSymPath, superAssemble, lstPath);
         return Run(args);
     }
 
     private static string[] BuildArgs(string[] inputs, string outBinPath, string outSymPath,
-                                      bool superAssemble)
+                                      bool superAssemble, string? lstPath)
     {
         var list = new List<string>(inputs);
         list.Add("-bin"); list.Add(outBinPath);
         list.Add("-sym"); list.Add(outSymPath);
+        if (lstPath != null) { list.Add("-lst"); list.Add(lstPath); }
         list.Add("-sm");  list.Add("minimal-equ");
         list.Add("-f");
         if (!superAssemble) list.Add("-nsa");
