@@ -27,16 +27,35 @@ public class ToolResolver
     /// 解決順:
     /// 1) cliOverride (--slangc 引数)
     /// 2) bundled: {baseDir}/slangc(.exe), {baseDir}/bin/slangc(.exe)
-    /// 3) PATH 上の slangc
-    /// 4) dev fallback: dotnet (= caller が `dotnet run --project ...` を組み立てる)
+    /// 3) dev publish: repo root を辿って
+    ///    src/SLANGCompiler.CLI/bin/(Release|Debug)/net8.0/&lt;RID&gt;/publish/slangc(.exe)
+    ///    が見つかればそれ (= dev 環境で publish 済みの最新 slangc を PATH 上の
+    ///    旧版より優先)
+    /// 4) PATH 上の slangc (= 配布版を OS にインストールしたケース)
+    /// 5) dev fallback: dotnet (= caller が `dotnet run --project ...` を組み立てる)
     /// </summary>
     public ResolvedTool ResolveSlangc(string? cliOverride)
     {
         var name = $"slangc{ExeSuffix}";
-        var path = ResolveExecutable(cliOverride, name, includeBundledTools: false);
-        if (path != null) return new ResolvedTool(path, ResolutionKind.DirectExe);
 
-        // dev fallback: dotnet run --project <repo>/src/SLANGCompiler.CLI/...
+        // 1) cliOverride / 2) bundled (PATH 検索なしバージョン)
+        if (!string.IsNullOrEmpty(cliOverride) && File.Exists(cliOverride))
+            return new ResolvedTool(cliOverride, ResolutionKind.DirectExe);
+        var direct = Path.Combine(_baseDir, name);
+        if (File.Exists(direct)) return new ResolvedTool(direct, ResolutionKind.DirectExe);
+        var binDir = Path.Combine(_baseDir, "bin", name);
+        if (File.Exists(binDir)) return new ResolvedTool(binDir, ResolutionKind.DirectExe);
+
+        // 3) dev publish 物 (= dev 環境で `dotnet publish` 済みの最新 slangc)
+        //    PATH 上の旧版に上書きされないよう、PATH 検索より前に挿入する
+        var devPublish = LocateDevPublishedSlangc(name);
+        if (devPublish != null) return new ResolvedTool(devPublish, ResolutionKind.DirectExe);
+
+        // 4) PATH
+        var onPath = FindOnPath(name);
+        if (onPath != null) return new ResolvedTool(onPath, ResolutionKind.DirectExe);
+
+        // 5) dev fallback: dotnet run --project <repo>/src/SLANGCompiler.CLI/...
         var dotnet = FindOnPath($"dotnet{ExeSuffix}");
         if (dotnet != null)
         {
@@ -46,8 +65,52 @@ public class ToolResolver
         }
 
         throw new FileNotFoundException(
-            "slangc not found. Tried: --slangc, bundled bin, PATH, and dev `dotnet run` fallback. "
+            "slangc not found. Tried: --slangc, bundled bin, dev publish, PATH, and dev `dotnet run` fallback. "
             + "Specify --slangc <path> explicitly.");
+    }
+
+    /// <summary>
+    /// dev 環境想定: repo root を起点に slangc の publish 物を探す。
+    /// <c>src/SLANGCompiler.CLI/bin/(Release|Debug)/net8.0/&lt;RID&gt;/publish/slangc(.exe)</c>
+    /// 配布物の `<root>/bin/slangc` パターンには触れない (= 通常解決順 2 が拾う想定)。
+    /// </summary>
+    private string? LocateDevPublishedSlangc(string name)
+    {
+        var binRoot = LocateRepoDir("src/SLANGCompiler.CLI/bin");
+        if (binRoot == null) return null;
+
+        // Release/Debug × <RID>/publish を全部走査して最新を拾う
+        string? newest = null;
+        DateTime newestTime = DateTime.MinValue;
+        foreach (var config in new[] { "Release", "Debug" })
+        {
+            var configDir = Path.Combine(binRoot, config, "net8.0");
+            if (!Directory.Exists(configDir)) continue;
+            foreach (var ridDir in Directory.GetDirectories(configDir))
+            {
+                var candidate = Path.Combine(ridDir, "publish", name);
+                if (!File.Exists(candidate)) continue;
+                var t = File.GetLastWriteTimeUtc(candidate);
+                if (t > newestTime)
+                {
+                    newest = candidate;
+                    newestTime = t;
+                }
+            }
+        }
+        return newest;
+    }
+
+    /// <summary>repo root を辿って指定相対ディレクトリを探す (LocateRepoFile の dir 版)</summary>
+    private string? LocateRepoDir(string relPath)
+    {
+        var dir = new DirectoryInfo(_baseDir);
+        for (int i = 0; i < 8 && dir != null; i++, dir = dir.Parent)
+        {
+            var candidate = Path.Combine(dir.FullName, relPath);
+            if (Directory.Exists(candidate)) return candidate;
+        }
+        return null;
     }
 
     /// <summary>
