@@ -1,5 +1,12 @@
 # 更新履歴
 
+## Unreleased
+
+- `cpm` 環境を独立した env として明示化 (#145)
+  - `runtime/env/cpm.env` を新設 (env_type/os_type は lsx と同じ 0/0、libraries は lsx 互換)。条件コンパイル `#IF (ENV_TYPE<=1)` 等の意味は変わらない
+  - `Makefile.dist` の `ENV=cpm` で `SLANGENV=cpm` を参照
+  - これまで `-E cpm` 指定時は env file が見つからず「全 runtime/*.asm を fallback ロード」していたため、`libpc80mk2_print` の `@works WORK10:10` と `liblsx_print` 等の local `WORK10:` ラベルが AILZ80ASM 段階で衝突していた (Issue #145)。cpm.env 追加により lsx 互換セットのみがロードされ衝突解消
+
 ## Version 0.22.0
 
 - `#MODULE` (オーバーレイ) をモジュール専用ワーク対応に拡張
