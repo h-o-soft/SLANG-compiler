@@ -2,12 +2,14 @@
 # SLANG New Compiler (slangc) publisher
 
 CSPROJ=src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj
+CSPROJ_BUILD=src/SLANGCompiler.Build/SLANGCompiler.Build.csproj
 TFM=net8.0
 
 createRelease() {
   cd publish-new/$1
   mkdir bin
   mv slangc* bin
+  mv slangbuild* bin
   cp -r ../../include .
   cp -r ../../runtime .
   # examples: SLANGソースのみ（ビルド成果物除外）
@@ -81,20 +83,25 @@ fi
 VERSION=$1
 rm -rf publish-new
 
-dotnet publish $CSPROJ -c Release -r osx-x64 --self-contained true /p:PublishSingleFile=true
-dotnet publish $CSPROJ -c Release -r osx-arm64 --self-contained true /p:PublishSingleFile=true
-dotnet publish $CSPROJ -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true
-dotnet publish $CSPROJ -c Release -r linux-x64 --self-contained true /p:PublishSingleFile=true
+for RID in osx-x64 osx-arm64 win-x64 linux-x64; do
+  dotnet publish $CSPROJ       -c Release -r $RID --self-contained true /p:PublishSingleFile=true
+  dotnet publish $CSPROJ_BUILD -c Release -r $RID --self-contained true /p:PublishSingleFile=true
+done
 
 mkdir -p publish-new/osx-x64
 mkdir -p publish-new/osx-arm64
 mkdir -p publish-new/win-x64
 mkdir -p publish-new/linux-x64
 
-cp src/SLANGCompiler.CLI/bin/Release/$TFM/osx-x64/publish/slangc publish-new/osx-x64
-cp src/SLANGCompiler.CLI/bin/Release/$TFM/osx-arm64/publish/slangc publish-new/osx-arm64
-cp src/SLANGCompiler.CLI/bin/Release/$TFM/win-x64/publish/slangc.exe publish-new/win-x64
-cp src/SLANGCompiler.CLI/bin/Release/$TFM/linux-x64/publish/slangc publish-new/linux-x64
+cp src/SLANGCompiler.CLI/bin/Release/$TFM/osx-x64/publish/slangc          publish-new/osx-x64
+cp src/SLANGCompiler.CLI/bin/Release/$TFM/osx-arm64/publish/slangc        publish-new/osx-arm64
+cp src/SLANGCompiler.CLI/bin/Release/$TFM/win-x64/publish/slangc.exe      publish-new/win-x64
+cp src/SLANGCompiler.CLI/bin/Release/$TFM/linux-x64/publish/slangc        publish-new/linux-x64
+
+cp src/SLANGCompiler.Build/bin/Release/$TFM/osx-x64/publish/slangbuild        publish-new/osx-x64
+cp src/SLANGCompiler.Build/bin/Release/$TFM/osx-arm64/publish/slangbuild      publish-new/osx-arm64
+cp src/SLANGCompiler.Build/bin/Release/$TFM/win-x64/publish/slangbuild.exe    publish-new/win-x64
+cp src/SLANGCompiler.Build/bin/Release/$TFM/linux-x64/publish/slangbuild      publish-new/linux-x64
 
 createRelease osx-x64 sh $VERSION
 createRelease osx-arm64 sh $VERSION

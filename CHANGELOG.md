@@ -2,6 +2,15 @@
 
 ## Unreleased (v0.23.0 候補)
 
+- 二段アセンブル toolchain `slangbuild` を新ドライバとして追加 (PR-B)
+  - `src/SLANGCompiler.Build/` を新規 .NET 8 プロジェクトとして追加。`slangc` は改修せず、`slangbuild` が orchestration (slangc → AILZ80ASM main → AILZ80ASM overlay) を担う GCC 的責務分離
+  - **二段フロー**: main を `-sm minimal-equ` でアセンブルして `.sym` を生成 → 各 overlay について overlay ASM 内の `; EXTERN` リストと main.sym の交集合だけを抽出した `<overlay>.imports.asm` (filtered EQU) を作成 → `imports.asm + overlay.ASM` を AILZ80ASM に投入。raw main.sym をそのまま渡すと compiler 内部ラベル衝突が起きるため必ず filter する
+  - `OverlayImportsBuilder` が PR-A で出力された 3 つの固定セクション (`Shared Runtime References` / `Shared Symbols` / `String references`) 内の `; EXTERN` 行のみを regex で抽出 (誤検出防止)
+  - `ToolResolver` で slangc / AILZ80ASM のパス解決順を仕様化 (`--slangc` / `--asm` → 同梱 bin → PATH → dev fallback)。配布スクリプト (Makefile.dist / publish.sh) では明示指定で再現性確保
+  - `Makefile.dist` を `slangbuild` 経由に切替。overlay 不要 (`#MODULE` 未使用) の SL でも単段フローで動く
+  - `publish.sh` に slangbuild の 4 platform publish + zip 同梱を追加
+  - 新規テスト: `SymFileReaderTests` (5 件) + `OverlayImportsBuilderTests` (4 件) + `BuildIntegrationTests` (6 件 E2E) = 計 15 件
+  - **注意**: 本 PR は **toolchain 機構** のみ。実バイナリでメモリ節約効果が出るには別 PR (PR-C) で `runtime/lsx*.asm` 等への `@resident shared` 付与が必要。本 PR マージ直後は全 overlay が default Local で従来挙動互換
 - `#MODULE` (オーバーレイ) をモジュール専用ワーク対応に拡張
   - モジュール直下の `VAR` / `ARRAY` を **モジュール私有ワークエリア `__WORK_M<N>__`** に配置。ASM ラベルは `_V_M<N>_<NAME>` で名前空間分離されるため、main と同名の変数を宣言しても物理メモリ上同居せず、各 overlay の swap 先でメモリを再利用できる
   - `#MODULE` 内に `WORK <定数式>` を書くことでモジュール専用ワークの ORG を明示可能 (未指定時は overlay コード末尾に連続配置)

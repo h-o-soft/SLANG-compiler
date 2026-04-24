@@ -61,3 +61,7 @@ apps/*.LST
 apps/*.SYM
 apps/*.bin
 apps/PROG.*
+
+# fixture runtime/asm はテスト資産なので ignore 例外
+!tests/**/fixtures/**/*.asm
+!tests/**/fixtures/**/*.ASM

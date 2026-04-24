@@ -802,3 +802,62 @@ specific WORK を持つ関数を守る安全策)。
 - 未実装ポリシー (`SELFCONTAIN` / `AUTO`) はコンパイルエラーになる
 - overlay ASM 末尾に `; === Shared Runtime References ===` という EXTERN
   コメントが出力される (= PR-B での EQU 注入の入力リスト)
+
+### 二段アセンブル toolchain `slangbuild` (v0.23 PR-B)
+
+PR-B で新ドライバ `slangbuild` を追加。`slangc` を呼んで ASM 群を生成し、
+AILZ80ASM で main → overlay の順に二段アセンブルする。`#MODULE RESIDENT`
+で main 集約された runtime シンボルを overlay 側で実バイナリレベルで解決する:
+
+```
+slangbuild source.SL -E lsx
+  → source.bin              (main bin)
+  → source._m0.bin          (overlay 0 bin、main の shared label を参照済み)
+  → source._mN.bin          (...)
+```
+
+`#MODULE` を使わない通常の SL でも `slangbuild` は使える (単段フローで
+従来の `slangc + AILZ80ASM` と同じ結果)。
+
+#### 二段アセンブル機構
+
+1. `slangc source.SL` → `source.ASM` + `source._mN.ASM` + `source.inc`
+2. `AILZ80ASM source.ASM -sm minimal-equ` → `source.bin` + `source.sym`
+3. 各 overlay について: overlay ASM 内の `; EXTERN` リストと `source.sym`
+   の交集合だけを抽出した `source._mN.imports.asm` を生成 (raw `source.sym`
+   を渡すと compiler 内部ラベル等の衝突リスクがあるため filter する)
+4. `AILZ80ASM source._mN.imports.asm source._mN.ASM -sm minimal-equ` →
+   `source._mN.bin`
+
+#### CLI
+
+```
+slangbuild <input.SL> [options]
+  -o <prefix>     Output file prefix (default: derived from input)
+  -E <env>        Environment name (default: lsx)
+  -I <path>       Include search path passed to slangc (repeatable)
+  -L <path>       Library search path passed to slangc (repeatable)
+  --asm <path>    AILZ80ASM executable path (override resolution)
+  --slangc <path> slangc executable path (override resolution)
+  --keep-asm      Keep intermediate ASM / sym files
+  --verbose       Show subprocess (slangc / AILZ80ASM) output
+```
+
+#### ツール解決順 (実行ファイル基準)
+
+`AppContext.BaseDirectory` を起点に決定論的に探す。配布スクリプトでは
+`--slangc` / `--asm` を明示指定する運用 (PATH 優先は再現性が低いため):
+
+- **slangc**: `--slangc` → bundled bin (slangbuild と同 publish 物) → PATH → `dotnet run --project ...` (dev fallback、SDK 必要)
+- **AILZ80ASM**: `--asm` → `AILZ80ASM_PATH` 環境変数 → PATH → bundled `tools/AILZ80ASM` → repo root (dev fallback)
+
+#### 現時点 (PR-B) の制約
+
+- `slangbuild` は二段アセンブル機構を提供するが、**実際にメモリ節約効果が
+  出るには runtime ライブラリへの `@resident shared` 付与 (PR-C) が必要**。
+  本 PR-B 単体では現状互換 (overlay に runtime が複製展開される) のまま動く
+- AILZ80ASM の制約により、imports ファイルの拡張子は `.asm` を使う
+  (`.sym` 拡張子は出力扱いされてエラーになる)
+- 未解決ラベル (overlay の `; EXTERN` リストにあるが main.sym にない) は
+  `--verbose` 時に warning として表示。AILZ80ASM 側で「未定義シンボル」
+  エラーで止まる
