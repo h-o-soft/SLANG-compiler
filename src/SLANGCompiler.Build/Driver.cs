@@ -72,6 +72,7 @@ public class Driver
         var mainSym = outputBase + ".sym";
 
         var intermediates = new List<string>();
+        bool succeeded = false;
 
         try
         {
@@ -149,16 +150,25 @@ public class Driver
                 Console.Error.WriteLine($"slangbuild: success — {prefix}.bin"
                     + (overlayAsms.Count > 0 ? $" + {overlayAsms.Count} overlay(s)" : ""));
             }
+            succeeded = true;
             return 0;
         }
         finally
         {
-            if (!_opts.KeepAsm)
+            // 中間ファイル cleanup は「成功時 + --keep-asm 未指定」のときだけ。
+            // 失敗時は AILZ80ASM のエラー行 (xxx.ASM:NNN ...) をユーザーが追えるよう
+            // 必ず残す。
+            if (succeeded && !_opts.KeepAsm)
             {
                 foreach (var p in intermediates)
                 {
                     try { if (File.Exists(p)) File.Delete(p); } catch { /* best effort */ }
                 }
+            }
+            else if (!succeeded && !_opts.KeepAsm)
+            {
+                Console.Error.WriteLine(
+                    "slangbuild: build failed — keeping intermediate files for inspection.");
             }
         }
     }
