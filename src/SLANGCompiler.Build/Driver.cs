@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using SLANGCompiler.Runtime;
 
 namespace SLANGCompiler.Build;
 
@@ -102,47 +103,32 @@ public class Driver
                                        .ToList();
             foreach (var p in overlayAsms) intermediates.Add(p);
 
-            // === Step 2: AILZ80ASM main ===
+            // === Step 2: PrelinkPlan 構築 (cross-ref 検出) ===
             var asm = _resolver.ResolveAilz80Asm(_opts.AsmPath);
             if (_opts.Verbose) Console.Error.WriteLine($"slangbuild: using AILZ80ASM: {asm.Path}");
-
             var runner = new AssemblerRunner(asm.Path, _opts.Verbose);
-            var mainResult = runner.AssembleMain(mainAsm, mainBin, mainSym);
-            if (!mainResult.Success)
+
+            var planTargets = new List<(string Label, string AsmPath)>
             {
-                Console.Error.Write(mainResult.Stderr);
-                Console.Error.WriteLine($"slangbuild: main assembly failed (exit {mainResult.ExitCode})");
-                return mainResult.ExitCode;
+                ("main", mainAsm),
+            };
+            for (int i = 0; i < overlayAsms.Count; i++)
+                planTargets.Add(($"overlay {i}", overlayAsms[i]));
+            var plan = PrelinkPlan.Build(planTargets);
+
+            if (plan.IsTrivial)
+            {
+                // === 単段モード (PR-B 既存パス) ===
+                int rc = AssembleSingleStage(runner, plan, mainAsm, mainBin, mainSym,
+                                             overlayAsms, outputDir, intermediates);
+                if (rc != 0) return rc;
             }
-            // main.sym は cleanup 対象 (overlay 完了後に消す)
-            intermediates.Add(mainSym);
-
-            // === Step 3-4: 各 overlay ===
-            foreach (var overlayAsm in overlayAsms)
+            else
             {
-                var overlayBase = Path.GetFileNameWithoutExtension(overlayAsm); // <prefix>._mN
-                var importsAsm = Path.Combine(outputDir, overlayBase + ".imports.asm");
-                var overlayBin = Path.Combine(outputDir, overlayBase + ".bin");
-                var overlaySym = Path.Combine(outputDir, overlayBase + ".sym");
-
-                var (_, unresolved) = OverlayImportsBuilder.Build(mainSym, overlayAsm, importsAsm);
-                intermediates.Add(importsAsm);
-
-                if (unresolved.Count > 0 && _opts.Verbose)
-                {
-                    Console.Error.WriteLine(
-                        $"slangbuild: {overlayBase}: {unresolved.Count} unresolved EXTERN(s) "
-                        + "(main.sym lacks: " + string.Join(", ", unresolved) + ")");
-                }
-
-                var ovResult = runner.AssembleOverlay(importsAsm, overlayAsm, overlayBin, overlaySym);
-                if (!ovResult.Success)
-                {
-                    Console.Error.Write(ovResult.Stderr);
-                    Console.Error.WriteLine($"slangbuild: overlay assembly failed for {overlayBase} (exit {ovResult.ExitCode})");
-                    return ovResult.ExitCode;
-                }
-                intermediates.Add(overlaySym);
+                // === prelink モード (PR-B2): Pass 1 → Pass 2 → Pass 3 ===
+                int rc = AssemblePrelink(runner, plan, mainBin, mainSym,
+                                         outputDir, intermediates);
+                if (rc != 0) return rc;
             }
 
             if (_opts.Verbose)
@@ -178,6 +164,144 @@ public class Driver
         var name = Path.GetFileName(inputPath);
         var dot = name.LastIndexOf('.');
         return dot >= 0 ? name[..dot] : name;
+    }
+
+    /// <summary>
+    /// 単段モード (PR-B 既存パス): main を直接アセンブル → 各 overlay について
+    /// `OverlayImportsBuilder` で main.sym から filtered EQU を生成 → overlay を
+    /// アセンブル。cross-ref が無いケースで使う。
+    /// </summary>
+    private int AssembleSingleStage(AssemblerRunner runner, PrelinkPlan plan,
+        string mainAsm, string mainBin, string mainSym,
+        List<string> overlayAsms, string outputDir, List<string> intermediates)
+    {
+        var mainResult = runner.AssembleMain(mainAsm, mainBin, mainSym);
+        if (!mainResult.Success)
+        {
+            Console.Error.Write(mainResult.Stderr);
+            Console.Error.WriteLine($"slangbuild: main assembly failed (exit {mainResult.ExitCode})");
+            return mainResult.ExitCode;
+        }
+        intermediates.Add(mainSym);
+
+        foreach (var overlayAsm in overlayAsms)
+        {
+            var overlayBase = Path.GetFileNameWithoutExtension(overlayAsm);
+            var importsAsm = Path.Combine(outputDir, overlayBase + ".imports.asm");
+            var overlayBin = Path.Combine(outputDir, overlayBase + ".bin");
+            var overlaySym = Path.Combine(outputDir, overlayBase + ".sym");
+
+            var (_, unresolved) = OverlayImportsBuilder.Build(mainSym, overlayAsm, importsAsm);
+            intermediates.Add(importsAsm);
+
+            if (unresolved.Count > 0 && _opts.Verbose)
+            {
+                Console.Error.WriteLine(
+                    $"slangbuild: {overlayBase}: {unresolved.Count} unresolved EXTERN(s) "
+                    + "(main.sym lacks: " + string.Join(", ", unresolved) + ")");
+            }
+
+            var ovResult = runner.AssembleOverlay(importsAsm, overlayAsm, overlayBin, overlaySym);
+            if (!ovResult.Success)
+            {
+                Console.Error.Write(ovResult.Stderr);
+                Console.Error.WriteLine($"slangbuild: overlay assembly failed for {overlayBase} (exit {ovResult.ExitCode})");
+                return ovResult.ExitCode;
+            }
+            intermediates.Add(overlaySym);
+        }
+        return 0;
+    }
+
+    /// <summary>
+    /// prelink モード (PR-B2 新規): cross-ref があるケース。
+    ///   Pass 1: 各 target に dummy imports ($0000 EQU) を渡してアセンブル → pass1.sym 取得
+    ///   Pass 2: 全 target の Exports + pass1.sym から ExportedFunctionTable 構築
+    ///   Pass 3: combined real imports を生成して再アセンブル → 本番 bin/sym
+    /// `-nsa` 付与で命令長を固定し、Pass 1 と Pass 3 で同じ target 内のラベル
+    /// アドレスが一致することを保証する。
+    /// </summary>
+    private int AssemblePrelink(AssemblerRunner runner, PrelinkPlan plan,
+        string mainBin, string mainSym, string outputDir, List<string> intermediates)
+    {
+        if (_opts.Verbose) Console.Error.WriteLine($"slangbuild: prelink mode (cross-references found)");
+
+        // Pass 1: 各 target を dummy imports でアセンブル → pass1 sym 取得
+        var pass1Symbols = new Dictionary<string, Dictionary<string, int>>(); // target.Label → sym dict
+        foreach (var t in plan.Targets)
+        {
+            var baseName = Path.GetFileNameWithoutExtension(t.AsmPath);
+            var dummyImportsPath = Path.Combine(outputDir, baseName + ".dummy.imports.asm");
+            var pass1BinPath = Path.Combine(outputDir, baseName + ".pass1.bin");
+            var pass1SymPath = Path.Combine(outputDir, baseName + ".pass1.sym");
+
+            PrelinkPlan.WriteDummyImports(t, dummyImportsPath);
+            intermediates.Add(dummyImportsPath);
+
+            var result = runner.AssembleOverlay(dummyImportsPath, t.AsmPath,
+                                                pass1BinPath, pass1SymPath,
+                                                superAssemble: false);
+            if (!result.Success)
+            {
+                Console.Error.Write(result.Stderr);
+                Console.Error.WriteLine(
+                    $"slangbuild: prelink Pass 1 failed for {t.Label} (exit {result.ExitCode})");
+                return result.ExitCode;
+            }
+            // Pass 1 の bin はテンポラリ即削除 (sym だけ Pass 2 で使う)
+            try { File.Delete(pass1BinPath); } catch { }
+            intermediates.Add(pass1SymPath);
+            pass1Symbols[t.Label] = SymFileReader.ReadFile(pass1SymPath);
+        }
+
+        // Pass 2: ExportedFunctionTable を構築
+        var exportedTable = new ExportedFunctionTable();
+        foreach (var t in plan.Targets)
+            exportedTable.Add(t.Label, t.Exports, pass1Symbols[t.Label]);
+
+        // Pass 3: combined real imports を生成 → 本番アセンブル
+        var mainPass1Sym = pass1Symbols.GetValueOrDefault("main", new Dictionary<string, int>());
+        foreach (var t in plan.Targets)
+        {
+            var baseName = Path.GetFileNameWithoutExtension(t.AsmPath);
+            var importsAsm = Path.Combine(outputDir, baseName + ".imports.asm");
+            var (_, unresolved) = PrelinkPlan.WriteRealImports(
+                t, exportedTable, mainPass1Sym, importsAsm);
+            intermediates.Add(importsAsm);
+
+            if (unresolved.Count > 0 && _opts.Verbose)
+            {
+                Console.Error.WriteLine(
+                    $"slangbuild: {t.Label}: {unresolved.Count} unresolved EXTERN(s) "
+                    + "(none found in any target sym: " + string.Join(", ", unresolved) + ")");
+            }
+
+            // 本番出力ファイル名: main は <prefix>.bin、overlay は <prefix>._mN.bin
+            string outBin, outSym;
+            if (t.Label == "main")
+            {
+                outBin = mainBin;
+                outSym = mainSym;
+            }
+            else
+            {
+                outBin = Path.Combine(outputDir, baseName + ".bin");
+                outSym = Path.Combine(outputDir, baseName + ".sym");
+            }
+
+            var result = runner.AssembleOverlay(importsAsm, t.AsmPath, outBin, outSym,
+                                                superAssemble: false);
+            if (!result.Success)
+            {
+                Console.Error.Write(result.Stderr);
+                Console.Error.WriteLine(
+                    $"slangbuild: prelink Pass 3 failed for {t.Label} (exit {result.ExitCode})");
+                return result.ExitCode;
+            }
+            if (t.Label != "main") intermediates.Add(outSym);
+        }
+        intermediates.Add(mainSym);
+        return 0;
     }
 
     private int SpawnSlangc(ResolvedTool slangc, string inputPath, string outAsmPath, string env)
