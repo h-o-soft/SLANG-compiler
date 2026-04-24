@@ -308,6 +308,127 @@ MYSUB() BEGIN BEEP(); END;
         Assert.Equal(beepAddr, callTarget);
     }
 
+    // ---- PR-B2 prelink E2E (関数 cross-reference) ----
+
+    /// <summary>bin 内に「CALL <expectedAddr>」(`CD lo hi`) バイト列があるかを判定。
+    /// 起動コード等の他の CALL に紛れずに「特定のアドレスを指す CALL」の存在だけを
+    /// 確認する用途。</summary>
+    private static bool BinaryContainsCall(byte[] bin, int expectedAddr)
+    {
+        byte lo = (byte)(expectedAddr & 0xFF);
+        byte hi = (byte)((expectedAddr >> 8) & 0xFF);
+        for (int i = 0; i < bin.Length - 2; i++)
+        {
+            if (bin[i] == 0xCD && bin[i + 1] == lo && bin[i + 2] == hi) return true;
+        }
+        return false;
+    }
+
+    [Fact]
+    public void Prelink_MainCallsOverlayFunction_ResolvesToOverlayAddress()
+    {
+        // main から overlay 内 SLANG 関数 MYSUB を呼ぶ → main.bin の CALL が
+        // overlay の MYSUB アドレス ($3000 起点) を指す
+        var slPath = Path.Combine(_tempDir, "m2o.SL");
+        File.WriteAllText(slPath, @"
+MAIN() BEGIN MYSUB(); END;
+#MODULE $3000
+MYSUB() BEGIN END;
+#END
+");
+        var (code, _, stderr) = RunSlangbuild(slPath, "--keep-asm");
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+
+        // imports.asm が prelink モードで生成されている
+        var imports = File.ReadAllText(Path.Combine(_tempDir, "m2o.imports.asm"));
+        Assert.Contains("MYSUB equ $3000", imports);
+
+        // main.bin に「CALL $3000」(MYSUB を呼ぶ命令) が含まれる
+        var mainBin = File.ReadAllBytes(Path.Combine(_tempDir, "m2o.bin"));
+        Assert.True(BinaryContainsCall(mainBin, 0x3000),
+            "main.bin should contain CALL $3000 (= MYSUB in overlay)");
+    }
+
+    [Fact]
+    public void Prelink_OverlayCallsMainFunction_ResolvesToMainAddress()
+    {
+        // overlay から main 内 SLANG 関数 HELPER を呼ぶ → overlay.bin の CALL が
+        // main の HELPER アドレスを指す
+        var slPath = Path.Combine(_tempDir, "o2m.SL");
+        File.WriteAllText(slPath, @"
+HELPER() BEGIN END;
+MAIN() BEGIN HELPER(); END;
+#MODULE $3000
+MYSUB() BEGIN HELPER(); END;
+#END
+");
+        var (code, _, stderr) = RunSlangbuild(slPath, "--keep-asm");
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+
+        // overlay の imports.asm に HELPER の本物アドレスが入る
+        var ovImports = File.ReadAllText(Path.Combine(_tempDir, "o2m._m0.imports.asm"));
+        var match = System.Text.RegularExpressions.Regex.Match(ovImports,
+            @"HELPER\s+equ\s+\$([0-9A-Fa-f]+)");
+        Assert.True(match.Success);
+        var helperAddr = Convert.ToInt32(match.Groups[1].Value, 16);
+
+        // overlay.bin に「CALL <helperAddr>」(main 内 HELPER を呼ぶ命令) が含まれる
+        var ovBin = File.ReadAllBytes(Path.Combine(_tempDir, "o2m._m0.bin"));
+        Assert.True(BinaryContainsCall(ovBin, helperAddr),
+            $"overlay.bin should contain CALL ${helperAddr:X4} (= HELPER in main)");
+    }
+
+    [Fact]
+    public void Prelink_OverlayCallsOtherOverlay_ResolvesAcrossOverlays()
+    {
+        // overlay 0 から overlay 1 の関数を呼ぶ → overlay 0.bin の CALL が
+        // overlay 1 の本物アドレス ($4000 起点) を指す
+        var slPath = Path.Combine(_tempDir, "o2o.SL");
+        File.WriteAllText(slPath, @"
+MAIN() BEGIN END;
+#MODULE $3000
+M0FUNC() BEGIN M1FUNC(); END;
+#END
+#MODULE $4000
+M1FUNC() BEGIN END;
+#END
+");
+        var (code, _, stderr) = RunSlangbuild(slPath, "--keep-asm");
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+
+        // overlay 0 の imports に M1FUNC の本物アドレスが入る
+        var imports = File.ReadAllText(Path.Combine(_tempDir, "o2o._m0.imports.asm"));
+        Assert.Contains("M1FUNC equ $4000", imports);
+
+        // overlay 0 .bin に「CALL $4000」(M1FUNC を呼ぶ命令) が含まれる
+        var ov0Bin = File.ReadAllBytes(Path.Combine(_tempDir, "o2o._m0.bin"));
+        Assert.True(BinaryContainsCall(ov0Bin, 0x4000),
+            "overlay 0.bin should contain CALL $4000 (= M1FUNC in overlay 1)");
+    }
+
+    [Fact]
+    public void Prelink_NotTriggered_WhenNoCrossRef()
+    {
+        // overlay は使うが cross-ref 無し (= overlay 内関数を main から呼ばない、
+        // overlay → main も呼ばない) → 単段モード (PR-B 既存パス) で動く。
+        // dummy.imports.asm が出ない (= prelink Pass 1 が走らなかった証拠)。
+        var slPath = Path.Combine(_tempDir, "trivial.SL");
+        File.WriteAllText(slPath, @"
+MAIN() BEGIN END;
+#MODULE $3000
+MYSUB() BEGIN END;
+#END
+");
+        var (code, _, stderr) = RunSlangbuild(slPath, "--keep-asm");
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+
+        // prelink モードなら <prefix>.dummy.imports.asm が生成される
+        Assert.False(File.Exists(Path.Combine(_tempDir, "trivial.dummy.imports.asm")),
+            "Single-stage mode expected; dummy imports should not be produced");
+        Assert.False(File.Exists(Path.Combine(_tempDir, "trivial.pass1.sym")),
+            "Single-stage mode expected; pass1 sym should not be produced");
+    }
+
     [Fact]
     public void MissingInputFile_ReportsError()
     {
