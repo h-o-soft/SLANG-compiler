@@ -73,22 +73,25 @@ public class ToolResolver
     /// dev 環境想定: repo root を起点に slangc の publish 物を探す。
     /// <c>src/SLANGCompiler.CLI/bin/(Release|Debug)/net8.0/&lt;RID&gt;/publish/slangc(.exe)</c>
     /// 配布物の `<root>/bin/slangc` パターンには触れない (= 通常解決順 2 が拾う想定)。
+    ///
+    /// **RID 選択** (Codex 指摘): 全 RID 走査で更新時刻最新を選ぶと、複数 RID 用に
+    /// publish 物が並んでいる環境 (macOS で osx-arm64 + linux-x64 等) で OS の異なる
+    /// バイナリを拾って exec format error になる。現在 OS の RID 候補リストを
+    /// 順序付きで保持し、その範囲内でだけ「同一 RID で Release/Debug 両方ある場合は
+    /// 更新時刻最新」で絞る。
     /// </summary>
     private string? LocateDevPublishedSlangc(string name)
     {
         var binRoot = LocateRepoDir("src/SLANGCompiler.CLI/bin");
         if (binRoot == null) return null;
 
-        // Release/Debug × <RID>/publish を全部走査して最新を拾う
-        string? newest = null;
-        DateTime newestTime = DateTime.MinValue;
-        foreach (var config in new[] { "Release", "Debug" })
+        foreach (var rid in GetCurrentOsRidCandidates())
         {
-            var configDir = Path.Combine(binRoot, config, "net8.0");
-            if (!Directory.Exists(configDir)) continue;
-            foreach (var ridDir in Directory.GetDirectories(configDir))
+            string? newest = null;
+            DateTime newestTime = DateTime.MinValue;
+            foreach (var config in new[] { "Release", "Debug" })
             {
-                var candidate = Path.Combine(ridDir, "publish", name);
+                var candidate = Path.Combine(binRoot, config, "net8.0", rid, "publish", name);
                 if (!File.Exists(candidate)) continue;
                 var t = File.GetLastWriteTimeUtc(candidate);
                 if (t > newestTime)
@@ -97,8 +100,53 @@ public class ToolResolver
                     newestTime = t;
                 }
             }
+            if (newest != null) return newest;
         }
-        return newest;
+        return null;
+    }
+
+    /// <summary>
+    /// 現在 OS で実行可能な RID の候補リストを優先順で返す。
+    /// 1 番目は `OS-arch` の正確一致、2 番目以降は同 OS の他 arch (= Rosetta 等の
+    /// 互換実行を想定)。OS が違うものは含めない。
+    /// </summary>
+    private static IReadOnlyList<string> GetCurrentOsRidCandidates()
+    {
+        var archStr = RuntimeInformation.OSArchitecture switch
+        {
+            Architecture.X64   => "x64",
+            Architecture.Arm64 => "arm64",
+            Architecture.X86   => "x86",
+            var other          => other.ToString().ToLowerInvariant(),
+        };
+
+        string[] family;
+        string osPrefix;
+        if (OperatingSystem.IsMacOS())
+        {
+            osPrefix = "osx";
+            family = new[] { "osx-arm64", "osx-x64" };
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            osPrefix = "linux";
+            family = new[] { "linux-x64", "linux-arm64", "linux-musl-x64" };
+        }
+        else if (OperatingSystem.IsWindows())
+        {
+            osPrefix = "win";
+            family = new[] { "win-x64", "win-arm64", "win-x86" };
+        }
+        else
+        {
+            return Array.Empty<string>();
+        }
+
+        var primary = $"{osPrefix}-{archStr}";
+        var ordered = new List<string> { primary };
+        foreach (var rid in family)
+            if (rid != primary) ordered.Add(rid);
+        return ordered;
     }
 
     /// <summary>repo root を辿って指定相対ディレクトリを探す (LocateRepoFile の dir 版)</summary>
