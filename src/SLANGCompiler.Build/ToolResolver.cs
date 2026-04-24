@@ -72,14 +72,23 @@ public class ToolResolver
         var onPath = FindOnPath(name);
         if (onPath != null) return new ResolvedTool(onPath, ResolutionKind.DirectExe);
 
-        var bundled = Path.Combine(_baseDir, "tools", name);
-        if (File.Exists(bundled)) return new ResolvedTool(bundled, ResolutionKind.DirectExe);
+        // 配布物レイアウト:
+        //   <root>/bin/slangbuild       (= AppContext.BaseDirectory)
+        //   <root>/tools/AILZ80ASM      (1 つ上)
+        // 開発時の publish 直下レイアウト (= bin/Release/<rid>/publish/slangbuild + tools/) も
+        // 念のためサポートするため両方を探す。
+        var bundledSibling = Path.Combine(_baseDir, "tools", name);
+        if (File.Exists(bundledSibling)) return new ResolvedTool(bundledSibling, ResolutionKind.DirectExe);
+        var bundledParent = Path.Combine(_baseDir, "..", "tools", name);
+        if (File.Exists(bundledParent))
+            return new ResolvedTool(Path.GetFullPath(bundledParent), ResolutionKind.DirectExe);
 
         var repoTools = LocateRepoFile($"tools/{name}");
         if (repoTools != null) return new ResolvedTool(repoTools, ResolutionKind.DirectExe);
 
         throw new FileNotFoundException(
-            "AILZ80ASM not found. Tried: --asm, $AILZ80ASM_PATH, PATH, bundled tools/, and repo root. "
+            "AILZ80ASM not found. Tried: --asm, $AILZ80ASM_PATH, PATH, bundled "
+            + "{baseDir}/tools, {baseDir}/../tools, and repo root. "
             + "Specify --asm <path> explicitly.");
     }
 

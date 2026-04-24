@@ -33,7 +33,9 @@ public class BuildIntegrationTests : IDisposable
         // CI / dev 共通: PATH 上の旧 slangc を避けるため必ずリポジトリ内の最新 publish 物
         // (なければ自動 publish) を使う
         _slangcExePath = EnsureSlangcExePath();
-        _ailz80AsmPath = Path.Combine(_projectRoot, "tools", "AILZ80ASM");
+        // Windows では `AILZ80ASM.exe` が必要 (Codex 指摘)
+        var asmName = OperatingSystem.IsWindows() ? "AILZ80ASM.exe" : "AILZ80ASM";
+        _ailz80AsmPath = Path.Combine(_projectRoot, "tools", asmName);
     }
 
     public void Dispose()
