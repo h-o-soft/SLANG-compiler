@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name PCGDEFS
+; @resident shared
 ; @param_count 3
 ; @calls PCGDEF
 ; HL = STARTIDX (ascii code), DE = ADDR (24 bytes/tile), BC = COUNT
@@ -30,6 +31,7 @@ DEC BC
 JR .pcgdefs_loop
 
 ; @name PCGDEF
+; @resident shared
 ; HL = ascii code DE = address
 PUSH DE
 LD E,L
