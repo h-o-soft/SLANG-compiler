@@ -85,7 +85,7 @@ else ifeq ($(ENV), msx2)
   BIN_EXT_ENV = .com
   EMUOPT = -diska
 else ifeq ($(ENV), cpm)
-  SLANGENV = lsx
+  SLANGENV = cpm
   ifeq ($(OS),Windows_NT)
     EMU = tools\runcpm.bat
   else

@@ -2,6 +2,11 @@
 
 ## Unreleased (v0.23.0 候補)
 
+- `cpm` 環境を独立した env として明示化 (#145)
+  - `runtime/env/cpm.env` を新設 (env_type/os_type は lsx と同じ 0/0、libraries は lsx 互換)。条件コンパイル `#IF (ENV_TYPE<=1)` 等の意味は変わらない
+  - `Makefile.dist` の `ENV=cpm` で `SLANGENV=cpm` を参照
+  - これまで `-E cpm` 指定時は env file が見つからず「全 runtime/*.asm を fallback ロード」していたため、`libpc80mk2_print` の `@works WORK10:10` と `liblsx_print` 等の local `WORK10:` ラベルが AILZ80ASM 段階で衝突していた (Issue #145)。cpm.env 追加により lsx 互換セットのみがロードされ衝突解消
+
 - 残り 10 環境 (msxlsx / msx2 / msxrom / sos / sosx1 / pc80mk2 / pc80mk2x / pc88mk2sr / vgs0 / zxn) の runtime にも `; @resident shared|local` を付与 (PR-C2) — PR-C1 の手順を機械的に横展開
   - 対象 30 ファイル / 527 関数の追加付与 (env ごとに 1 commit)
   - 真の self-mod として `local` 化した関数 (PR-C2 で新規):
