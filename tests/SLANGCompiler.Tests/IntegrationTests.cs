@@ -139,6 +139,26 @@ public class IntegrationTests : IDisposable
     }
 
     [Fact]
+    public void BrokenEnvironment_FailsWithDistinctError()
+    {
+        // env file は存在するが YAML が壊れている場合、Unknown environment ではなく
+        // 「Failed to load env file」と区別して報告される
+        var envDir = Path.Combine(_projectRoot, "runtime", "env");
+        var brokenEnv = Path.Combine(envDir, "broken_test_env.env");
+        File.WriteAllText(brokenEnv, "this is: not valid: yaml: : :::\n  - bad indent\n");
+        try
+        {
+            var stderr = CompileExpectError("MAIN() BEGIN END;", env: "broken_test_env");
+            Assert.Contains("Failed to load env file for 'broken_test_env'", stderr);
+            Assert.DoesNotContain("Unknown environment", stderr);
+        }
+        finally
+        {
+            File.Delete(brokenEnv);
+        }
+    }
+
+    [Fact]
     public void LsxEnvironment_HasSLANGINIT()
     {
         var asm = CompileWithCli("MAIN() BEGIN END;");

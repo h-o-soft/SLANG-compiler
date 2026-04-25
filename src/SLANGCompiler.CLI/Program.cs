@@ -77,7 +77,18 @@ class Program
 
         // --- 環境解決（前段で 1 回だけ）---
         // 解決失敗は即エラー。後段の runtime ロードと preprocessor の ENV_TYPE/OS_TYPE 定義を同じ config から行う。
-        var envResolution = ResolveEnvironment(envName, pathResolver);
+        // 「ファイルが無い」と「ファイルはあるが壊れている」を区別してエラー表示。
+        (Runtime.EnvironmentConfig Config, string EnvPath)? envResolution;
+        try
+        {
+            envResolution = ResolveEnvironment(envName, pathResolver);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                $"Error: Failed to load env file for '{envName}': {ex.Message}");
+            return 1;
+        }
         if (envResolution == null)
         {
             Console.Error.WriteLine(
@@ -269,7 +280,8 @@ class Program
 
     /// <summary>
     /// 環境名から .env を解決し、(EnvironmentConfig, envファイルの絶対パス) を返す。
-    /// 見つからない場合は null。検索順は runtime/env/ → lib/env/。
+    /// 見つからない場合は null。ファイルは見つかったがロード失敗の場合は例外を呼び出し側に伝播。
+    /// 検索順は runtime/env/ → lib/env/。
     /// </summary>
     static (Runtime.EnvironmentConfig Config, string EnvPath)? ResolveEnvironment(
         string envName, PathResolver paths)
@@ -280,16 +292,10 @@ class Program
         {
             var envPath = Path.Combine(dir, "env", envFile);
             if (!File.Exists(envPath)) continue;
-            try
-            {
-                var config = Runtime.EnvironmentLoader.Load(envPath);
-                return (config, Path.GetFullPath(envPath));
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Error: Failed to load env {envPath}: {ex.Message}");
-                return null;
-            }
+            // ファイルが見つかった時点で「未定義 env」ではない。
+            // ロード時の例外は呼び出し側が「ファイル破損」として別メッセージで報告する。
+            var config = Runtime.EnvironmentLoader.Load(envPath);
+            return (config, Path.GetFullPath(envPath));
         }
         return null;
     }
