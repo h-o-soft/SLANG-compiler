@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name PSG_BASE
+; @resident shared
 ; @lib PSGLIB
 ; @works CTC3BACKUP:2
 ; ----------------------------------------------------------------------------------------------------
@@ -668,6 +669,7 @@ SOUNDDRV_SFXWK:
 
 
 ; @name PSG_INIT
+; @resident shared
 ; @calls PSG_BASE,PSG_PROC
 ; @lib PSGLIB
 SOUNDDRV_INIT:
@@ -874,6 +876,7 @@ SOUNDDRV_INITWK_L1:
     RET
 
 ; @name PSG_PLAY
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
 ; ====================================================================================================
@@ -920,6 +923,7 @@ SOUNDDRV_BGMPLAY:
     RET
 
 ; @name PSG_SFX
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
 ; ====================================================================================================
@@ -979,6 +983,7 @@ SOUNDDRV_SFXPLAY_EXIT:
     RET
 
 ; @name PSG_STOP
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
 ; ====================================================================================================
@@ -1036,6 +1041,7 @@ SOUNDDRV_STOP_L2:
     RET
 
 ; @name PSG_PAUSE
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
 ; ====================================================================================================
@@ -1069,6 +1075,7 @@ SOUNDDRV_PAUSE_EXIT:
     RET
 
 ; @name PSG_RESUME
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
 ; ====================================================================================================
@@ -1115,6 +1122,7 @@ SOUNDDRV_RESUME_EXIT:
     RET
 
 ; @name PSG_PROC
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
     RET
@@ -1171,6 +1179,7 @@ SOUNDDRV_EXEC_END:
 ;    JP SOUNDDRV_H_TIMI_BACKUP
 
 ; @name PSG_END
+; @resident shared
 ; @calls PSG_BASE,PSG_STOP
 ; @lib PSGLIB
     CALL PSG_STOP

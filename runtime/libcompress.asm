@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name LZE_DECODE
+; @resident shared
 ; @lib lze
 dlze:
 		ld	a,080h
@@ -84,6 +85,7 @@ getbit:
 
 
 ; @name LZEE_DECODE
+; @resident shared
 ; @lib lzee
 dlze:
 		ld	a,080h
@@ -163,6 +165,7 @@ getbit:
 		ret
 
 ; @name LZEEE_DECODE
+; @resident shared
 ; @lib lzeee
 dlzeee:
 		ldi
@@ -261,6 +264,7 @@ getbit:
 		ret
 
 ; @name ZX0_DECODE
+; @resident shared
 ; @lib zx0
 dzx0_standard:
         ld      bc, $ffff               ; preserve default offset 1

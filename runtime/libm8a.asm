@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name M8ALOAD
+; @resident local
 ; @lib M8ALIB
 
 WIDTH		EQU	40

@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name MAGICBASE
+; @resident shared
 ; @lib MAGIC
 B_ENT:
 		ld	ix, (POINTER)
@@ -2905,6 +2906,7 @@ MAGIC_END	EQU	(LINE_BUF+512)
 
 
 ; @name CALLMAGIC
+; @resident shared
 ; @calls MAGICBASE,CALL
 ; @lib MAGIC
 	 	LD HL,ENT
