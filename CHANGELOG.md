@@ -6,7 +6,8 @@
   - 対象 17 ファイル (lsx.env / x1.env が参照する .asm を `tools/resident-audit.py --env` で機械的に列挙) / 260 関数
   - 内訳: **shared 258 関数 / local 2 関数** (`SLANGINIT` = main inline 専用, `M8ALOAD` = 命令オペランド書き換えあり)
   - `tools/resident-audit.py` (関数別 self-mod ヒューリスティック判定 + env-aware 走査) と `tools/resident-apply.py` (override map + 一括付与 / dry-run / idempotent) を追加。手書き列挙の漏れを排除
-  - 効果実測: `examples/MODTEST.SL` を `#MODULE $3000 RESIDENT` 化 → overlay バイナリが **248B → 57B (-77%)** に縮小 (MPRNT/P10/PCRONE が main 集約され、overlay 内 EXTERN 参照に変換)。複数 overlay を並べる用途では効果がさらに大きい
+  - 効果実測: `examples/MODTEST.SL` (Local) と `examples/MODTEST_RESIDENT.SL` (新設、`#MODULE $3000 RESIDENT`) を比較 → overlay バイナリが **248B → 57B (-77%)** に縮小 (MPRNT/P10/PCRONE が main 集約され、overlay 内 EXTERN 参照に変換)。複数 overlay を並べる用途では効果がさらに大きい
+  - サンプル分割の意図: `MODTEST.SL` は引き続き「overlay 基本例 (Local モード)」、`MODTEST_RESIDENT.SL` は「resident runtime デモ」と役割を分離 (Codex レビュー指摘反映)
   - 既存 IntegrationTest `Overlay_RuntimePolicy_Resident_DefaultRuntimes_StillLocal` を `..._SharedRuntimes_PromotedToMain` に書き換え (PR-A 時点で「runtime 側未対応」として placeholder 化していたものを、本 PR で正の挙動アサートに転換)
   - 既存 examples (MANDEL / FMANDEL / STARS など overlay 未使用) はバイナリ変化なし。`#MODULE` を使わない SL は影響を受けない
 - `slangbuild` に prelink 二段アセンブル機構を追加 (PR-B2) — main / overlay 間で **任意の SLANG 関数の相互呼び出し** をサポート
