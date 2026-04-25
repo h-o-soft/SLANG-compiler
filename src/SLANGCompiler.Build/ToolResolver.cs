@@ -27,16 +27,35 @@ public class ToolResolver
     /// 解決順:
     /// 1) cliOverride (--slangc 引数)
     /// 2) bundled: {baseDir}/slangc(.exe), {baseDir}/bin/slangc(.exe)
-    /// 3) PATH 上の slangc
-    /// 4) dev fallback: dotnet (= caller が `dotnet run --project ...` を組み立てる)
+    /// 3) dev publish: repo root を辿って
+    ///    src/SLANGCompiler.CLI/bin/(Release|Debug)/net8.0/&lt;RID&gt;/publish/slangc(.exe)
+    ///    が見つかればそれ (= dev 環境で publish 済みの最新 slangc を PATH 上の
+    ///    旧版より優先)
+    /// 4) PATH 上の slangc (= 配布版を OS にインストールしたケース)
+    /// 5) dev fallback: dotnet (= caller が `dotnet run --project ...` を組み立てる)
     /// </summary>
     public ResolvedTool ResolveSlangc(string? cliOverride)
     {
         var name = $"slangc{ExeSuffix}";
-        var path = ResolveExecutable(cliOverride, name, includeBundledTools: false);
-        if (path != null) return new ResolvedTool(path, ResolutionKind.DirectExe);
 
-        // dev fallback: dotnet run --project <repo>/src/SLANGCompiler.CLI/...
+        // 1) cliOverride / 2) bundled (PATH 検索なしバージョン)
+        if (!string.IsNullOrEmpty(cliOverride) && File.Exists(cliOverride))
+            return new ResolvedTool(cliOverride, ResolutionKind.DirectExe);
+        var direct = Path.Combine(_baseDir, name);
+        if (File.Exists(direct)) return new ResolvedTool(direct, ResolutionKind.DirectExe);
+        var binDir = Path.Combine(_baseDir, "bin", name);
+        if (File.Exists(binDir)) return new ResolvedTool(binDir, ResolutionKind.DirectExe);
+
+        // 3) dev publish 物 (= dev 環境で `dotnet publish` 済みの最新 slangc)
+        //    PATH 上の旧版に上書きされないよう、PATH 検索より前に挿入する
+        var devPublish = LocateDevPublishedSlangc(name);
+        if (devPublish != null) return new ResolvedTool(devPublish, ResolutionKind.DirectExe);
+
+        // 4) PATH
+        var onPath = FindOnPath(name);
+        if (onPath != null) return new ResolvedTool(onPath, ResolutionKind.DirectExe);
+
+        // 5) dev fallback: dotnet run --project <repo>/src/SLANGCompiler.CLI/...
         var dotnet = FindOnPath($"dotnet{ExeSuffix}");
         if (dotnet != null)
         {
@@ -46,8 +65,100 @@ public class ToolResolver
         }
 
         throw new FileNotFoundException(
-            "slangc not found. Tried: --slangc, bundled bin, PATH, and dev `dotnet run` fallback. "
+            "slangc not found. Tried: --slangc, bundled bin, dev publish, PATH, and dev `dotnet run` fallback. "
             + "Specify --slangc <path> explicitly.");
+    }
+
+    /// <summary>
+    /// dev 環境想定: repo root を起点に slangc の publish 物を探す。
+    /// <c>src/SLANGCompiler.CLI/bin/(Release|Debug)/net8.0/&lt;RID&gt;/publish/slangc(.exe)</c>
+    /// 配布物の `<root>/bin/slangc` パターンには触れない (= 通常解決順 2 が拾う想定)。
+    ///
+    /// **RID 選択** (Codex 指摘): 全 RID 走査で更新時刻最新を選ぶと、複数 RID 用に
+    /// publish 物が並んでいる環境 (macOS で osx-arm64 + linux-x64 等) で OS の異なる
+    /// バイナリを拾って exec format error になる。現在 OS の RID 候補リストを
+    /// 順序付きで保持し、その範囲内でだけ「同一 RID で Release/Debug 両方ある場合は
+    /// 更新時刻最新」で絞る。
+    /// </summary>
+    private string? LocateDevPublishedSlangc(string name)
+    {
+        var binRoot = LocateRepoDir("src/SLANGCompiler.CLI/bin");
+        if (binRoot == null) return null;
+
+        foreach (var rid in GetCurrentOsRidCandidates())
+        {
+            string? newest = null;
+            DateTime newestTime = DateTime.MinValue;
+            foreach (var config in new[] { "Release", "Debug" })
+            {
+                var candidate = Path.Combine(binRoot, config, "net8.0", rid, "publish", name);
+                if (!File.Exists(candidate)) continue;
+                var t = File.GetLastWriteTimeUtc(candidate);
+                if (t > newestTime)
+                {
+                    newest = candidate;
+                    newestTime = t;
+                }
+            }
+            if (newest != null) return newest;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// 現在 OS で実行可能な RID の候補リストを優先順で返す。
+    /// 1 番目は `OS-arch` の正確一致、2 番目以降は同 OS の他 arch (= Rosetta 等の
+    /// 互換実行を想定)。OS が違うものは含めない。
+    /// </summary>
+    private static IReadOnlyList<string> GetCurrentOsRidCandidates()
+    {
+        var archStr = RuntimeInformation.OSArchitecture switch
+        {
+            Architecture.X64   => "x64",
+            Architecture.Arm64 => "arm64",
+            Architecture.X86   => "x86",
+            var other          => other.ToString().ToLowerInvariant(),
+        };
+
+        string[] family;
+        string osPrefix;
+        if (OperatingSystem.IsMacOS())
+        {
+            osPrefix = "osx";
+            family = new[] { "osx-arm64", "osx-x64" };
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            osPrefix = "linux";
+            family = new[] { "linux-x64", "linux-arm64", "linux-musl-x64" };
+        }
+        else if (OperatingSystem.IsWindows())
+        {
+            osPrefix = "win";
+            family = new[] { "win-x64", "win-arm64", "win-x86" };
+        }
+        else
+        {
+            return Array.Empty<string>();
+        }
+
+        var primary = $"{osPrefix}-{archStr}";
+        var ordered = new List<string> { primary };
+        foreach (var rid in family)
+            if (rid != primary) ordered.Add(rid);
+        return ordered;
+    }
+
+    /// <summary>repo root を辿って指定相対ディレクトリを探す (LocateRepoFile の dir 版)</summary>
+    private string? LocateRepoDir(string relPath)
+    {
+        var dir = new DirectoryInfo(_baseDir);
+        for (int i = 0; i < 8 && dir != null; i++, dir = dir.Parent)
+        {
+            var candidate = Path.Combine(dir.FullName, relPath);
+            if (Directory.Exists(candidate)) return candidate;
+        }
+        return null;
     }
 
     /// <summary>

@@ -186,6 +186,18 @@ public class Parser
                 Advance();
                 break;
             }
+            // #MODULE は入れ子不可。連続する `#MODULE $X ... #END #MODULE $Y ...` は
+            // 外側 ParseTopLevel で個別の overlay として扱われるべきだが、もし `#END` が
+            // 不足して次の `#MODULE` が現れた場合、ParseTopLevel の `case TokenKind.Module`
+            // が再帰的に ParseModuleBlock を呼んでネスト ModuleBlock を作ってしまう。
+            // 明示エラーで止める。
+            if (Check(TokenKind.Module))
+            {
+                _diagnostics.Error(
+                    "#MODULE cannot be nested. Insert #END to close the outer #MODULE before starting a new one.",
+                    Current.Span);
+                break;
+            }
             if (Match(TokenKind.Semicolon)) continue;
             int errorsBefore = _diagnostics.ErrorCount;
             int before = _pos;

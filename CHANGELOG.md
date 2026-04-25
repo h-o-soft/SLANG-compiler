@@ -2,6 +2,16 @@
 
 ## Unreleased (v0.23.0 候補)
 
+- `slangbuild` に prelink 二段アセンブル機構を追加 (PR-B2) — main / overlay 間で **任意の SLANG 関数の相互呼び出し** をサポート
+  - cross-reference 検出時に自動的に prelink モードへ (Pass 1: 各 target を dummy imports でアセンブル → Pass 2: 全 target の Exports セクションから ExportedFunctionTable 構築 → Pass 3: combined imports で本番アセンブル)
+  - サポート範囲: main → overlay 関数 / overlay → main 関数 / overlay → overlay 関数 (関数シンボルのみ)
+  - **仕様**: 解決するのはアドレスだけ。swap 制御・呼び先 overlay のロード状態確認は ユーザー責任 (低レベル言語の責務分担)
+  - compiler 側 (`CodeGenerator`) で各 ASM に `; === Exported User Functions ===` (= 自分が定義する関数) + `; === User Function References ===` (= 自分が呼ぶ他ファイル関数) の 2 セクションを出力
+  - driver 側に `AsmSectionParser` / `ExportedFunctionTable` / `PrelinkPlan` 新設。`-nsa` は prelink Pass 1/3 のみ付与 (既存単段フローには影響なし)
+  - PR-A バグ修正: `Preprocessor` が `#END` を「stray」として skip してしまい、`#MODULE` 内 `#END` が Parser に届いていなかった問題を解消 (これにより 2 つ以上の `#MODULE` が正しく個別 overlay として認識される)
+  - PR-A バグ修正: `#MODULE` ネスト禁止 (= `#END` 不足検出も兼ねた parse エラー)
+  - 失敗時は `--keep-asm` 指定なしでも中間 ASM を残す (AILZ80ASM のエラー行追跡用、PR-B 既存)
+  - 新規テスト: `AsmSectionParserTests` (4) + `ExportedFunctionTableTests` (4) + `PrelinkPlanTests` (5) + `BuildIntegrationTests` 拡張 (4 件 prelink E2E + -o 相対パス回帰 2 件、合計 17 件追加)
 - 二段アセンブル toolchain `slangbuild` を新ドライバとして追加 (PR-B)
   - `src/SLANGCompiler.Build/` を新規 .NET 8 プロジェクトとして追加。`slangc` は改修せず、`slangbuild` が orchestration (slangc → AILZ80ASM main → AILZ80ASM overlay) を担う GCC 的責務分離
   - **二段フロー**: main を `-sm minimal-equ` でアセンブルして `.sym` を生成 → 各 overlay について overlay ASM 内の `; EXTERN` リストと main.sym の交集合だけを抽出した `<overlay>.imports.asm` (filtered EQU) を作成 → `imports.asm + overlay.ASM` を AILZ80ASM に投入。raw main.sym をそのまま渡すと compiler 内部ラベル衝突が起きるため必ず filter する

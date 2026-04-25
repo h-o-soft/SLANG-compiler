@@ -861,3 +861,53 @@ slangbuild <input.SL> [options]
 - 未解決ラベル (overlay の `; EXTERN` リストにあるが main.sym にない) は
   `--verbose` 時に warning として表示。AILZ80ASM 側で「未定義シンボル」
   エラーで止まる
+
+### 全ファイル間関数 cross-reference 解決 (v0.23 PR-B2)
+
+PR-B2 で `slangbuild` を拡張し、`main / overlay 0 / overlay 1 / ...` の
+任意の組み合わせ間で **SLANG 関数を相互呼び出し** できるようにする
+(prelink 二段アセンブル方式)。
+
+#### サポート範囲 (関数シンボルのみ)
+
+- main → overlay 関数
+- overlay → overlay 関数
+- overlay → main 関数
+
+#### 仕様 (= ユーザー責任)
+
+- 解決するのは **アドレスだけ**。呼び先 overlay が実行時にメモリにロード
+  されている保証は driver / runtime には無い
+- 同一 ORG を共有する overlay 間 call は未定義動作になりうる
+- swap タイミング / 呼び出し可否はすべて **ユーザー責任**
+
+つまり SLANG は呼び出しコードを `CALL <address>` として吐くだけで、その
+address が今そこに居るかは関知しない (低レベル言語の責務分担)。
+
+#### 仕組み (内部、参考)
+
+`slangc` が各 ASM に **Exports** (= 自分が定義する関数: `; FUNC <name>`) と
+**User Function References** (= 自分が呼ぶ他ファイル関数: `; EXTERN <name>`)
+の 2 セクションをコメントとして出力する。`slangbuild` がこれらを検出した
+場合、自動的に prelink モードに入る:
+
+```
+Pass 1: 各 target に dummy imports (全 extern を $0000 EQU) を渡してアセンブル
+        → 各 target.pass1.sym 取得 (= 自身が定義する label のアドレス確定)
+Pass 2: 全 target の Exports セクションに列挙された関数だけを拾って
+        ExportedFunctionTable を構築
+        (注: runtime 関数等 export 宣言されていない label は除外、衝突なし)
+Pass 3: combined imports.asm を生成 (= user function は ExportedFunctionTable
+        から、shared runtime / globals は main.sym から解決) → 各 target を
+        本番アセンブル
+```
+
+`-nsa` (no super-assemble) は **prelink モード時のみ** 付与され、Pass 1
+と Pass 3 で同じ target 内のラベルアドレスが一致することを保証する。
+PR-B 既存の単段フロー (cross-ref 無しの場合) では `-nsa` を付けない。
+
+#### 制約 (本 PR-B2)
+
+- 関数シンボルのみ対応。overlay private 変数 / overlay work / data の
+  cross-reference は未対応
+- `#MODULE` のネストは禁止 (`#END` 不足の検出を兼ねて compile エラー)

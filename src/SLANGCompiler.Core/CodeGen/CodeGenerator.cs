@@ -36,6 +36,12 @@ public class CodeGenerator
     /// CLI 側 (.inc 生成等) で shared runtime 関数のラベルを引くために露出。null の場合は
     /// runtime manager がない (= test 単独 Generate 等)。</summary>
     public RuntimePlan? RuntimePlan => _runtimePlan;
+
+    // PrepareRuntimePlan の dry-run で集めた per-target の called functions。
+    // PR-B2 で main / overlay それぞれに Exports / Imports セクションを emit するときに
+    // 参照する (= ユーザー関数の cross-reference 判定)。null は未収集状態。
+    private HashSet<string>? _mainCalledFunctions;
+    private Dictionary<int, HashSet<string>>? _overlayCalledFunctions;
     private bool IsCodeReadonly => _envConfig?.CodeReadonly == true;
 
     public CodeGenerator(IrModule module, Runtime.RuntimeManager? runtimeManager = null,
@@ -118,6 +124,11 @@ public class CodeGenerator
 
         _runtimePlan = RuntimePlanner.Build(mainCalled, _module.Overlays,
             overlayCalled, _runtimeManager, inlineNames);
+
+        // PR-B2: per-target called functions を保持し、Exports/Imports セクション emit
+        // で再利用する
+        _mainCalledFunctions = mainCalled;
+        _overlayCalledFunctions = overlayCalled;
     }
 
     private string GenerateOverlay(OverlayModule overlay)
@@ -208,6 +219,9 @@ public class CodeGenerator
             }
             _e.Raw($"__WORKEND_M{overlay.Index}__ EQU ({workLabel} + {offset})");
         }
+
+        // PR-B2: User function cross-reference セクション (Exports + Imports)
+        EmitFunctionCrossRefs(overlay.Index);
 
         // 共有 runtime 関数: shared promoted な main resident 関数を overlay 側から
         // EXTERN 参照する。AILZ80ASM には EXTERN がないため、現状はコメント形式で出力し、
@@ -467,6 +481,11 @@ public class CodeGenerator
             }
         }
 
+        // PR-B2: User function cross-reference セクション (Exports + Imports)
+        // slangbuild prelink モードがこのセクションを読んで全 target 間の関数
+        // アドレス解決を行う。AILZ80ASM 的にはコメントなので影響なし。
+        EmitFunctionCrossRefs(overlayIndex: null);
+
         // プログラム末尾マーカー
         _e.Label("SLANG_PROG_END");
 
@@ -642,6 +661,85 @@ public class CodeGenerator
         if (_runtimePlan != null)
             return _runtimePlan.GetMainInitFunctions().Any();
         return _runtimeManager.GetUsedFunctions().Any(f => !string.IsNullOrEmpty(f.InitCode));
+    }
+
+    /// <summary>
+    /// PR-B2: User function cross-reference セクションを emit する。
+    ///
+    /// - Exports セクション: 自分が定義する SLANG 関数を `; FUNC <name>` 形式で列挙
+    ///   (driver は ここから export set を抽出して全 sym union 衝突を回避)
+    /// - Imports セクション: 自分が呼ぶ他 target の SLANG 関数を `; EXTERN <name>` 形式
+    ///   (driver はここを起点に prelink Pass 1/3 で extern を $0000 → 実アドレス
+    ///   に解決する)
+    ///
+    /// runtime 関数 / local label / private symbol は対象外 (= driver の export
+    /// 集合に入らないので名前衝突も起きない)。
+    /// </summary>
+    /// <param name="overlayIndex">main を emit 中なら null、overlay i を emit 中なら i</param>
+    private void EmitFunctionCrossRefs(int? overlayIndex)
+    {
+        // 自分が定義する関数 + 自分が呼んだ関数 (per-target) を取り出す
+        IEnumerable<string> myFunctions;
+        HashSet<string>? myCalled;
+        if (overlayIndex.HasValue)
+        {
+            var overlay = _module.Overlays[overlayIndex.Value];
+            myFunctions = overlay.Functions.Select(f => f.Name);
+            myCalled = _overlayCalledFunctions != null
+                && _overlayCalledFunctions.TryGetValue(overlayIndex.Value, out var oc)
+                ? oc : null;
+        }
+        else
+        {
+            myFunctions = _module.Functions.Select(f => f.Name);
+            myCalled = _mainCalledFunctions;
+        }
+
+        // === Exported User Functions === (常に出す、空でも driver が認識できるよう)
+        var exports = myFunctions.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        if (exports.Count > 0)
+        {
+            _e.Blank();
+            _e.Comment("=== Exported User Functions ===");
+            foreach (var name in exports)
+                _e.Raw($"; FUNC {name}");
+        }
+
+        // 「他 target の関数 → どこに定義されているか」マップを作る (Imports 用)
+        if (myCalled == null) return;
+        var otherFunctionsByLocation = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (overlayIndex.HasValue)
+        {
+            // overlay の場合: main + 他 overlay が定義する関数を imports 候補に
+            foreach (var f in _module.Functions)
+                otherFunctionsByLocation[f.Name] = "main";
+            foreach (var ov in _module.Overlays)
+            {
+                if (ov.Index == overlayIndex.Value) continue;
+                foreach (var f in ov.Functions)
+                    otherFunctionsByLocation[f.Name] = $"overlay {ov.Index}";
+            }
+        }
+        else
+        {
+            // main の場合: 全 overlay が定義する関数を imports 候補に
+            foreach (var ov in _module.Overlays)
+                foreach (var f in ov.Functions)
+                    otherFunctionsByLocation[f.Name] = $"overlay {ov.Index}";
+        }
+
+        // === User Function References ===
+        var imports = myCalled
+            .Where(name => otherFunctionsByLocation.ContainsKey(name))
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (imports.Count > 0)
+        {
+            _e.Blank();
+            _e.Comment("=== User Function References ===");
+            foreach (var name in imports)
+                _e.Raw($"; EXTERN {name}  ; defined in {otherFunctionsByLocation[name]}");
+        }
     }
 
     // システムレジスタワーク変数の定義（旧実装準拠の順序）
