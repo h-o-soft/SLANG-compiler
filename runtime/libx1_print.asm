@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name WIDTH
+; @resident shared
 ; @param_count 1
 ; @calls sWORK,X1WORK,CTRL0C
 PUSH	BC
@@ -87,6 +88,7 @@ RET
 
 
 ; @name CTRL0B
+; @resident shared
 ; @calls sWORK,X1WORK
 LD	HL,0
 LD	(_TXADR),HL
@@ -94,6 +96,7 @@ RET
 
 
 ; @name CTRL0C
+; @resident shared
 ; @calls CTRL0B,sWORK,X1WORK
 CALL	CTRL0B
 CTRL06:
@@ -118,12 +121,14 @@ RET
 
 
 ; @name PRMODE
+; @resident shared
 ; @param_count 1
 ; PRMODE not supported
 RET
 
 
 ; @name SCREEN
+; @resident shared
 ; @param_count 2
 ; @calls sSCRN
 LD H,E
@@ -134,6 +139,7 @@ RET
 
 
 ; @name LOCATE
+; @resident shared
 ; @param_count 2
 ; @calls AT_VRCALC,sWORK,X1WORK
 LD H,E
@@ -147,6 +153,7 @@ RET
 
 
 ; @name AT_VRCALC
+; @resident shared
 ; @param_count 1
 ; @calls sWORK,X1WORK
 PUSH	DE
@@ -168,6 +175,7 @@ RET
 
 
 ; @name PTAB
+; @resident shared
 ; @param_count 1
 ; @calls PCR1
 LD E,$09
@@ -175,6 +183,7 @@ JR PCR1
 
 
 ; @name PSPC
+; @resident shared
 ; @param_count 1
 ; @calls PCR1
 LD E,' '
@@ -182,12 +191,14 @@ JR PCR1
 
 
 ; @name PCRONE
+; @resident shared
 ; @param_count 0
 ; @calls PCR
 LD HL,1
 
 
 ; @name PCR
+; @resident shared
 ; @param_count 1
 ; @calls PSTR2
 EX DE,HL
@@ -196,12 +207,14 @@ JR PSTR2
 
 
 ; @name PCR1
+; @resident shared
 ; @param_count 1
 ; @calls PSTR
 EX DE,HL
 
 
 ; @name PSTR
+; @resident shared
 ; @param_count 2
 ; @calls PRT
 .pstr1
@@ -215,6 +228,7 @@ JR .pstr1
 
 
 ; @name PSTR2
+; @resident shared
 ; @param_count 2
 ; @calls PCHR
 .pstr1
@@ -227,6 +241,7 @@ JR .pstr1
 
 
 ; @name PCHR
+; @resident shared
 ; @calls PRT
 LD A, H
 OR A
@@ -237,12 +252,14 @@ JR NZ,PRT
 
 
 ; @name CRDISP
+; @resident shared
 ; @calls PRT
 LD A,$0D
 JR PRT
 
 
 ; @name PHEX4
+; @resident shared
 ; @param_count 1
 ; @calls PHEX2
 LD A,H
@@ -250,12 +267,14 @@ CALL PHEX
 
 
 ; @name PHEX2
+; @resident shared
 ; @param_count 1
 ; @calls PHEX
 LD A,L
 
 
 ; @name PHEX
+; @resident shared
 ; @param_count 1
 ; @calls SASC,PRT
 PUSH AF
@@ -271,6 +290,7 @@ CALL SASC
 
 
 ; @name PRT
+; @resident shared
 ; @param_count 1
 ; @calls X1WORK,CTRL0D
 PUSH DE
@@ -318,6 +338,7 @@ DS  4
 
 
 ; @name CTRL0D
+; @resident shared
 ; @calls LSXCALLS
 ; BDOSにCR+LFを送りLSX-Dodgersに改行・スクロールを委譲
 ; _TXADR($EE8E)はLSX-Dodgersと共有しているため自動的に同期される
@@ -334,6 +355,7 @@ RET
 
 
 ; @name CSR
+; @resident shared
 _POS:
 LD	HL,(_TXADR)
 PUSH	BC
@@ -352,6 +374,7 @@ RET
 
 
 ; @name PSIGN
+; @resident shared
 ; @param_count 1
 ; @calls PRT,NEGHL,P10
 BIT 7, H
@@ -363,6 +386,7 @@ CALL NEGHL
 
 
 ; @name P10
+; @resident shared
 ; @param_count 1
 ; @function_type Machine
 ; @calls P10to5,P10toN
@@ -371,6 +395,7 @@ JR P10toN
 
 
 ; @name P10to5
+; @resident shared
 ; @param_count 1
 ; @function_type Machine
 ; @calls P10toN
@@ -378,6 +403,7 @@ LD DE, 0005
 
 
 ; @name P10toN
+; @resident shared
 ; @param_count 2
 ; @function_type Machine
 ; @calls PRT,VTOS,PMSX
@@ -409,11 +435,13 @@ JR .p10ton4
 
 
 ; @name PMSX
+; @resident shared
 ; @calls PMSX1
 LD B, 00
 
 
 ; @name PMSX1
+; @resident shared
 ; @calls PRT,PMSG
 LD A, (HL)
 CP B
@@ -424,12 +452,14 @@ JR PMSX1
 
 
 ; @name PMSG
+; @resident shared
 ; @calls PMSX1
 LD B, $0D
 JR PMSX1
 
 
 ; @name MPRNT
+; @resident shared
 ; @calls PRT
 EX (SP),HL
 .mprnt2
@@ -445,6 +475,7 @@ RET
 
 
 ; @name VTOS
+; @resident shared
 ; @param_count 2
 ; @function_type Machine
 ; @calls DIVHLDE8
@@ -479,6 +510,7 @@ RET
 
 
 ; @name X1WORK
+; @resident shared
 ; LSX-Dodgers 1.62c ワーク共有
 _TXADR		EQU	$EE8E	; テキストカーソルVRAMアドレス
 ; CRTCD 関連 (_WIDTH / _PAGE_MINUS / _WIDTH_MINUS / WK1FD0) は WIDTH 内で

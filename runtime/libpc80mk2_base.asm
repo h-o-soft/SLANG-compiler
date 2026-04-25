@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name PC80CALLS
+; @resident shared
 ;-----------------------------------------------------------------------
 ; 定数定義
 ;
@@ -96,6 +97,7 @@ ATRB:
 
 
 ; @name SLANGINIT
+; @resident local
 ; @calls PC80CALLS,PC80WORK
 INIT:
 ; 初期化
@@ -124,6 +126,7 @@ JP INFLOOP
 
 
 ; @name MEMMODE
+; @resident shared
 ; @calls PC80CALLS
 ; HL = READ: 0=ROM / 1=RAM
 ; DE = WRITE: 0=ROM / 1=RAM
@@ -156,6 +159,7 @@ RET
 
 
 ; @name CMDSCREEN
+; @resident shared
 ; HL = GRAPHIC MODE(0=640x200 MONO、1=640x200Attribute Color、2=320x200、4 Color 1,3=320x200、4 Color 1)
 ; DE = 0 = GRAPHIC OFF / 1 = GRAPHIC ON
 ; BC = COLOR CODE
@@ -203,16 +207,19 @@ RET
 
 
 ; @name LOADCMT
+; @resident shared
 CALL $BF3   ; CMT Read Start
 CALL $5F3A  ; LOAD CMT Machine binary
 RET
 
 
 ; @name SD_ROPEN
+; @resident shared
 JP $600f
 
 
 ; @name SD_FGET
+; @resident shared
 CALL $6006
 LD L,A
 LD H,0
@@ -220,31 +227,38 @@ RET
 
 
 ; @name SD_RREAD
+; @resident shared
 JP $6009
 
 
 ; @name SD_WAOPEN
+; @resident shared
 JP $6012
 
 
 ; @name SD_WNOPEN
+; @resident shared
 JP $601B
 
 
 ; @name SD_FPUT
+; @resident shared
 LD A,L
 JP $6018
 
 
 ; @name SD_FWRITE
+; @resident shared
 JP $6015
 
 
 ; @name SD_WCLOSE
+; @resident shared
 JP $601E
 
 
 ; @name SETGVRAM
+; @resident shared
 ; HL = 0=Main Memory / 1=GVRAM
 push bc
 
@@ -265,12 +279,14 @@ ret
 
 
 ; @name PC80WORK
+; @resident shared
 ; @param_count 0
 ; @works WORKDUMMY:2
 ;
 
 
 ; @name KANJILOCATE
+; @resident shared
 ; @lib PC80KANJI
 	; HL = X
 	; DE = Y
@@ -281,6 +297,7 @@ ret
 	ret
 
 ; @name KANJIPUT
+; @resident shared
 ; @lib PC80KANJI
 
 ; 0�ɂ����640x200���[�h�A1�`3�ɂ����320x200���[�h�Ŏw�肵���F�ŕ`�悳��܂�(�e�L�g�[)
@@ -954,6 +971,7 @@ KanjiVRAM:	dw	$8000
 
 
 ; @name PCGDEF2
+; @resident shared
 ; @calls PCGDEF
 ; (256 chr mode)
 ; HL = chr code(0x00-0x7f) DE = address
@@ -976,6 +994,7 @@ JP PCGDEF.defmain
 
 
 ; @name PCGDEF
+; @resident shared
 ; (128 chr mode)
 ; HL = chr code(0x00-0x7f) DE = address
 EX DE,HL
@@ -1079,6 +1098,7 @@ RET
 
 
 ; @name STICK2
+; @resident shared
 ; TENKEY INPUT
 ; result:
 ;   bit0 up
@@ -1146,6 +1166,7 @@ RET
 
 
 ; @name STRIG
+; @resident shared
 LD HL,0
 IN A,(KEYP09)
 AND KEY09.SPACE
@@ -1156,6 +1177,7 @@ RET
 
 
 ; @name VSYNC
+; @resident shared
 IN	A, (KEYP08)
 RLCA
 RET	NC
@@ -1171,6 +1193,7 @@ RET
 
 
 ; @name KEYCHK
+; @resident shared
 LD C,L
 IN L,(C)
 LD H,0
@@ -1178,6 +1201,7 @@ RET
 
 
 ; @name BEEP
+; @resident shared
 LD A,L
 AND 1
 RLA

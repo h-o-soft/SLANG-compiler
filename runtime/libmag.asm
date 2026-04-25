@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name MAGBASE
+; @resident shared
 ; @calls MAGLOAD,X1WORK
 ; @lib MAGLIB
 ;
@@ -29,6 +30,7 @@ HEADBF	EQU	PDBUFE
 PALBF	EQU	HEADBF+32
 
 ; @name GRDISP
+; @resident shared
 ; @lib MAGLIB
     LD A,H
     OR L
@@ -74,6 +76,7 @@ GR_NODISP:
     RET
 
 ; @name GRCLS
+; @resident shared
 ; @calls MAGBASE
 ; @lib MAGLIB
     ; ���݂�VRAM BANK�̂݃N���A����
@@ -93,6 +96,7 @@ CLS2:
     RET
 
 ; @name MAGLOAD
+; @resident shared
 ; @calls MAGBASE,X1WORK,GRCLS,MULHLDE,FOPEN,FGETC,FREAD,FSEEK,FCLOSE
 ; @lib MAGLIB
 ; @works MAGLOAD_WORK:2

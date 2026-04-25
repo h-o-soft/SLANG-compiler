@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name STICK
+; @resident shared
 ; @calls MSXCALLS
 LD A,L
 CALL GTSTCK
@@ -11,6 +12,7 @@ RET
 
 
 ; @name STICK2
+; @resident shared
 ; @calls MSXCALLS
 LD A,L
 CALL GTSTCK

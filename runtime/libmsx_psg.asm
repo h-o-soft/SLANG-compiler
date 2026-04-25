@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name PSG_BASE
+; @resident shared
 ; @lib PSGLIB
 RDVRM:        EQU $004A	; BIOS RDVRM
 WRTVRM:       EQU $004D	; BIOS WRTVRM
@@ -27,6 +28,7 @@ H_TIMI:       EQU $FD9F   ; 垂直帰線割り込みフック
 
 
 ; @name PSG_INIT
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
 ; ====================================================================================================
@@ -136,6 +138,7 @@ SOUNDDRV_INITWK_L1:
     RET
 
 ; @name PSG_PLAY
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
 ; ====================================================================================================
@@ -182,6 +185,7 @@ SOUNDDRV_BGMPLAY:
     RET
 
 ; @name PSG_SFX
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
 ; ====================================================================================================
@@ -241,6 +245,7 @@ SOUNDDRV_SFXPLAY_EXIT:
     RET
 
 ; @name PSG_STOP
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
 ; ====================================================================================================
@@ -298,6 +303,7 @@ SOUNDDRV_STOP_L2:
     RET
 
 ; @name PSG_PAUSE
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
 ; ====================================================================================================
@@ -331,6 +337,7 @@ SOUNDDRV_PAUSE_EXIT:
     RET
 
 ; @name PSG_RESUME
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
 ; ====================================================================================================
@@ -377,6 +384,7 @@ SOUNDDRV_RESUME_EXIT:
     RET
 
 ; @name PSG_PROC
+; @resident shared
 ; @calls PSG_BASE
 ; @lib PSGLIB
 ; @works SOUNDDRV_H_TIMI_BACKUP:5,SOUNDDRV_STATE:1,SOUNDDRV_WK_MIXING_TONE:1,SOUNDDRV_WK_MIXING_NOISE:1,SOUNDDRV_BGMWK:48,SOUNDDRV_DUMMYWK:16,SOUNDDRV_SFXWK:48
@@ -891,6 +899,7 @@ SOUNDDRV_TONETBL:
 
 
 ; @name PSG_END
+; @resident shared
 ; @calls PSG_BASE,PSG_STOP
 ; @lib PSGLIB
     DI
@@ -907,6 +916,7 @@ SOUNDDRV_TONETBL:
     RET
 
 ; @name VSYNC
+; @resident shared
 ; VSYNC(MSX) / not implemented
 RET
 

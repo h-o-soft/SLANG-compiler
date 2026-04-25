@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name FILEWORKS
+; @resident shared
 FBADDEVICE    EQU $0f
 FOPENMODEERROR  EQU $10
 FOUTOFFILE    EQU $11
@@ -38,6 +39,7 @@ DS 12
 
 
 ; @name FOPEN
+; @resident shared
 ; @param_count 3
 ; @calls SOSCALLS,FILEWORKS,FILEUTIL
 CALL SETIX
@@ -244,6 +246,7 @@ JP FILEERROR
 
 
 ; @name FSEEK
+; @resident shared
 ; @param_count 3
 ; @calls SOSCALLS,FILEWORKS,FILEUTIL
 CALL SETIX
@@ -296,6 +299,7 @@ RET
 
 
 ; @name FPUTC
+; @resident shared
 ; @param_count 2
 ; @calls SOSCALLS,FILEWORKS,FILEUTIL,FPG
 LD C, 0
@@ -307,6 +311,7 @@ JP FNORMAL
 
 
 ; @name FGETC
+; @resident shared
 ; @param_count 1
 ; @calls SOSCALLS,FILEWORKS,FILEUTIL,FPG
 LD D, 0
@@ -317,6 +322,7 @@ JP FNORMAL
 
 
 ; @name FPG
+; @resident shared
 ; @calls SOSCALLS,FILEWORKS,FILEUTIL,FPG
 PUSH DE
 CALL SETIX
@@ -441,6 +447,7 @@ JP FILEERROR
 
 
 ; @name FCLOSE
+; @resident shared
 ; @param_count 1
 ; @calls SOSCALLS,FILEWORKS,FILEUTIL
 CALL SETIX
@@ -485,6 +492,7 @@ JP FILEERROR
 
 
 ; @name FREAD
+; @resident shared
 ; @calls FGETC
 ; HL = fnum DE = address BC = size
 LD (.freadnum),HL
@@ -526,6 +534,7 @@ DW  0
 
 
 ; @name FWRITE
+; @resident shared
 ; @calls FPUTC
 ; HL = fnum DE = address BC = size
 LD (.fwritenum),HL
@@ -568,6 +577,7 @@ DW  0
 
 
 ; @name FILEUTIL
+; @resident shared
 SCHDIR:
 LD A, $ff
 LD (SPACEOS), A

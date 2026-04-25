@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name Disk_Load
+; @resident shared
 ; @calls Disk_FileName
 ; HL = path Address, DE = load address
 push de
@@ -13,6 +14,7 @@ jp $0000 + $3
 
 
 ; @name Disk_FileName
+; @resident shared
 ; HL = path Address
 ; Disk_FileName (deにFileNameのaddressを返す)
 call $0000 + $1e
@@ -25,6 +27,7 @@ ret
 
 
 ; @name Disk_Load3
+; @resident shared
 ; HL = load address, DE = offset, BC = size
 
 ; limit 64KB
@@ -36,11 +39,13 @@ ret
 
 
 ; @name Disk_Save
+; @resident shared
 ; HL = save data address, b=cnt c=drv d=Trk e=Sec
 jp $0000 + 12
 
 
 ; @name Disk_SecLoad
+; @resident shared
 ; HL = load data address, b=cnt c=drv d=Trk e=Sec
 jp $0000 + 33
 

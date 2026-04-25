@@ -53,6 +53,7 @@ endif
 
 # ツールのコマンド名
 SLANGC = bin/slangc$(EXE_EXT)
+SLANGBUILD = bin/slangbuild$(EXE_EXT)
 ASM = tools/AILZ80ASM$(EXE_EXT)
 NDC = tools/ndc$(EXE_EXT)
 HUDISK = tools/HuDisk$(EXE_EXT)
@@ -111,10 +112,13 @@ ifeq ($(DETECTED_OS),Windows)
 	@echo "Windows: Please add bin directory to PATH manually"
 	-$(MKDIR) "$(BINDIR)"
 	$(CP) bin\slangc.exe "$(BINDIR)\"
+	$(CP) bin\slangbuild.exe "$(BINDIR)\"
 else
 	$(MKDIR) $(BINDIR)
 	$(CP) bin/slangc $(BINDIR)/
+	$(CP) bin/slangbuild $(BINDIR)/
 	chmod +x $(BINDIR)/slangc
+	chmod +x $(BINDIR)/slangbuild
 endif
 
 install-lib:
@@ -134,9 +138,11 @@ endif
 uninstall:
 ifeq ($(DETECTED_OS),Windows)
 	$(RM) "$(BINDIR)\slangc.exe"
+	$(RM) "$(BINDIR)\slangbuild.exe"
 	$(RMDIR) "$(CONFIG_DIR)"
 else
 	$(RM) $(BINDIR)/slangc
+	$(RM) $(BINDIR)/slangbuild
 	$(RMDIR) $(CONFIG_DIR)
 endif
 	@echo "Uninstallation complete!"
@@ -152,11 +158,12 @@ else
 endif
 
 # サンプルのビルド
-$(TARGET)$(ASM_EXT): $(TARGET)$(SRC_EXT)
-	$(SLANGC) $< -E $(SLANGENV) -I include
-
-$(OUTPROG): $(TARGET)$(ASM_EXT)
-	$(ASM) $< -f -o $@ -bin -sym -lst $(ASM_OPT)
+# slangbuild が slangc 呼び出し → main アセンブル → 各 overlay の filtered sym 生成
+# → overlay アセンブル を一括処理する。overlay 不要 (#MODULE 未使用) の場合は
+# 単段フローで main.bin だけが出る。--asm/--slangc を明示指定して PATH 上の
+# 旧バイナリ混入を防ぐ。
+$(OUTPROG): $(TARGET)$(SRC_EXT)
+	$(SLANGBUILD) $< -E $(SLANGENV) -I include --slangc $(SLANGC) --asm $(ASM) -o $(dir $(TARGET))PROG
 
 # ディスクイメージ作成
 ifeq ($(ENV), cpm)

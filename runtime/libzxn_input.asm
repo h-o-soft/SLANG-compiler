@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name INKEY
+; @resident shared
 ; @calls GETC
 ; 　入力されたキーの値を返す。
 ; 　　　n=0のときS-OSの#GETKYと同じ → リアルタイム入力。入力されたものをA。されてなければ0。
@@ -38,6 +39,7 @@ RET
 
 
 ; @name LINPUT
+; @resident shared
 ; 未実装
 ; LINPUT(格納アドレス, 長さ)
 ; コールし た時点のカーソル以降を続み込むほかはGETLlN関数と同じ。
@@ -45,6 +47,7 @@ RET
 
 
 ; @name GETL
+; @resident shared
 ; 未実装
 ; HL 格納アドレス
 ; キーボードから1行入力し，格納アドレスに格納し，行の長さを返す。
@@ -53,6 +56,7 @@ RET
 
 
 ; @name GETLIN
+; @resident shared
 ; 未実装
 ; GETLlN (格納アドレス, 長さ)
 ; 1行の最大長を指定できるほかは，GETL関数と同じ。オーバーした分は無視される。
@@ -60,6 +64,7 @@ RET
 
 
 ; @name INPUT
+; @resident shared
 ; 未実装
 ; キーボードから入力された数値を返す。先頭に$を付けると，16進数とみなす。
 ; コールした時点のカーソル以降を読み込み，正常な入力が行われた場合は^CARRY=0，
@@ -68,6 +73,7 @@ RET
 
 
 ; @name GETC
+; @resident shared
 ; @calls ZXNWORK,ZXNCALLS
 call KEY_SCAN
 jp nz, .EMPTY_INKEY
@@ -91,6 +97,7 @@ ret
 
 
 ; @name GETKEY
+; @resident shared
 LD A,L
 CP 8
 JR NC,.extendkey

@@ -1126,4 +1126,85 @@ END;
         Assert.Contains("SUB:", ov);
         Assert.Contains("NOP", ov);
     }
+
+    // ---- #MODULE ランタイム集約ポリシー (PR-A 内部設計) ----
+
+    [Fact]
+    public void Overlay_RuntimePolicy_Omitted_BackwardCompat()
+    {
+        // ポリシー省略 = Local モード (現状互換)。PR-A 後も既存 overlay 出力は変わらず、
+        // overlay 内に runtime 関数 (MPRNT 等) が複製展開される。
+        var source = @"
+MAIN() BEGIN BEEP(); END;
+#MODULE $8000
+SUB() BEGIN PRINT(""X""); END;
+";
+        var (_, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+        // Overlay_OnlyOwnRuntime と同じ: overlay に MPRNT が local 展開される
+        Assert.Contains("MPRNT:", ov);
+        // 共有用 EXTERN セクションは関数側 @resident shared が無いので空
+        Assert.DoesNotContain("Shared Runtime References", ov);
+    }
+
+    [Fact]
+    public void Overlay_RuntimePolicy_Resident_SharedRuntimes_PromotedToMain()
+    {
+        // PR-C1 で runtime に @resident shared を付与済み。
+        // RESIDENT モード × shared 関数の交点で、overlay 内 runtime 本体は
+        // 削除されメイン側 EXTERN 参照になる (overlay サイズが縮小)。
+        var source = @"
+MAIN() BEGIN END;
+#MODULE $8000 RESIDENT
+SUB() BEGIN PRINT(""X""); END;
+";
+        var (mainAsm, overlays) = CompileWithOverlays(source);
+        var ov = overlays.Values.First();
+        // overlay には MPRNT 本体が無く、main の MPRNT を EXTERN で参照する
+        Assert.DoesNotContain("MPRNT:", ov);
+        Assert.Contains("Shared Runtime References", ov);
+        Assert.Contains("MPRNT", ov);                 // EXTERN 参照として残る
+        // main 側に MPRNT 本体が残る (= メモリ節約: 複数 overlay 間で共有可)
+        Assert.Contains("MPRNT:", mainAsm);
+    }
+
+    [Fact]
+    public void Overlay_RuntimePolicy_SelfContain_NotImplementedError()
+    {
+        // SELFCONTAIN は enum のみ予約、現時点はコンパイルエラー
+        var stderr = CompileExpectError(@"
+MAIN() BEGIN END;
+#MODULE $8000 SELFCONTAIN
+SUB() BEGIN END;
+");
+        Assert.Contains("not implemented", stderr);
+        Assert.Contains("SelfContain", stderr);
+    }
+
+    [Fact]
+    public void Overlay_RuntimePolicy_Auto_NotImplementedError()
+    {
+        // AUTO も同様に未実装エラー
+        var stderr = CompileExpectError(@"
+MAIN() BEGIN END;
+#MODULE $8000 AUTO
+SUB() BEGIN END;
+");
+        Assert.Contains("not implemented", stderr);
+        Assert.Contains("Auto", stderr);
+    }
+
+    [Fact]
+    public void Overlay_RuntimePolicy_TypoIdentifier_RaisesUnknownPolicyError()
+    {
+        // RESIDNT (typo) はヘッダ位置で識別子として現れ、直後が `(` でないので
+        // 「Unknown #MODULE policy」として専用エラーが出る (黙って Local 化しない)。
+        var stderr = CompileExpectError(@"
+MAIN() BEGIN END;
+#MODULE $8000 RESIDNT
+SUB() BEGIN END;
+");
+        Assert.Contains("Unknown #MODULE policy", stderr);
+        Assert.Contains("RESIDNT", stderr);
+    }
 }

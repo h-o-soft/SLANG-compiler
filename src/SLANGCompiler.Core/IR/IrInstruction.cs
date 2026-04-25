@@ -263,6 +263,18 @@ public class GlobalVarInfo
 }
 
 /// <summary>
+/// オーバーレイモジュールのランタイム集約ポリシー (IR 側ミラー)。
+/// AST 側 OverlayRuntimePolicy と 1:1 対応。Local が現状互換の自己完結モード。
+/// </summary>
+public enum OverlayRuntimePolicy
+{
+    Local = 0,
+    Resident,
+    SelfContain,
+    Auto,
+}
+
+/// <summary>
 /// オーバーレイモジュール: 別アドレス空間に配置されるコードブロック。
 /// メイン部とシンボルテーブルを共有するが、別ASMファイルとして出力される。
 /// </summary>
@@ -272,6 +284,8 @@ public class OverlayModule
     public int OrgAddress { get; set; }
     /// <summary>モジュール専用ワークエリア (__WORK_M&lt;Index&gt;__) の ORG。null なら overlay コード末尾に配置。</summary>
     public int? WorkAddress { get; set; }
+    /// <summary>ランタイム集約ポリシー (#MODULE ヘッダの RESIDENT/SELFCONTAIN/AUTO)。default=Local</summary>
+    public OverlayRuntimePolicy RuntimePolicy { get; set; } = OverlayRuntimePolicy.Local;
     public List<IrFunction> Functions { get; } = new();
     public List<GlobalVarInfo> LocalVars { get; } = new();
     public Dictionary<string, string> StringTable { get; } = new();

@@ -158,6 +158,24 @@ public class Parser
         // アドレス式（#MODULE $8000）
         var addr = ParseNcExpr();
 
+        // ヘッダ位置のランタイム集約ポリシー (optional)
+        // 例: `#MODULE $8000 RESIDENT`。Lexer で予約語化済みなのでトークン種別で判定。
+        // 未知識別子 (例: `RESIDNT` typo) はヘッダ直後 + 直後が `(` でない場合に
+        // 限り「policy 候補だが未知」として専用エラーで止める。直後が `(` の場合は
+        // 関数定義開始 (`SUB() ...`) として ParseTopLevel に流す。
+        var policy = OverlayRuntimePolicy.Local;
+        if (Check(TokenKind.Resident)) { policy = OverlayRuntimePolicy.Resident; Advance(); }
+        else if (Check(TokenKind.SelfContain)) { policy = OverlayRuntimePolicy.SelfContain; Advance(); }
+        else if (Check(TokenKind.Auto)) { policy = OverlayRuntimePolicy.Auto; Advance(); }
+        else if (Check(TokenKind.Identifier) && Peek(1).Kind != TokenKind.LParen)
+        {
+            var name = Current.StringValue;
+            _diagnostics.Error(
+                $"Unknown #MODULE policy '{name}' (expected: RESIDENT, SELFCONTAIN, AUTO)",
+                Current.Span);
+            Advance(); // skip the bad identifier so後続パースが進む
+        }
+
         // #END まで定義を収集
         var defs = new List<AstNode>();
         while (!Check(TokenKind.EOF) && !_diagnostics.HasReachedMaxErrors)
@@ -166,6 +184,18 @@ public class Parser
             if (Check(TokenKind.PreprocEnd))
             {
                 Advance();
+                break;
+            }
+            // #MODULE は入れ子不可。連続する `#MODULE $X ... #END #MODULE $Y ...` は
+            // 外側 ParseTopLevel で個別の overlay として扱われるべきだが、もし `#END` が
+            // 不足して次の `#MODULE` が現れた場合、ParseTopLevel の `case TokenKind.Module`
+            // が再帰的に ParseModuleBlock を呼んでネスト ModuleBlock を作ってしまう。
+            // 明示エラーで止める。
+            if (Check(TokenKind.Module))
+            {
+                _diagnostics.Error(
+                    "#MODULE cannot be nested. Insert #END to close the outer #MODULE before starting a new one.",
+                    Current.Span);
                 break;
             }
             if (Match(TokenKind.Semicolon)) continue;
@@ -179,7 +209,7 @@ public class Parser
                 Advance();
         }
 
-        return new ModuleBlock(addr, defs, start);
+        return new ModuleBlock(addr, defs, start, policy);
     }
 
     // ==== CONST declaration ====

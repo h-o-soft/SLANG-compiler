@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name WIDTH
+; @resident shared
 ; HL=80 or 40
 ld  b,l
 ld  c,25
@@ -9,6 +10,7 @@ jp	BIOS.WIDTH
 
 
 ; @name WIDTH2
+; @resident shared
 ; HL=80 or 40
 ; DE=25 or 20
 ld  b,l
@@ -17,6 +19,7 @@ jp	BIOS.WIDTH
 
 
 ; @name TEXTMODE
+; @resident shared
 ; L = 0でファンクションキー非表示、1で表示
 ; E = 0で白黒、1でカラー
 XOR A
@@ -39,6 +42,7 @@ jp	BIOS.FUNC_COLOR 	; ファンクションキーを消してカラーモード�
 
 
 ; @name LOCATE
+; @resident shared
 ; HL=x DE=y
 LD H,L
 LD L,E
@@ -74,6 +78,7 @@ jp BIOS.LOCATE
 
 
 ; @name PRT
+; @resident shared
 ; @calls PC80CALLS
 ; @works WORK10:10
 CALL BIOS.PUTCRT1
@@ -81,6 +86,7 @@ RET
 
 
 ; @name PTAB
+; @resident shared
 ; @param_count 1
 ; @calls PCR1
 LD E,$09
@@ -88,6 +94,7 @@ JR PCR1
 
 
 ; @name PSPC
+; @resident shared
 ; @param_count 1
 ; @calls PCR1
 LD E,' '
@@ -95,12 +102,14 @@ JR PCR1
 
 
 ; @name PCRONE
+; @resident shared
 ; @param_count 0
 ; @calls PCR
 LD HL,1
 
 
 ; @name PCR
+; @resident shared
 ; @param_count 1
 ; @calls PSTR2
 EX DE,HL
@@ -109,12 +118,14 @@ JR PSTR2
 
 
 ; @name PCR1
+; @resident shared
 ; @param_count 1
 ; @calls PSTR
 EX DE,HL
 
 
 ; @name PSTR
+; @resident shared
 ; @param_count 2
 ; @calls PRT
 .pstr1
@@ -128,6 +139,7 @@ JR .pstr1
 
 
 ; @name PSTR2
+; @resident shared
 ; @param_count 2
 ; @calls PCHR
 .pstr1
@@ -140,6 +152,7 @@ JR .pstr1
 
 
 ; @name PCHR
+; @resident shared
 ; @calls PRT
 LD A, H
 OR A
@@ -150,12 +163,14 @@ JR NZ,PRT
 
 
 ; @name CRDISP
+; @resident shared
 ; @calls PRT
 LD A,$0D
 JR PRT
 
 
 ; @name PHEX4
+; @resident shared
 ; @param_count 1
 ; @calls PHEX2
 LD A,H
@@ -163,12 +178,14 @@ CALL PHEX
 
 
 ; @name PHEX2
+; @resident shared
 ; @param_count 1
 ; @calls PHEX
 LD A,L
 
 
 ; @name PHEX
+; @resident shared
 ; @param_count 1
 ; @calls SASC,PRT
 PUSH AF
@@ -184,6 +201,7 @@ CALL SASC
 
 
 ; @name CTRL0D
+; @resident shared
 ; @calls CSR,AT_VRCALC
 CALL _POS
 LD L,0
@@ -198,6 +216,7 @@ RET
 
 
 ; @name PSIGN
+; @resident shared
 ; @param_count 1
 ; @calls PRT,NEGHL,P10
 BIT 7, H
@@ -209,6 +228,7 @@ CALL NEGHL
 
 
 ; @name P10
+; @resident shared
 ; @param_count 1
 ; @function_type Machine
 ; @calls P10to5,P10toN
@@ -217,6 +237,7 @@ JR P10toN
 
 
 ; @name P10to5
+; @resident shared
 ; @param_count 1
 ; @function_type Machine
 ; @calls P10toN
@@ -224,6 +245,7 @@ LD DE, 0005
 
 
 ; @name P10toN
+; @resident shared
 ; @param_count 2
 ; @function_type Machine
 ; @calls PRT,VTOS,PMSX
@@ -255,11 +277,13 @@ JR .p10ton4
 
 
 ; @name PMSX
+; @resident shared
 ; @calls PMSX1
 LD B, 00
 
 
 ; @name PMSX1
+; @resident shared
 ; @calls PRT,PMSG
 LD A, (HL)
 CP B
@@ -270,12 +294,14 @@ JR PMSX1
 
 
 ; @name PMSG
+; @resident shared
 ; @calls PMSX1
 LD B, $0D
 JR PMSX1
 
 
 ; @name MPRNT
+; @resident shared
 ; @calls PRT
 EX (SP),HL
 .mprnt2
@@ -291,6 +317,7 @@ RET
 
 
 ; @name VTOS
+; @resident shared
 ; @param_count 2
 ; @function_type Machine
 ; @calls DIVHLDE8
@@ -325,6 +352,7 @@ RET
 
 
 ; @name SETATR
+; @resident shared
 ; @lib PC80ASM
 ; HL = �s
 ; DE = �J�n�ʒuX

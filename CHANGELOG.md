@@ -1,20 +1,65 @@
 # 更新履歴
 
-## Unreleased
+## Unreleased (v0.23.0 候補)
 
 - `cpm` 環境を独立した env として明示化 (#145)
   - `runtime/env/cpm.env` を新設 (env_type/os_type は lsx と同じ 0/0、libraries は lsx 互換)。条件コンパイル `#IF (ENV_TYPE<=1)` 等の意味は変わらない
   - `Makefile.dist` の `ENV=cpm` で `SLANGENV=cpm` を参照
   - これまで `-E cpm` 指定時は env file が見つからず「全 runtime/*.asm を fallback ロード」していたため、`libpc80mk2_print` の `@works WORK10:10` と `liblsx_print` 等の local `WORK10:` ラベルが AILZ80ASM 段階で衝突していた (Issue #145)。cpm.env 追加により lsx 互換セットのみがロードされ衝突解消
 
-## Version 0.22.0
-
+- 残り 10 環境 (msxlsx / msx2 / msxrom / sos / sosx1 / pc80mk2 / pc80mk2x / pc88mk2sr / vgs0 / zxn) の runtime にも `; @resident shared|local` を付与 (PR-C2) — PR-C1 の手順を機械的に横展開
+  - 対象 30 ファイル / 527 関数の追加付与 (env ごとに 1 commit)
+  - 真の self-mod として `local` 化した関数 (PR-C2 で新規):
+    - `libsos_print.PRMODE` / `libpc80mk2xbios_print.PRMODE` (PRT+1 の operand patch)
+    - `libp88_base.PSET` (PSETADR / PSETCOLOR の operand patch)
+    - 各 base ファイルの `SLANGINIT` (8 件、main inline 専用)
+  - **全 env 累計**: shared 773 関数 / local 14 関数 (10 base SLANGINIT + M8ALOAD + 3 PRMODE/PSET)
+  - smoke 検証 (env ごと): `slangc -E <env> examples/<sample>.SL` で SLANG 段の compile 成功確認。pc80mk2 / pc80mk2x は `AILZ80ASM` までのフルアセンブルも `0 error/warn` (#145 系統のため厚めに)
+  - 全テスト 190 / 190 合格 (PR-C1 と同じ test base、回帰なし)
+- lsx / x1 環境の runtime ライブラリに `; @resident shared|local` を全関数付与 (PR-C1) — `#MODULE $addr RESIDENT` で実バイナリでメモリ節約効果
+  - 対象 17 ファイル (lsx.env / x1.env が参照する .asm を `tools/resident-audit.py --env` で機械的に列挙) / 260 関数
+  - 内訳: **shared 258 関数 / local 2 関数** (`SLANGINIT` = main inline 専用, `M8ALOAD` = 命令オペランド書き換えあり)
+  - `tools/resident-audit.py` (関数別 self-mod ヒューリスティック判定 + env-aware 走査) と `tools/resident-apply.py` (override map + 一括付与 / dry-run / idempotent) を追加。手書き列挙の漏れを排除
+  - 効果実測: `examples/MODTEST.SL` (Local) と `examples/MODTEST_RESIDENT.SL` (新設、`#MODULE $3000 RESIDENT`) を比較 → overlay バイナリが **248B → 57B (-77%)** に縮小 (MPRNT/P10/PCRONE が main 集約され、overlay 内 EXTERN 参照に変換)。複数 overlay を並べる用途では効果がさらに大きい
+  - サンプル分割の意図: `MODTEST.SL` は引き続き「overlay 基本例 (Local モード)」、`MODTEST_RESIDENT.SL` は「resident runtime デモ」と役割を分離 (Codex レビュー指摘反映)
+  - 既存 IntegrationTest `Overlay_RuntimePolicy_Resident_DefaultRuntimes_StillLocal` を `..._SharedRuntimes_PromotedToMain` に書き換え (PR-A 時点で「runtime 側未対応」として placeholder 化していたものを、本 PR で正の挙動アサートに転換)
+  - 既存 examples (MANDEL / FMANDEL / STARS など overlay 未使用) はバイナリ変化なし。`#MODULE` を使わない SL は影響を受けない
+- `slangbuild` に prelink 二段アセンブル機構を追加 (PR-B2) — main / overlay 間で **任意の SLANG 関数の相互呼び出し** をサポート
+  - cross-reference 検出時に自動的に prelink モードへ (Pass 1: 各 target を dummy imports でアセンブル → Pass 2: 全 target の Exports セクションから ExportedFunctionTable 構築 → Pass 3: combined imports で本番アセンブル)
+  - サポート範囲: main → overlay 関数 / overlay → main 関数 / overlay → overlay 関数 (関数シンボルのみ)
+  - **仕様**: 解決するのはアドレスだけ。swap 制御・呼び先 overlay のロード状態確認は ユーザー責任 (低レベル言語の責務分担)
+  - compiler 側 (`CodeGenerator`) で各 ASM に `; === Exported User Functions ===` (= 自分が定義する関数) + `; === User Function References ===` (= 自分が呼ぶ他ファイル関数) の 2 セクションを出力
+  - driver 側に `AsmSectionParser` / `ExportedFunctionTable` / `PrelinkPlan` 新設。`-nsa` は prelink Pass 1/3 のみ付与 (既存単段フローには影響なし)
+  - PR-A バグ修正: `Preprocessor` が `#END` を「stray」として skip してしまい、`#MODULE` 内 `#END` が Parser に届いていなかった問題を解消 (これにより 2 つ以上の `#MODULE` が正しく個別 overlay として認識される)
+  - PR-A バグ修正: `#MODULE` ネスト禁止 (= `#END` 不足検出も兼ねた parse エラー)
+  - 失敗時は `--keep-asm` 指定なしでも中間 ASM を残す (AILZ80ASM のエラー行追跡用、PR-B 既存)
+  - 新規テスト: `AsmSectionParserTests` (4) + `ExportedFunctionTableTests` (4) + `PrelinkPlanTests` (5) + `BuildIntegrationTests` 拡張 (4 件 prelink E2E + -o 相対パス回帰 2 件、合計 17 件追加)
+- 二段アセンブル toolchain `slangbuild` を新ドライバとして追加 (PR-B)
+  - `src/SLANGCompiler.Build/` を新規 .NET 8 プロジェクトとして追加。`slangc` は改修せず、`slangbuild` が orchestration (slangc → AILZ80ASM main → AILZ80ASM overlay) を担う GCC 的責務分離
+  - **二段フロー**: main を `-sm minimal-equ` でアセンブルして `.sym` を生成 → 各 overlay について overlay ASM 内の `; EXTERN` リストと main.sym の交集合だけを抽出した `<overlay>.imports.asm` (filtered EQU) を作成 → `imports.asm + overlay.ASM` を AILZ80ASM に投入。raw main.sym をそのまま渡すと compiler 内部ラベル衝突が起きるため必ず filter する
+  - `OverlayImportsBuilder` が PR-A で出力された 3 つの固定セクション (`Shared Runtime References` / `Shared Symbols` / `String references`) 内の `; EXTERN` 行のみを regex で抽出 (誤検出防止)
+  - `ToolResolver` で slangc / AILZ80ASM のパス解決順を仕様化 (`--slangc` / `--asm` → 同梱 bin → PATH → dev fallback)。配布スクリプト (Makefile.dist / publish.sh) では明示指定で再現性確保
+  - `Makefile.dist` を `slangbuild` 経由に切替。overlay 不要 (`#MODULE` 未使用) の SL でも単段フローで動く
+  - `publish.sh` に slangbuild の 4 platform publish + zip 同梱を追加
+  - 新規テスト: `SymFileReaderTests` (5 件) + `OverlayImportsBuilderTests` (4 件) + `BuildIntegrationTests` (6 件 E2E) = 計 15 件
+  - **注意**: 本 PR は **toolchain 機構** のみ。実バイナリでメモリ節約効果が出るには別 PR (PR-C) で `runtime/lsx*.asm` 等への `@resident shared` 付与が必要。本 PR マージ直後は全 overlay が default Local で従来挙動互換
 - `#MODULE` (オーバーレイ) をモジュール専用ワーク対応に拡張
   - モジュール直下の `VAR` / `ARRAY` を **モジュール私有ワークエリア `__WORK_M<N>__`** に配置。ASM ラベルは `_V_M<N>_<NAME>` で名前空間分離されるため、main と同名の変数を宣言しても物理メモリ上同居せず、各 overlay の swap 先でメモリを再利用できる
   - `#MODULE` 内に `WORK <定数式>` を書くことでモジュール専用ワークの ORG を明示可能 (未指定時は overlay コード末尾に連続配置)
   - `WORK` / `ORG` / `OFFSET` の各ディレクティブが定数式 (`CONST WA = $9000; WORK WA` など) を受けるように拡張
   - モジュール直下の初期値付き変数 / 固定アドレス指定 / トップレベル `#ASM` はコンパイルエラー化 (関数本体内の `#ASM` / ローカル変数は従来どおり)
   - 関数定義 / `MACHINE` / `CONST` は従来互換で global に登録 — main から overlay 関数を呼ぶ既存運用は変わらず
+- `#MODULE` ランタイム集約ポリシーの **内部設計** を導入 (PR-A)
+  - ヘッダ位置に optional のポリシー識別子を追加: `#MODULE $8000 RESIDENT` (省略時は Local = 現状互換)
+  - ランタイム関数側に `; @resident shared|local` 属性を追加。RESIDENT モード × 関数 Shared の交点で main 集約 (overlay 内 EXTERN 参照) になる
+  - `@resident local` (明示) は #MODULE RESIDENT でも常に勝つ (self-modifying / overlay-specific WORK 等の安全側挙動)
+  - 新規 `RuntimePlanner` で集約決定 (alias 正規化 / 依存閉包 / SLANGINIT inline 仕様化を担当)
+  - CodeGenerator の runtime 参照 7 箇所 (overlay resolve / SLANGINIT exclude / main runtime emit / RUNTIME_INIT / @works 集約) を Plan 経由に統一。shared 関数の `@init_code` / `@works` が main 側 `RUNTIME_INIT` / `__WORK__` に正しく集約される
+  - `#MODULE $addr SELFCONTAIN` / `AUTO` は enum 予約済み、現時点はコンパイルエラー
+  - **注意**: 本 PR は **内部設計のみ**。実バイナリでの shared runtime リンクは別 PR (PR-B = main → `.sym` → overlay EQU 注入の二段アセンブル toolchain) が必要。既存 runtime ライブラリにもまだ `@resident shared` を付与していないため、`RESIDENT` を書いても現時点では何も共有されず、動作は完全に現状互換
+
+## Version 0.22.0
+
 - X1 グラフィックライブラリ群を include/ に新設 (#139)
   - **TILELIB.LIB**: PCG タイル背景 (スーパーチップ 2×2 + マップ + スクロール + アニメ + ダブルバッファ)
   - **SPRLIB.LIB**: GVRAM 前景スプライト 最大 8 枚 / 16×16 (ダブルバッファ + old1 erase, 4 dot 単位座標)

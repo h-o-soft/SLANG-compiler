@@ -40,14 +40,33 @@ public class OffsetDirective : AstNode
     public override T Accept<T>(IAstVisitor<T> visitor) => visitor.VisitOffsetDirective(this);
 }
 
+/// <summary>
+/// #MODULE のランタイム集約ポリシー (ヘッダ位置で指定)。
+/// `#MODULE $8000 RESIDENT` のように書く。省略時は Local。
+/// </summary>
+public enum OverlayRuntimePolicy
+{
+    /// <summary>省略時のデフォルト。各 ASM ファイルに runtime を local 展開 (現状互換)</summary>
+    Local = 0,
+    /// <summary>RESIDENT 指定。@resident shared な runtime を main 集約 + overlay は EXTERN 参照</summary>
+    Resident,
+    /// <summary>SELFCONTAIN 指定 (将来予約、現時点は未実装エラー)。@resident shared を強制 local 化</summary>
+    SelfContain,
+    /// <summary>AUTO 指定 (将来予約、現時点は未実装エラー)。別途検討</summary>
+    Auto,
+}
+
 public class ModuleBlock : AstNode
 {
     public Expression Name { get; }
     public List<AstNode> Definitions { get; }
-    public ModuleBlock(Expression name, List<AstNode> definitions, SourceSpan span) : base(span)
+    public OverlayRuntimePolicy RuntimePolicy { get; }
+    public ModuleBlock(Expression name, List<AstNode> definitions, SourceSpan span,
+                       OverlayRuntimePolicy runtimePolicy = OverlayRuntimePolicy.Local) : base(span)
     {
         Name = name;
         Definitions = definitions;
+        RuntimePolicy = runtimePolicy;
     }
     public override T Accept<T>(IAstVisitor<T> visitor) => visitor.VisitModuleBlock(this);
 }
