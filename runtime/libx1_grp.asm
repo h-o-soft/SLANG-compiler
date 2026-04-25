@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name MSINIT
+; @resident shared
 ; @calls SETUPCTC
 ; @lib X1MOUSE
 
@@ -97,6 +98,7 @@ SIODAT:
 
 
 ; @name MSGET
+; @resident shared
 ; @lib X1MOUSE
 	PUSH	HL
 	CALL	MSIN
@@ -302,6 +304,7 @@ LATE:
 
 
 ; @name PAINT1
+; @resident shared
 ; @lib X1PAINT
 ; HL = X
 ; DE = Y
@@ -1496,11 +1499,13 @@ SPWK:
 
 
 ; @name PAINT
+; @resident shared
 ; @calls PAINT1
 ; @lib X1PAINT
 JP  X1PAINT.PAINTAUTO
 
 ; @name PAINT2
+; @resident shared
 ; @calls PAINT1
 PUSH BC
 PUSH DE
@@ -1511,6 +1516,7 @@ JP X1PAINT.GPAINT_TOP
 
 
 ; @name SET_PAINTBUF
+; @resident shared
 ; @calls PAINTSLOW
 ; @lib X1PAINT
 ; INPUT:
@@ -1519,6 +1525,7 @@ JP X1PAINT.GPAINT_TOP
 	RET
 
 ; @name BFILL
+; @resident shared
 ; @calls PAINT1
 ; @lib X1PAINT
 ; @stack_cleanup callee
@@ -1633,6 +1640,7 @@ FILLDAT:
 
 
 ; @name LINECOMMON
+; @resident shared
 ; @lib X1GLINE
 	;ORG	$B000
 	LD	IX,($C200)
@@ -2491,6 +2499,7 @@ DAMY:
 
 
 ; @name LINE
+; @resident shared
 ; @calls LINECOMMON,X1WORK
 ; @stack_cleanup callee
 	LD	HL,DRAWALL
@@ -2601,6 +2610,7 @@ LRETADR:
 
 
 ; @name XLINE
+; @resident shared
 ; @calls LINECOMMON,LINE,X1WORK
 ; @stack_cleanup callee
 	LD	HL,DRAWXOR
@@ -2608,6 +2618,7 @@ LRETADR:
 	JR	DRAWTOP
 
 ; @name GRPSETUP
+; @resident shared
 ; @calls PAINT1,LINE
 ; LINE SETUP
 ; set to 640 or 320

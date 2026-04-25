@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name X1SGLINCLUDE
+; @resident shared
 ; @lib x1sgl_lsx
 ;---------------------------------------------------------------;
 ;	Copyright (c) 2019 macro_define.asm
@@ -7083,6 +7084,7 @@ num_buff:
 
 
 ; @name X1SGLBASE
+; @resident shared
 ; @lib x1sgl_lsx
 ; @works VRAM_ADRS_TBL_H_BUF:256, VRAM_ADRS_TBL_L_BUF:256, BITLINE_BUFFER0:1024, BITLINE_BUFFER1:1024, SGLSPRDISPBUF:32
 ; @works_align 256
@@ -7118,6 +7120,7 @@ SGL_VRCALC:
     RET
 
 ; @name SGL_INIT
+; @resident shared
 ; @calls X1SGLINCLUDE,X1SGLBASE
 ; @lib x1sgl_lsx
 
@@ -7156,6 +7159,7 @@ SGL_VRCALC:
 ; LSX-Dodgers版: VRAM_ADRS_TBL/BITLINE_BUFFER は X1SGLBASE の @works で確保
 
 ; @name SGL_DEFPAT
+; @resident shared
 ; @calls X1SGLINCLUDE,X1SGLBASE
 ; @lib x1sgl_lsx
 	; hl = pat num , de = address
@@ -7165,6 +7169,7 @@ SGL_VRCALC:
 	jp cdm_set_data8_bank_main
 
 ; @name SGL_SPRCREATE
+; @resident shared
 ; @calls X1SGLINCLUDE,X1SGLBASE
 ; @lib x1sgl_lsx
 	; hl = pattern num, de = kind
@@ -7209,6 +7214,7 @@ sgl_error:
 	ret
 
 ; @name SGL_SPRDESTROY
+; @resident shared
 ; @calls X1SGLINCLUDE,X1SGLBASE
 ; @lib x1sgl_lsx
 	; hl = sprite handle
@@ -7220,6 +7226,7 @@ sgl_error:
 	ret
 
 ; @name SGL_SPRSET
+; @resident shared
 ; @calls X1SGLINCLUDE,X1SGLBASE
 ; @lib x1sgl_lsx
 	; HL = sprite handle, DE = data address
@@ -7229,6 +7236,7 @@ sgl_error:
 	ret
 
 ; @name SGL_SPRPAT
+; @resident shared
 ; @calls X1SGLINCLUDE,X1SGLBASE
 ; @lib x1sgl_lsx
 	; HL = sprite handle, DE = pattern number
@@ -7239,6 +7247,7 @@ sgl_error:
 	ret
 
 ; @name SGL_SPRMOVE
+; @resident shared
 ; @calls X1SGLINCLUDE,X1SGLBASE
 ; @lib x1sgl_lsx
 	; HLに入っているワークのX,Yを書き換える
@@ -7256,6 +7265,7 @@ sgl_error:
 	RET
 
 ; @name SGL_SPRDISP
+; @resident shared
 ; @calls X1SGLINCLUDE,X1SGLBASE
 ; @lib x1sgl_lsx
     ; 表示/非表示の設定
@@ -7270,6 +7280,7 @@ sgl_error:
     ret
 
 ; @name SGL_FPSMODE
+; @resident shared
 ; @calls X1SGLINCLUDE,X1SGLBASE
 ; @lib x1sgl_lsx
 	ld a,l
@@ -7277,6 +7288,7 @@ sgl_error:
 	ret
 
 ; @name SGL_VSYNC
+; @resident shared
 ; @calls X1SGLINCLUDE,X1SGLBASE
 ; @lib x1sgl_lsx
 	; キャラクタ処理
@@ -7296,6 +7308,7 @@ sgl_error:
 	ret
 
 ; @name SGL_PRINT
+; @resident shared
 ; @calls X1SGLINCLUDE,X1SGLBASE,AT_VRCALC
 ; @lib x1sgl_lsx
 	; HL = x, DE = y, BC = STRING ADDRESS
@@ -7312,6 +7325,7 @@ sgl_error:
 	jp render_text
 
 ; @name SGL_PRINT2
+; @resident shared
 ; @calls X1SGLINCLUDE,X1SGLBASE,AT_VRCALC
 ; @lib x1sgl_lsx
 	; HL = x, DE = y, BC = STRING ADDRESS

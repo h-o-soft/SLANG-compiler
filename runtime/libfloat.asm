@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name mul16
+; @resident shared
 ;This was made by Runer112
 ;Tested by jacobly
 ;BC*DE --> DEHL
@@ -165,6 +166,7 @@ ret
 
 
 ; @name f24sub
+; @resident shared
 ; @result_type float
 ; @calls f24add
 ;AHL - CDE ==> AHL
@@ -185,6 +187,7 @@ xor $80
 
 
 ; @name f24add
+; @resident shared
 ; @result_type float
 ;AHL + CDE ==> AHL
 ;Destroys BC,DE
@@ -420,6 +423,7 @@ ret
 
 
 ; @name f24mul
+; @resident shared
 ; @result_type float
 ; @calls mul16
 ;AHL * CDE ==> AHL
@@ -567,6 +571,7 @@ ret
 
 
 ; @name f24mul2
+; @resident shared
 ; @result_type float
 ;AHL * 2.0 ==> AHL
 ;Destroys B
@@ -585,6 +590,7 @@ ret
 
 
 ; @name f24mul3
+; @resident shared
 ; @result_type float
 ;AHL*3 ==> AHL
 ;0*3 ==> 0
@@ -623,6 +629,7 @@ ret
 
 
 ; @name i16tof24
+; @resident shared
 ; @alias ITOF
 ; @result_type float
 ; @calls u16tof24
@@ -645,6 +652,7 @@ db $11     ;start of `ld de,**`, eats the next two bytes
 
 
 ; @name u16tof24
+; @resident shared
 ; @alias UTOF
 ; @result_type float
 i16tof24_pos:
@@ -666,6 +674,7 @@ ret
 
 
 ; @name FTOI
+; @resident shared
 f24toi16:
 ;AHL to a 16-bit signed integer
 ;NaN ==> 0
@@ -735,6 +744,7 @@ ret
 
 
 ; @name f24cmp
+; @resident shared
 ; @calls f24sub
 ;returns the flags for float AHL minus float CDE
 ;   AHL >= CDE, nc
@@ -823,6 +833,7 @@ ret
 
 
 ; @name f24neg
+; @resident shared
 ; @result_type float
 ;-AHL ==> AHL
 
@@ -836,6 +847,7 @@ ret
 
 
 ; @name PFLOAT
+; @resident shared
 ; @calls f24toa,PMSX
 ; @works FSTRBUFF:12
 LD DE,FSTRBUFF
@@ -844,6 +856,7 @@ JP PMSX
 
 
 ; @name f24toa
+; @resident shared
 ; @calls f24mul,formatstr,f24pow10_LUT,f24_common_str
 char_NEG EQU '-'
 char_DEC EQU '.'
@@ -1070,6 +1083,7 @@ ret
 
 
 ; @name formatstr
+; @resident shared
 ; This routine for taking a base-10 exponent and a string of digits and (without
 ; a decimal) and inserting a decimal, any leading zeros, stripping trailing
 ; zeros, and appending an exponent if needed.
@@ -1351,6 +1365,7 @@ ret
 
 
 ; @name f24pow10_LUT
+; @resident shared
 db $8E,$15,$7E  ;1e19
 db $17,$BC,$7A  ;1e18
 db $45,$63,$77  ;1e17
@@ -1393,6 +1408,7 @@ db $26,$27,$03  ;1e-18
 
 
 ; @name f24_common_str
+; @resident shared
 s_neginf:
 str_neginf:
 db char_NEG
@@ -1407,6 +1423,7 @@ db "0", 0
 
 
 ; @name f24inv
+; @resident shared
 ; @result_type float
 ; @calls f24div
 ld c,a
@@ -1416,6 +1433,7 @@ ld hl,0
 
 
 ; @name f24div
+; @resident shared
 ; @result_type float
 ;AHL * CDE ==> AHL
 ;Destroys BC,DE
@@ -1617,6 +1635,7 @@ ret
 
 
 ; @name f24sqr
+; @resident shared
 ; @result_type float
 ; @calls f24mul
 ;AHL * AHL ==> AHL
@@ -1653,6 +1672,7 @@ jp f24mul_significand
 
 
 ; @name FABS
+; @resident shared
 ; @result_type float
 ;abs(AHL) ==> AHL
 and $7F
@@ -1660,6 +1680,7 @@ ret
 
 
 ; @name FACOSH
+; @resident shared
 ; @result_type float
 ; @calls FLOG,f24sqr,f24add
 f24acosh:
@@ -1687,6 +1708,7 @@ jp f24log
 
 
 ; @name FACOS
+; @resident shared
 ; @result_type float
 ; @calls f24sub,f24bg,f24sqr,f24rsub
 f24acos:
@@ -1737,6 +1759,7 @@ jp f24mul
 
 
 ; @name f24div2
+; @resident shared
 ; @result_type float
 ; @calls f24div2
 ld b,a
@@ -1754,6 +1777,7 @@ ret
 
 
 ; @name f24amean
+; @resident shared
 ; @result_type float
 ; @calls f24add,f24div2
 ;(AHL+CDE) ==> AHL
@@ -1795,6 +1819,7 @@ jp f24add
 
 
 ; @name FASINH
+; @resident shared
 ; @result_type float
 ; @calls FLOG,f24sqr,f24add
 f24asinh:
@@ -1822,6 +1847,7 @@ jp f24log
 
 
 ; @name FASIN
+; @resident shared
 ; @result_type float
 ; @calls f24sub,f24bg,f24sqr
 f24asin:
@@ -1864,6 +1890,7 @@ jp f24mul
 
 
 ; @name FATANH
+; @resident shared
 ; @result_type float
 ; @calls f24sub,f24div,FLOG
 f24atanh:
@@ -1901,6 +1928,7 @@ jp f24div2
 
 
 ; @name FATAN
+; @resident shared
 ; @result_type float
 ; @calls f24sub,f24bg,f24sqr,f24mul,f24inv
 f24atan:
@@ -1947,6 +1975,7 @@ jp f24mul
 
 
 ; @name f24bg
+; @resident shared
 ; @result_type float
 ; @calls f24amean,f24add,f24geomean,f24div,f24div_pow2,f24mul3
 ;1/BG(AHL,CDE) ==> AHL
@@ -2026,6 +2055,7 @@ jp f24div
 
 
 ; @name FCOSH
+; @resident shared
 ; @result_type float
 ; @calls FEXP,f24amean
 f24cosh:
@@ -2054,6 +2084,7 @@ jp f24amean
 
 
 ; @name FCOS
+; @resident shared
 ; @result_type float
 ; @calls FSIN,f24sqr,f24mod1,f24sub
 f24cos:
@@ -2174,6 +2205,7 @@ jp f24add
 
 
 ; @name f24div_pow2
+; @resident shared
 ; @result_type float
 ;AHL/2^B ==> AHL
 ld c,a
@@ -2188,6 +2220,7 @@ ret
 
 
 ; @name FEXP
+; @resident shared
 ; @result_type float
 ; @calls f24mul,f24add,f24inv
 f24exp:
@@ -2317,6 +2350,7 @@ ret
 
 
 ; @name f24geomean
+; @resident shared
 ; @result_type float
 ; @calls f24mul,f24sqrt
 ;sqrt(AHL*CDE) ==> AHL
@@ -2363,6 +2397,7 @@ jp f24sqrt
 
 
 ; @name FLOG10
+; @resident shared
 ; @result_type float
 ; @calls FLOG,f24mul
 f24log10:
@@ -2375,6 +2410,7 @@ jp f24mul
 
 
 ; @name FLOG2
+; @resident shared
 ; @result_type float
 ; @calls FLOG,f24mul
 f24log2:
@@ -2387,6 +2423,7 @@ jp f24mul
 
 
 ; @name FLOGY
+; @resident shared
 ; @result_type float
 ; @calls FLOG,f24div
 f24logy:
@@ -2416,6 +2453,7 @@ ld c,b
 
 
 ; @name FLOG
+; @resident shared
 ; @result_type float
 ; @calls f24bg
 f24log:
@@ -2541,6 +2579,7 @@ jp f24add
 
 
 ; @name f24mod1
+; @resident shared
 ; @result_type float
 ;AHL % 1 ==> AHL
 
@@ -2595,6 +2634,7 @@ jp f24rsub
 
 
 ; @name FPOW10
+; @resident shared
 ; @result_type float
 ; @calls FEXP,f24mul
 f24pow10:
@@ -2607,6 +2647,7 @@ jp f24exp
 
 
 ; @name FPOW2
+; @resident shared
 ; @result_type float
 ; @calls FEXP,f24mul
 f24pow2:
@@ -2619,6 +2660,7 @@ jp f24exp
 
 
 ; @name FPOW
+; @resident shared
 ; @result_type float
 ; @calls FEXP,FLOG,f24mul
 f24pow:
@@ -2640,6 +2682,7 @@ jp f24exp
 
 
 ; @name z80rand
+; @resident shared
 ; @works seed0:2,seed1:4
 ; Output is in HL
 ; This rand routine combines Patrik Rak's fantastic 32-bit xorshift
@@ -2684,6 +2727,7 @@ ret
 
 
 ; @name FRAND
+; @resident shared
 ; @result_type float
 ; @calls z80rand
 ; @init_code
@@ -2747,6 +2791,7 @@ ret
 
 
 ; @name FSINH
+; @resident shared
 ; @result_type float
 ; @calls FEXP,f24amean
 f24sinh:
@@ -2776,6 +2821,7 @@ jp f24amean
 
 
 ; @name FSIN
+; @resident shared
 ; @result_type float
 ; @calls FCOS,f24sqr,f24div,f24mod1
 f24sin:
@@ -2864,6 +2910,7 @@ jp f24mul
 
 
 ; @name sqrt16
+; @resident shared
 sqrtHL:
 ;returns A as the sqrt, HL as the remainder, D = 0
 ;min: 352cc
@@ -2967,6 +3014,7 @@ ret           ; 10 /
 
 
 ; @name FSQRT
+; @resident shared
 ; @result_type float
 ; @calls sqrt16
 f24sqrt:
@@ -3177,6 +3225,7 @@ ret
 
 
 ; @name FTANH
+; @resident shared
 ; @result_type float
 ; @calls FEXP,f24mul2,f24div
 f24tanh:
@@ -3203,6 +3252,7 @@ jp f24add
 
 
 ; @name FTAN
+; @resident shared
 ; @result_type float
 ; @calls FCOS,f24div
 f24tan:

@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name MULHLDE
+; @resident shared
 ; @param_count 2
 ; @function_type Machine
 LD A, L
@@ -42,6 +43,7 @@ RET
 
 
 ; @name DIVHLDE
+; @resident shared
 ; @calls DIVHLDE8
 LD A, L
 SUB E
@@ -78,6 +80,7 @@ RET
 
 
 ; @name DIVHLDE8
+; @resident shared
 INC E
 DEC E
 JR NZ, .div81
@@ -103,6 +106,7 @@ RET
 
 
 ; @name SDIVHLDE
+; @resident shared
 ; @calls NEGHL,DIVHLDE
 LD A, H
 XOR D
@@ -120,6 +124,7 @@ JR NEGHL
 
 
 ; @name MODHLDE
+; @resident shared
 ; @calls DIVHLDE
 CALL DIVHLDE
 EX DE,HL
@@ -127,6 +132,7 @@ RET
 
 
 ; @name SMODHLDE
+; @resident shared
 ; @calls NEGHL,MODHLDE
 EX DE, HL
 BIT 7, H
@@ -139,11 +145,13 @@ CALL MODHLDE
 
 
 ; @name NEGHL
+; @resident shared
 ; @calls CPLHL
 DEC HL
 
 
 ; @name CPLHL
+; @resident shared
 LD A, H
 CPL
 LD H, A
@@ -154,9 +162,11 @@ RET
 
 
 ; @name NOTHL
+; @resident shared
 ; @calls OPEQHLDE
 
 ; @name OPEQHL
+; @resident shared
 LD A, H
 OR L
 LD HL, 0000
@@ -166,6 +176,7 @@ RET
 
 
 ; @name OPNEQHL
+; @resident shared
 LD A, H
 OR L
 RET Z
@@ -174,11 +185,13 @@ RET
 
 
 ; @name OPGTHLDE
+; @resident shared
 ; @calls OPLTHLDE
 EX DE,HL
 
 
 ; @name OPLTHLDE
+; @resident shared
 OR A
 SBC HL, DE
 LD HL, 0000
@@ -188,11 +201,13 @@ RET
 
 
 ; @name OPLEHLDE
+; @resident shared
 ; @calls OPGEHLDE
 EX DE,HL
 
 
 ; @name OPGEHLDE
+; @resident shared
 OR A
 SBC HL, DE
 LD HL, 0000
@@ -202,11 +217,13 @@ RET
 
 
 ; @name OPSGTHLDE
+; @resident shared
 ; @calls OPSLTHLDE
 EX DE,HL
 
 
 ; @name OPSLTHLDE
+; @resident shared
 ; @calls OPLTHLDE
 BIT 7, H
 JR NZ, .opslt1
@@ -222,11 +239,13 @@ RET
 
 
 ; @name OPSLEHLDE
+; @resident shared
 ; @calls OPSGEHLDE
 EX DE,HL
 
 
 ; @name OPSGEHLDE
+; @resident shared
 ; @calls OPGEHLDE
 BIT 7, H
 JR NZ, .opsge1
@@ -242,9 +261,11 @@ RET
 
 
 ; @name SLSHIFTHLDE
+; @resident shared
 ; @calls LSHIFTHLDE
 
 ; @name LSHIFTHLDE
+; @resident shared
 LD A, E
 AND $0F
 RET Z
@@ -256,6 +277,7 @@ RET
 
 
 ; @name RSHIFTHLDE
+; @resident shared
 LD A, E
 AND $0F
 RET Z
@@ -268,6 +290,7 @@ RET
 
 
 ; @name SRSHIFTHLDE
+; @resident shared
 LD A, E
 AND $0F
 RET Z
@@ -280,6 +303,7 @@ RET
 
 
 ; @name ORHLDE
+; @resident shared
 LD A, L
 OR E
 LD L, A
@@ -290,6 +314,7 @@ RET
 
 
 ; @name ANDHLDE
+; @resident shared
 LD A, L
 AND E
 LD L, A
@@ -300,6 +325,7 @@ RET
 
 
 ; @name XORHLDE
+; @resident shared
 LD A, L
 XOR E
 LD L, A
@@ -310,6 +336,7 @@ RET
 
 
 ; @name RBIT
+; @resident shared
 ; @alias BIT
 ; @param_count 2
 ; @calls RSHIFTHLDE
@@ -322,6 +349,7 @@ RET
 
 
 ; @name RSET
+; @resident shared
 ; @alias SET
 ; @param_count 2
 ; @calls ORHLDE
@@ -339,6 +367,7 @@ JP ORHLDE
 
 
 ; @name RESET
+; @resident shared
 ; @param_count 2
 ; @calls ANDHLDE
 EX DE,HL
@@ -356,6 +385,7 @@ JP ANDHLDE
 
 
 ; @name ABS
+; @resident shared
 ; @param_count 1
 ; @calls NEGHL
 BIT 7,H
@@ -365,6 +395,7 @@ RET
 
 
 ; @name SGN
+; @resident shared
 ; @param_count 1
 ; @calls ABS
 LD A,H
@@ -381,6 +412,7 @@ RET
 
 
 ; @name SEX
+; @resident shared
 ; @param_count 1
 BIT 7,L
 LD H,0
@@ -390,6 +422,7 @@ RET
 
 
 ; @name SRAND
+; @resident shared
 ; @param_count 1
 ; @calls RND
 LD (RND_SEED1),HL
@@ -397,6 +430,7 @@ RET
 
 
 ; @name RND
+; @resident shared
 ; @param_count 1
 ; @calls MULHLDE,MODHLDE
 ; @works RND_SEED1:2,RND_SEED2:2
@@ -439,6 +473,7 @@ RET
 
 
 ; @name VTOS
+; @resident shared
 ; @param_count 2
 ; @function_type Machine
 ; @calls DIVHLDE8
@@ -473,6 +508,7 @@ RET
 
 
 ; @name RCALL
+; @resident shared
 ; @alias CALL
 ; @calls GETREG
 PUSH IY
@@ -497,6 +533,7 @@ RET
 
 
 ; @name GETREG
+; @resident shared
 PUSH HL
 LD (_IY), IY
 LD (_IX), IX
@@ -524,6 +561,7 @@ RET
 
 
 ; @name SASC
+; @resident shared
 AND	$0F
 ADD	A,'0'
 CP	3AH
@@ -534,6 +572,7 @@ RET
 
 
 ; @name MEMCPY
+; @resident shared
 ; hl = dst, de = source, bc = size
 ex de,hl
 ldir
@@ -541,6 +580,7 @@ ret
 
 
 ; @name MEMSET
+; @resident shared
 ; hl = addr, de = value, bc = count
 push bc
 push de
@@ -562,6 +602,7 @@ ret
 
 
 ; @name STRLEN
+; @resident shared
 PUSH BC
 LD B, 0
 .COUNT_LOOP
@@ -579,6 +620,7 @@ RET
 
 
 ; @name MIN
+; @resident shared
 ; HL = value 1
 ; DE = value 2
 ld a,h
@@ -600,6 +642,7 @@ ret
 
 
 ; @name MAX
+; @resident shared
 ld a,h        ; HL の上位バイトを A にロード
 cp d          ; DE の上位バイトと比較
 jr c,.DE_is_Greater ; キャリーがセットされていれば HL < DE

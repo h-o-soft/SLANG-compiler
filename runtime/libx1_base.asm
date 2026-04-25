@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name VSYNC_CHECK
+; @resident shared
 ; @works LASTVSYNCFLAG:1,VSYNCCOUNTER:1
 LD A,1AH
 IN A,(01H)
@@ -20,6 +21,7 @@ JP !VSYNC_PROC
 
 
 ; @name VSYNC
+; @resident shared
 ; @calls VSYNC_CHECK
 ; HL = WAIT COUNT
 VSYNC_LOOP:
@@ -39,6 +41,7 @@ RET
 
 
 ; @name VSYNC1
+; @resident shared
 ; VSYNC
 LD BC,$1a01
 .LP1
@@ -53,6 +56,7 @@ RET
 
 
 ; @name SETUPCTC
+; @resident shared
 ; @works CTCADR:2
 PUSH	BC
 LD	DE,04703H

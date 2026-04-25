@@ -2,6 +2,13 @@
 
 ## Unreleased (v0.23.0 候補)
 
+- lsx / x1 環境の runtime ライブラリに `; @resident shared|local` を全関数付与 (PR-C1) — `#MODULE $addr RESIDENT` で実バイナリでメモリ節約効果
+  - 対象 17 ファイル (lsx.env / x1.env が参照する .asm を `tools/resident-audit.py --env` で機械的に列挙) / 260 関数
+  - 内訳: **shared 258 関数 / local 2 関数** (`SLANGINIT` = main inline 専用, `M8ALOAD` = 命令オペランド書き換えあり)
+  - `tools/resident-audit.py` (関数別 self-mod ヒューリスティック判定 + env-aware 走査) と `tools/resident-apply.py` (override map + 一括付与 / dry-run / idempotent) を追加。手書き列挙の漏れを排除
+  - 効果実測: `examples/MODTEST.SL` を `#MODULE $3000 RESIDENT` 化 → overlay バイナリが **248B → 57B (-77%)** に縮小 (MPRNT/P10/PCRONE が main 集約され、overlay 内 EXTERN 参照に変換)。複数 overlay を並べる用途では効果がさらに大きい
+  - 既存 IntegrationTest `Overlay_RuntimePolicy_Resident_DefaultRuntimes_StillLocal` を `..._SharedRuntimes_PromotedToMain` に書き換え (PR-A 時点で「runtime 側未対応」として placeholder 化していたものを、本 PR で正の挙動アサートに転換)
+  - 既存 examples (MANDEL / FMANDEL / STARS など overlay 未使用) はバイナリ変化なし。`#MODULE` を使わない SL は影響を受けない
 - `slangbuild` に prelink 二段アセンブル機構を追加 (PR-B2) — main / overlay 間で **任意の SLANG 関数の相互呼び出し** をサポート
   - cross-reference 検出時に自動的に prelink モードへ (Pass 1: 各 target を dummy imports でアセンブル → Pass 2: 全 target の Exports セクションから ExportedFunctionTable 構築 → Pass 3: combined imports で本番アセンブル)
   - サポート範囲: main → overlay 関数 / overlay → main 関数 / overlay → overlay 関数 (関数シンボルのみ)

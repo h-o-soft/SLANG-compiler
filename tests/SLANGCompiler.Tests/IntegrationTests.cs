@@ -1148,21 +1148,24 @@ SUB() BEGIN PRINT(""X""); END;
     }
 
     [Fact]
-    public void Overlay_RuntimePolicy_Resident_DefaultRuntimes_StillLocal()
+    public void Overlay_RuntimePolicy_Resident_SharedRuntimes_PromotedToMain()
     {
-        // RESIDENT 指定でも、現状の runtime ライブラリは @resident 未付与 (= default Local)
-        // のため何も共有されない。挙動は Local モードと同じになる (PR-C 待ち)。
+        // PR-C1 で runtime に @resident shared を付与済み。
+        // RESIDENT モード × shared 関数の交点で、overlay 内 runtime 本体は
+        // 削除されメイン側 EXTERN 参照になる (overlay サイズが縮小)。
         var source = @"
 MAIN() BEGIN END;
 #MODULE $8000 RESIDENT
 SUB() BEGIN PRINT(""X""); END;
 ";
-        var (_, overlays) = CompileWithOverlays(source);
+        var (mainAsm, overlays) = CompileWithOverlays(source);
         var ov = overlays.Values.First();
-        // 関数側が default Local なので shared 化されず、overlay に local 展開される
-        Assert.Contains("MPRNT:", ov);
-        // EXTERN セクションは空 (shared promoted ゼロ)
-        Assert.DoesNotContain("Shared Runtime References", ov);
+        // overlay には MPRNT 本体が無く、main の MPRNT を EXTERN で参照する
+        Assert.DoesNotContain("MPRNT:", ov);
+        Assert.Contains("Shared Runtime References", ov);
+        Assert.Contains("MPRNT", ov);                 // EXTERN 参照として残る
+        // main 側に MPRNT 本体が残る (= メモリ節約: 複数 overlay 間で共有可)
+        Assert.Contains("MPRNT:", mainAsm);
     }
 
     [Fact]

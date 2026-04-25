@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name SLANGINIT
+; @resident local
 ; @calls sWORK,LSXCALLS
 LD HL,($0001)
 LD (WBOOTBK),HL
@@ -26,6 +27,7 @@ JP 0
 
 
 ; @name LSXCALLS
+; @resident shared
 BDOS EQU $0005
 PRNOUT EQU $05
 INPOUT EQU $06
@@ -41,6 +43,7 @@ DTA1	EQU	0080H
 
 
 ; @name STOP
+; @resident shared
 ; @param_count 0
 LD HL,(WBOOTBK)
 LD ($00001),HL
@@ -48,6 +51,7 @@ JP 0
 
 
 ; @name sSYSTEM
+; @resident shared
 ; @param_count 0
 ; @calls LSXCALLS
 EXX
@@ -69,6 +73,7 @@ RET
 
 
 ; @name sMSG
+; @resident shared
 ; @param_count 0
 ; @calls LSXCALLS,sMSX
 PUSH	HL
@@ -77,6 +82,7 @@ JR	sMSG1
 
 
 ; @name sMSX
+; @resident shared
 ; @param_count 0
 ; @calls LSXCALLS,sPRINT
 PUSH	HL
@@ -99,21 +105,25 @@ RET
 
 
 ; @name sLPTOF
+; @resident shared
 ; @param_count 0
 RET
 
 
 ; @name sLPTON
+; @resident shared
 ; @param_count 0
 RET
 
 
 ; @name sWIDCH
+; @resident shared
 ; @param_count 0
 RET
 
 
 ; @name sMPRNT
+; @resident shared
 ; @param_count 0
 ; @calls sPRINT
 EX	(SP),HL
@@ -129,6 +139,7 @@ RET
 
 
 ; @name sNL
+; @resident shared
 ; @param_count 0
 ; @calls sZPRINT,sWORK
 PUSH	AF
@@ -144,6 +155,7 @@ RET
 
 
 ; @name sPRINTS
+; @resident shared
 ; @param_count 0
 ; @calls sPRINT
 PUSH	AF
@@ -155,6 +167,7 @@ RET
 
 
 ; @name sLTNL
+; @resident shared
 ; @param_count 0
 ; @calls sPRINTS
 PUSH	AF
@@ -163,6 +176,7 @@ JR	LTNL1
 
 
 ; @name sCSR
+; @resident shared
 ; @param_count 0
 ; @calls sWORK
 LD	HL,(sXYADR)
@@ -170,6 +184,7 @@ RET
 
 
 ; @name sSCRN
+; @resident shared
 ; @param_count 0
 ; @calls lLOC1
 ; for LSX-Dodgers
@@ -186,6 +201,7 @@ RET
 
 
 ; @name lLOC1
+; @resident shared
 ; @param_count 0
 ; @calls sWORK
 PUSH	DE
@@ -207,6 +223,7 @@ RET
 
 
 ; @name sLOC
+; @resident shared
 ; @param_count 0
 ; @calls sWORK,sPCLR,sZPRINT
 CALL	sPCLR
@@ -226,6 +243,7 @@ RET
 
 
 ; @name sPAUSE
+; @resident shared
 ; @param_count 0
 ; @calls sBRKEY,sGETKY,sINKEY,sBRKEY
 CALL	sBRKEY
@@ -258,6 +276,7 @@ RET
 
 
 ; @name sBRKEY
+; @resident shared
 ; @param_count 0
 ; @calls sGETKY
 CALL	sGETKY
@@ -269,6 +288,7 @@ BRKEY1:
 
 
 ; @name sHEX
+; @resident shared
 ; @param_count 0
 ; @calls sCAP
 CALL	sCAP
@@ -286,6 +306,7 @@ RET
 
 
 ; @name sCAP
+; @resident shared
 ; @param_count 0
 CP	"a"
 RET	C
@@ -296,6 +317,7 @@ RET
 
 
 ; @name sZPRINT
+; @resident shared
 ; @param_count 0
 ; @calls sSYSTEM
 EX	(SP),HL
@@ -324,6 +346,7 @@ RET
 
 
 ; @name BEEP
+; @resident shared
 ; @param_count 0
 ; @calls sPRNT0
 PUSH	AF
@@ -332,6 +355,7 @@ JR	sPRNT01
 
 
 ; @name sPRNT0
+; @resident shared
 ; @param_count 0
 ; @calls sPRINT
 PUSH	AF
@@ -345,6 +369,7 @@ RET
 
 
 ; @name sGETL
+; @resident shared
 ; @param_count 0
 ; @calls sPRINT,sWORK,sFGETL,sKYBFC
 PUSH	BC
@@ -447,6 +472,7 @@ JP	sPRINT
 
 
 ; @name sFGETL
+; @resident shared
 ; @param_count 0
 ; @calls sWORK,sBRKEY,sINKBF
 CALL	.fgetl1
@@ -482,6 +508,7 @@ JR	.fgetl1
 
 
 ; @name sINKBF
+; @resident shared
 ; @param_count 0
 ; @calls sWORK
 PUSH	HL
@@ -502,6 +529,7 @@ RET
 
 
 ; @name sASC
+; @resident shared
 ; @param_count 0
 AND	$0F
 OR	$30
@@ -512,6 +540,7 @@ RET
 
 
 ; @name sGETKY
+; @resident shared
 ; @param_count 0
 ; @calls LSXCALLS,sFLGET,GETKY_DOINIT
 GETKY_INIT:
@@ -526,6 +555,7 @@ JR	GETKY1
 
 
 ; @name sFLGET
+; @resident shared
 ; @param_count 0
 ; @calls sSYSTEM
 PUSH	BC
@@ -568,6 +598,7 @@ RET
 
 
 ; @name GETKY_DOINIT
+; @resident shared
 ; @param_count 0
 ; @calls LSXCALLS
 ; sGETKY初回: LSX-Dodgersバージョン判定＋自己書き換え
@@ -603,6 +634,7 @@ JR	GETKY_MAIN
 
 
 ; @name sINKEY
+; @resident shared
 ; @param_count 0
 ; @calls sGETKY
 CALL	sGETKY
@@ -612,6 +644,7 @@ RET
 
 
 ; @name sLPRNT
+; @resident shared
 ; @param_count 0
 ; @calls sSYSTEM
 PUSH	BC
@@ -628,6 +661,7 @@ RET
 
 
 ; @name sKYBFC
+; @resident shared
 ; @param_count 0
 ; @calls sSYSTEM,sWORK
 PUSH	AF
@@ -650,6 +684,7 @@ RET
 
 
 ; @name sPRINT
+; @resident shared
 ; @param_count 0
 ; @calls sWORK,sCTRL,sSYSTEM
 PUSH	BC
@@ -686,6 +721,7 @@ RET
 
 
 ; @name sPCLR
+; @resident shared
 ; @param_count 0
 ; @calls sWORK
 XOR	A
@@ -694,6 +730,7 @@ RET
 
 
 ; @name sCTRL
+; @resident shared
 ; @param_count 0
 ; @calls sWORK,sPCLR,sSYSTEM,sPRINT,sZPRINT
 CP	$0D
@@ -747,6 +784,7 @@ JR	sPRINT3
 
 
 ; @name sBOOT
+; @resident shared
 ; @param_count 0
 LD	HL,0
 LD	($0001),HL
@@ -754,6 +792,7 @@ JP	0
 
 
 ; @name sHLHEX
+; @resident shared
 ; @param_count 0
 ; @calls sHEX
 PUSH	HL
@@ -800,6 +839,7 @@ RET
 
 
 ; @name sWORK
+; @resident shared
 ; @param_count 0
 ; @works sCRTCD:1,sXYADR:2,sKBFAD:128,sKBFAD0:1,sKBFAD1:1,sKBFADX:81,sPRBF:80,sSUBPS:2,sSUBBF:256,sSPBK:2,WBOOTBK:2,_CTCVEC:2
 
