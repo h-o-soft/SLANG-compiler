@@ -210,7 +210,7 @@ class Program
                 }
 
                 var incPath = Path.ChangeExtension(outPath, ".inc");
-                GenerateSharedSymbolsInc(incPath, irModule);
+                GenerateSharedSymbolsInc(incPath, irModule, codeGen.RuntimePlan, runtimeManager);
                 Console.Error.WriteLine($"; Output: {incPath} (shared symbols)");
             }
         }
@@ -244,7 +244,8 @@ class Program
         Console.Error.WriteLine("  5. <compiler_dir>/../share/slang/");
     }
 
-    static void GenerateSharedSymbolsInc(string incPath, IR.IrModule module)
+    static void GenerateSharedSymbolsInc(string incPath, IR.IrModule module,
+        Runtime.RuntimePlan? plan = null, Runtime.RuntimeManager? runtime = null)
     {
         using var writer = new StreamWriter(incPath);
         writer.WriteLine("; SLANG Shared Symbols (auto-generated)");
@@ -275,6 +276,27 @@ class Program
             writer.WriteLine("; --- String Labels ---");
             foreach (var label in module.StringTable.Keys)
                 writer.WriteLine($"; {label}\t; string data in main");
+        }
+
+        // --- Shared Runtime Functions (resident in main) ---
+        // PR-A の plan にある main resident な runtime 関数とその alias を export 候補
+        // としてリストアップする。AILZ80ASM 側に EXTERN は無いため現状はコメントだが、
+        // PR-B (二段アセンブル toolchain) が main の .sym を読んで overlay ASM に
+        // EQU 注入する際の入力リストとして使う。
+        if (plan != null && runtime != null && plan.MainResidentFunctions.Count > 0)
+        {
+            writer.WriteLine();
+            writer.WriteLine("; --- Shared Runtime Functions (resident in main) ---");
+            foreach (var name in plan.MainResidentFunctions.OrderBy(n => n,
+                         StringComparer.OrdinalIgnoreCase))
+            {
+                if (!runtime.Functions.TryGetValue(name, out var func)) continue;
+                var ns = func.LibName != null ? $" (lib={func.LibName})" : "";
+                writer.WriteLine($"; {name}{ns}\t; main resident, addr resolved by toolchain (PR-B)");
+                // alias 名も export 候補に並べる (overlay コードが alias で呼ぶ場合に備える)
+                foreach (var alias in func.Aliases)
+                    writer.WriteLine($"; {alias}{ns}\t; alias of {name}");
+            }
         }
     }
 

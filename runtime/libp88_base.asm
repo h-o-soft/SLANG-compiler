@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name SLANGINIT
+; @resident local
 ; @calls P88WORK,VTOS,P88INT
 DI
 
@@ -47,6 +48,7 @@ JP MAIN
 
 
 ; @name VSYNC
+; @resident shared
 P8WaitVBlank:
 in	    a,($40)
 and     $20
@@ -59,6 +61,7 @@ ret
 
 
 ; @name PSET
+; @resident local
 ; @calls GETVRAMADR
 ; HL = X, DE= Y, BC = COLOR
 DI
@@ -127,6 +130,7 @@ RET
 
 
 ; @name SETGRP
+; @resident shared
 ; @calls P88WORK
 ; HL =
 ;   0 = 青プレーン独立
@@ -159,6 +163,7 @@ RET
 
 
 ; @name GETVRAMADR
+; @resident shared
 ; HL = X, DE = Y
 PUSH BC
 
@@ -216,6 +221,7 @@ RET
 
 
 ; @name P88INT
+; @resident shared
 ALIGN	256
 ;
 ;	割り込みベクタ:アドレス下位1バイトが0になるように
@@ -284,6 +290,7 @@ scrinitcode_end:
 
 
 ; @name P88WORK
+; @resident shared
 ; @works IO32H:1
 ;
 

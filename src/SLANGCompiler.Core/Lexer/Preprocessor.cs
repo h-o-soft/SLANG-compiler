@@ -47,10 +47,16 @@ public class Preprocessor
                     break;
 
                 case TokenKind.PreprocElse:
-                case TokenKind.PreprocEnd:
-                    // Stray #ELSE/#END outside #IF block - skip
+                    // Stray #ELSE outside #IF block - skip
                     i++;
                     break;
+
+                // PreprocEnd は Parser (ParseModuleBlock) が `#END` として消費する
+                // ため、ここでは skip せず result に流す。`#IF...#END` ブロック内の
+                // `#END` は ProcessIf 内で消費済みなので、ここに到達するのは
+                // `#MODULE...#END` の終端等の trail-level な `#END` のみ。
+                // (PR-B2 で発見した PR-A バグ修正: 従来は `#END` も skip され、
+                //  ParseModuleBlock の `#END` 検出が機能しなかった)
 
                 case TokenKind.Const:
                     // CONST宣言からプリプロセッサ用の定数値を抽出

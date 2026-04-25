@@ -1,6 +1,21 @@
 namespace SLANGCompiler.Runtime;
 
 /// <summary>
+/// ランタイム関数の常駐性 (resident vs local) 指定。
+///
+/// `; @resident shared` でメイン側に集約可能候補とする。`; @resident local` か
+/// 未指定 (= デフォルト) なら ASM ファイルごとにローカルコピーされる (現状互換)。
+/// 実際に shared になるかは #MODULE 側のポリシー (RESIDENT) との交点で決まる。
+/// </summary>
+public enum RuntimeResidency
+{
+    /// <summary>未指定 / `@resident local` 明示。各 ASM に local コピー (現状互換)</summary>
+    Local = 0,
+    /// <summary>`@resident shared` 明示。メイン集約候補 (#MODULE RESIDENT 指定時のみ実際に集約)</summary>
+    Shared,
+}
+
+/// <summary>
 /// ランタイムライブラリ関数の定義。
 /// 新形式: .asmファイルにメタデータをコメントとして埋め込む。
 ///
@@ -33,6 +48,7 @@ public class RuntimeFunction
     public bool CalleeCleanup { get; set; }                    // @stack_cleanup callee
     public List<string> Aliases { get; set; } = new();          // @alias (元の名前)
     public string? ResultType { get; set; }                      // @result_type (float等)
+    public RuntimeResidency Residency { get; set; } = RuntimeResidency.Local; // @resident shared|local
 }
 
 /// <summary>
@@ -304,6 +320,20 @@ public static class RuntimeParser
                     case "result_type":
                         if (current != null && !string.IsNullOrEmpty(value))
                             current.ResultType = value.ToLowerInvariant();
+                        break;
+
+                    case "resident":
+                        if (current != null)
+                        {
+                            var rv = value.Trim().ToLowerInvariant();
+                            current.Residency = rv switch
+                            {
+                                "shared" => RuntimeResidency.Shared,
+                                "local"  => RuntimeResidency.Local,
+                                _ => throw new FormatException(
+                                    $"{sourcePath}: invalid @resident value '{value}' for function '{current.Name}' (expected: shared|local)")
+                            };
+                        }
                         break;
                 }
                 continue;

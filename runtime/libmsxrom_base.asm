@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name MSXCALLS
+; @resident shared
 CHPUT   EQU $00A2
 EXPTBL  EQU $FCC1
 ENASLT  EQU $0024
@@ -14,6 +15,7 @@ GTSTCK  EQU $00D5
 
 
 ; @name SLANGINIT
+; @resident local
 ; @calls MSXWORK,MSXCALLS
 ; MSX 32k ROM
 
@@ -66,11 +68,13 @@ JP INFLOOP
 
 
 ; @name STOP
+; @resident shared
 ; @param_count 0
 JP INFLOOP
 
 
 ; @name MSXWORK
+; @resident shared
 ; @param_count 0
 ; @works sXYADR:2,sKBFAD:128,sKBFAD0:1,sKBFAD1:1,sKBFADX:81,sPRBF:80,sSUBPS:2,sSUBBF:256,sSPBK:2,WBOOTBK:2,WORK10:10
 sCRTCD: DB $6F

@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name LSXFILE
+; @resident shared
 ; @calls MULHLDE
 ; fnum to FCB address
 LSXCALCFCB:
@@ -28,6 +29,7 @@ RET
 
 
 ; @name FOPEN
+; @resident shared
 ; @calls LSXCALLS,FWORK,LSXFILE
 ; HL=fnum DE=fname addr BC=mode
 LD (LSXFCB),HL
@@ -100,6 +102,7 @@ RET
 
 
 ; @name FSEEK
+; @resident shared
 ; @calls LSXCALLS,FWORK,LSXFILE
 ; HL=fnum DE=offset BC=mode(0=head, 1=current, 2=tail)
 CALL LSXFCHECKNUM
@@ -132,6 +135,7 @@ RET
 
 
 ; @name FGETC
+; @resident shared
 ; @calls LSXCALLS,FWORK,LSXFILE
 ; HL=fnum
 
@@ -174,6 +178,7 @@ DS  1
 
 
 ; @name FPUTC
+; @resident shared
 ; @calls LSXCALLS,FWORK,LSXFILE
 ; HL=fnum DE=chr
 
@@ -216,6 +221,7 @@ DS  1
 
 
 ; @name FCLOSE
+; @resident shared
 ; @calls LSXCALLS,FWORK,LSXFILE
 ; HL=fnum
 CALL LSXCALCFCB
@@ -231,6 +237,7 @@ RET
 
 
 ; @name FREAD
+; @resident shared
 ; @calls LSXCALLS,FWORK,LSXFILE
 ; HL=fnum DE=address BC=size
 
@@ -259,6 +266,7 @@ RET
 
 
 ; @name FWRITE
+; @resident shared
 ; @calls LSXCALLS,FWORK,LSXFILE
 ; HL=fnum DE=address BC=size
 
@@ -286,6 +294,7 @@ RET
 
 
 ; @name FWORK
+; @resident shared
 LSXFCBS: DS 8
 LSXFCB: DW 0
 LSXFMODE: DW 0
