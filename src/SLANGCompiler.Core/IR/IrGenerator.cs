@@ -2210,10 +2210,30 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
         int orgAddr = EvaluateAddress(node.Name) ?? 0;
 
+        // ヘッダ位置のランタイムポリシーを IR enum にミラー
+        var policy = node.RuntimePolicy switch
+        {
+            Parser.Ast.OverlayRuntimePolicy.Local       => OverlayRuntimePolicy.Local,
+            Parser.Ast.OverlayRuntimePolicy.Resident    => OverlayRuntimePolicy.Resident,
+            Parser.Ast.OverlayRuntimePolicy.SelfContain => OverlayRuntimePolicy.SelfContain,
+            Parser.Ast.OverlayRuntimePolicy.Auto        => OverlayRuntimePolicy.Auto,
+            _ => OverlayRuntimePolicy.Local,
+        };
+
+        // 未実装ポリシーは現時点ではコンパイルエラー (enum は予約のみ)
+        if (policy == OverlayRuntimePolicy.SelfContain || policy == OverlayRuntimePolicy.Auto)
+        {
+            _diagnostics?.Error(
+                $"#MODULE policy '{node.RuntimePolicy}' is not implemented yet (use RESIDENT or omit)",
+                node.Span);
+            policy = OverlayRuntimePolicy.Local; // フォールバック (回復のため)
+        }
+
         var overlay = new OverlayModule
         {
             Index = _module.Overlays.Count,
             OrgAddress = orgAddr,
+            RuntimePolicy = policy,
         };
 
         // VAR/ARRAY/WORK の振り分け先を切り替え

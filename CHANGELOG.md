@@ -1,6 +1,6 @@
 # 更新履歴
 
-## Version 0.22.0
+## Unreleased (v0.23.0 候補)
 
 - `#MODULE` (オーバーレイ) をモジュール専用ワーク対応に拡張
   - モジュール直下の `VAR` / `ARRAY` を **モジュール私有ワークエリア `__WORK_M<N>__`** に配置。ASM ラベルは `_V_M<N>_<NAME>` で名前空間分離されるため、main と同名の変数を宣言しても物理メモリ上同居せず、各 overlay の swap 先でメモリを再利用できる
@@ -8,6 +8,17 @@
   - `WORK` / `ORG` / `OFFSET` の各ディレクティブが定数式 (`CONST WA = $9000; WORK WA` など) を受けるように拡張
   - モジュール直下の初期値付き変数 / 固定アドレス指定 / トップレベル `#ASM` はコンパイルエラー化 (関数本体内の `#ASM` / ローカル変数は従来どおり)
   - 関数定義 / `MACHINE` / `CONST` は従来互換で global に登録 — main から overlay 関数を呼ぶ既存運用は変わらず
+- `#MODULE` ランタイム集約ポリシーの **内部設計** を導入 (PR-A)
+  - ヘッダ位置に optional のポリシー識別子を追加: `#MODULE $8000 RESIDENT` (省略時は Local = 現状互換)
+  - ランタイム関数側に `; @resident shared|local` 属性を追加。RESIDENT モード × 関数 Shared の交点で main 集約 (overlay 内 EXTERN 参照) になる
+  - `@resident local` (明示) は #MODULE RESIDENT でも常に勝つ (self-modifying / overlay-specific WORK 等の安全側挙動)
+  - 新規 `RuntimePlanner` で集約決定 (alias 正規化 / 依存閉包 / SLANGINIT inline 仕様化を担当)
+  - CodeGenerator の runtime 参照 7 箇所 (overlay resolve / SLANGINIT exclude / main runtime emit / RUNTIME_INIT / @works 集約) を Plan 経由に統一。shared 関数の `@init_code` / `@works` が main 側 `RUNTIME_INIT` / `__WORK__` に正しく集約される
+  - `#MODULE $addr SELFCONTAIN` / `AUTO` は enum 予約済み、現時点はコンパイルエラー
+  - **注意**: 本 PR は **内部設計のみ**。実バイナリでの shared runtime リンクは別 PR (PR-B = main → `.sym` → overlay EQU 注入の二段アセンブル toolchain) が必要。既存 runtime ライブラリにもまだ `@resident shared` を付与していないため、`RESIDENT` を書いても現時点では何も共有されず、動作は完全に現状互換
+
+## Version 0.22.0
+
 - X1 グラフィックライブラリ群を include/ に新設 (#139)
   - **TILELIB.LIB**: PCG タイル背景 (スーパーチップ 2×2 + マップ + スクロール + アニメ + ダブルバッファ)
   - **SPRLIB.LIB**: GVRAM 前景スプライト 最大 8 枚 / 16×16 (ダブルバッファ + old1 erase, 4 dot 単位座標)

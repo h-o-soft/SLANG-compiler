@@ -59,6 +59,10 @@ public enum TokenKind
     Work,
     Offset,
     Module,
+    // #MODULE ヘッダ位置のランタイム集約ポリシー (RESIDENT / SELFCONTAIN / AUTO)
+    Resident,
+    SelfContain,
+    Auto,
     Print,
     Code,
     High,
