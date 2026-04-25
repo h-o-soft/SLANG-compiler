@@ -75,6 +75,19 @@ class Program
         // --- パス解決 ---
         var pathResolver = new PathResolver(extraIncludePaths, extraLibPaths);
 
+        // --- 環境解決（前段で 1 回だけ）---
+        // 解決失敗は即エラー。後段の runtime ロードと preprocessor の ENV_TYPE/OS_TYPE 定義を同じ config から行う。
+        var envResolution = ResolveEnvironment(envName, pathResolver);
+        if (envResolution == null)
+        {
+            Console.Error.WriteLine(
+                $"Error: Unknown environment '{envName}'. " +
+                $"No '{envName}.env' found in runtime/env/ or lib/env/.");
+            return 1;
+        }
+        var (envConfig, envPath) = envResolution.Value;
+        Console.Error.WriteLine($"; Environment: {envConfig.Name} (type={envConfig.EnvType}) [{envPath}]");
+
         var diagnostics = new DiagnosticBag();
 
         foreach (var filePath in inputFiles)
@@ -97,21 +110,9 @@ class Program
             var preprocessor = new Lexer.Preprocessor(diagnostics, includePaths);
 
             // 環境定数をプリプロセッサに登録（#IF条件式で参照可能）
-            if (!string.IsNullOrEmpty(envName))
-            {
-                var envFile = $"{envName}.env";
-                foreach (var dir in pathResolver.GetRuntimePaths().Concat(pathResolver.GetLibPaths()))
-                {
-                    var envPath = Path.Combine(dir, "env", envFile);
-                    if (File.Exists(envPath))
-                    {
-                        var envInfo = Runtime.EnvironmentLoader.Load(envPath);
-                        preprocessor.DefineConst("ENV_TYPE", envInfo.EnvType);
-                        preprocessor.DefineConst("OS_TYPE", envInfo.OsType);
-                        break;
-                    }
-                }
-            }
+            // 前段で解決済みの envConfig をそのまま使用（二重解決を回避）
+            preprocessor.DefineConst("ENV_TYPE", envConfig.EnvType);
+            preprocessor.DefineConst("OS_TYPE", envConfig.OsType);
 
             tokens = preprocessor.Process(tokens, baseDir);
 
@@ -148,8 +149,9 @@ class Program
             }
 
             // Load runtime (needed for IR generation to know function return types)
+            // 前段で解決済みの envConfig が指定する .asm 群をロード
             var runtimeManager = new Runtime.RuntimeManager();
-            var envConfig = LoadEnvironment(envName, runtimeManager, pathResolver);
+            LoadRuntimeFromConfig(envConfig, runtimeManager, pathResolver);
 
             // Phase 4: IR Generation
             var irGen = new IrGenerator(diagnostics, analyzer.Symbols, runtimeManager);
@@ -168,13 +170,10 @@ class Program
 
             // Phase 5: Code Generation
 
-            if (envConfig != null)
-            {
-                if (!irModule.OrgAddress.HasValue && envConfig.DefaultOrg > 0)
-                    irModule.OrgAddress = envConfig.DefaultOrg;
-                if (!irModule.WorkAddress.HasValue && envConfig.DefaultWork > 0)
-                    irModule.WorkAddress = envConfig.DefaultWork;
-            }
+            if (!irModule.OrgAddress.HasValue && envConfig.DefaultOrg > 0)
+                irModule.OrgAddress = envConfig.DefaultOrg;
+            if (!irModule.WorkAddress.HasValue && envConfig.DefaultWork > 0)
+                irModule.WorkAddress = envConfig.DefaultWork;
 
             var codeGen = new CodeGenerator(irModule, runtimeManager, envConfig, diagnostics);
             var (mainAsm, overlays) = codeGen.GenerateAll();
@@ -268,47 +267,41 @@ class Program
         }
     }
 
-    static Runtime.EnvironmentConfig? LoadEnvironment(
-        string envName, Runtime.RuntimeManager manager, PathResolver paths)
+    /// <summary>
+    /// 環境名から .env を解決し、(EnvironmentConfig, envファイルの絶対パス) を返す。
+    /// 見つからない場合は null。検索順は runtime/env/ → lib/env/。
+    /// </summary>
+    static (Runtime.EnvironmentConfig Config, string EnvPath)? ResolveEnvironment(
+        string envName, PathResolver paths)
     {
-        // .envファイルを検索（runtime/env/ → lib/env/ の順）
         var envFile = $"{envName}.env";
         var envSearchPaths = paths.GetRuntimePaths().Concat(paths.GetLibPaths());
         foreach (var dir in envSearchPaths)
         {
             var envPath = Path.Combine(dir, "env", envFile);
             if (!File.Exists(envPath)) continue;
-
             try
             {
                 var config = Runtime.EnvironmentLoader.Load(envPath);
-                Console.Error.WriteLine($"; Environment: {config.Name} (type={config.EnvType})");
-
-                // 環境が指定するランタイムライブラリをロード
-                LoadRuntimeLibraries(config.Libraries, manager, paths);
-                return config;
+                return (config, Path.GetFullPath(envPath));
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"; Warning: Failed to load env {envPath}: {ex.Message}");
-            }
-        }
-
-        // .envが見つからない場合: runtimeディレクトリから直接ロード
-        Console.Error.WriteLine($"; Warning: Environment '{envName}' not found, loading runtime directly");
-        foreach (var dir in paths.GetRuntimePaths())
-        {
-            if (!Directory.Exists(dir)) continue;
-            foreach (var file in Directory.GetFiles(dir, "*.asm"))
-            {
-                try { manager.LoadFromFile(file); }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"; Warning: Failed to load {file}: {ex.Message}");
-                }
+                Console.Error.WriteLine($"Error: Failed to load env {envPath}: {ex.Message}");
+                return null;
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// 解決済み EnvironmentConfig が指定するランタイムライブラリ (.asm) をロード。
+    /// 旧版にあった「env 不在時の全 runtime/*.asm fallback」は廃止 (前段で必ず解決される前提)。
+    /// </summary>
+    static void LoadRuntimeFromConfig(
+        Runtime.EnvironmentConfig config, Runtime.RuntimeManager manager, PathResolver paths)
+    {
+        LoadRuntimeLibraries(config.Libraries, manager, paths);
     }
 
     static void LoadRuntimeLibraries(

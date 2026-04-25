@@ -1,5 +1,12 @@
 # 更新履歴
 
+## Unreleased
+
+- env 解決を一本化、未定義 env を即エラー化 (**breaking change**)
+  - 従来: `slangc -E xxx` で `xxx.env` が見つからなかった場合、Preprocessor 用と Runtime ロード用に env 解決が **二重に走り**、後段が見つからない場合は `runtime/*.asm` を **全部 fallback ロード** していた (これが Issue #145 の根本原因)
+  - 新動作: 起動直後に **1 回だけ** env を解決。見つからない env は `Error: Unknown environment 'xxx'` で **即終了 (exit 1)**。fallback 経路は廃止
+  - 既存の有効 env (`-E lsx` / `-E x1` / `-E sos` / `-E msxrom` / `-E cpm` 等) を指定するワークフローへの影響無し。`-E` を typo した場合や、独自に env 名を作っていて env file を用意していなかった場合のみ挙動が変わる
+
 ## Version 0.22.0
 
 - `#MODULE` (オーバーレイ) をモジュール専用ワーク対応に拡張
