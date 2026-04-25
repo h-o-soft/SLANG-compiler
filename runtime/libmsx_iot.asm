@@ -2,11 +2,13 @@
 ; SLANG Runtime Library (new format)
 
 ; @name IOT_COMMON
+; @resident shared
 MSX0IO  EQU $58
 MSX0IO2 EQU $57
 
 
 ; @name IOT_SET_DEVICE_PATH
+; @resident shared
 ; @calls IOT_COMMON,STRLEN
 PUSH  DE
 ; HL = Device Path
@@ -59,6 +61,7 @@ RET
 
 
 ; @name IOTGET_INT
+; @resident shared
 ; @calls STRLEN,IOT_COMMON,IOT_SET_DEVICE_PATH
 ; HL = Device Path
 
@@ -84,6 +87,7 @@ RET
 
 
 ; @name IOTGET_STR
+; @resident shared
 ; @calls IOT_COMMON,IOT_SET_DEVICE_PATH
 ; HL = Device Path
 ; DE = String Address
@@ -120,6 +124,7 @@ RET
 
 
 ; @name IOTPUT_INT
+; @resident shared
 ; @calls IOT_COMMON,IOT_SET_DEVICE_PATH
 ; HL = Device Path
 ; DE = Value
@@ -150,6 +155,7 @@ RET
 
 
 ; @name IOTPUT_STR
+; @resident shared
 ; @calls IOT_COMMON,IOT_SET_DEVICE_PATH,STRLEN
 ; HL = Device Path
 ; DE = Value

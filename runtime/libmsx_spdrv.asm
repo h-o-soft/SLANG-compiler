@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name SPDRV_INCLUDE
+; @resident shared
 ; @lib MSXSPDRV
 ; -----------------------------------------------------------------------------
 ;  Constant definitions for MSX
@@ -74,12 +75,14 @@ jiffy			EQU 0xFC9E
 
 
 ; @name SPDRV_WORK
+; @resident shared
 ; @calls SPDRV_INCLUDE
 ; @lib MSXSPDRV
 ; @works sprite_page:1,sprite_index:1,sprite_attribute:128
 ;
 
 ; @name SPDRV_INITIALIZE
+; @resident shared
 ; @calls SPDRV_WORK
 ; @lib MSXSPDRV
 
@@ -124,6 +127,7 @@ vram_sprite_attribute2	EQU vram_sprite_attribute1 + 128
 ;				endscope
 
 ; @name SPDRV_FLIP
+; @resident shared
 ; @calls SPDRV_WORK
 ; @lib MSXSPDRV
 ; spdrv_flip::
@@ -144,6 +148,7 @@ vram_sprite_attribute2	EQU vram_sprite_attribute1 + 128
 ;				endscope
 
 ; @name SPDRV_SET
+; @resident shared
 ; @calls SPDRV_WORK
 ; @lib MSXSPDRV
 ; HL = sprite attribute index
@@ -164,6 +169,7 @@ ret
 
 
 ; @name SPDRV_MOVE
+; @resident shared
 ; @calls SPDRV_WORK
 ; @lib MSXSPDRV
 
@@ -188,6 +194,7 @@ LD (HL),E
 
 
 ; @name SPDRV_UPDATE
+; @resident shared
 ; @calls SPDRV_WORK
 ; @lib MSXSPDRV
 ; spdrv_update:
@@ -256,12 +263,14 @@ LD (HL),E
 ;				endscope
 
 ; @name SPDRV2_WORK
+; @resident shared
 ; @calls SPDRV_INCLUDE
 ; @lib MSXSPDRV
 ; @works sprite_page:1,sprite_index:1,sprite_color_work:32,sprite_attribute:256
 ;
 
 ; @name SPDRV2_INITIALIZE
+; @resident shared
 ; @calls SPDRV2_WORK
 ; @lib MSXSPDRV
 
@@ -322,6 +331,7 @@ disable_y				EQU 216
 ;				endscope
 
 ; @name SPDRV2_FLIP
+; @resident shared
 ; @calls SPDRV2_WORK
 ; @lib MSXSPDRV
 ;				scope		spdrv_flip
@@ -343,6 +353,7 @@ disable_y				EQU 216
 ;				endscope
 
 ; @name SPDRV2_SET
+; @resident shared
 ; @calls SPDRV2_WORK
 ; @lib MSXSPDRV
 ; HL = sprite attribute index
@@ -364,6 +375,7 @@ ret
 
 
 ; @name SPDRV2_MOVE
+; @resident shared
 ; @calls SPDRV2_WORK
 ; @lib MSXSPDRV
 
@@ -389,6 +401,7 @@ LD (HL),E
 
 
 ; @name SPDRV2_UPDATE
+; @resident shared
 ; @calls SPDRV2_WORK
 ; @lib MSXSPDRV
 ;				scope		spdrv_update

@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name MSXGRPBASE
+; @resident shared
 ; @calls MSXGRPSYS,MSXGRPWORK
 ; @lib MSXLIB
 CONSOLE_COLUMNS equ 32
@@ -38,12 +39,14 @@ VDP_STATUS EQU $99
 
 
 ; @name MSX_CALLBIOS
+; @resident shared
 ; @lib MSXLIB
 	push hl
 	pop ix
 	jp msxbios
 
 ; @name MSX_SCREEN
+; @resident shared
 ; @lib MSXLIB
 	ld	a,l
 	ld	hl, 005Fh	; CHGMOD
@@ -52,6 +55,7 @@ VDP_STATUS EQU $99
 	jp msxbios
 
 ; @name MSXGRPSYS
+; @resident shared
 ; @lib MSXLIB
 
 msxbios:
@@ -63,6 +67,7 @@ msxbios:
 	ret
 
 ; @name MSX_SET_COLOR
+; @resident shared
 ; @calls MSXGRPBASE,MSXGRPWORK,MSXGRPSYS
 ; @lib MSXLIB
 	; HL = foreground
@@ -90,6 +95,7 @@ msxbios:
 	ret
 
 ; @name MSX_VWRITE
+; @resident shared
 ; @calls MSXGRPBASE,MSXGRPWORK,MSXGRPSYS
 ; @lib MSXLIB
 	; hl = source, de = dest, bc = count
@@ -97,6 +103,7 @@ msxbios:
 	jp	msxbios
 
 ; @name MSX_VWRITE_DIRECT
+; @resident shared
 ; @calls MSXGRPBASE,MSXGRPWORK,MSXGRPSYS
 ; @lib MSXLIB
 	; hl = source, de = dest, bc = count
@@ -122,6 +129,7 @@ wrtloop:
 	ret
 
 ; @name MSX_VFILL
+; @resident shared
 ; @calls MSXGRPBASE,MSXGRPWORK,MSXGRPSYS
 ; @lib MSXLIB
 	; hl = addr, value = de, count = bc
@@ -131,6 +139,7 @@ wrtloop:
 	jp	msxbios
 
 ; @name GET_VDP_REG
+; @resident shared
 ; @calls MSXGRPBASE,MSXGRPWORK,MSXGRPSYS
 ; @lib MSXLIB
 	ld de,RG0SAV
@@ -142,6 +151,7 @@ wrtloop:
 	ret
 
 ; @name SET_VDP_REG
+; @resident shared
 ; @calls MSXGRPBASE,MSXGRPWORK,MSXGRPSYS
 ; @lib MSXLIB
 	push	ix
@@ -153,6 +163,7 @@ wrtloop:
 	ret
 
 ; @name SET_SPRITE_16HFLIP
+; @resident shared
 ; @calls MSXGRPBASE,MSXGRPWORK,MSXGRPSYS
 ; @lib MSXLIB
 	; hl = pattern index, de = data
@@ -211,12 +222,14 @@ flip_and_copy:
 	;jp WRTVRM
 
 ; @name MSXGRPWORK
+; @resident shared
 ; @lib MSXLIB
 ; @works VDP_ATTR:1
 ;
 
 
 ; @name MSXCALLS
+; @resident shared
 CHPUT   EQU $00A2
 EXPTBL  EQU $FCC1
 ENASLT  EQU $0024
@@ -229,6 +242,7 @@ GTSTCK  EQU $00D5
 
 
 ; @name STICK2
+; @resident shared
 ; @calls MSXCALLS
 LD A,L
 LD IX,GTSTCK
