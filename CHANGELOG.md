@@ -7,6 +7,12 @@
   - `Makefile.dist` の `ENV=cpm` で `SLANGENV=cpm` を参照
   - これまで `-E cpm` 指定時は env file が見つからず「全 runtime/*.asm を fallback ロード」していたため、`libpc80mk2_print` の `@works WORK10:10` と `liblsx_print` 等の local `WORK10:` ラベルが AILZ80ASM 段階で衝突していた (Issue #145)。cpm.env 追加により lsx 互換セットのみがロードされ衝突解消
 
+- env 解決を一本化、未定義 env を即エラー化 (**breaking change**)
+  - 従来: `slangc -E xxx` で `xxx.env` が見つからなかった場合、Preprocessor 用と Runtime ロード用に env 解決が **二重に走り**、後段が見つからない場合は `runtime/*.asm` を **全部 fallback ロード** していた (これが Issue #145 の根本原因)
+  - 新動作: 起動直後に **1 回だけ** env を解決。見つからない env は `Error: Unknown environment 'xxx'` で **即終了 (exit 1)**。fallback 経路は廃止
+  - ファイル不在 (`Unknown environment '<name>'`) と YAML 破損 (`Failed to load env file for '<name>'`) を別エラーで報告
+  - 既存の有効 env (`-E lsx` / `-E x1` / `-E sos` / `-E msxrom` / `-E cpm` 等) を指定するワークフローへの影響無し。`-E` を typo した場合や、独自に env 名を作っていて env file を用意していなかった場合のみ挙動が変わる
+
 - 残り 10 環境 (msxlsx / msx2 / msxrom / sos / sosx1 / pc80mk2 / pc80mk2x / pc88mk2sr / vgs0 / zxn) の runtime にも `; @resident shared|local` を付与 (PR-C2) — PR-C1 の手順を機械的に横展開
   - 対象 30 ファイル / 527 関数の追加付与 (env ごとに 1 commit)
   - 真の self-mod として `local` 化した関数 (PR-C2 で新規):
