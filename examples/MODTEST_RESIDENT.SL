@@ -1,30 +1,57 @@
 /*
-  #MODULE RESIDENT のデモ
+  #MODULE RESIDENT のデモ + ディスクからの overlay 読み込み実機サンプル
 
-  MODTEST.SL とソースはほぼ同一だが、#MODULE に RESIDENT ポリシーを付与する。
   PR-C1 で runtime ライブラリに @resident shared/local を付与済みのため、
-  overlay 内の MPRNT/P10/PCRONE 等は overlay 本体に展開されず main 側
-  シンボルへの EXTERN 参照に変換される (= overlay バイナリが大幅縮小)。
+  #MODULE に RESIDENT ポリシーを付けると overlay 内の MPRNT/P10/PCRONE 等
+  は overlay 本体に展開されず main 側シンボルへの EXTERN 参照に変換される
+  (= overlay バイナリが大幅縮小)。
 
   サイズ実測 (slangbuild -E lsx 時):
-    examples/MODTEST.SL          --> overlay 248 byte
-    examples/MODTEST_RESIDENT.SL --> overlay  57 byte (-77%)
+    examples/MODTEST.SL          --> overlay 248 byte (Local モード)
+    examples/MODTEST_RESIDENT.SL --> overlay  57 byte (RESIDENT モード, -77%)
 
-  注意: 本サンプルは loader を持たないため、main 起動後に overlay を
-  $3000 にロードする仕組みは別途必要 (例: ディスクからの読み込み)。
-  本ファイルはコンパイラ出力 + バイナリサイズ確認用のデモ。
+  本サンプルはさらに、disk image に書き込まれた M0.BIN (= overlay バイナリ)
+  を OVERLAY_ADDR にロードしてから MODFUNC を呼び出す最小 loader を持つ。
+
+  ★ 動作確認済み環境: lsx / x1 (LSX-Dodgers d88 上で実機エミュレータ動作)
+  ★ 動作未確認:        cpm (RunCPM は CP/M 2.2 互換、liblsx_file.FREAD が
+                              CP/M 3+ の BDOS _RDBLK ($27) を使うため不動)
+
+  ★ 本 loader の制約: overlay 0 が「128 byte (= CP/M 1 record) 以内に収まる」
+  ことを前提にした最小実装。サンプルを拡張して 128 byte を超える overlay に
+  なる場合は、loader 側の FREAD 第 3 引数を増やすか、ループでマルチ record
+  読みに変えること。
+
+  Makefile.dist の disk_image ターゲットは PROG._m0.bin を staging 経由で
+  M0.BIN として d88 (lsx/x1) に書き込む。RunCPM 環境向けにも tools/runcpm.sh
+  が同等の staging を行うが、上記理由により FREAD が動かないため未動作。
 */
 
-VAR MAIN_VAL=10;
+CONST OVERLAY_ADDR = $3000;   /* loader と #MODULE で共有するロードアドレス */
+
+VAR MAIN_VAL = 10;
+VAR FERR;
 
 MAIN()
 {
-	PRINT("This is main.",/);
+	PRINT("This is main.", /);
 	PRINT(MAIN_VAL, /);
+
+	/* Overlay 0 を M0.BIN から OVERLAY_ADDR にロード */
+	FERR = FOPEN(0, "M0.BIN", 0);     /* fnum=0, mode=read (0..2=read) */
+	/* FOPEN 戻り値: 0..3 = 成功 (directory code), 255 = ファイルなし */
+	IF FERR == 255 THEN BEGIN
+		PRINT("Open failed: ", FERR, /);
+		RETURN;
+	END;
+
+	FREAD(0, OVERLAY_ADDR, 128);       /* 1 record (128B) で十分 */
+	FCLOSE(0);
+
 	MODFUNC();
 }
 
-#MODULE $3000 RESIDENT
+#MODULE OVERLAY_ADDR RESIDENT
 
 VAR MVAL;
 

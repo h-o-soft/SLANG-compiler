@@ -2,6 +2,13 @@
 
 ## Unreleased (v0.23.0 候補)
 
+- `examples/MODTEST_RESIDENT.SL` に overlay loader (FOPEN/FREAD/FCLOSE) を実装、`Makefile.dist` を拡張して `make ENV=lsx|x1 TARGET=examples/MODTEST_RESIDENT disk_image` が D88 イメージに `PROG.com` + `M0.BIN` を書き込むようにした
+  - `tools/disk-add-overlays.sh` (POSIX) を新設、`PROG._m*.bin` を staging 経由で `M0.BIN`/`M1.BIN`/... として d88 へ書き込む。古い `M*.BIN` (前回ビルド残骸) は事前削除。一時 staging dir (`examples/.staging/`) は trap で都度削除
+  - エミュレータ (X Millennium / Cocoa1 等) で d88 起動 → "Module value: 100 / Main value: 10" の end-to-end 動作を確認 (LSX-Dodgers の FILES API 経由)
+  - `tools/runcpm.sh` も同じ命名規則 (`M<N>.BIN`) で staging するように拡張したが、**RunCPM (CP/M 2.2 互換) では FREAD が CP/M 3+ の BDOS `_RDBLK` ($27) を使うため動作しない**。試験的サポート扱い、cpm 上の overlay 動的ロードは follow-up で対応 (FREAD を sequential read 版に切り替える等)
+  - 汎用 loader 機構ではなく **サンプル限定の最小実装** で、命名規則は `M<N>.BIN` (= overlay インデックスと一致)、loader は overlay 0 が 128 byte 以内であることを前提。他 env (sos/msx/pc88/vgs0/zxn) は別 loader API のため本変更の対象外
+  - Windows 環境の disk_image 拡張は本 PR では対応せず (Makefile.dist の `ifneq ($(OS),Windows_NT)` で skip)。POSIX shell スクリプトのため、Windows ユーザーは手動で M0.BIN を d88 に追加する必要あり
+
 - `cpm` 環境を独立した env として明示化 (#145)
   - `runtime/env/cpm.env` を新設 (env_type/os_type は lsx と同じ 0/0、libraries は lsx 互換)。条件コンパイル `#IF (ENV_TYPE<=1)` 等の意味は変わらない
   - `Makefile.dist` の `ENV=cpm` で `SLANGENV=cpm` を参照

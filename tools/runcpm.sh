@@ -75,6 +75,19 @@ BASE="$(basename "$COM_PATH")"
 STEM="$(echo "${BASE%.*}" | tr '[:lower:]' '[:upper:]')"
 cp "$COM_PATH" "$STAGE/A/0/$STEM.COM"
 
+# Stage overlay binaries (sample-only support, see examples/MODTEST_RESIDENT.SL).
+# Looks for <com_dir>/<original-stem>._m*.bin (slangbuild output naming) and
+# copies each as M0.BIN, M1.BIN, ... under A/0/. The stem here is the
+# slangbuild -o stem (= basename of COM_PATH without extension), NOT the
+# upper-cased COM stem. No-op when sample doesn't use #MODULE.
+COM_DIR="$(cd "$(dirname "$COM_PATH")" && pwd)"
+SRC_STEM="${BASE%.*}"
+for f in "$COM_DIR/${SRC_STEM}._m"*.bin; do
+    [ -e "$f" ] || continue
+    n="$(echo "$f" | sed 's/.*_m\([0-9][0-9]*\)\.bin/\1/')"
+    cp "$f" "$STAGE/A/0/M${n}.BIN"
+done
+
 # Bundle SUBMIT.COM and EXIT.COM so the CCP can chain commands.
 cp "$CPM_UTILS_DIR/SUBMIT.COM" "$STAGE/A/0/SUBMIT.COM"
 cp "$CPM_UTILS_DIR/EXIT.COM"   "$STAGE/A/0/EXIT.COM"
