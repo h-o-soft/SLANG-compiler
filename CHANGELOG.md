@@ -2,6 +2,15 @@
 
 ## Unreleased (v0.23.0 候補)
 
+- 残り 10 環境 (msxlsx / msx2 / msxrom / sos / sosx1 / pc80mk2 / pc80mk2x / pc88mk2sr / vgs0 / zxn) の runtime にも `; @resident shared|local` を付与 (PR-C2) — PR-C1 の手順を機械的に横展開
+  - 対象 30 ファイル / 527 関数の追加付与 (env ごとに 1 commit)
+  - 真の self-mod として `local` 化した関数 (PR-C2 で新規):
+    - `libsos_print.PRMODE` / `libpc80mk2xbios_print.PRMODE` (PRT+1 の operand patch)
+    - `libp88_base.PSET` (PSETADR / PSETCOLOR の operand patch)
+    - 各 base ファイルの `SLANGINIT` (8 件、main inline 専用)
+  - **全 env 累計**: shared 773 関数 / local 14 関数 (10 base SLANGINIT + M8ALOAD + 3 PRMODE/PSET)
+  - smoke 検証 (env ごと): `slangc -E <env> examples/<sample>.SL` で SLANG 段の compile 成功確認。pc80mk2 / pc80mk2x は `AILZ80ASM` までのフルアセンブルも `0 error/warn` (#145 系統のため厚めに)
+  - 全テスト 190 / 190 合格 (PR-C1 と同じ test base、回帰なし)
 - lsx / x1 環境の runtime ライブラリに `; @resident shared|local` を全関数付与 (PR-C1) — `#MODULE $addr RESIDENT` で実バイナリでメモリ節約効果
   - 対象 17 ファイル (lsx.env / x1.env が参照する .asm を `tools/resident-audit.py --env` で機械的に列挙) / 260 関数
   - 内訳: **shared 258 関数 / local 2 関数** (`SLANGINIT` = main inline 専用, `M8ALOAD` = 命令オペランド書き換えあり)

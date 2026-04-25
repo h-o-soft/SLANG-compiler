@@ -2,12 +2,14 @@
 ; SLANG Runtime Library (new format)
 
 ; @name VGSCALLS
+; @resident shared
 DUMMY   EQU $0000
 ADDR_OAM EQU $9000
 ADDR_OAM16 EQU $9A00
 
 
 ; @name SLANGINIT
+; @resident local
 ; @calls VGSWORK,VGSCALLS
 im 1
 di
@@ -46,11 +48,13 @@ JP INFLOOP
 
 
 ; @name STOP
+; @resident shared
 ; @param_count 0
 JP INFLOOP
 
 
 ; @name vgs0_bank0_switch
+; @resident shared
 ; L = bank num
 ld a, l
 out ($B0), a
@@ -58,6 +62,7 @@ ret
 
 
 ; @name vgs0_bank1_switch
+; @resident shared
 ; L = bank num
 ld a, l
 out ($B1), a
@@ -65,6 +70,7 @@ ret
 
 
 ; @name vgs0_bank2_switch
+; @resident shared
 ; L = bank num
 ld a, l
 out ($B2), a
@@ -72,18 +78,21 @@ ret
 
 
 ; @name vgs0_bank3_switch
+; @resident shared
 ld a, l
 out ($B3), a
 ret
 
 
 ; @name vgs0_rambank_switch
+; @resident shared
 ld a,l
 out ($B4), a
 ret
 
 
 ; @name vgs0_bank0_get
+; @resident shared
 in a, ($B0)
 ld l, a
 ld h,0
@@ -91,6 +100,7 @@ ret
 
 
 ; @name vgs0_bank1_get
+; @resident shared
 in a, ($B1)
 ld l, a
 ld h,0
@@ -98,6 +108,7 @@ ret
 
 
 ; @name vgs0_bank2_get
+; @resident shared
 in a, ($B2)
 ld l, a
 ld h,0
@@ -105,6 +116,7 @@ ret
 
 
 ; @name vgs0_bank3_get
+; @resident shared
 in a, ($B3)
 ld l, a
 ld h,0
@@ -112,6 +124,7 @@ ret
 
 
 ; @name vgs0_rambank_get
+; @resident shared
 in a, ($B4)
 ld l, a
 ld h,0
@@ -119,6 +132,7 @@ ret
 
 
 ; @name vgs0_wait_vsync
+; @resident shared
 ld hl, $9F07
 wait_vblank_loop:
 ld a, (hl)
@@ -128,12 +142,14 @@ ret
 
 
 ; @name vgs0_dma
+; @resident shared
 ld a, l
 out ($C0), a
 ret
 
 
 ; @name vgs0_memset
+; @resident shared
 ; HL = dst
 ; DE = value
 ; BC = cnt
@@ -153,6 +169,7 @@ ret
 
 
 ; @name vgs0_memcpy
+; @resident shared
 ; HL = dst
 ; DE = src
 ; BC = cnt
@@ -168,6 +185,7 @@ ret
 
 
 ; @name vgs0_collision_check
+; @resident shared
 ; HL = addr
 in a, ($C4)
 ld l, a
@@ -176,6 +194,7 @@ ret
 
 
 ; @name vgs0_mul
+; @resident shared
 ; HL = val1
 ; DE = val2
 ld h,e
@@ -186,6 +205,7 @@ ret
 
 
 ; @name vgs0_smul
+; @resident shared
 ; HL = val1
 ; DE = val2
 ld h,e
@@ -196,6 +216,7 @@ ret
 
 
 ; @name vgs0_div
+; @resident shared
 ; HL = val1
 ; DE = val2
 ; val1 / val2
@@ -208,6 +229,7 @@ ret
 
 
 ; @name vgs0_sdiv
+; @resident shared
 ; HL = val1
 ; DE = val2
 ; val1 / val2 (signed)
@@ -220,6 +242,7 @@ ret
 
 
 ; @name vgs0_mod
+; @resident shared
 ; HL = val1
 ; DE = val2
 ; val1 % val2
@@ -232,6 +255,7 @@ ret
 
 
 ; @name vgs0_mul16
+; @resident shared
 ; HL = HL * E
 ; push bc
 ld c,e
@@ -242,6 +266,7 @@ RET
 
 
 ; @name vgs0_smul16
+; @resident shared
 ; HL = HL * E
 ; push bc
 ld c,e
@@ -252,6 +277,7 @@ RET
 
 
 ; @name vgs0_div16
+; @resident shared
 ; HL = val1
 ; DE = val2
 ; val1 / val2
@@ -262,6 +288,7 @@ ret
 
 
 ; @name vgs0_sdiv16
+; @resident shared
 ; HL = val1
 ; DE = val2
 ; val1 / val2 (signed)
@@ -272,6 +299,7 @@ ret
 
 
 ; @name vgs0_sin
+; @resident shared
 ld a, l
 out ($C6), a
 ld l, a
@@ -284,6 +312,7 @@ ret
 
 
 ; @name vgs0_cos
+; @resident shared
 ld a, l
 out ($C7), a
 ld l, a
@@ -296,6 +325,7 @@ ret
 
 
 ; @name vgs0_atan2
+; @resident shared
 ; HL = yx
 in a, ($C8)
 ld l, a
@@ -304,6 +334,7 @@ ret
 
 
 ; @name vgs0_atan2b
+; @resident shared
 ; vgs0_atan2b(y, x) と、書ける
 ; HL = y
 ; DE = x
@@ -317,43 +348,51 @@ ret
 
 
 ; @name vgs0_srand8
+; @resident shared
 ld a, l
 out ($C9), a
 ret
 
 
 ; @name vgs0_rand8
+; @resident shared
 in a, ($C9)
 ret
 
 
 ; @name vgs0_srand16
+; @resident shared
 ld a, l
 out ($CA), a
 ret
 
 
 ; @name vgs0_rand16
+; @resident shared
 in a, ($CA)
 ret
 
 
 ; @name vgs0_noise_seed
+; @resident shared
 in a, ($CB)
 ret
 
 
 ; @name vgs0_noise_limitX
+; @resident shared
 out ($CC), a
 ret
 
 
 ; @name vgs0_noise_limitY
+; @resident shared
 out ($CD), a
 ret
 
 
 ; @name vgs0_noise
+; @resident shared
 ; HL = x
 ; DE = y
 in a,($CE)
@@ -362,6 +401,7 @@ ret
 
 
 ; @name vgs0_noise_oct
+; @resident shared
 ; HL = oct
 ; DE = x
 ; BC = y
@@ -379,6 +419,7 @@ ret
 
 
 ; @name vgs0_joypad_get
+; @resident shared
 in a, ($A0)
 xor $FF
 ld l, a
@@ -387,42 +428,49 @@ ret
 
 
 ; @name vgs0_bgm_play
+; @resident shared
 ld a, l
 out ($E0), a
 ret
 
 
 ; @name vgs0_bgm_pause
+; @resident shared
 ld a, 0
 out ($E1), a
 ret
 
 
 ; @name vgs0_bgm_resume
+; @resident shared
 ld a, 1
 out ($E1), a
 ret
 
 
 ; @name vgs0_bgm_fadeout
+; @resident shared
 ld a, 2
 out ($E1), a
 ret
 
 
 ; @name vgs0_se_play
+; @resident shared
 ld a, l
 out ($F0), a
 ret
 
 
 ; @name vgs0_se_stop
+; @resident shared
 ld a, l
 out ($F1), a
 ret
 
 
 ; @name vgs0_se_playing
+; @resident shared
 ld a, l
 out ($F2), a
 ld l, a
@@ -430,6 +478,7 @@ ret
 
 
 ; @name vgs0_save
+; @resident shared
 ; HL = addr
 ; DE = size
 LD c,l
@@ -444,6 +493,7 @@ ret
 
 
 ; @name vgs0_load
+; @resident shared
 ; HL = addr
 ; DE = size
 LD c,l
@@ -458,6 +508,7 @@ ret
 
 
 ; @name vgs0_oam_set16
+; @resident shared
 ; (ret), h, w, ptn, attr, y, x, num の順で入っている
 LD HL,12+2
 ADD HL,SP
@@ -553,6 +604,7 @@ RET
 
 
 ; @name vgs0_oam_set
+; @resident shared
 ; (ret), h, w, ptn, attr, y, x, num の順で入っている
 LD HL,12+2
 ADD HL,SP
@@ -696,6 +748,7 @@ RET
 
 
 ; @name vgs0_oam_move
+; @resident shared
 ; HL = num
 ; DE = X
 ; BC = Y
@@ -719,6 +772,7 @@ RET
 
 
 ; @name vgs0_debug
+; @resident shared
 .loop
 ld a, (hl)
 out ($00), a
@@ -730,6 +784,7 @@ ret
 
 
 ; @name VGSWORK
+; @resident shared
 ; @param_count 0
 ; @works LOCX:1,LOCY:1,TXTATR:1,TXTPLANE:1,WORK10:12
 ;

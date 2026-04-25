@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name ZXNDAWCALLS
+; @resident shared
 _NextDAW_PlayerAddr            EQU $E000                      ; Driver code address
 _NextDAW_InitSong              EQU _NextDAW_PlayerAddr+(3*0)    ; Initialize/set song to play.
 _NextDAW_UpdateSong            EQU _NextDAW_PlayerAddr+(3*1)    ; Call once per frame (NextDAW will automatically update at either 50Hz or 60Hz, depending on the Next's configuration).
@@ -19,6 +20,7 @@ _NextDAW_EnablePSGWrite        EQU _NextDAW_PlayerAddr+(3*12)   ; a: 0 = disable
 
 
 ; @name NextDAW_InitSystem
+; @resident shared
 ; @calls ZXNDAWCALLS
 ; L = mmu1
 ; E = mmu2
@@ -35,6 +37,7 @@ RET
 
 
 ; @name NextDAW_InitSong
+; @resident shared
 ; @calls ZXNDAWCALLS
 ; hl = data mapping table
 ; e  = force mono
@@ -54,6 +57,7 @@ RET
 
 
 ; @name NextDAW_UpdateSong
+; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
 PUSH IY
@@ -66,6 +70,7 @@ RET
 
 
 ; @name NextDAW_PlaySong
+; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
 PUSH IY
@@ -78,6 +83,7 @@ RET
 
 
 ; @name NextDAW_StopSong
+; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
 PUSH IY
@@ -90,6 +96,7 @@ RET
 
 
 ; @name NextDAW_StopSongHard
+; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
 PUSH IY
@@ -102,6 +109,7 @@ RET
 
 
 ; @name NextDAW_UpdateSongNoAY
+; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
 PUSH IY
@@ -114,6 +122,7 @@ RET
 
 
 ; @name NextDAW_UpdateAY
+; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
 PUSH IY
@@ -126,6 +135,7 @@ RET
 
 
 ; @name NextDAW_InitSFXBank
+; @resident shared
 ; @calls ZXNDAWCALLS
 ; L = bank index [0..3]
 ; E = sfx bank data page
@@ -150,6 +160,7 @@ RET
 
 
 ; @name NextDAW_PlaySFX
+; @resident shared
 ; @calls ZXNDAWCALLS
 ; L = bank index [0..3]
 ; E = sfx index [0..63]
@@ -168,6 +179,7 @@ RET
 
 
 ; @name NextDAW_UpdateSFX
+; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
 PUSH IY
@@ -180,6 +192,7 @@ RET
 
 
 ; @name NextDAW_GetPSGDataPtr
+; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
 PUSH IY
@@ -192,6 +205,7 @@ RET
 
 
 ; @name NextDAW_EnablePSGWrite
+; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
 PUSH IY

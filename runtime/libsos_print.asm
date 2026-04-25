@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name WIDTH
+; @resident shared
 ; @param_count 1
 ; @calls SOSCALLS
 LD A,L
@@ -11,6 +12,7 @@ RET
 
 
 ; @name PRMODE
+; @resident local
 ; @param_count 1
 ; @calls SOSCALLS,PRT
 LD A,L
@@ -31,6 +33,7 @@ RET
 
 
 ; @name SCREEN
+; @resident shared
 ; @param_count 2
 ; @calls SOSCALLS
 LD H,E
@@ -41,6 +44,7 @@ RET
 
 
 ; @name LOCATE
+; @resident shared
 ; @param_count 2
 ; @calls SOSCALLS
 LD H,E
@@ -48,6 +52,7 @@ JP sLOC
 
 
 ; @name PTAB
+; @resident shared
 ; @param_count 1
 ; @calls PCR1
 LD E,$1C
@@ -55,6 +60,7 @@ JR PCR1
 
 
 ; @name PSPC
+; @resident shared
 ; @param_count 1
 ; @calls PCR1
 LD E,' '
@@ -62,24 +68,28 @@ JR PCR1
 
 
 ; @name PCRONE
+; @resident shared
 ; @param_count 0
 ; @calls PCR
 LD HL,1
 
 
 ; @name PCR
+; @resident shared
 ; @param_count 1
 ; @calls PCR1
 LD E,$0D
 
 
 ; @name PCR1
+; @resident shared
 ; @param_count 1
 ; @calls PSTR
 EX DE,HL
 
 
 ; @name PSTR
+; @resident shared
 ; @param_count 2
 ; @calls PRT
 .pstr1
@@ -93,6 +103,7 @@ JR .pstr1
 
 
 ; @name PCHR
+; @resident shared
 ; @calls PRT
 LD A, H
 CALL PRT
@@ -101,12 +112,14 @@ JR PRT
 
 
 ; @name CRDISP
+; @resident shared
 ; @calls PRT
 LD A,$0D
 JR PRT
 
 
 ; @name PHEX4
+; @resident shared
 ; @param_count 1
 ; @calls PHEX2
 LD A,H
@@ -114,12 +127,14 @@ CALL PHEX
 
 
 ; @name PHEX2
+; @resident shared
 ; @param_count 1
 ; @calls PHEX
 LD A,L
 
 
 ; @name PHEX
+; @resident shared
 ; @param_count 1
 ; @calls SASC,PRT
 PUSH AF
@@ -135,6 +150,7 @@ CALL SASC
 
 
 ; @name PRT
+; @resident shared
 ; @param_count 1
 ; @calls SOSCALLS
 JP sPRINT
@@ -145,6 +161,7 @@ DS  4
 
 
 ; @name PSIGN
+; @resident shared
 ; @param_count 1
 ; @calls PRT,NEGHL,P10
 BIT 7, H
@@ -156,6 +173,7 @@ CALL NEGHL
 
 
 ; @name P10
+; @resident shared
 ; @param_count 1
 ; @function_type Machine
 ; @calls P10to5,P10toN
@@ -164,6 +182,7 @@ JR P10toN
 
 
 ; @name P10to5
+; @resident shared
 ; @param_count 1
 ; @function_type Machine
 ; @calls P10toN
@@ -171,6 +190,7 @@ LD DE, 0005
 
 
 ; @name P10toN
+; @resident shared
 ; @param_count 2
 ; @function_type Machine
 ; @calls PRT,VTOS,PMSX
@@ -202,11 +222,13 @@ JR .p10ton4
 
 
 ; @name PMSX
+; @resident shared
 ; @calls PMSX1
 LD B, 00
 
 
 ; @name PMSX1
+; @resident shared
 ; @calls PRT,PMSG
 LD A, (HL)
 CP B
@@ -217,12 +239,14 @@ JR PMSX1
 
 
 ; @name PMSG
+; @resident shared
 ; @calls PMSX1
 LD B, $0D
 JR PMSX1
 
 
 ; @name MPRNT
+; @resident shared
 ; @calls PRT
 EX (SP),HL
 .mprnt2

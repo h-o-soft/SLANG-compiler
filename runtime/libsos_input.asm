@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name INKEY
+; @resident shared
 ; @param_count 1
 ; @calls SOSCALLS
 LD A,L
@@ -22,6 +23,7 @@ RET
 
 
 ; @name LINPUT
+; @resident shared
 ; @param_count 2
 ; @calls SOSCALLS,GETL
 PUSH HL
@@ -32,12 +34,14 @@ JR GETLPROC
 
 
 ; @name GETL
+; @resident shared
 ; @param_count 1
 ; @calls GETLIN,SOSCALLS
 LD E,0
 
 
 ; @name GETLIN
+; @resident shared
 ; @param_count 2
 ; @calls SOSCALLS
 LD D,0
@@ -82,6 +86,7 @@ RET
 
 
 ; @name INPUT
+; @resident shared
 ; @param_count 0
 ; @calls LINPUT,ADECI,SOSCALLS
 LD BC,0
@@ -132,6 +137,7 @@ RET
 
 
 ; @name ADECI
+; @resident shared
 ; @param_count 0
 SUB $30
 RET C

@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name SND_COMMON
+; @resident shared
 ; @lib PC80SND
 
 
@@ -167,11 +168,13 @@ SND:
 
 
 ; @name SND_STOP
+; @resident shared
 ; @calls SND_COMMON
 ; @lib PC80SND
 SNDStop:
 
 ; @name SND_INIT
+; @resident shared
 ; @calls SND_COMMON
 ; @lib PC80SND
 ;-----------------------------------------------------------------------
@@ -195,6 +198,7 @@ SNDInitialize:
 	ret			; �I������
 
 ; @name SND_PLAY
+; @resident shared
 ; @calls SND_COMMON
 ; @lib PC80SND
 ;-----------------------------------------------------------------------
@@ -239,6 +243,7 @@ SNDMusicStart:
 	ret			; �I������
 
 ; @name SND_SEPLAY
+; @resident shared
 ; @calls SND_COMMON
 ; @lib PC80SND
 ;-----------------------------------------------------------------------
@@ -254,6 +259,7 @@ SNDEffectStart:
 	ret
 
 ; @name SND_SYNC
+; @resident shared
 ; @calls SND_COMMON,SND_PROC
 ; @lib PC80SND
 ;-----------------------------------------------------------------------
@@ -281,6 +287,7 @@ SNDDiver:
 	ret
 
 ; @name SND_PROC
+; @resident shared
 ; @calls SND_COMMON
 ; @lib PC80SND
 ;-----------------------------------------------------------------------
@@ -332,6 +339,7 @@ SNDTimer:
 	ret
 
 ; @name SND_ISPLAYING
+; @resident shared
 ; @calls SND_COMMON
 ; @lib PC80SND
 ;-----------------------------------------------------------------------

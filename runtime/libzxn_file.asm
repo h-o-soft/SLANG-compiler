@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name FOPEN
+; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = fname addr, DE = mode
 PUSH IX
@@ -95,6 +96,7 @@ RET
 
 
 ; @name FCLOSE
+; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = File Handle
 LD A,L
@@ -130,6 +132,7 @@ RET
 
 
 ; @name FSEEK
+; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = file handle, DE = bytes to seek address, BC = mode
 PUSH IX
@@ -161,6 +164,7 @@ RET
 
 
 ; @name FSTAT
+; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = file handle, DE = stat address
 PUSH IX
@@ -178,6 +182,7 @@ RET
 
 
 ; @name FREAD
+; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = file handle, DE = address, BC = size
 PUSH IX
@@ -194,6 +199,7 @@ RET
 
 
 ; @name FWRITE
+; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = file handle, DE = address, BC = size
 PUSH IX

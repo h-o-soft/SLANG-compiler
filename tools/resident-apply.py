@@ -134,6 +134,170 @@ OVERRIDES = {
         # PR-C1 はまず保守的に local。後で再評価。
         "M8ALOAD": "local",
     },
+
+    # ---- PR-C2: 横展開 env ----
+    # MSX 系
+    "libmsxlsx_base.asm": {
+        "SLANGINIT": "local",  # main inline only
+        # 残りは liblsx_base と同パターン (work 変数書き込み = false positive)
+        "sLOC":      "shared",
+        "sGETL":     "shared",
+        "sFGETL":    "shared",
+        "sINKBF":    "shared",
+        "sKYBFC":    "shared",
+        "sPRINT":    "shared",
+        "sPCLR":     "shared",
+    },
+    "libmsx_grp.asm": {
+        "MSX_SET_COLOR": "shared",  # BAKCLR/BDRCLR/FORCLR/VDP_ATTR は MSX system var (= work)
+    },
+    "libmsx_iot.asm": {
+        "IOTGET_STR": "shared",  # HL register false-positive
+    },
+    "libmsx_psg.asm": {
+        # SOUNDDRV_STATE は work module var, IX は register, H_TIMI は MSX BIOS hook
+        "PSG_INIT":   "shared",
+        "PSG_PLAY":   "shared",
+        "PSG_SFX":    "shared",
+        "PSG_STOP":   "shared",
+        "PSG_PAUSE":  "shared",
+        "PSG_RESUME": "shared",
+        "PSG_PROC":   "shared",
+    },
+    "libmsx_spdrv.asm": {
+        # MSXSPDRV.sprite_* は module-prefixed work
+        "SPDRV_INITIALIZE":  "shared",
+        "SPDRV_FLIP":        "shared",
+        "SPDRV_UPDATE":      "shared",
+        "SPDRV2_INITIALIZE": "shared",
+        "SPDRV2_FLIP":       "shared",
+        "SPDRV2_UPDATE":     "shared",
+    },
+    "libmsx2_file.asm": {
+        "FOPEN": "shared",  # HL register / LSXFCB,LSXFMODE work
+    },
+    "libmsxrom_base.asm": {
+        "SLANGINIT": "local",  # main inline only
+    },
+    "libmsxrom_print.asm": {
+        "WIDTH": "shared",  # LINL40 は MSX system var (= work)
+        "VTOS":  "shared",  # HL register false-positive
+    },
+
+    # SOS 系
+    "libsos_base.asm": {
+        "SLANGINIT": "local",
+    },
+    "libsosx1_base.asm": {
+        "SLANGINIT": "local",
+    },
+    "libsos_input.asm": {
+        "GETLIN": "shared",
+        "INPUT":  "shared",
+    },
+    "libsos_print.asm": {
+        "WIDTH":  "shared",  # AT_WIDTH は work
+        "PRMODE": "local",   # PRT+1 を patch する真の self-mod
+    },
+    "libsos_file.asm": {
+        # FILEWORKS data carrier (SPACEOS/DIREND/sDSK) を共有
+        "FOPEN":    "shared",
+        "FPG":      "shared",
+        "FCLOSE":   "shared",
+        "FILEUTIL": "shared",
+    },
+    "libsos_pcg.asm": {
+        "PCGDEF": "shared",  # PCG_NODISPADR は関数内 inline data
+    },
+
+    # PC-8001/8801 系
+    "libpc80mk2_base.asm": {
+        "SLANGINIT":   "local",
+        "MEMMODE":     "shared",  # HL register
+        "CMDSCREEN":   "shared",  # N80WORK.PORT31 work
+        "KANJILOCATE": "shared",  # KanjiX/KanjiY work
+        "KANJIPUT":    "shared",  # KanjiVRAM/KanjiX/KanjiY work + hl register
+    },
+    "libpc80mk2_print.asm": {
+        "CTRL0D": "shared",  # _TXADR work
+        "VTOS":   "shared",  # HL register
+        "SETATR": "shared",  # hl register
+    },
+    "libpc80mk2_sound.asm": {
+        "SND_SYNC": "shared",  # SND.BLANKFLG work
+    },
+    "libpc80mk2xbios_base.asm": {
+        "SLANGINIT":   "local",
+        "MEMMODE":     "shared",  # HL register
+        "CMDSCREEN":   "shared",  # XBIOS.PORT31 work
+        "SD_UTIL":     "shared",  # XBIOS.PORT31 work
+        "KANJILOCATE": "shared",
+        "KANJIPUT":    "shared",
+        "SET_PORT31":  "shared",  # XBIOS.PORT31 work
+    },
+    "libpc80mk2xbios_input.asm": {
+        "GETLIN": "shared",
+        "INPUT":  "shared",
+    },
+    "libpc80mk2xbios_print.asm": {
+        "WIDTH":  "shared",  # AT_WIDTH work
+        "PRMODE": "local",   # PRT+1 を patch する真の self-mod
+    },
+    "libp88_base.asm": {
+        "SLANGINIT": "local",
+        "PSET":      "local",   # PSETADR/PSETCOLOR の operand を patch する真の self-mod
+        "SETGRP":    "shared",  # IO32H は @works
+        "P88INT":    "shared",  # IO32H は @works
+    },
+    "libp88_print.asm": {
+        # P88PCOMMON data carrier 経由で LOCX/LOCY を共有
+        "LOCATE": "shared",
+        "PRT":    "shared",
+    },
+
+    # x1 SGL (sosx1 用、libx1_sgl_lsx と同パターン)
+    "libx1_sgl.asm": {
+        "X1SGLINCLUDE":   "shared",
+        "SGL_SPRDESTROY": "shared",
+        "SGL_SPRDISP":    "shared",
+        "SGL_FPSMODE":    "shared",
+    },
+
+    # VGS-Zero
+    "libvgs0_base.asm": {
+        "SLANGINIT":       "local",
+        "vgs0_oam_set16":  "shared",  # HL register false-positive
+        "vgs0_oam_set":    "shared",
+    },
+    "libvgs0_print.asm": {
+        # LOCX/LOCY/TXTATR/TXTPLANE は work 相当のシステム var
+        "LOCATE":    "shared",
+        "PRT":       "shared",
+        "COLOR":     "shared",
+        "TEXTPLANE": "shared",
+    },
+
+    # ZX Spectrum Next
+    "libzxn_base.asm": {
+        "SLANGINIT":      "local",
+        # 以下は ULA_CTRL/EULA_CTRL/L2_ACCESS/TILE_CTRL/SPL_SYS の HW register
+        # I/O port 風アクセスへの書き込みのみ (= 真の self-mod ではない)
+        "ULA_VISIBLE":    "shared",
+        "SET_PAL":        "shared",
+        "SET_PALALL":     "shared",
+        "SET_PAL9":       "shared",
+        "SET_PAL9ALL":    "shared",
+        "L2_VISIBLE":     "shared",
+        "TILE_INIT":      "shared",
+        "TILE_VISIBLE":   "shared",
+        "LAYER_PRIORITY": "shared",
+        "SPR_VISIBLE":    "shared",
+    },
+    "libzxn_print.asm": {
+        "LOCATE": "shared",
+        "PRT":    "shared",
+        "COLOR":  "shared",
+    },
 }
 
 

@@ -5,6 +5,7 @@
 ; X1 固有の CTC 検出・X1turbo 割り込みパッチが必要な場合は libsosx1_base を使用。
 
 ; @name SLANGINIT
+; @resident local
 ; @calls RRET,SOSCALLS
 EXX
 POP HL
@@ -51,12 +52,14 @@ RETADR:
 
 
 ; @name STOP
+; @resident shared
 ; @param_count 0
 SCF
 JP RRET
 
 
 ; @name SOSCALLS
+; @resident shared
 ; @works AT_WIDTH:1,_WK1FD0:1
 sLPTOF  EQU 1FD6H
 sLPTON  EQU 1FD9H
@@ -89,6 +92,7 @@ sWIDTH  EQU 1F5CH
 
 
 ; @name BEEP
+; @resident shared
 CALL $1FC4
 RET
 

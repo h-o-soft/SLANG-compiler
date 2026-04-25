@@ -5,6 +5,7 @@
 ; 純粋 S-OS 環境（libsos_base）とは併用不可（SLANGINIT 等ラベル重複のため）。
 
 ; @name SLANGINIT
+; @resident local
 ; @calls RRET,SOSCALLS
 EXX
 POP HL
@@ -185,12 +186,14 @@ RET
 
 
 ; @name STOP
+; @resident shared
 ; @param_count 0
 SCF
 JP RRET
 
 
 ; @name SOSCALLS
+; @resident shared
 ; @works AT_WIDTH:1,_CTC:2,_CTCVEC:2,_ISRADR:2,_ISRHANDLER:2,_WK1FD0:1
 sLPTOF  EQU 1FD6H
 sLPTON  EQU 1FD9H
@@ -223,6 +226,7 @@ sWIDTH  EQU 1F5CH
 
 
 ; @name BEEP
+; @resident shared
 CALL $1FC4
 RET
 
