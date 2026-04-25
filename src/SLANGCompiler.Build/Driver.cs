@@ -98,7 +98,15 @@ public class Driver
             if (File.Exists(incPath)) intermediates.Add(incPath);
 
             // overlay ASM の検出 (`<prefix>._mN.ASM`、outputDir 内)
+            // case-insensitive な FS (macOS APFS / Windows) では `_m*.ASM` パターンが
+            // 旧 `--keep-asm` 残骸の `.dummy.imports.asm` / `.imports.asm` まで拾い、
+            // 次回以降のビルドで filename チェーン爆発を起こす。
+            // `_m<digits>.ASM` 厳密一致の regex でフィルタする。
+            var overlayPattern = new System.Text.RegularExpressions.Regex(
+                $"^{System.Text.RegularExpressions.Regex.Escape(prefix)}\\._m\\d+\\.ASM$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
             var overlayAsms = Directory.GetFiles(outputDir, prefix + "._m*.ASM")
+                                       .Where(p => overlayPattern.IsMatch(Path.GetFileName(p)))
                                        .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
                                        .ToList();
             foreach (var p in overlayAsms) intermediates.Add(p);
