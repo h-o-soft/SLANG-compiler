@@ -12,6 +12,9 @@
     - 期待: 256 が返る
   Test 4: FREAD partial (200B = 1.56 records)
     - 期待: 128 が返る (= floor(200/128) * 128)
+  Test 5: 別 fnum 切替 (active buffer の fnum 切替パスを exercise)
+    - fnum 0 に FPUTC → fnum 1 に FPUTC で切替時 flush
+    - HL/DE が ACTBUF_FLUSH で保護されることを確認
 
   ★ 整合仕様準拠: 各テスト間で必ず FCLOSE → FOPEN している
     (= 同一 open file 内で FGETC/FPUTC と FREAD/FWRITE/FSEEK の混在は
@@ -53,4 +56,31 @@ MAIN()
 	READ_COUNT = FREAD(0, $5100, 200);
 	PRINT("FREAD(200) returned ", READ_COUNT, /);  /* expected: 128 */
 	FCLOSE(0);
+
+	/* === Test 5: 別 fnum 切替 (HL/DE 保護パス) === */
+	FOPEN(0, "AAA.DAT", 3);
+	FOPEN(1, "BBB.DAT", 3);
+	FPUTC(0, $41);                                /* 'A' to fnum 0 */
+	FPUTC(1, $42);                                /* 'B' to fnum 1, fnum 切替時に
+	                                                  fnum 0 の dirty buffer を flush */
+	FCLOSE(0);
+	FCLOSE(1);
+	/* 検証: AAA.DAT の先頭が 'A' であること */
+	FOPEN(0, "AAA.DAT", 0);
+	READ_VAL = FGETC(0);
+	IF READ_VAL != $41 THEN BEGIN
+		PRINT("Test 5 FAIL: AAA.DAT[0]=", READ_VAL, /);
+		FCLOSE(0);
+		RETURN;
+	END;
+	FCLOSE(0);
+	FOPEN(1, "BBB.DAT", 0);
+	READ_VAL = FGETC(1);
+	IF READ_VAL != $42 THEN BEGIN
+		PRINT("Test 5 FAIL: BBB.DAT[0]=", READ_VAL, /);
+		FCLOSE(1);
+		RETURN;
+	END;
+	FCLOSE(1);
+	PRINT("Test 5 fnum switch OK", /);
 }

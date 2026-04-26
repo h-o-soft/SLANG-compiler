@@ -309,10 +309,22 @@ LD A,(ACTBUFFNUM)
 CP L
 JR NZ,.fseek_skip_inv
 CALL ACTBUF_INVALIDATE
+OR A
+JR NZ,.fseek_inv_err          ; flush 失敗 → error
 .fseek_skip_inv
 POP BC
 POP DE
 POP HL
+JR .fseek2
+
+.fseek_inv_err
+POP BC
+POP DE
+POP HL
+LD HL,255
+RET
+
+.fseek2
 
 ; LSXFCB=fnum*37+LSXFCBS
 CALL LSXCALCFCB
@@ -435,7 +447,12 @@ RET
 
 .fgetc_switch
 ; 別 fnum: 既存 active を flush (write の場合)
+; ACTBUF_FLUSH は HL/DE/BC を破壊するので fnum (HL) を保護
+PUSH HL
 CALL ACTBUF_FLUSH
+POP HL
+OR A
+JR NZ,.fgetc_eof_or_err   ; flush 失敗 → error 伝播
 .fgetc_init
 ; ACTBUFFNUM = L (fnum)
 LD A,L
@@ -532,7 +549,14 @@ RET
 
 .fputc_switch
 ; 別 fnum: 既存 active を flush (write の場合)
+; ACTBUF_FLUSH は HL/DE/BC を破壊するので fnum (HL) と chr (DE) を保護
+PUSH HL
+PUSH DE
 CALL ACTBUF_FLUSH
+POP DE
+POP HL
+OR A
+JR NZ,.fputc_err          ; flush 失敗 → error 伝播
 .fputc_init
 ; chr (DE) を保存 (LDIR で DE が破壊されるため)
 PUSH DE
@@ -557,6 +581,17 @@ LDIR
 POP DE
 
 .fputc_serve
+; 前回 FPUTC の flush 失敗で OFS=128 に詰まっている場合は retry
+LD A,(ACTBUFOFS)
+CP 128
+JR NZ,.fputc_doStore
+PUSH DE
+CALL ACTBUF_FLUSH
+POP DE
+OR A
+JR NZ,.fputc_err
+
+.fputc_doStore
 ; ACTBUF[ACTBUFOFS] = chr (E)
 LD A,(ACTBUFOFS)
 LD L,A
@@ -574,9 +609,17 @@ LD (ACTBUFDIRTY),A
 LD A,(ACTBUFOFS)
 CP 128
 JR NZ,.fputc_done
+; chr (DE) を保護してから flush 試行
+PUSH DE
 CALL ACTBUF_FLUSH
+POP DE
+OR A
+JR NZ,.fputc_err           ; flush 失敗 → error
 .fputc_done
 LD HL,0
+RET
+.fputc_err
+LD HL,255
 RET
 
 
@@ -588,6 +631,8 @@ RET
 ; もし当該 fnum が active buffer (FGETC/FPUTC) と一致するなら、
 ; close 前に flush + invalidate して書き残しを保存する。
 
+; B = invalidate 結果保存 (0 = OK)
+LD B,0
 PUSH HL
 LD A,(ACTBUFMODE)
 OR A
@@ -596,17 +641,26 @@ LD A,(ACTBUFFNUM)
 CP L
 JR NZ,.fclose_skip_inv
 CALL ACTBUF_INVALIDATE
+LD B,A             ; 保存
 .fclose_skip_inv
 POP HL
 
 CALL LSXCALCFCB
 EX DE,HL
+PUSH BC            ; B (invalidate result) を保護
 LD C,$10  ; _FCLOSE
 PUSH IY
 CALL BDOS
 POP IY
+POP BC
+; A = _FCLOSE 結果, B = invalidate 結果。
+; invalidate が失敗していたら $FF を返す (= flush 失敗を優先)。
 LD L,A
 LD H,0
+LD A,B
+OR A
+RET Z              ; invalidate OK → _FCLOSE 結果を返す
+LD HL,255
 RET
 
 
@@ -642,11 +696,23 @@ LD A,(ACTBUFFNUM)
 CP L
 JR NZ,.fread_skip_inv
 CALL ACTBUF_INVALIDATE
+OR A
+JR NZ,.fread_inv_err          ; flush 失敗 → error
 .fread_skip_inv
 POP BC
 POP DE
 POP HL
+JR .fread2
 
+.fread_inv_err
+POP BC
+POP DE
+POP HL
+LD HL,$FFFF
+SCF
+RET
+
+.fread2
 ; LSXFCB setup
 CALL LSXCALCFCB
 LD (LSXFCB),HL
@@ -746,11 +812,23 @@ LD A,(ACTBUFFNUM)
 CP L
 JR NZ,.fwrite_skip_inv
 CALL ACTBUF_INVALIDATE
+OR A
+JR NZ,.fwrite_inv_err          ; flush 失敗 → error
 .fwrite_skip_inv
 POP BC
 POP DE
 POP HL
+JR .fwrite2
 
+.fwrite_inv_err
+POP BC
+POP DE
+POP HL
+LD HL,$FFFF
+SCF
+RET
+
+.fwrite2
 CALL LSXCALCFCB
 LD (LSXFCB),HL
 
@@ -818,10 +896,14 @@ RET
 ; ACTBUFDIRTY が立っていれば、ACTBUF を ACTBUFFNUM の current random record
 ; に書き、advance、ACTBUF を 0 で埋め直し、ACTBUFOFS=0, ACTBUFDIRTY=0。
 ; ACTBUFMODE / ACTBUFFNUM は維持 (= active 状態継続)。
+;
+; 戻り値: A = BDOS _WRRND の結果。0 = 成功、!= 0 = error (disk full / etc)
+;        error 時は dirty を保持 (= ACTBUFOFS / ACTBUFDIRTY / ACTBUF 不変)
+;        するので caller は再試行可能。FCBRECINC も実行されない。
 
 LD A,(ACTBUFDIRTY)
 OR A
-RET Z
+RET Z              ; not dirty: A=0 で OK
 
 ; FCB アドレス計算
 LD A,(ACTBUFFNUM)
@@ -844,6 +926,11 @@ PUSH IY
 CALL BDOS
 POP IY
 
+; A = _WRRND result。0=success、それ以外は error
+OR A
+RET NZ             ; error: dirty 保持、caller に伝播
+
+; success path
 CALL FCBRECINC
 
 ; ACTBUFOFS=0, ACTBUFDIRTY=0
@@ -857,6 +944,7 @@ LD DE,ACTBUF+1
 LD BC,127
 LD (HL),0
 LDIR
+XOR A              ; success: return A=0
 RET
 
 
@@ -866,10 +954,14 @@ RET
 ;
 ; active buffer を完全クリア。dirty なら ACTBUF_FLUSH してから ACTBUFMODE=0。
 ; FREAD/FWRITE/FSEEK 入口で同 fnum の active を強制 invalidate するのに使う。
+;
+; 戻り値: A = ACTBUF_FLUSH の結果。0 = 成功、!= 0 = flush error (= dirty 保持、
+;        ACTBUFMODE もそのまま)。caller は再試行 / abort を判断できる。
 
 CALL ACTBUF_FLUSH
-XOR A
-LD (ACTBUFMODE),A
+OR A
+RET NZ             ; flush 失敗: dirty 保持、MODE もそのまま、error 伝播
+LD (ACTBUFMODE),A  ; A=0
 RET
 
 
