@@ -175,9 +175,14 @@ disk_image: $(IMGPROG)
 	$(HUDISK) -d $(DISK_IMAGE) PROG.bin
 	$(HUDISK) -a $(DISK_IMAGE) $(IMGPROG) -r 3000 -g 3000
 else
+# lsx / x1 等 (LSX-Dodgers d88 系)。main + overlay (M0.BIN..) を NDC で書き込む。
+# overlay の disk staging は examples/MODTEST_RESIDENT.SL 用の sample 機能。
 disk_image: $(IMGPROG)
 	- $(NDC) D $(DISK_IMAGE) 0 PROG$(BIN_EXT_ENV)
 	$(NDC) P $(DISK_IMAGE) 0 $(IMGPROG)
+ifneq ($(OS),Windows_NT)
+	@./tools/disk-add-overlays.sh $(NDC) $(DISK_IMAGE) $(dir $(TARGET))
+endif
 endif
 
 # 拡張子変換
@@ -214,6 +219,8 @@ ifeq ($(OS),Windows_NT)
 	-del /Q /F $(subst /,\,$(TARGET)$(ASM_EXT)) $(subst /,\,$(TARGET)$(BIN_EXT)) $(subst /,\,$(dir $(TARGET))PROG.bin) $(subst /,\,$(dir $(TARGET))PROG.com) 2>nul
 else
 	rm -f $(TARGET)$(ASM_EXT) $(TARGET)$(BIN_EXT) $(TARGET)$(BIN_EXT_ENV) $(dir $(TARGET))PROG.bin $(dir $(TARGET))PROG.com
+	@# disk-add-overlays.sh の staging dir は通常 trap で消えるが念押し
+	-rm -rf $(dir $(TARGET)).staging
 endif
 
 # ヘルプ
