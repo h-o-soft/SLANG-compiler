@@ -2,10 +2,17 @@
 
 ## Unreleased (v0.23.0 候補)
 
+- cpm 環境向け file ライブラリ `runtime/libcpm_file.asm` を新設
+  - `liblsx_file.asm` のコピー + CP/M 2.2 互換書き換え (`_RDREC` $14 / `_WRREC` $15 ベース、`liblsx_file` の CP/M 3+ `_RDBLK` $27 / `_WRBLK` $26 が RunCPM で動作しない問題を解消)
+  - `runtime/env/cpm.env` の参照を `liblsx_file.yml` → `libcpm_file.yml` に切り替え。lsx / x1 等他 env は引き続き `liblsx_file.asm` を使用、影響なし
+  - **scope A (本 PR 範囲)**: `FREAD` / `FWRITE` は 1 record (128 byte) 固定実装、`size` パラメータは無視。`FGETC` / `FPUTC` はスタブ ($FF return)。`FOPEN` / `FCLOSE` / `FSEEK` はそのまま (CP/M 2.2 互換のため)
+  - **scope B (follow-up)**: `FREAD` / `FWRITE` の multi-record loop 化、`FGETC` / `FPUTC` の 128 byte 内部バッファ化
+  - 動作確認: `make ENV=cpm TARGET=examples/MODTEST_RESIDENT run` で RunCPM 上 "Module value: 100 / Main value: 10" の end-to-end 動作 (PR #151 で lsx/x1 がカバーされていなかった cpm を追加でカバー)
+
 - `examples/MODTEST_RESIDENT.SL` に overlay loader (FOPEN/FREAD/FCLOSE) を実装、`Makefile.dist` を拡張して `make ENV=lsx|x1 TARGET=examples/MODTEST_RESIDENT disk_image` が D88 イメージに `PROG.com` + `M0.BIN` を書き込むようにした
   - `tools/disk-add-overlays.sh` (POSIX) を新設、`PROG._m*.bin` を staging 経由で `M0.BIN`/`M1.BIN`/... として d88 へ書き込む。古い `M*.BIN` (前回ビルド残骸) は事前削除。一時 staging dir (`examples/.staging/`) は trap で都度削除
   - エミュレータ (X Millennium / Cocoa1 等) で d88 起動 → "Module value: 100 / Main value: 10" の end-to-end 動作を確認 (LSX-Dodgers の FILES API 経由)
-  - `tools/runcpm.sh` も同じ命名規則 (`M<N>.BIN`) で staging するように拡張したが、**RunCPM (CP/M 2.2 互換) では FREAD が CP/M 3+ の BDOS `_RDBLK` ($27) を使うため動作しない**。試験的サポート扱い、cpm 上の overlay 動的ロードは follow-up で対応 (FREAD を sequential read 版に切り替える等)
+  - `tools/runcpm.sh` も同じ命名規則 (`M<N>.BIN`) で staging するように拡張。当初 RunCPM (CP/M 2.2 互換) では FREAD が CP/M 3+ の BDOS `_RDBLK` ($27) を使うため動作しなかったが、後続で `runtime/libcpm_file.asm` (CP/M 2.2 互換実装) を新設して解消、cpm 環境でも end-to-end 動作する
   - 汎用 loader 機構ではなく **サンプル限定の最小実装** で、命名規則は `M<N>.BIN` (= overlay インデックスと一致)、loader は overlay 0 が 128 byte 以内であることを前提。他 env (sos/msx/pc88/vgs0/zxn) は別 loader API のため本変更の対象外
   - Windows 環境の disk_image 拡張は本 PR では対応せず (Makefile.dist の `ifneq ($(OS),Windows_NT)` で skip)。POSIX shell スクリプトのため、Windows ユーザーは手動で M0.BIN を d88 に追加する必要あり
 

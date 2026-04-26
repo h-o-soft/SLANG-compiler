@@ -13,18 +13,18 @@
   本サンプルはさらに、disk image に書き込まれた M0.BIN (= overlay バイナリ)
   を OVERLAY_ADDR にロードしてから MODFUNC を呼び出す最小 loader を持つ。
 
-  ★ 動作確認済み環境: lsx / x1 (LSX-Dodgers d88 上で実機エミュレータ動作)
-  ★ 動作未確認:        cpm (RunCPM は CP/M 2.2 互換、liblsx_file.FREAD が
-                              CP/M 3+ の BDOS _RDBLK ($27) を使うため不動)
+  ★ 動作確認済み環境:
+    - lsx / x1: LSX-Dodgers d88 上で実機エミュレータ動作
+    - cpm:      RunCPM 上で動作 (libcpm_file による CP/M 2.2 互換 FREAD 経由)
 
   ★ 本 loader の制約: overlay 0 が「128 byte (= CP/M 1 record) 以内に収まる」
   ことを前提にした最小実装。サンプルを拡張して 128 byte を超える overlay に
   なる場合は、loader 側の FREAD 第 3 引数を増やすか、ループでマルチ record
-  読みに変えること。
+  読みに変えること (libcpm_file 側も scope B で multi-record 化が必要)。
 
   Makefile.dist の disk_image ターゲットは PROG._m0.bin を staging 経由で
-  M0.BIN として d88 (lsx/x1) に書き込む。RunCPM 環境向けにも tools/runcpm.sh
-  が同等の staging を行うが、上記理由により FREAD が動かないため未動作。
+  M0.BIN として d88 (lsx/x1) に書き込む。tools/runcpm.sh も同等の staging を
+  行い、make ENV=cpm run で end-to-end 動作する。
 */
 
 CONST OVERLAY_ADDR = $3000;   /* loader と #MODULE で共有するロードアドレス */
