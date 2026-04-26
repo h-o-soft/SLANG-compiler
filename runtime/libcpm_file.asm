@@ -891,7 +891,7 @@ RET
 
 ; @name ACTBUF_FLUSH
 ; @resident shared
-; @calls FWORK,FCBRECINC
+; @calls FWORK,FCBRECINC,LSXFILE
 ;
 ; ACTBUFDIRTY が立っていれば、ACTBUF を ACTBUFFNUM の current random record
 ; に書き、advance、ACTBUF を 0 で埋め直し、ACTBUFOFS=0, ACTBUFDIRTY=0。
