@@ -2,7 +2,10 @@
 ;
 ; liblsx_file.asm のコピー + 以下の差分:
 ;   - FREAD/FWRITE: CP/M 3+ の _RDBLK ($27) / _WRBLK ($26) を CP/M 2.2 互換の
-;                   _RDREC ($14) / _WRREC ($15) に置換 (= 1 record/128 byte 固定)
+;                   random access (_RDRND $21 / _WRRND $22) に置換
+;                   (= 1 record/128 byte 固定、FCB+33..36 の random record を honor)
+;   - FCBRECINC: 内部 helper、FREAD/FWRITE 成功時に FCB+33..36 を +1 して
+;                sequential semantics を維持 (_RDRND/_WRRND は auto-increment しない)
 ;   - FGETC/FPUTC: スタブ ($FF return) — scope B で 128 byte 内部バッファ実装予定
 ;   - FREADWRITE: 廃止 (set record size 1 は CP/M 3+ 機能)
 ;
@@ -13,6 +16,7 @@
 ; scope A 制約 (本 PR 範囲):
 ;   FREAD: 1 record (128 byte) 固定 read、size パラメータは無視
 ;   FWRITE: 1 record 固定 write
+;   FSEEK: FCB+33..36 を更新、FREAD/FWRITE と整合 (= seek 後の 1 record I/O が動作)
 ;   FGETC/FPUTC: 未実装 ($FF を return)
 ;
 ; scope B (follow-up PR):
@@ -406,12 +410,17 @@ RET
 
 ; @name FREAD
 ; @resident shared
-; @calls LSXCALLS,FWORK,LSXFILE
+; @calls LSXCALLS,FWORK,LSXFILE,FCBRECINC
 ; HL=fnum DE=address BC=size
 ;
 ; CP/M 2.2 (RunCPM) 制約: 1 record (128 byte) 固定 read。size パラメータは
 ; 現状無視 — overlay <= 128B 用途で十分。scope B で multi-record loop に
 ; 拡張予定 (BC を 128 ずつ消費するループ + EOF 処理)。
+;
+; random access (_RDRND $21) を使用、FCB+33..36 の random record を見て読む。
+; FOPEN 直後は FCB+33..36=0 (= 先頭 record)、FSEEK で位置移動可能。
+; _RDRND は record 番号を auto-increment しないため、成功時に FCBRECINC で
+; +1 して sequential semantics を維持する (= 連続 FREAD で次の record を読む)。
 
 CALL LSXFCHECKNUM
 JP C,.fread1
@@ -430,22 +439,21 @@ PUSH IY
 CALL BDOS
 POP IY
 
-; _RDREC (sequential read, CP/M 2.2 互換)
+; _RDRND (random read, CP/M 2.2 互換)
 LD DE,(LSXFCB)
-LD C,$14      ; _RDREC
+LD C,$21      ; _RDRND
 PUSH IY
 CALL BDOS
 POP IY
 
-; A=0 success / A=1 EOF (partial) / A>=$10 read error
+; A=0 success / A=1 EOF / A=4 record範囲外 / A=5 random read error
 ; scope A は EOF も成功扱い (overlay は EOF 寸前まで読み切れば OK)。
-; ADD A,1 で 0→1, 1→2, $FF→0 となるが、$FF は CP/M 2.2 では返らないので
-; 「CY=1 == 真の error」のみ判定する素直な実装に変える:
 OR A
 JR Z,.fread_ok
 CP 2
 JR NC,.fread_err
 .fread_ok
+CALL FCBRECINC      ; 成功時のみ next record へ進める
 LD HL,0
 RET
 
@@ -457,11 +465,14 @@ RET
 
 ; @name FWRITE
 ; @resident shared
-; @calls LSXCALLS,FWORK,LSXFILE
+; @calls LSXCALLS,FWORK,LSXFILE,FCBRECINC
 ; HL=fnum DE=address BC=size
 ;
 ; CP/M 2.2 (RunCPM) 制約: 1 record (128 byte) 固定 write。size パラメータは
 ; 現状無視 — scope B で multi-record loop に拡張予定。
+;
+; random access (_WRRND $22) を使用、FCB+33..36 の random record に書く。
+; FREAD と同様、auto-increment しないため成功時に FCBRECINC で +1。
 
 CALL LSXFCHECKNUM
 JP C,.fwrite1
@@ -480,15 +491,42 @@ PUSH IY
 CALL BDOS
 POP IY
 
-; _WRREC (sequential write, CP/M 2.2 互換)
+; _WRRND (random write, CP/M 2.2 互換)
 LD DE,(LSXFCB)
-LD C,$15      ; _WRREC
+LD C,$22      ; _WRRND
 PUSH IY
 CALL BDOS
 POP IY
 
+OR A
+JR NZ,.fwrite_done
+CALL FCBRECINC      ; 成功時のみ next record へ進める
+.fwrite_done
 LD L,A
 LD H,0
+RET
+
+
+; @name FCBRECINC
+; @resident shared
+; FCB+33..36 (random record) を 4 byte で +1 する内部 helper。
+; FREAD/FWRITE が _RDRND/_WRRND 成功後に呼び、sequential semantics を維持。
+; レジスタ: HL のみ破壊
+LD HL,(LSXFCB)
+PUSH BC
+LD BC,33
+ADD HL,BC
+POP BC
+INC (HL)
+RET NZ
+INC HL
+INC (HL)
+RET NZ
+INC HL
+INC (HL)
+RET NZ
+INC HL
+INC (HL)
 RET
 
 

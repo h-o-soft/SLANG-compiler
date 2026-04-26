@@ -3,9 +3,9 @@
 ## Unreleased (v0.23.0 候補)
 
 - cpm 環境向け file ライブラリ `runtime/libcpm_file.asm` を新設
-  - `liblsx_file.asm` のコピー + CP/M 2.2 互換書き換え (`_RDREC` $14 / `_WRREC` $15 ベース、`liblsx_file` の CP/M 3+ `_RDBLK` $27 / `_WRBLK` $26 が RunCPM で動作しない問題を解消)
+  - `liblsx_file.asm` のコピー + CP/M 2.2 互換書き換え (random access `_RDRND` $21 / `_WRRND` $22 ベース、`liblsx_file` の CP/M 3+ `_RDBLK` $27 / `_WRBLK` $26 が RunCPM で動作しない問題を解消)
   - `runtime/env/cpm.env` の参照を `liblsx_file.yml` → `libcpm_file.yml` に切り替え。lsx / x1 等他 env は引き続き `liblsx_file.asm` を使用、影響なし
-  - **scope A (本 PR 範囲)**: `FREAD` / `FWRITE` は 1 record (128 byte) 固定実装、`size` パラメータは無視。`FGETC` / `FPUTC` はスタブ ($FF return)。`FOPEN` / `FCLOSE` / `FSEEK` はそのまま (CP/M 2.2 互換のため)
+  - **scope A (本 PR 範囲)**: `FREAD` / `FWRITE` は 1 record (128 byte) 固定実装、`size` パラメータは無視。FCB+33..36 (random record) は成功時に内部 helper `FCBRECINC` で +1 され、sequential semantics (連続 FREAD で次 record を読む) を維持。`FSEEK` も整合 (FCB+33..36 を直接更新)。`FGETC` / `FPUTC` はスタブ ($FF return)
   - **scope B (follow-up)**: `FREAD` / `FWRITE` の multi-record loop 化、`FGETC` / `FPUTC` の 128 byte 内部バッファ化
   - 動作確認: `make ENV=cpm TARGET=examples/MODTEST_RESIDENT run` で RunCPM 上 "Module value: 100 / Main value: 10" の end-to-end 動作 (PR #151 で lsx/x1 がカバーされていなかった cpm を追加でカバー)
 
