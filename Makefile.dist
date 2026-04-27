@@ -24,6 +24,10 @@ BIN_EXT = .bin
 ENV ?= lsx
 SLANGENV = $(ENV)
 TARGET ?= examples/STARS
+# Windows ユーザーが TARGET=examples\MODTEST_RESIDENT のように \ で渡しても
+# 内部 ($(dir) 等) は / 前提なので、ここで normalize する。
+# `override` を付けないと command-line 値 (= make TARGET=...) を上書きできない。
+override TARGET := $(subst \,/,$(TARGET))
 
 # OS検出
 ifeq ($(OS),Windows_NT)
@@ -177,14 +181,19 @@ disk_image: $(IMGPROG)
 else
 # lsx / x1 等 (LSX-Dodgers d88 系)。main + overlay (M0.BIN..) を NDC で書き込む。
 # overlay の disk staging は examples/MODTEST_RESIDENT.SL 用の sample 機能。
+# Windows: forward slash で .bat path を指定 (cmd.exe は `tools/foo.bat` も
+# 受け付ける)。recipe 内の `tools\d` の `\d` が make の shell でエスケープ
+# 解釈されて command が壊れる罠を回避するため、`\` は使わない。
+ifeq ($(OS),Windows_NT)
+ADD_OVERLAYS = tools/disk-add-overlays.bat
+else
+ADD_OVERLAYS = ./tools/disk-add-overlays.sh
+endif
+
 disk_image: $(IMGPROG)
 	- $(NDC) D $(DISK_IMAGE) 0 PROG$(BIN_EXT_ENV)
 	$(NDC) P $(DISK_IMAGE) 0 $(IMGPROG)
-ifeq ($(OS),Windows_NT)
-	@tools\disk-add-overlays.bat "$(NDC)" "$(DISK_IMAGE)" "$(dir $(TARGET))"
-else
-	@./tools/disk-add-overlays.sh $(NDC) $(DISK_IMAGE) $(dir $(TARGET))
-endif
+	$(ADD_OVERLAYS) $(NDC) $(DISK_IMAGE) $(dir $(TARGET))
 endif
 
 # 拡張子変換
