@@ -37,14 +37,32 @@ if not exist "%STAGE_DIR%" mkdir "%STAGE_DIR%"
 
 for %%f in ("%PREFIX_DIR%PROG._m*.bin") do (
     if exist "%%f" (
-        set "BASE=%%~nf"
-        REM Extract digits after "_m" — "PROG._m0" → "0"
-        set "N=!BASE:*_m=!"
-        copy /Y "%%f" "%STAGE_DIR%\M!N!.BIN" >nul
-        "%NDC%" P "%D88%" 0 "%STAGE_DIR%\M!N!.BIN"
+        call :stage_one "%%f"
+        if errorlevel 1 (
+            rmdir /S /Q "%STAGE_DIR%" 2>nul
+            exit /b 1
+        )
     )
 )
 
 REM Cleanup staging dir
 rmdir /S /Q "%STAGE_DIR%" 2>nul
+exit /b 0
+
+:stage_one
+REM Stage and write a single overlay file. Args: %1 = source bin path.
+REM Returns 0 on success, 1 if copy or NDC P fails.
+set "BASE=%~n1"
+REM Extract digits after "_m" — "PROG._m0" → "0"
+set "N=!BASE:*_m=!"
+copy /Y "%~1" "%STAGE_DIR%\M!N!.BIN" >nul
+if errorlevel 1 (
+    echo Error: copy failed for %~1 1>&2
+    exit /b 1
+)
+"%NDC%" P "%D88%" 0 "%STAGE_DIR%\M!N!.BIN"
+if errorlevel 1 (
+    echo Error: NDC P failed for M!N!.BIN 1>&2
+    exit /b 1
+)
 exit /b 0

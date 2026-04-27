@@ -10,7 +10,7 @@
 
 - `#MODULE $addr RESIDENT` を追加 — overlay 間で共有するランタイム関数を main に集約してメモリ節約
   - 既存の `#MODULE $addr` (省略時) は従来通り Local モード (overlay 内に runtime 複製)。`RESIDENT` 指定で共有化が起動
-  - 全 12 環境 (lsx / x1 / msxlsx / msx2 / msxrom / sos / sosx1 / pc80mk2 / pc80mk2x / pc88mk2sr / vgs0 / zxn / cpm) の runtime ライブラリに `; @resident shared|local` 属性を付与済 (= 共有 773 関数 / overlay-local 14 関数)
+  - 全 13 環境 (lsx / x1 / msxlsx / msx2 / msxrom / sos / sosx1 / pc80mk2 / pc80mk2x / pc88mk2sr / vgs0 / zxn / cpm) の runtime ライブラリに `; @resident shared|local` 属性を付与済 (= 共有 773 関数 / overlay-local 14 関数)
   - 実測 (`examples/MODTEST_RESIDENT.SL`): overlay バイナリが Local 248B → RESIDENT 57B (-77%)。overlay を増やすほど節約効果が大きい
 
 - 二段アセンブル driver `slangbuild` を新ドライバとして追加

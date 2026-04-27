@@ -9,8 +9,7 @@
 # (sample limited: assumes overlay count <= 10).
 #
 # This is a *sample-only* helper for examples/MODTEST_RESIDENT.SL etc.
-# Windows users currently have no equivalent — Makefile.dist on Windows
-# only writes the main .bin, and overlay disk staging must be done manually.
+# Windows users have an equivalent at tools/disk-add-overlays.bat.
 
 set -e
 

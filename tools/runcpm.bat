@@ -58,10 +58,11 @@ REM use #MODULE.
 for %%F in ("%COM_PATH%") do set COM_DIR=%%~dpF
 for %%g in ("%COM_DIR%%BASE%._m*.bin") do (
     if exist "%%g" (
-        set "OVBASE=%%~ng"
-        REM Extract digits after "_m" — "PROG._m0" → "0"
-        set "N=!OVBASE:*_m=!"
-        copy /Y "%%g" "%STAGE%\A\0\M!N!.BIN" >nul
+        call :stage_overlay "%%g"
+        if errorlevel 1 (
+            rmdir /S /Q "%STAGE%" >nul 2>&1
+            exit /b 1
+        )
     )
 )
 
@@ -88,4 +89,18 @@ popd
 rmdir /S /Q "%STAGE%" >nul 2>&1
 
 endlocal
+exit /b 0
+
+
+:stage_overlay
+REM Stage a single overlay file. Args: %1 = source bin path.
+REM Returns 0 on success, 1 if copy fails.
+set "OVBASE=%~n1"
+REM Extract digits after "_m" — "PROG._m0" → "0"
+set "N=!OVBASE:*_m=!"
+copy /Y "%~1" "%STAGE%\A\0\M!N!.BIN" >nul
+if errorlevel 1 (
+    echo Error: copy failed for %~1 1>&2
+    exit /b 1
+)
 exit /b 0
