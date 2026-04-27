@@ -2,6 +2,20 @@
 
 ## Unreleased (v0.23.0 候補)
 
+- `runtime/libcpm_file.asm` の scope B 拡張: 汎用 file API として動作可能に
+  - `FREAD` / `FWRITE` を **record-aligned multi-record loop** 化 (size パラメータを honor、返り値 = 実際に読み/書きできた records × 128)
+  - `FGETC` / `FPUTC` を **single-active-buffer 方式** で実装 (128 byte 内部バッファ + 1 active fnum + read/write mode 排他)
+  - 新規 `examples/CPMIOTEST.SL` を追加し RunCPM 上で end-to-end 検証 (FGETC/FPUTC 200 byte round-trip + FREAD multi-record + FREAD partial 動作確認)
+  - **制約 (重要)**:
+    - `FREAD` / `FWRITE` は record-aligned (128 byte 単位)、size の 128 未満端数は切り捨て (sub-record 精度なし)。任意 byte 単位が必要なら `FGETC` / `FPUTC` を使う
+    - 同一 fnum で `FGETC` / `FPUTC` の **read/write mode 切替は未サポート** — `FCLOSE` → `FOPEN` で reopen 必須 (= サイレント誤動作を防ぐため、未サポート組合せは $FF を返す)
+    - 同一 open file で `FGETC` / `FPUTC` と `FREAD` / `FWRITE` / `FSEEK` を混在させるのは未サポート — 後者の呼び出し時に active buffer は invalidate される
+    - lsx 完全互換ではない (lsx の FREAD は CP/M 3+ の variable record size を使い、任意 byte 数を正確に R/W できる)
+    - 128 byte 境界整数倍ファイルなら `FREAD` / `FWRITE` で正確にコピー可能。slcopy.sl を cpm で動かす場合は対象ファイルが 128B 境界であることを caller が保証するか、`FGETC` を loop する必要がある
+  - `FPUTC` は write mode 入口時 / flush 後に ACTBUF を 0 で初期化 (= partial record の tail が stale data 漏れせず確定 0 になる)
+  - work 領域増加: 132 byte (ACTBUF + state)。cpm 全体で ~858 → ~990 byte
+  - bug fix (実装中に発見): `FPUTC` 初期化時の `LDIR` (ACTBUF 0 クリア) が DE レジスタを破壊し、初回 byte が garbage 値で書かれる問題を修正 (`PUSH DE` / `POP DE` で chr 引数を保護)
+
 - cpm 環境向け file ライブラリ `runtime/libcpm_file.asm` を新設
   - `liblsx_file.asm` のコピー + CP/M 2.2 互換書き換え (random access `_RDRND` $21 / `_WRRND` $22 ベース、`liblsx_file` の CP/M 3+ `_RDBLK` $27 / `_WRBLK` $26 が RunCPM で動作しない問題を解消)
   - `runtime/env/cpm.env` の参照を `liblsx_file.yml` → `libcpm_file.yml` に切り替え。lsx / x1 等他 env は引き続き `liblsx_file.asm` を使用、影響なし
