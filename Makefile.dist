@@ -39,6 +39,7 @@ ifeq ($(OS),Windows_NT)
     XCOPY = xcopy /E /Y
     PATHSEP = \\
     EXE_EXT = .exe
+    PYTHON ?= python
 else
     UNAME_S := $(shell uname -s)
     ifeq ($(UNAME_S),Darwin)
@@ -53,6 +54,7 @@ else
     XCOPY = cp -R
     PATHSEP = /
     EXE_EXT =
+    PYTHON ?= python3
 endif
 
 # ツールのコマンド名
@@ -181,14 +183,9 @@ disk_image: $(IMGPROG)
 else
 # lsx / x1 等 (LSX-Dodgers d88 系)。main + overlay (M0.BIN..) を NDC で書き込む。
 # overlay の disk staging は examples/MODTEST_RESIDENT.SL 用の sample 機能。
-# Windows: forward slash で .bat path を指定 (cmd.exe は `tools/foo.bat` も
-# 受け付ける)。recipe 内の `tools\d` の `\d` が make の shell でエスケープ
-# 解釈されて command が壊れる罠を回避するため、`\` は使わない。
-ifeq ($(OS),Windows_NT)
-ADD_OVERLAYS = tools/disk-add-overlays.bat
-else
-ADD_OVERLAYS = ./tools/disk-add-overlays.sh
-endif
+# シェルスクリプト(.sh/.bat)経由は Windows の cmd.exe <-> sh.exe 引数変換で壊れる
+# ことがあるため、Python 製ヘルパーに統一。Python は OS 依存のラッパー無しで動く。
+ADD_OVERLAYS = $(PYTHON) tools/disk-add-overlays.py
 
 disk_image: $(IMGPROG)
 	- $(NDC) D $(DISK_IMAGE) 0 PROG$(BIN_EXT_ENV)
@@ -228,11 +225,11 @@ build: $(OUTPROG)
 clean:
 ifeq ($(OS),Windows_NT)
 	-del /Q /F $(subst /,\,$(TARGET)$(ASM_EXT)) $(subst /,\,$(TARGET)$(BIN_EXT)) $(subst /,\,$(dir $(TARGET))PROG.bin) $(subst /,\,$(dir $(TARGET))PROG.com) 2>nul
-	@REM disk-add-overlays.bat の staging dir は通常自動削除されるが念押し
+	@REM disk-add-overlays.py の staging dir は通常 finally で消えるが念押し
 	-rmdir /S /Q $(subst /,\,$(dir $(TARGET)).staging) 2>nul
 else
 	rm -f $(TARGET)$(ASM_EXT) $(TARGET)$(BIN_EXT) $(TARGET)$(BIN_EXT_ENV) $(dir $(TARGET))PROG.bin $(dir $(TARGET))PROG.com
-	@# disk-add-overlays.sh の staging dir は通常 trap で消えるが念押し
+	@# disk-add-overlays.py の staging dir は通常 finally で消えるが念押し
 	-rm -rf $(dir $(TARGET)).staging
 endif
 

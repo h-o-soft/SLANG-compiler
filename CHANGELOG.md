@@ -19,7 +19,7 @@
   - **prelink モード**: main / overlay 間で **任意の SLANG 関数の相互呼び出し** をサポート (cross-ref 検出時に自動有効化)。解決するのはアドレスのみで、swap 制御・呼び先 overlay のロード状態確認はユーザー責任
 
 - overlay バイナリのディスクイメージ取り込みサンプルを追加
-  - `tools/disk-add-overlays.sh` (POSIX) と `tools/disk-add-overlays.bat` (Windows) を新設、`make ENV=lsx|x1 TARGET=examples/MODTEST_RESIDENT disk_image` が `PROG.com` + `M0.BIN` を d88 に書き込む
+  - `tools/disk-add-overlays.py` を新設 (Mac / Win / Linux 共通、stdlib のみ)、`make ENV=lsx|x1 TARGET=examples/MODTEST_RESIDENT disk_image` が `PROG.com` + `M0.BIN` を d88 に書き込む
   - `examples/MODTEST_RESIDENT.SL` で LSX-Dodgers のファイル API (`FOPEN` / `FREAD`) 経由 overlay ロード → 実機エミュレータ (X Millennium / Cocoa1 等) で動作確認
   - **サンプル限定の最小実装**: 命名は `M<N>.BIN` 固定、overlay 0 が 128 byte 以内であることを前提
 
