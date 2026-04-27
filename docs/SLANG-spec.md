@@ -938,12 +938,19 @@ Pass 3 で同じ target 内のラベルアドレスが一致することを保�
 ロードする最小実装サンプル。
 
 ```bash
-make ENV=lsx|x1|cpm TARGET=examples/MODTEST_RESIDENT disk_image    # d88 作成
-make ENV=cpm        TARGET=examples/MODTEST_RESIDENT run           # RunCPM 実行
+# lsx / x1: D88 イメージに PROG.com + M0.BIN を書き込み (実機エミュレータ用)
+make ENV=lsx TARGET=examples/MODTEST_RESIDENT disk_image
+make ENV=x1  TARGET=examples/MODTEST_RESIDENT disk_image
+
+# cpm: RunCPM staging に PROG.com + M0.BIN を配置して即実行
+make ENV=cpm TARGET=examples/MODTEST_RESIDENT run
 ```
 
-`tools/disk-add-overlays.{sh,bat}` 経由で `PROG.com` + `M0.BIN` を d88 / RunCPM
-staging に書き込む (Windows / POSIX 両対応)。
+実装は env ごとに分担:
+- **lsx / x1** (D88): `Makefile.dist` の `disk_image` ターゲットが `tools/disk-add-overlays.{sh,bat}` を呼び、`NDC P` で `PROG._m*.bin` を `M<N>.BIN` として d88 に書き込む
+- **cpm** (RunCPM): `tools/runcpm.{sh,bat}` が staging dir に `PROG._m*.bin` を `M<N>.BIN` としてコピーしてから RunCPM を起動
+
+両者とも Windows / POSIX 両対応 (`.sh` / `.bat` のペア)。
 
 サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
 128 byte 以内であることを前提としている (より大きい overlay は loader 拡張
