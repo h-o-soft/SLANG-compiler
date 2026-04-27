@@ -180,7 +180,9 @@ else
 disk_image: $(IMGPROG)
 	- $(NDC) D $(DISK_IMAGE) 0 PROG$(BIN_EXT_ENV)
 	$(NDC) P $(DISK_IMAGE) 0 $(IMGPROG)
-ifneq ($(OS),Windows_NT)
+ifeq ($(OS),Windows_NT)
+	@tools\disk-add-overlays.bat "$(NDC)" "$(DISK_IMAGE)" "$(dir $(TARGET))"
+else
 	@./tools/disk-add-overlays.sh $(NDC) $(DISK_IMAGE) $(dir $(TARGET))
 endif
 endif
@@ -217,6 +219,8 @@ build: $(OUTPROG)
 clean:
 ifeq ($(OS),Windows_NT)
 	-del /Q /F $(subst /,\,$(TARGET)$(ASM_EXT)) $(subst /,\,$(TARGET)$(BIN_EXT)) $(subst /,\,$(dir $(TARGET))PROG.bin) $(subst /,\,$(dir $(TARGET))PROG.com) 2>nul
+	@REM disk-add-overlays.bat の staging dir は通常自動削除されるが念押し
+	-rmdir /S /Q $(subst /,\,$(dir $(TARGET)).staging) 2>nul
 else
 	rm -f $(TARGET)$(ASM_EXT) $(TARGET)$(BIN_EXT) $(TARGET)$(BIN_EXT_ENV) $(dir $(TARGET))PROG.bin $(dir $(TARGET))PROG.com
 	@# disk-add-overlays.sh の staging dir は通常 trap で消えるが念押し
