@@ -37,6 +37,10 @@
 - `slangbuild` の overlay 検出 glob を厳密化 — `--keep-asm` 残骸付きで次回 build が無限ループする問題を修正 (#152)
   - case-insensitive な FS (macOS APFS / Windows) で `_m*.ASM` パターンが旧 `--keep-asm` 残骸の `.dummy.imports.asm` 等まで拾い、prelink Pass 1 で再帰的に dummy/imports suffix が積まれる現象を `_m<digits>.ASM` 厳密一致 regex で post-filter
 
+- `make publish-local` を dev `Makefile` に追加 — 現在 OS 向けに `dotnet publish` して `bin/` に slangc / slangbuild を配置する簡易 publish (Windows clone 直後でも `make -f Makefile.dist install / disk_image / run` のテストフローが回せるようにするための導線)
+  - `RID` は default で current OS を自動検出 (`win-x64` / `osx-arm64` / `linux-x64` 等)。`RID=win-arm64 make publish-local` で上書き可
+  - **release zip 作成ではない** (= リリース用は引き続き `make publish VERSION=x.x.x` → `publish.sh` で 4 platform 一括)
+
 ## Version 0.22.0
 
 - X1 グラフィックライブラリ群を include/ に新設 (#139)

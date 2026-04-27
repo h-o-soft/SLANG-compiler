@@ -234,6 +234,37 @@ ifndef VERSION
 endif
 	./publish.sh $(VERSION)
 
+# === ローカル開発用 publish (現在 OS のみ、bin/ に配置) ===
+#
+# Windows clone 直後に Makefile.dist の install / disk_image / run 等の
+# テストフローを回すための簡易 publish。**release zip 作成ではない**
+# (= リリース用は make publish VERSION=x.x.x → publish.sh で 4 platform 一括)。
+#
+# RID は default で current OS を自動検出 (win-x64 / osx-arm64 / linux-x64
+# 等)。`RID=win-arm64 make publish-local` のように上書き可能。
+ifeq ($(OS),Windows_NT)
+RID ?= win-x64
+else
+RID ?= $(shell dotnet --info | awk '/RID:/{print $$2; exit}')
+endif
+
+publish-local:
+ifeq ($(OS),Windows_NT)
+	-mkdir bin 2>nul
+	$(DOTNET) publish src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
+	$(DOTNET) publish src/SLANGCompiler.Build/SLANGCompiler.Build.csproj -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
+	copy /Y src\SLANGCompiler.CLI\bin\Release\net8.0\$(RID)\publish\slangc.exe bin
+	copy /Y src\SLANGCompiler.Build\bin\Release\net8.0\$(RID)\publish\slangbuild.exe bin
+else
+	mkdir -p bin
+	$(DOTNET) publish src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
+	$(DOTNET) publish src/SLANGCompiler.Build/SLANGCompiler.Build.csproj -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
+	cp src/SLANGCompiler.CLI/bin/Release/net8.0/$(RID)/publish/slangc bin/
+	cp src/SLANGCompiler.Build/bin/Release/net8.0/$(RID)/publish/slangbuild bin/
+endif
+	@echo "publish-local done. bin/ now has slangc(.exe) and slangbuild(.exe) for $(RID)."
+	@echo "Use them via Makefile.dist: make -f Makefile.dist TARGET=examples/MODTEST_RESIDENT ENV=x1 run"
+
 # === 開発ツールのダウンロード ===
 setup-tools:
 ifeq ($(OS),Windows_NT)
