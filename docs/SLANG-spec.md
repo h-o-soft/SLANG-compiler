@@ -841,25 +841,53 @@ overlay を増やすほど節約効果が大きい (= 共有関数を main 1 箇
 main + overlay の bin を生成する (GCC 的責務分離)。
 
 ```
+# bin 出力 (default、--emit bin と同等)
 slangbuild source.SL -E lsx
   → source.bin         (メイン bin)
   → source._m0.bin     (モジュール 0 bin、main の shared label を解決済み)
   → source._mN.bin     (...)
+
+# disk image 出力 (--emit disk、後述「ディスクイメージ出力」節を参照)
+slangbuild source.SL -E lsx --emit disk --disk-image out.d88
+  → source.bin / source._m*.bin (中間)
+  → out.d88            (template 由来の D88 に main + overlay を注入)
 ```
 
 `#MODULE` を使わない通常の SL でも `slangbuild` で OK (単段フローで動く)。
 
 ```
 slangbuild <input.SL> [options]
-  -o <prefix>     Output file prefix (default: derived from input)
-  -E <env>        Environment name (default: lsx)
-  -I <path>       Include search path (passed to slangc, repeatable)
-  -L <path>       Library search path (passed to slangc, repeatable)
-  --asm <path>    AILZ80ASM executable path
-  --slangc <path> slangc executable path
-  --keep-asm      Keep intermediate ASM / sym files
-  --verbose       Show subprocess output
+
+# 入出力 / 環境
+  -o <prefix>          Output file prefix (default: derived from input)
+  -E <env>             Environment name (default: lsx)
+  -I <path>            Include search path (passed to slangc, repeatable)
+  -L <path>            Library search path (passed to slangc, repeatable)
+
+# 出力モード (--emit disk 関連)
+  --emit <bin|disk>    Output mode (default: bin)
+  --disk-image <path>  Output disk image path (--emit disk 時、default: <prefix>.d88)
+  --disk-template <p>  Override env's disk.template (--emit disk 時のみ)
+
+# ツール path (省略時は ToolResolver で自動解決)
+  --slangc <path>      slangc executable path
+  --asm <path>         AILZ80ASM executable path
+  --ndc <path>         ndc executable path     (--emit disk + tool=ndc 時)
+  --hudisk <path>      HuDisk executable path  (--emit disk + tool=hudisk 時)
+
+# その他
+  --keep-asm           Keep intermediate ASM / sym files
+  --verbose            Show subprocess output
+  -h, --help           Show usage
+  -v, --version        Show version
 ```
+
+`--emit disk` / `--disk-image` / `--disk-template` の組み合わせ:
+
+- `--emit disk` 単独: 出力先 = `<output_prefix>.d88` (= `-o build/PROG --emit disk` なら `build/PROG.d88`)
+- `--disk-image <p>` を付ければ任意の出力先に書ける
+- `--disk-template <p>` で env file の `disk.template` を CLI 上書き (= installed 環境で template が無い場合の代替策、または別 template での実験用)
+- `--disk-image` / `--disk-template` を `--emit bin` (= default) で指定すると **error** (= ユーザー意図の取り違え防止)
 
 #### 動作モード (自動選択)
 
