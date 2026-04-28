@@ -188,14 +188,13 @@ public class DiskImageBuilder
         return rc;
     }
 
-    // ---- HuDisk 経路 (skeleton: 実 binary なしで未検証) ----
+    // ---- HuDisk 経路 (sos / sosx1) ----
     //
-    // ⚠ Phase 2 時点では HuDisk の upstream binary 入手 + ライセンス確認が
-    // 未完了のため、本メソッドは sos.env への disk: 追加を伴う統合 commit
-    // (PR 後段) で実機検証する。特に -r / -g に渡すアドレスを `$XXXX`
-    // 形式 (= Makefile.dist の旧 sos 経路と同形式) で渡しているが、upstream
-    // HuDisk が `0x` / 10 進 / `$` のどれを受理するかは要確認。受理形式が
-    // 異なる場合は本箇所を修正する。
+    // 配布の HuDisk (= ho-ogino/HuDisk fork の feature/write-ascii-mode 版) を
+    // setup-tools で取得済前提。Linux/macOS では mono 経由で起動 (= ToolResolver
+    // が ResolutionKind.MonoRun でラップ)、Windows は .exe 直接起動。
+    // 実機 smoke (macOS): images/SOSPROG.D88 → out.d88 内に PROG.bin
+    // (Load: 3000, Exec: 3000) が入り、template SHA-256 不変を確認済。
     private int WriteEntryHudisk(string entryName, string staged, string d88, bool isMain)
     {
         // 旧 entry 削除 (= 失敗無視)
@@ -203,8 +202,8 @@ public class DiskImageBuilder
 
         // 新 entry 追加: -a <d88> <file> [-r <load>] [-g <exec>]
         // HuDisk は `-r` / `-g` の値を Convert.ToInt32(s, 16) で hex parse する
-        // (`$` prefix は受理せず FormatException)。Makefile.dist の旧 sos 経路
-        // `$(HUDISK) -a ... -r 3000 -g 3000` と同じく `$` 無し hex 文字列で渡す。
+        // (`$XXXX` prefix は FormatException、実機検証で確認済)。Makefile.dist の旧
+        // sos 経路 `$(HUDISK) -a ... -r 3000 -g 3000` と同じ「`$` 無し hex 文字列」で渡す。
         var args = new List<string> { "-a", d88, staged };
         var load = isMain ? _disk.MainLoad : _disk.OverlayLoad;
         if (load.HasValue)

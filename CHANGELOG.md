@@ -35,8 +35,7 @@
     - **配布物の HuDisk** は ho-ogino/HuDisk fork の `feature/write-ascii-mode` ブランチ (= ASCII 書き込み可能版、setup-tools が curl で取得済)
   - `Makefile.dist` の `disk_image` ターゲットは **lsx / x1 / sos / sosx1** で `slangbuild --emit disk` 経路。それ以外の d88 系 env (msx2 / msxlsx / pc80mk2 / pc88mk2sr 等) は従来の `tools/disk-add-overlays.py` 経路を維持 (Phase 3+ で順次移行予定)
   - `tools/disk-add-overlays.py` は legacy helper として残置 (旧経路ユーザー保護、新規利用は非推奨)
-  - **配布 zip / repo layout 前提**: `make install` 経由 (`~/.config/SLANG/runtime/` のみ展開) では `images/LSXPROG.D88` が無いため `--emit disk` は使えない。配布 zip 内 `images/` 同梱がある場合のみ動作
-  - `tools/disk-add-overlays.py` は新規利用は非推奨 (legacy helper)。旧経路 (= 独自 Makefile / shell スクリプト) からの呼び出し用に残置
+  - **動作環境**: `make setup-tools && make install` 後の installed 環境 (`~/.config/SLANG/`)、配布 zip 解凍直後、開発時の repo 直下、いずれでも動作 (Phase 1 の「installed 環境では template 不在で使えない」制約は Phase 2 の `install-lib` 拡張で解消済)。Linux/macOS の sos 系では `mono` (HuDisk.exe 起動用) と setupenv での S-OS template 取得が前提
 
 - `cpm` 環境を独立 env として明示化 + 専用 file ライブラリ追加 (#145)
   - `runtime/env/cpm.env` を新設。これまで `-E cpm` は env file 不在で全 `runtime/*.asm` を fallback ロードしており、他環境のラベル衝突 (例: `libpc80mk2_print` の `WORK10`) を起こしていた
