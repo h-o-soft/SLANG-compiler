@@ -230,6 +230,13 @@ public class ToolResolver
         if (File.Exists(bundledParent))
             return new ResolvedTool(Path.GetFullPath(bundledParent), ResolutionKind.DirectExe);
 
+        // install dir (~/.config/SLANG/tools/, $SLANG_HOME/tools/) — make install 後の経路
+        foreach (var installDir in GetInstallToolDirs())
+        {
+            var p = Path.Combine(installDir, name);
+            if (File.Exists(p)) return new ResolvedTool(p, ResolutionKind.DirectExe);
+        }
+
         var onPath = FindOnPath(name);
         if (onPath != null) return new ResolvedTool(onPath, ResolutionKind.DirectExe);
 
@@ -238,47 +245,111 @@ public class ToolResolver
 
         throw new FileNotFoundException(
             "ndc not found. Tried: --ndc, $NDC_PATH, bundled "
-            + "{baseDir}/tools, {baseDir}/../tools, PATH, and repo root. "
-            + "Specify --ndc <path> explicitly.");
+            + "{baseDir}/tools, {baseDir}/../tools, install dir tools/, PATH, and repo root. "
+            + "Run `make setup-tools` to download, or specify --ndc <path> explicitly.");
     }
 
     /// <summary>
     /// HuDisk (S-OS hu-basic 系 .dsk/.d88 操作ツール) を解決。`--emit disk` の
-    /// tool: hudisk 経路で必要 (sos / sosx1 等)。解決順は ResolveNdc と同じ:
+    /// tool: hudisk 経路で必要 (sos / sosx1 等)。
+    ///
+    /// 配布物の HuDisk は ho-ogino/HuDisk fork (= ASCII 書き込み可能版) の
+    /// .NET assembly (HuDisk.exe)。Windows では .exe を直接実行できるが
+    /// Linux/macOS では mono 必須 → 後者では <see cref="ResolutionKind.MonoRun"/>
+    /// として返す (= setupenv.sh も同等の前提で mono 必須チェック済)。
+    ///
+    /// 解決順 (ndc とほぼ同じ、bundled に install dir も含める):
     /// 1) cliOverride (--hudisk)
     /// 2) HUDISK_PATH 環境変数
     /// 3) {baseDir}/tools/HuDisk(.exe)
     /// 4) {baseDir}/../tools/HuDisk(.exe)
-    /// 5) PATH 上の HuDisk
-    /// 6) repo root 基準 tools/HuDisk(.exe) (dev fallback)
+    /// 5) install dir (= ~/.config/SLANG/tools/HuDisk(.exe), $SLANG_HOME/tools/...)
+    /// 6) PATH 上の HuDisk
+    /// 7) repo root 基準 tools/HuDisk(.exe) (dev fallback)
     /// </summary>
     public ResolvedTool ResolveHudisk(string? cliOverride)
     {
+        // HuDisk は Windows: 直接 .exe、Linux/macOS: mono 経由が正解。
+        // 両方を見て、見つかった path を OS 判定で kind 振り分け。
+        // 配布の HuDisk.exe は .NET assembly なので拡張子は OS 問わず .exe
+        // (setupenv が curl で .exe を取得する)。よってここでは ".exe" 固定で探索。
+        const string assemblyName = "HuDisk.exe";
+        // 念のため Windows native (= 拡張子なしの HuDisk) も後方互換で探索
+        var fallbackName = $"HuDisk{ExeSuffix}";
+
         if (!string.IsNullOrEmpty(cliOverride) && File.Exists(cliOverride))
-            return new ResolvedTool(cliOverride, ResolutionKind.DirectExe);
+            return MakeHudiskResolved(cliOverride);
 
         var envPath = Environment.GetEnvironmentVariable("HUDISK_PATH");
         if (!string.IsNullOrEmpty(envPath) && File.Exists(envPath))
-            return new ResolvedTool(envPath, ResolutionKind.DirectExe);
+            return MakeHudiskResolved(envPath);
 
-        var name = $"HuDisk{ExeSuffix}";
+        foreach (var name in new[] { assemblyName, fallbackName })
+        {
+            var bundledSibling = Path.Combine(_baseDir, "tools", name);
+            if (File.Exists(bundledSibling))
+                return MakeHudiskResolved(bundledSibling);
+            var bundledParent = Path.Combine(_baseDir, "..", "tools", name);
+            if (File.Exists(bundledParent))
+                return MakeHudiskResolved(Path.GetFullPath(bundledParent));
 
-        var bundledSibling = Path.Combine(_baseDir, "tools", name);
-        if (File.Exists(bundledSibling)) return new ResolvedTool(bundledSibling, ResolutionKind.DirectExe);
-        var bundledParent = Path.Combine(_baseDir, "..", "tools", name);
-        if (File.Exists(bundledParent))
-            return new ResolvedTool(Path.GetFullPath(bundledParent), ResolutionKind.DirectExe);
+            // install dir (~/.config/SLANG/tools/, $SLANG_HOME/tools/)
+            foreach (var installDir in GetInstallToolDirs())
+            {
+                var p = Path.Combine(installDir, name);
+                if (File.Exists(p)) return MakeHudiskResolved(p);
+            }
 
-        var onPath = FindOnPath(name);
-        if (onPath != null) return new ResolvedTool(onPath, ResolutionKind.DirectExe);
+            var onPath = FindOnPath(name);
+            if (onPath != null) return MakeHudiskResolved(onPath);
 
-        var repoTools = LocateRepoFile($"tools/{name}");
-        if (repoTools != null) return new ResolvedTool(repoTools, ResolutionKind.DirectExe);
+            var repoTools = LocateRepoFile($"tools/{name}");
+            if (repoTools != null) return MakeHudiskResolved(repoTools);
+        }
 
         throw new FileNotFoundException(
             "HuDisk not found. Tried: --hudisk, $HUDISK_PATH, bundled "
-            + "{baseDir}/tools, {baseDir}/../tools, PATH, and repo root. "
-            + "Specify --hudisk <path> explicitly.");
+            + "{baseDir}/tools, {baseDir}/../tools, install dir tools/, PATH, and repo root. "
+            + "Run `make setup-tools` to download, or specify --hudisk <path> explicitly.");
+    }
+
+    /// <summary>
+    /// HuDisk path を ResolvedTool に包む。.exe 拡張子を持ち non-Windows なら
+    /// MonoRun 扱い (= mono &lt;exe&gt; で起動)、それ以外は DirectExe。
+    /// </summary>
+    private ResolvedTool MakeHudiskResolved(string hudiskPath)
+    {
+        var ext = Path.GetExtension(hudiskPath);
+        bool isDotnetAssembly = string.Equals(ext, ".exe", StringComparison.OrdinalIgnoreCase);
+        if (isDotnetAssembly && !IsWindows)
+        {
+            // mono が無いと結局起動失敗するので、ここで早期発見させる
+            var mono = FindOnPath("mono");
+            if (mono == null)
+                throw new FileNotFoundException(
+                    $"HuDisk found at {hudiskPath} but `mono` not on PATH. "
+                    + "Install mono (Linux/macOS) or specify a native HuDisk via --hudisk.");
+            return new ResolvedTool(mono, ResolutionKind.MonoRun, hudiskPath);
+        }
+        return new ResolvedTool(hudiskPath, ResolutionKind.DirectExe);
+    }
+
+    /// <summary>
+    /// install dir (= make install で配置される) 配下の tools/ を返す。
+    /// SLANG_HOME → ~/.config/SLANG の順、存在するもののみ。
+    /// </summary>
+    private static IEnumerable<string> GetInstallToolDirs()
+    {
+        var slangHome = Environment.GetEnvironmentVariable("SLANG_HOME");
+        if (!string.IsNullOrEmpty(slangHome))
+        {
+            var p = Path.Combine(slangHome, "tools");
+            if (Directory.Exists(p)) yield return p;
+        }
+        var configTools = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".config", "SLANG", "tools");
+        if (Directory.Exists(configTools)) yield return configTools;
     }
 
     private string? ResolveExecutable(string? cliOverride, string fileName, bool includeBundledTools)
@@ -337,14 +408,18 @@ public class ToolResolver
 
 public enum ResolutionKind
 {
-    /// <summary>実行ファイルを直接 spawn (slangc / AILZ80ASM)</summary>
+    /// <summary>実行ファイルを直接 spawn (slangc / AILZ80ASM / Windows の HuDisk.exe)</summary>
     DirectExe,
-    /// <summary>dotnet run --project &lt;csproj&gt; 経由 (dev fallback)</summary>
+    /// <summary>dotnet run --project &lt;csproj&gt; 経由 (dev fallback、slangc 用)</summary>
     DotnetRun,
+    /// <summary>mono &lt;assembly.exe&gt; 経由 (Linux/macOS の HuDisk.exe 用)</summary>
+    MonoRun,
 }
 
 /// <summary>
-/// 解決結果。`Kind == DotnetRun` の場合 `Path` は dotnet の絶対パス、
-/// `ProjectPath` は --project に渡す csproj のパス。
+/// 解決結果。Kind ごとに Path の意味が異なる:
+/// - DirectExe: 実行ファイル絶対パス (= そのまま spawn)
+/// - DotnetRun: dotnet の絶対パス、ProjectPath は --project に渡す csproj
+/// - MonoRun: mono の絶対パス、ProjectPath は mono に渡す .NET assembly (.exe)
 /// </summary>
 public record ResolvedTool(string Path, ResolutionKind Kind, string? ProjectPath = null);

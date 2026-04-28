@@ -57,6 +57,7 @@ fi
 
 TOOLPATH=$(cd $(dirname $0);pwd)/tools/
 mkdir images
+mkdir -p images/templates
 mkdir tools
 mkdir temp
 cd temp
@@ -108,13 +109,15 @@ rm AILZ80ASM
 rm $FILENAME
 
 # S-OS(X1)をダウンロード
+# 最終的に images/templates/SOSPROG.D88 に置く (= slangbuild --emit disk が
+# 参照する pristine template、LSX の templates/ パターンと整合)。
 curl http://www.retropc.net/ohishi/s-os/SWXCV110.zip -OL
 unzip -xo SWXCV110.zip
 # AUTOEXEC.BATを追加
-mv SWXCV110.d88 SOSPROG.d88
-mono $TOOLPATH/HuDisk.exe SOSPROG.d88 -a ../env/S-OS/AUTOEXEC.BAT --ascii
-cp SOSPROG.d88 ../images/
-rm SOSPROG.d88
+mv SWXCV110.d88 SOSPROG.D88
+mono $TOOLPATH/HuDisk.exe SOSPROG.D88 -a ../env/S-OS/AUTOEXEC.BAT --ascii
+cp SOSPROG.D88 ../images/templates/
+rm SOSPROG.D88
 rm SWXCV110.zip
 
 # LSX-Dodgersは特殊フォーマットのため取得して加工する事が出来ない(NDCでアクセス不可の)ため対応しない

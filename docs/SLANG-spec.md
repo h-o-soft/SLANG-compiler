@@ -947,12 +947,18 @@ make ENV=cpm TARGET=examples/MODTEST_RESIDENT run
 ```
 
 実装は env ごとに分担:
-- **lsx / x1** (D88): `Makefile.dist` の `disk_image` ターゲットが `slangbuild --emit disk` を呼ぶ。slangbuild が env file (`runtime/env/lsx.env` / `x1.env`) の `disk:` セクション (`template`, `main_name: PROG.COM`, `overlay_name: M{index}.BIN`) を読み、template d88 を **コピーしてから** `ndc P` で `PROG.COM` + `M0.BIN` 群を書き込む (template 自体は不変)
+- **lsx / x1** (D88, ndc): `Makefile.dist` の `disk_image` ターゲットが `slangbuild --emit disk` を呼ぶ。slangbuild が env file の `disk:` セクション (`template`, `tool: ndc`, `main_name: PROG.COM`, `overlay_name: M{index}.BIN`) を読み、template d88 を **コピーしてから** `ndc P` で `PROG.COM` + `M0.BIN` 群を書き込む (template 自体は不変)
+- **sos / sosx1** (D88, HuDisk): 同じく `slangbuild --emit disk --hudisk` を呼ぶ。env file は `tool: hudisk` + `main_load: "$3000"` / `main_exec: "$3000"` / `overlay_load: "$3000"` を持ち、HuDisk を `-a <d88> <file> -r <load> -g <exec>` で起動 (Linux/macOS では mono 経由)
 - **cpm** (RunCPM): `tools/runcpm.{sh,bat}` が staging dir に `PROG._m*.bin` を `M<N>.BIN` としてコピーしてから RunCPM を起動
 
 `slangbuild input.SL -E lsx --emit disk --disk-image out.d88` の形で直接呼び
-出すこともできる (Makefile.dist 経由はこの 1 行への薄い wrapper)。
+出すこともできる (Makefile.dist 経由はこの 1 行への薄い wrapper)。env file の
+`disk.template` は `--disk-template <path>` で CLI 上書き可能 (= installed 環境
+の代替策 + 実験用)。
+
 旧 `tools/disk-add-overlays.py` は legacy helper として残置 (新規利用は非推奨)。
+msx2 / msxlsx / pc80mk2 / pc88mk2sr 等の d88 系 env は Phase 3+ で順次
+`--emit disk` 経路に移行予定。
 
 サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
 128 byte 以内であることを前提としている (より大きい overlay は loader 拡張

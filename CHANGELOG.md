@@ -23,10 +23,18 @@
   - `examples/MODTEST_RESIDENT.SL` で LSX-Dodgers のファイル API (`FOPEN` / `FREAD`) 経由 overlay ロード → 実機エミュレータ (X Millennium / Cocoa1 等) で動作確認
   - **サンプル限定の最小実装**: 命名は `M<N>.BIN` 固定、overlay 0 が 128 byte 以内であることを前提
 
-- `slangbuild --emit disk` で D88 ディスクイメージまで一気通貫ビルド (#157 Phase 1)
-  - 新オプション `--emit disk` / `--disk-image <path>` / `--ndc <path>` を追加。`slangbuild input.SL -E lsx --emit disk --disk-image out.d88` 1 コマンドで slangc → AILZ80ASM → ndc P まで完結 (z88dk + appmake 相当)
+- `slangbuild --emit disk` で D88 ディスクイメージまで一気通貫ビルド (#157 Phase 1 + Phase 2)
+  - **Phase 1**: 新オプション `--emit disk` / `--disk-image <path>` / `--ndc <path>` を追加。`slangbuild input.SL -E lsx --emit disk --disk-image out.d88` 1 コマンドで slangc → AILZ80ASM → ndc P まで完結 (z88dk + appmake 相当)
   - env file (lsx / x1) に新規 `disk:` セクション追加 (`format: d88` / `template: ../../images/templates/LSXPROG.D88` / `tool: ndc` / `main_name: PROG.COM` / `overlay_name: M{index}.BIN`)。pristine template (`images/templates/LSXPROG.D88`) はビルドごとに `$(DISK_IMAGE)` 既定 = `images/LSXPROG.d88` 等の出力先にコピーしてから書き込み、template 自体は不変 (CI で SHA-256 比較で検証)
-  - `Makefile.dist` の `disk_image` ターゲットは **lsx / x1** のみ `slangbuild --emit disk` 経路に切替。それ以外の d88 系 env (msx2 / msxlsx / pc80mk2 / pc88mk2sr 等) は従来の `tools/disk-add-overlays.py` 経路を維持 (= Phase 1 では挙動変えない)。Phase 2+ で env ごとに `disk:` セクションを追加して順次新経路へ移行予定
+  - **Phase 2**: 以下の機能を追加
+    - **sos / sosx1 (HuDisk)** を `--emit disk` 経路に統合。`disk:` schema を `tool: hudisk` + `main_load` / `main_exec` / `overlay_load` (`$3000` / `0x3000` / 10進対応) で拡張。`Makefile.dist` の sos / sosx1 disk_image を `slangbuild --emit disk --hudisk` に書換
+    - **`--disk-template <path>`** で env の `disk.template` を CLI 上書き (installed 環境の代替策 + 実験用)
+    - **`--hudisk <path>`** option 追加。`HUDISK_PATH` 環境変数 / bundled `tools/HuDisk.exe` / installed `~/.config/SLANG/tools/HuDisk.exe` / PATH の順で解決。Linux/macOS では mono 経由起動 (Windows は直接実行)
+    - **`make install` で images/ + tools/ を `~/.config/SLANG/` 配下に配置** (Phase 1 制約解消)。`ToolResolver` の解決順に `~/.config/SLANG/tools/` を追加。これで installed 環境でも `slangbuild --emit disk` が動作
+    - **setup-tools が S-OS template を `images/templates/SOSPROG.D88` に配置** (LSX と整合)
+    - **配布物の HuDisk** は ho-ogino/HuDisk fork の `feature/write-ascii-mode` ブランチ (= ASCII 書き込み可能版、setup-tools が curl で取得済)
+  - `Makefile.dist` の `disk_image` ターゲットは **lsx / x1 / sos / sosx1** で `slangbuild --emit disk` 経路。それ以外の d88 系 env (msx2 / msxlsx / pc80mk2 / pc88mk2sr 等) は従来の `tools/disk-add-overlays.py` 経路を維持 (Phase 3+ で順次移行予定)
+  - `tools/disk-add-overlays.py` は legacy helper として残置 (旧経路ユーザー保護、新規利用は非推奨)
   - **配布 zip / repo layout 前提**: `make install` 経由 (`~/.config/SLANG/runtime/` のみ展開) では `images/LSXPROG.D88` が無いため `--emit disk` は使えない。配布 zip 内 `images/` 同梱がある場合のみ動作
   - `tools/disk-add-overlays.py` は新規利用は非推奨 (legacy helper)。旧経路 (= 独自 Makefile / shell スクリプト) からの呼び出し用に残置
 

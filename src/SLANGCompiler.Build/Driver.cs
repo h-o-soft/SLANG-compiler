@@ -388,19 +388,23 @@ public class Driver
             : outputBase + ".d88";
 
         // tool ごとに必要な実行ファイルだけ resolve (= 不要な resolver で fail させない)
-        string? ndcPath = null;
-        string? hudiskPath = null;
+        ResolvedTool? ndc = null;
+        ResolvedTool? hudisk = null;
         if (envConfig.Disk.Tool == "ndc")
         {
-            var ndc = _resolver.ResolveNdc(_opts.NdcPath);
-            ndcPath = ndc.Path;
+            ndc = _resolver.ResolveNdc(_opts.NdcPath);
             if (_opts.Verbose) Console.Error.WriteLine($"slangbuild: using ndc: {ndc.Path}");
         }
         else if (envConfig.Disk.Tool == "hudisk")
         {
-            var hudisk = _resolver.ResolveHudisk(_opts.HudiskPath);
-            hudiskPath = hudisk.Path;
-            if (_opts.Verbose) Console.Error.WriteLine($"slangbuild: using HuDisk: {hudisk.Path}");
+            hudisk = _resolver.ResolveHudisk(_opts.HudiskPath);
+            if (_opts.Verbose)
+            {
+                var via = hudisk.Kind == ResolutionKind.MonoRun
+                    ? $"mono {hudisk.ProjectPath}"
+                    : hudisk.Path;
+                Console.Error.WriteLine($"slangbuild: using HuDisk: {via}");
+            }
         }
 
         // --disk-template が指定されていれば env の disk.template を override
@@ -410,7 +414,7 @@ public class Driver
         if (_opts.Verbose && templateOverride != null)
             Console.Error.WriteLine($"slangbuild: disk template override: {templateOverride}");
 
-        var builder = new DiskImageBuilder(envConfig.Disk, ndcPath, hudiskPath,
+        var builder = new DiskImageBuilder(envConfig.Disk, ndc, hudisk,
                                            _opts.Verbose, templateOverride);
         return builder.Build(mainBin, overlayBins, diskOut);
     }

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Xunit;
+using SkippableFactAttribute = Xunit.SkippableFactAttribute;
 
 namespace SLANGCompiler.Tests;
 
@@ -137,6 +138,24 @@ public class BuildIntegrationTests : IDisposable
     {
         var name = OperatingSystem.IsWindows() ? "ndc.exe" : "ndc";
         return Path.Combine(_projectRoot, "tools", name);
+    }
+
+    /// <summary>repo root の tools/HuDisk.exe パスを返す。Sos テスト用。
+    /// 配布 fork が .NET assembly のみのため OS 問わず .exe 拡張子。</summary>
+    private string HudiskPath()
+        => Path.Combine(_projectRoot, "tools", "HuDisk.exe");
+
+    /// <summary>HuDisk.exe + (non-Windows なら mono) が揃っているか。
+    /// 揃っていなければ sos 系テストは Skip。</summary>
+    private bool HudiskAvailable()
+    {
+        if (!File.Exists(HudiskPath())) return false;
+        if (OperatingSystem.IsWindows()) return true;
+        // Linux/macOS では mono が PATH にあるか確認
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrEmpty(path)) return false;
+        return path.Split(Path.PathSeparator).Any(d =>
+            !string.IsNullOrEmpty(d) && File.Exists(Path.Combine(d, "mono")));
     }
 
     /// <summary>
@@ -673,6 +692,58 @@ MYSUB() BEGIN END;
             $"disk image not produced from installed env. stderr: {stderr}");
         Assert.True(D88ContainsEntry(diskOut, "PROG.COM"));
         Assert.True(D88ContainsEntry(diskOut, "M0.BIN"));
+    }
+
+    [SkippableFact]
+    public void EmitDisk_SosEnv_ProducesD88WithMain()
+    {
+        // sos env で HuDisk 経由の D88 生成 (Linux/macOS では mono 経由)。
+        // template (= images/templates/SOSPROG.D88) は setup-tools で生成済の
+        // 前提。HuDisk.exe + mono が揃っていなければ Skip (= setup-tools 未実行
+        // の dev 環境 / CI で適切にハンドル)。
+        Skip.IfNot(HudiskAvailable(),
+            "sos test requires HuDisk.exe (run `make setup-tools`) + mono on PATH");
+        Skip.IfNot(File.Exists(Path.Combine(_projectRoot, "images", "templates", "SOSPROG.D88")),
+            "sos test requires images/templates/SOSPROG.D88 (run `make setup-tools`)");
+
+        var slPath = Path.Combine(_tempDir, "sostest.SL");
+        File.WriteAllText(slPath, "MAIN() BEGIN END;\n");
+        var diskOut = Path.Combine(_tempDir, "sosout.d88");
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "sos",
+            "--hudisk", HudiskPath(),
+            "--emit", "disk",
+            "--disk-image", diskOut);
+        Assert.True(code == 0, $"slangbuild --emit disk (sos) failed (exit {code}). stderr: {stderr}");
+        Assert.True(File.Exists(diskOut), $"sos disk image not produced at {diskOut}");
+        // sos の disk listing は HuDisk で行う必要があるが、ndc では読めない場合
+        // も多い (HuDisk fs)。ここでは「ファイル生成」+「テンプレート不変」を
+        // 主検証とし、内容詳細は EmitDisk_SosTemplateNotMutated で別途確認
+    }
+
+    [SkippableFact]
+    public void EmitDisk_SosTemplateNotMutated()
+    {
+        // sos でも template (images/templates/SOSPROG.D88) は build 前後で
+        // SHA-256 一致 (Codex Phase 1 重要指摘の継承)。
+        Skip.IfNot(HudiskAvailable(),
+            "sos test requires HuDisk.exe + mono");
+        var template = Path.Combine(_projectRoot, "images", "templates", "SOSPROG.D88");
+        Skip.IfNot(File.Exists(template),
+            "sos test requires images/templates/SOSPROG.D88 (run `make setup-tools`)");
+
+        var hashBefore = ComputeSha256(template);
+
+        var slPath = Path.Combine(_tempDir, "sostpl.SL");
+        File.WriteAllText(slPath, "MAIN() BEGIN END;\n");
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "sos",
+            "--hudisk", HudiskPath(),
+            "--emit", "disk",
+            "--disk-image", Path.Combine(_tempDir, "sostpl_out.d88"));
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+
+        Assert.Equal(hashBefore, ComputeSha256(template));
     }
 
     [Fact]

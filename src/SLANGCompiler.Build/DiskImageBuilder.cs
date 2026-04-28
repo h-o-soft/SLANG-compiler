@@ -23,27 +23,27 @@ namespace SLANGCompiler.Build;
 public class DiskImageBuilder
 {
     private readonly DiskConfig _disk;
-    private readonly string? _ndcPath;
-    private readonly string? _hudiskPath;
+    private readonly ResolvedTool? _ndc;
+    private readonly ResolvedTool? _hudisk;
     private readonly string? _templateOverride;
     private readonly bool _verbose;
 
     /// <summary>
     /// </summary>
     /// <param name="disk">env file の disk: セクション</param>
-    /// <param name="ndcPath">tool == "ndc" 時の ndc 実行ファイル絶対パス。それ以外は null 可</param>
-    /// <param name="hudiskPath">tool == "hudisk" 時の HuDisk 実行ファイル絶対パス。それ以外は null 可</param>
+    /// <param name="ndc">tool == "ndc" 時の ResolvedTool。それ以外は null 可</param>
+    /// <param name="hudisk">tool == "hudisk" 時の ResolvedTool (Linux/macOS では MonoRun でラップ済)。それ以外は null 可</param>
     /// <param name="verbose">subprocess の I/O を stderr に流す</param>
     /// <param name="templateOverride">--disk-template による env.Disk.Template の上書き</param>
     public DiskImageBuilder(DiskConfig disk,
-                            string? ndcPath = null,
-                            string? hudiskPath = null,
+                            ResolvedTool? ndc = null,
+                            ResolvedTool? hudisk = null,
                             bool verbose = false,
                             string? templateOverride = null)
     {
         _disk = disk;
-        _ndcPath = ndcPath;
-        _hudiskPath = hudiskPath;
+        _ndc = ndc;
+        _hudisk = hudisk;
         _verbose = verbose;
         _templateOverride = templateOverride;
     }
@@ -84,20 +84,20 @@ public class DiskImageBuilder
             return 1;
         }
 
-        // tool ごとに必要な実行ファイル path がセットされていることを確認
+        // tool ごとに必要な ResolvedTool がセットされていることを確認
         switch (_disk.Tool)
         {
             case "ndc":
-                if (string.IsNullOrEmpty(_ndcPath))
+                if (_ndc == null)
                 {
-                    Console.Error.WriteLine("slangbuild: ndc path not provided for tool: ndc");
+                    Console.Error.WriteLine("slangbuild: ndc not provided for tool: ndc");
                     return 1;
                 }
                 break;
             case "hudisk":
-                if (string.IsNullOrEmpty(_hudiskPath))
+                if (_hudisk == null)
                 {
-                    Console.Error.WriteLine("slangbuild: HuDisk path not provided for tool: hudisk");
+                    Console.Error.WriteLine("slangbuild: HuDisk not provided for tool: hudisk");
                     return 1;
                 }
                 break;
@@ -179,10 +179,10 @@ public class DiskImageBuilder
     private int WriteEntryNdc(string entryName, string staged, string d88)
     {
         // 旧 entry 削除 (= 失敗無視; entry が無い場合 ndc D は non-zero 終了)
-        RunTool(_ndcPath!, new[] { "D", d88, "0", entryName }, ignoreFailure: true);
+        RunTool(_ndc!, new[] { "D", d88, "0", entryName }, ignoreFailure: true);
 
         // 新 entry 書き込み
-        var rc = RunTool(_ndcPath!, new[] { "P", d88, "0", staged }, ignoreFailure: false);
+        var rc = RunTool(_ndc!, new[] { "P", d88, "0", staged }, ignoreFailure: false);
         if (rc != 0)
             Console.Error.WriteLine($"slangbuild: ndc P failed for {entryName} (exit {rc})");
         return rc;
@@ -199,45 +199,63 @@ public class DiskImageBuilder
     private int WriteEntryHudisk(string entryName, string staged, string d88, bool isMain)
     {
         // 旧 entry 削除 (= 失敗無視)
-        RunTool(_hudiskPath!, new[] { "-d", d88, entryName }, ignoreFailure: true);
+        RunTool(_hudisk!, new[] { "-d", d88, entryName }, ignoreFailure: true);
 
         // 新 entry 追加: -a <d88> <file> [-r <load>] [-g <exec>]
+        // HuDisk は `-r` / `-g` の値を Convert.ToInt32(s, 16) で hex parse する
+        // (`$` prefix は受理せず FormatException)。Makefile.dist の旧 sos 経路
+        // `$(HUDISK) -a ... -r 3000 -g 3000` と同じく `$` 無し hex 文字列で渡す。
         var args = new List<string> { "-a", d88, staged };
         var load = isMain ? _disk.MainLoad : _disk.OverlayLoad;
         if (load.HasValue)
         {
             args.Add("-r");
-            args.Add($"${load.Value:X}"); // ⚠ upstream HuDisk の受理形式要確認
+            args.Add($"{load.Value:X}");
         }
         if (isMain && _disk.MainExec.HasValue)
         {
             args.Add("-g");
-            args.Add($"${_disk.MainExec.Value:X}"); // ⚠ 同上
+            args.Add($"{_disk.MainExec.Value:X}");
         }
-        var rc = RunTool(_hudiskPath!, args.ToArray(), ignoreFailure: false);
+        var rc = RunTool(_hudisk!, args.ToArray(), ignoreFailure: false);
         if (rc != 0)
             Console.Error.WriteLine($"slangbuild: HuDisk -a failed for {entryName} (exit {rc})");
         return rc;
     }
 
     /// <summary>
-    /// subprocess 実行 (ndc / HuDisk 共通)。pipe バッファ詰まり対策で stdout/stderr を
-    /// async で吸い、WaitForExit の timeout が確実に効くようにする (= 同期 ReadToEnd
-    /// を先に呼ぶと child が hang した時に永遠に block する)。
+    /// subprocess 実行 (ndc / HuDisk 共通)。
+    /// ResolvedTool.Kind に応じて起動方法を切り替える:
+    /// - DirectExe: そのまま起動
+    /// - MonoRun: `mono &lt;assembly&gt; &lt;args...&gt;` で起動 (Linux/macOS の HuDisk.exe)
+    /// - DotnetRun: 本ビルダーでは未使用 (slangc 側のみ)
+    ///
+    /// pipe バッファ詰まり対策で stdout/stderr を async で吸い、WaitForExit の
+    /// timeout が確実に効くようにする (= 同期 ReadToEnd を先に呼ぶと child が
+    /// hang した時に永遠に block する)。
     /// </summary>
-    private int RunTool(string exePath, string[] args, bool ignoreFailure)
+    private int RunTool(ResolvedTool tool, string[] args, bool ignoreFailure)
     {
         var psi = new ProcessStartInfo
         {
-            FileName = exePath,
+            FileName = tool.Path,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+
+        if (tool.Kind == ResolutionKind.MonoRun)
+        {
+            // mono <assembly.exe> <args...>
+            psi.ArgumentList.Add(tool.ProjectPath!);
+        }
         foreach (var a in args) psi.ArgumentList.Add(a);
 
         if (_verbose)
-            Console.Error.WriteLine($"+ {exePath} {string.Join(" ", args)}");
+        {
+            var argLine = string.Join(" ", psi.ArgumentList);
+            Console.Error.WriteLine($"+ {tool.Path} {argLine}");
+        }
 
         using var proc = Process.Start(psi)!;
         var stdoutTask = proc.StandardOutput.ReadToEndAsync();
@@ -246,7 +264,8 @@ public class DiskImageBuilder
         {
             try { proc.Kill(entireProcessTree: true); } catch { /* best effort */ }
             Console.Error.WriteLine(
-                $"slangbuild: tool timed out after 30s: {exePath} {string.Join(" ", args)}");
+                $"slangbuild: tool timed out after 30s: {tool.Path} "
+                + string.Join(" ", psi.ArgumentList));
             return 1;
         }
         var stdout = stdoutTask.GetAwaiter().GetResult();

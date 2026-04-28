@@ -13,6 +13,7 @@ IF not %errorlevel%==0 goto ERROR
 SET TOOLPATH=%~dp0tools\
 
 mkdir images
+mkdir images\templates
 mkdir tools
 
 mkdir temp
@@ -46,13 +47,15 @@ REM (Old CP/M emulator cpm.exe is no longer downloaded; RunCPM is bundled
 REM under tools\runcpm\ instead. See tools\runcpm\README.md.)
 
 REM REM S-OS(X1)���_�E�����[�h
+REM ��I�I�� images\templates\SOSPROG.D88 �ɒu�� (= slangbuild --emit disk ��
+REM �Q�Ƃ��� pristine template�ALSX �� templates/ �p�^�[���Ɛ���)
 curl http://www.retropc.net/ohishi/s-os/SWXCV110.zip -OL
 unzip -xo SWXCV110.zip
 REM AUTOEXEC.BAT��ǉ�
-REN SWXCV110.d88 SOSPROG.d88
-%TOOLPATH%HuDisk SOSPROG.d88 -a ..\env\S-OS\AUTOEXEC.BAT --ascii
-copy SOSPROG.d88 ..\images\
-DEL SOSPROG.d88
+REN SWXCV110.d88 SOSPROG.D88
+%TOOLPATH%HuDisk SOSPROG.D88 -a ..\env\S-OS\AUTOEXEC.BAT --ascii
+copy SOSPROG.D88 ..\images\templates\
+DEL SOSPROG.D88
 DEL SWXCV110.zip
 
 REM LSX-Dodgers�͓���t�H�[�}�b�g�̂��ߎ擾���ĉ��H���鎖���o���Ȃ�(NDC�ŃA�N�Z�X�s��)���ߑΉ����Ȃ�
