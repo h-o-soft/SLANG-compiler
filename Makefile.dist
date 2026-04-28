@@ -6,12 +6,18 @@
 # make clean        - サンプルのビルド成果物を削除
 
 # インストール設定
+# default はユーザーローカル (= sudo 不要)。Linux/macOS 共に XDG Base Dir Spec の
+# ~/.local/bin に bin、~/.config/SLANG に lib/runtime/images/tools を入れる。
+# システムワイドにしたい場合は `make install PREFIX=/usr/local` で上書き可能だが、
+# その場合は sudo が必要 + CONFIG_DIR=$(HOME)/.config/SLANG が sudo 起動の HOME=/root
+# に取られる問題があるため、`sudo make install PREFIX=/usr/local CONFIG_DIR=/usr/local/share/slang`
+# のように CONFIG_DIR も明示する運用を docs で案内 (system-wide は上級ユーザー向け)。
 ifeq ($(OS),Windows_NT)
     PREFIX ?= $(LOCALAPPDATA)\Programs\SLANG
     BINDIR = $(PREFIX)
     CONFIG_DIR = $(USERPROFILE)\.config\SLANG
 else
-    PREFIX ?= /usr/local
+    PREFIX ?= $(HOME)/.local
     BINDIR = $(PREFIX)/bin
     CONFIG_DIR = $(HOME)/.config/SLANG
 endif
@@ -119,6 +125,14 @@ install: install-bin install-lib
 	@echo "Installation complete!"
 	@echo "  Binaries: $(BINDIR)"
 	@echo "  Libraries: $(CONFIG_DIR)"
+ifeq ($(OS),Windows_NT)
+	@echo ""
+	@echo "Note: Please ensure '$(BINDIR)' is in your PATH."
+else
+	@echo ""
+	@echo "Note: If '$(BINDIR)' is not on your PATH, add this to your shell rc:"
+	@echo "  export PATH=\"$(BINDIR):\$$PATH\""
+endif
 
 install-bin:
 ifeq ($(DETECTED_OS),Windows)

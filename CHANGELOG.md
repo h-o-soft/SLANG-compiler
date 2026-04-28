@@ -37,6 +37,11 @@
   - `tools/disk-add-overlays.py` は legacy helper として残置 (旧経路ユーザー保護、新規利用は非推奨)
   - **動作環境**: `make setup-tools && make install` 後の installed 環境 (`~/.config/SLANG/`)、配布 zip 解凍直後、開発時の repo 直下、いずれでも動作 (Phase 1 の「installed 環境では template 不在で使えない」制約は Phase 2 の `install-lib` 拡張で解消済)。Linux/macOS の sos 系では `mono` (HuDisk.exe 起動用) と setupenv での S-OS template 取得が前提
 
+- `make install` の default を `~/.local/bin` (= XDG Base Dir Spec) に変更 (Linux/macOS、Windows は元々 `%LOCALAPPDATA%\Programs\SLANG` でユーザーローカル)
+  - 旧 default `/usr/local/bin` は sudo 必須で、かつ sudo 起動だと `$(HOME)/.config/SLANG` の `$HOME` が `/root` に取られて lib が user dir に入らない問題があった
+  - 新 default はユーザーローカル完結 (sudo 不要)。install 完了メッセージで `~/.local/bin` を PATH に通す案内を表示
+  - 従来通りシステムワイドにしたい場合は `sudo make install PREFIX=/usr/local CONFIG_DIR=/usr/local/share/slang` のように `CONFIG_DIR` も明示
+
 - `cpm` 環境を独立 env として明示化 + 専用 file ライブラリ追加 (#145)
   - `runtime/env/cpm.env` を新設。これまで `-E cpm` は env file 不在で全 `runtime/*.asm` を fallback ロードしており、他環境のラベル衝突 (例: `libpc80mk2_print` の `WORK10`) を起こしていた
   - cpm 専用 `runtime/libcpm_file.asm` を新設。CP/M 2.2 互換 BDOS 関数 (`_RDRND` / `_WRRND`) ベースで RunCPM 上で動作 (lsx の `liblsx_file.asm` は CP/M 3+ 専用関数を使うため非互換だった)
