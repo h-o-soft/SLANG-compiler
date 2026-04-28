@@ -6,12 +6,18 @@
 # make clean        - サンプルのビルド成果物を削除
 
 # インストール設定
+# default はユーザーローカル (= sudo 不要)。Linux/macOS 共に XDG Base Dir Spec の
+# ~/.local/bin に bin、~/.config/SLANG に lib/runtime/images/tools を入れる。
+# システムワイドにしたい場合は `make install PREFIX=/usr/local` で上書き可能だが、
+# その場合は sudo が必要 + CONFIG_DIR=$(HOME)/.config/SLANG が sudo 起動の HOME=/root
+# に取られる問題があるため、`sudo make install PREFIX=/usr/local CONFIG_DIR=/usr/local/share/slang`
+# のように CONFIG_DIR も明示する運用を docs で案内 (system-wide は上級ユーザー向け)。
 ifeq ($(OS),Windows_NT)
     PREFIX ?= $(LOCALAPPDATA)\Programs\SLANG
     BINDIR = $(PREFIX)
     CONFIG_DIR = $(USERPROFILE)\.config\SLANG
 else
-    PREFIX ?= /usr/local
+    PREFIX ?= $(HOME)/.local
     BINDIR = $(PREFIX)/bin
     CONFIG_DIR = $(HOME)/.config/SLANG
 endif
@@ -62,7 +68,10 @@ SLANGC = bin/slangc$(EXE_EXT)
 SLANGBUILD = bin/slangbuild$(EXE_EXT)
 ASM = tools/AILZ80ASM$(EXE_EXT)
 NDC = tools/ndc$(EXE_EXT)
-HUDISK = tools/HuDisk$(EXE_EXT)
+# HuDisk は ho-ogino/HuDisk fork の .NET assembly (HuDisk.exe)。
+# Linux/macOS では mono 経由で起動するが、その分岐は slangbuild の ToolResolver
+# 側に閉じている (= Makefile からは OS によらず .exe 拡張子で渡す)。
+HUDISK = tools/HuDisk.exe
 
 OUTPROG = $(dir $(TARGET))PROG.bin
 ASM_OPT =
@@ -77,6 +86,10 @@ else ifeq ($(ENV), x1)
   DISK_IMAGE = images/LSXPROG.D88
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), sos)
+  EMU = @echo "Set EMU variable for your emulator" \#
+  DISK_IMAGE = images/SOSPROG.D88
+  BIN_EXT_ENV = $(BIN_EXT)
+else ifeq ($(ENV), sosx1)
   EMU = @echo "Set EMU variable for your emulator" \#
   DISK_IMAGE = images/SOSPROG.D88
   BIN_EXT_ENV = $(BIN_EXT)
@@ -112,6 +125,14 @@ install: install-bin install-lib
 	@echo "Installation complete!"
 	@echo "  Binaries: $(BINDIR)"
 	@echo "  Libraries: $(CONFIG_DIR)"
+ifeq ($(OS),Windows_NT)
+	@echo ""
+	@echo "Note: Please ensure '$(BINDIR)' is in your PATH."
+else
+	@echo ""
+	@echo "Note: If '$(BINDIR)' is not on your PATH, add this to your shell rc:"
+	@echo "  export PATH=\"$(BINDIR):\$$PATH\""
+endif
 
 install-bin:
 ifeq ($(DETECTED_OS),Windows)
@@ -132,12 +153,19 @@ ifeq ($(DETECTED_OS),Windows)
 	-$(MKDIR) "$(CONFIG_DIR)"
 	-$(MKDIR) "$(CONFIG_DIR)\include"
 	-$(MKDIR) "$(CONFIG_DIR)\runtime"
+	-$(MKDIR) "$(CONFIG_DIR)\images"
+	-$(MKDIR) "$(CONFIG_DIR)\images\templates"
+	-$(MKDIR) "$(CONFIG_DIR)\tools"
 	$(XCOPY) include "$(CONFIG_DIR)\include"
 	$(XCOPY) runtime "$(CONFIG_DIR)\runtime"
+	$(XCOPY) images "$(CONFIG_DIR)\images"
+	$(XCOPY) tools "$(CONFIG_DIR)\tools"
 else
 	$(MKDIR) $(CONFIG_DIR)
 	$(XCOPY) include $(CONFIG_DIR)/
 	$(XCOPY) runtime $(CONFIG_DIR)/
+	$(XCOPY) images $(CONFIG_DIR)/
+	$(XCOPY) tools $(CONFIG_DIR)/
 endif
 
 # アンインストール
@@ -178,9 +206,19 @@ disk_image: $(OUTPROG)
 else ifeq ($(ENV), msxrom)
 disk_image: $(OUTPROG)
 else ifeq ($(ENV), sos)
-disk_image: $(IMGPROG)
-	$(HUDISK) -d $(DISK_IMAGE) PROG.bin
-	$(HUDISK) -a $(DISK_IMAGE) $(IMGPROG) -r 3000 -g 3000
+# Issue #157 Phase 2: sos も slangbuild --emit disk + HuDisk 経路に統合。
+# template (= images/templates/SOSPROG.D88) は setup-tools で生成済 (= 素 boot
+# disk + AUTOEXEC.BAT)。slangbuild が template をコピーしてから main + overlay
+# を書き込む (template 自体は不変、Linux/macOS は HuDisk.exe を mono 経由で起動)。
+disk_image: $(TARGET)$(SRC_EXT)
+	$(SLANGBUILD) $< -E $(SLANGENV) -I include \
+		--slangc $(SLANGC) --asm $(ASM) --hudisk $(HUDISK) \
+		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
+else ifeq ($(ENV), sosx1)
+disk_image: $(TARGET)$(SRC_EXT)
+	$(SLANGBUILD) $< -E $(SLANGENV) -I include \
+		--slangc $(SLANGC) --asm $(ASM) --hudisk $(HUDISK) \
+		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
 else ifeq ($(ENV), lsx)
 # Issue #157 Phase 1: `slangbuild --emit disk` に統合 (lsx / x1 のみ)。
 # 1 コマンドで slangc → AILZ80ASM → template d88 を $(DISK_IMAGE) にコピー →

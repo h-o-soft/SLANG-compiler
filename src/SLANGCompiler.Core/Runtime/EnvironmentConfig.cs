@@ -23,11 +23,12 @@ public class EnvironmentConfig
 
 /// <summary>
 /// `disk:` セクション (slangbuild --emit disk 用)。
-/// Phase 1 では format=d88 + tool=ndc のみサポート。
+/// 現状サポートは format=d88、tool=ndc / hudisk (sos.env への適用は素材揃い
+/// 後の Phase で予定)。
 /// </summary>
 public class DiskConfig
 {
-    /// <summary>"d88" 等。Phase 1 は "d88" のみ</summary>
+    /// <summary>"d88" のみ</summary>
     public string Format { get; set; } = "";
 
     /// <summary>
@@ -36,7 +37,7 @@ public class DiskConfig
     /// </summary>
     public string Template { get; set; } = "";
 
-    /// <summary>"ndc" 等。Phase 1 は "ndc" のみ</summary>
+    /// <summary>"ndc" / "hudisk"</summary>
     public string Tool { get; set; } = "";
 
     /// <summary>main bin の disk 内ファイル名 (例: "PROG.COM")</summary>
@@ -47,4 +48,15 @@ public class DiskConfig
     /// `{index}` placeholder を 0..N に展開して使う。
     /// </summary>
     public string OverlayName { get; set; } = "";
+
+    /// <summary>HuDisk の <c>-r &lt;load&gt;</c> 引数。null なら付けない (= ndc 等の
+    /// load address 概念無しツール)。</summary>
+    public int? MainLoad { get; set; }
+
+    /// <summary>HuDisk の <c>-g &lt;exec&gt;</c> 引数。null なら付けない。</summary>
+    public int? MainExec { get; set; }
+
+    /// <summary>overlay の load address。null なら -r を付けない。
+    /// (overlay には exec を付けない sos の慣習)</summary>
+    public int? OverlayLoad { get; set; }
 }
