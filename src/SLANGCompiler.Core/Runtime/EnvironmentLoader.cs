@@ -49,6 +49,33 @@ public class EnvironmentLoader
             }
         }
 
+        // disk セクション (slangbuild --emit disk 用)
+        if (raw.Disk != null)
+        {
+            // template path は env file dir 基準の相対パスを絶対化して保存
+            // (= caller 側で再計算しなくて良いように)
+            var envDir = Path.GetDirectoryName(Path.GetFullPath(envFilePath))!;
+            var templateAbs = string.IsNullOrEmpty(raw.Disk.Template)
+                ? ""
+                : Path.GetFullPath(Path.Combine(envDir, raw.Disk.Template));
+
+            config.Disk = new DiskConfig
+            {
+                Format = raw.Disk.Format ?? "",
+                Template = templateAbs,
+                Tool = raw.Disk.Tool ?? "",
+                MainName = raw.Disk.MainName ?? "",
+                OverlayName = raw.Disk.OverlayName ?? "",
+            };
+            // HuDisk の -r / -g 用 (lsx/x1 では未指定 = null のまま)
+            if (!string.IsNullOrEmpty(raw.Disk.MainLoad))
+                config.Disk.MainLoad = ParseAddress(raw.Disk.MainLoad);
+            if (!string.IsNullOrEmpty(raw.Disk.MainExec))
+                config.Disk.MainExec = ParseAddress(raw.Disk.MainExec);
+            if (!string.IsNullOrEmpty(raw.Disk.OverlayLoad))
+                config.Disk.OverlayLoad = ParseAddress(raw.Disk.OverlayLoad);
+        }
+
         return config;
     }
 
@@ -85,5 +112,36 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "optimize")]
         public string? Optimize { get; set; }
+
+        [YamlMember(Alias = "disk")]
+        public EnvFileDiskData? Disk { get; set; }
+    }
+
+    private class EnvFileDiskData
+    {
+        [YamlMember(Alias = "format")]
+        public string? Format { get; set; }
+
+        [YamlMember(Alias = "template")]
+        public string? Template { get; set; }
+
+        [YamlMember(Alias = "tool")]
+        public string? Tool { get; set; }
+
+        [YamlMember(Alias = "main_name")]
+        public string? MainName { get; set; }
+
+        [YamlMember(Alias = "overlay_name")]
+        public string? OverlayName { get; set; }
+
+        // HuDisk -r / -g 用 (string で受けて ParseAddress で int 化)
+        [YamlMember(Alias = "main_load")]
+        public string? MainLoad { get; set; }
+
+        [YamlMember(Alias = "main_exec")]
+        public string? MainExec { get; set; }
+
+        [YamlMember(Alias = "overlay_load")]
+        public string? OverlayLoad { get; set; }
     }
 }

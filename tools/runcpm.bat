@@ -51,6 +51,21 @@ for %%F in ("%COM_PATH%") do set BASE=%%~nF
 REM Copy as A\0\<STEM>.COM (CP/M requires .COM extension)
 copy /Y "%COM_PATH%" "%STAGE%\A\0\%BASE%.COM" >nul
 
+REM Stage overlay binaries (sample-only support, see examples/MODTEST_RESIDENT.SL).
+REM Looks for <com_dir>\<original-stem>._m*.bin (slangbuild output naming) and
+REM copies each as M0.BIN, M1.BIN, ... under A\0\. No-op when sample doesn't
+REM use #MODULE.
+for %%F in ("%COM_PATH%") do set COM_DIR=%%~dpF
+for %%g in ("%COM_DIR%%BASE%._m*.bin") do (
+    if exist "%%g" (
+        call :stage_overlay "%%g"
+        if errorlevel 1 (
+            rmdir /S /Q "%STAGE%" >nul 2>&1
+            exit /b 1
+        )
+    )
+)
+
 REM Bundle SUBMIT.COM and EXIT.COM so the CCP can chain commands.
 copy /Y "%CPM_UTILS_DIR%\SUBMIT.COM" "%STAGE%\A\0\SUBMIT.COM" >nul
 copy /Y "%CPM_UTILS_DIR%\EXIT.COM"   "%STAGE%\A\0\EXIT.COM"   >nul
@@ -74,4 +89,18 @@ popd
 rmdir /S /Q "%STAGE%" >nul 2>&1
 
 endlocal
+exit /b 0
+
+
+:stage_overlay
+REM Stage a single overlay file. Args: %1 = source bin path.
+REM Returns 0 on success, 1 if copy fails.
+set "OVBASE=%~n1"
+REM Extract digits after "_m" — "PROG._m0" → "0"
+set "N=!OVBASE:*_m=!"
+copy /Y "%~1" "%STAGE%\A\0\M!N!.BIN" >nul
+if errorlevel 1 (
+    echo Error: copy failed for %~1 1>&2
+    exit /b 1
+)
 exit /b 0

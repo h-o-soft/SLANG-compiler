@@ -278,7 +278,13 @@ SLANG Compilerは、Makefileを使ってWindows/macOS/Linuxでクロスプラッ
 
 ### 前提条件
 
-- .NET 8 SDK がインストールされていること
+- **.NET 8 SDK** (必須) — slangc / slangbuild のビルドに必要
+- **Python 3.x** (一部の機能で必要)
+  - PCG / フォント変換ツール (`tools/png_to_asm.py`, `tools/charmap-encode.py`)
+  - これらを使わない通常のコンパイル / 単一バイナリ実行には不要
+- **mono** (Linux / macOS で `make setup-tools` を実行する場合に必須)
+  - `setupenv.sh` が S-OS template 生成のため `HuDisk.exe` を mono 経由で実行する。Windows は .NET Framework で直接実行されるため不要
+  - sos / sosx1 環境で `slangbuild --emit disk` を使う場合も同じく mono が必要 (HuDisk.exe 起動)。lsx / x1 の ndc 経路だけ使うなら mono 不要
 
 ### ビルドとインストール
 
@@ -321,11 +327,18 @@ RunCPM (MIT) を自動的に使うため、特別な設定は不要です。
 
 ### ディスクイメージの準備
 
-エミュレータで実行するには、imagesフォルダに起動ディスクイメージが必要です。
+`slangbuild --emit disk` (Makefile.dist の `disk_image` ターゲット経由) は
+**pristine な template ディスクイメージ** を `images/templates/` から読み、
+**出力先** `images/<env>PROG.d88` 等にコピーしてから main + overlay を書き込みます
+(template 自体は不変、`Makefile.dist` の `DISK_IMAGE` 変数で出力先を上書き可能)。
 
-- LSX-Dodgers用: `images/LSXPROG.D88`
-- S-OS用: `images/SOSPROG.D88`
-- MSX-DOS用: `images/dosformsx.dsk`
+template の入手:
+
+| 環境 | 出力先 (`DISK_IMAGE`) | template (`disk.template`) | 入手方法 |
+|------|----------------------|---------------------------|---------|
+| lsx / x1 | `images/LSXPROG.d88` | `images/templates/LSXPROG.D88` | repo 同梱 |
+| sos / sosx1 | `images/SOSPROG.D88` | `images/templates/SOSPROG.D88` | `make setup-tools` で取得 (S-OS 配布物 + AUTOEXEC.BAT 注入) |
+| MSX-DOS 系 | `images/dosformsx.dsk` | (従来経路を維持、今後 `--emit disk` 経路へ移行予定) | `make setup-tools` で取得 |
 
 # LSX-Dodgersバージョン依存について
 

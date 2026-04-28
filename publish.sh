@@ -33,16 +33,22 @@ createRelease() {
     cp -r ../../assets .
   fi
 
-  # tools: ホストで動かす Python スクリプト (charmap-encode.py, png_to_asm.py)
+  # tools: ホストで動かす Python スクリプト (charmap-encode.py, png_to_asm.py,
+  # disk-add-overlays.py)。disk-add-overlays.py は make ENV=lsx|x1 disk_image で
+  # overlay バイナリ (M0.BIN..) を d88 へ書き込む際の helper。
   # RunCPM 系は後段で追加するので、ここでは Python ツールだけ拾う。
   mkdir -p tools
-  cp ../../tools/charmap-encode.py tools/ 2>/dev/null
-  cp ../../tools/png_to_asm.py     tools/ 2>/dev/null
+  cp ../../tools/charmap-encode.py    tools/ 2>/dev/null
+  cp ../../tools/png_to_asm.py        tools/ 2>/dev/null
+  cp ../../tools/disk-add-overlays.py tools/ 2>/dev/null
 
   cp -r ../../env .
-  # images: LSXPROG.d88のみ
-  mkdir -p images
+  # images: LSXPROG.d88 (デフォルトの DISK_IMAGE 出力先) +
+  # templates/LSXPROG.D88 (slangbuild --emit disk が必ずコピーしてから書き込む
+  # pristine 元データ。env file の disk.template が指す)
+  mkdir -p images/templates
   cp ../../images/LSXPROG.d88 images/
+  cp ../../images/templates/LSXPROG.D88 images/templates/
   cp -r ../../docs .
   cp -r ../../syntax .
   cp ../../Makefile.dist ./Makefile

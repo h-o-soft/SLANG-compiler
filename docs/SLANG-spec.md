@@ -685,34 +685,47 @@ EXIT TOと違い、ジャンプ先に制限なし。
 
 ---
 
-## MODULE/オーバーレイ機能
+## MODULE / オーバーレイ機能
 
-`#MODULE` 指定により、同一アドレス空間で動的に切り替えて使用するモジュールを分割出力できる。
+`#MODULE` 指定により、同一アドレス空間で動的に切り替えて使用する
+モジュール (オーバーレイ) を分割出力できる。
 
-新コンパイラでは、コンパイラが直接モジュール単位のASMファイルを出力する（ModuleSplitter不要）:
+```slang
+#MODULE $8000              /* Local モード (省略時、後述) */
+    VAR X;
+    SUB() BEGIN ... END;
+#END
+```
+
+### 出力ファイル
+
+`slangc` が直接モジュール単位の ASM を出力する:
 
 ```
 slangc source.SL
-  → source.ASM       (メイン部)
-  → source._m0.ASM   (モジュール0)
-  → source._m1.ASM   (モジュール1)
-  → source._inc.ASM  (共有シンボル定義)
+  → source.ASM         (メイン部)
+  → source._m0.ASM     (モジュール 0)
+  → source._m1.ASM     (モジュール 1)
+  → source.inc         (共有シンボル定義、各 ASM が INCLUDE)
 ```
 
-- 全モジュールを1パスでコンパイル（シンボルテーブル共有）
-- 共通シンボルファイル(.inc)を生成して各ASMからINCLUDE
+全モジュールを 1 パスでコンパイルし、シンボルテーブルを共有する。
+実行ファイル (.bin) を作るには `slangbuild` driver を使う (後述「slangbuild
+driver」節)。
 
-### モジュール専用ワークエリア (v0.22)
+---
 
-`#MODULE` 直下で宣言された `VAR` / `ARRAY` は **モジュール私有のワークエリア
-`__WORK_M<N>__`** に配置され、メイン側 `__WORK__` とは物理的に独立した
-領域になる。これにより複数モジュールを同じメモリ範囲に swap しても各
-モジュールの変数が干渉しない、本来のオーバーレイ動作が得られる。
+### モジュール専用ワークエリア
+
+`#MODULE` 直下で宣言された `VAR` / `ARRAY` は **モジュール私有のワーク
+エリア `__WORK_M<N>__`** に配置され、メイン側 `__WORK__` とは物理的に
+独立した領域になる。これにより複数モジュールを同じメモリ範囲に swap
+しても、各モジュールの変数が干渉しない (= 本来のオーバーレイ動作)。
 
 - モジュール私有変数の ASM ラベルは **`_V_M<N>_<NAME>`** (例: module 0 の
   `X` → `_V_M0_X`)。メイン側 `.inc` には出力されない
-- 関数定義 / `MACHINE` / `CONST` は従来どおり **global** に登録される
-  (main から module の関数を呼び出す既存運用を維持)
+- 関数定義 / `MACHINE` / `CONST` は従来どおり **global** に登録 (main から
+  module の関数を呼ぶ既存運用を維持)
 - モジュール内関数から、メイン側 global 変数と自モジュール私有変数の
   両方を参照できる。同名の場合は自モジュール私有側が優先
 - モジュール内関数本体の **インライン `#ASM`** は従来どおり使用可能
@@ -735,146 +748,198 @@ ORG を明示できる:
 #END
 ```
 
-- `WORK` を省略した場合、モジュール私有ワークは overlay コードの末尾に
-  連続配置される
-- アドレスには定数式が使える (`CONST WA = $9000; WORK WA` など)。
-  メイン側のトップレベル `WORK` も同様に定数式対応
+省略時はモジュール私有ワークが overlay コードの末尾に連続配置される。
+アドレスには定数式が使える (`CONST WA = $9000; WORK WA` など)。
+メイン側のトップレベル `WORK` も同様に定数式対応。
 
 #### モジュール直下での制約
 
-以下の構文はモジュール直下 (`#MODULE ... #END` のトップレベル) では
+以下はモジュール直下 (`#MODULE ... #END` のトップレベル) では
 **コンパイルエラー** となる:
 
 - 初期値付き `VAR X = 10;` / `ARRAY BYTE A[] = {1,2,3};`
   — swap 時の初期化タイミングが曖昧なため。必要なら main の共有ワーク
   として宣言する
 - 固定アドレス指定 `VAR X:$9000;` / `ARRAY BYTE A[]:$ADDR;`
-  — モジュール私有の namespace と固定アドレスの組み合わせは意味論が
-  複雑なため。固定アドレスが必要なら main トップレベルで宣言する
+  — モジュール私有 namespace と固定アドレスの組合せは意味論が複雑な
+  ため。固定アドレスが必要なら main トップレベルで宣言する
 - トップレベル `#ASM ... #END` ブロック
   — overlay GlobalData 未サポート。必要なら関数本体にインライン展開する
 
-（関数内ローカル `VAR` / `ARRAY` やインライン `#ASM` はこの制限の対象外）
+(関数内ローカル `VAR` / `ARRAY` やインライン `#ASM` はこの制限の対象外)
 
-### モジュールのランタイム集約ポリシー (v0.23 PR-A: 内部設計)
+`#MODULE` のネスト (`#END` 前に別の `#MODULE` を書く) も禁止。`#END`
+の付け忘れ検出も兼ねて compile エラーにする。
 
-`#MODULE` ヘッダ位置に optional のポリシー識別子を書ける:
+---
+
+### ランタイム集約ポリシー (`#MODULE $addr RESIDENT`)
+
+`#MODULE` ヘッダに optional のポリシー識別子を書ける:
 
 ```slang
-#MODULE $8000             /* = Local (省略時、現状互換)         */
-#MODULE $8000 RESIDENT    /* = Resident (main 集約モード)        */
-#MODULE $8000 SELFCONTAIN /* = SelfContain (将来予約、現時点エラー) */
-#MODULE $8000 AUTO        /* = Auto (将来予約、現時点エラー)        */
+#MODULE $8000              /* Local モード (省略時、現状互換) */
+#MODULE $8000 RESIDENT     /* Resident モード (main 集約)       */
 ```
 
-組み合わせは **ランタイム関数側 `@resident` 属性** との 2 軸で決まる:
+両モードの違い:
+
+| モード | 動作 | 用途 |
+|---|---|---|
+| **Local** (default) | overlay 内に runtime 関数を **local 複製**。互換性最優先 | 通常用途 |
+| **RESIDENT** | overlay 間で共有可能な runtime 関数を **main 側に集約**、overlay は EXTERN 参照 | overlay バイナリのメモリ節約 |
+
+ランタイム関数側にも対応する `; @resident shared|local` 属性を持つ:
 
 ```asm
-; runtime/foo.asm 内で関数ヘッダに付与
+; runtime/foo.asm 内
 ; @name MPRNT
-; @resident shared        ← main 常駐に向く (PRINT 系の大物等)
-; ...
+; @resident shared        ← main 常駐に向く (PRINT 系 = 安全に共有可)
+...
+
 ; @name FRAGILE
 ; @resident local         ← 各 ASM に local 強制 (override)
-; ...
+...
 ```
 
 #### コンフリクト解決マトリクス
 
-| Module ↓ \ Function → | Local (default = 未指定) | Shared |
+| Module ↓ \ Function → | Local (= 関数側未指定) | Shared |
 |---|---|---|
-| Local (module default)     | local | local (module 側 Local が勝つ) |
-| Resident                   | local (override 効く) | **shared** ← メモリ節約効果 |
+| Local (= module 側 default) | local | local (module 側 Local が勝つ) |
+| Resident                    | local (override 効く) | **shared** ← メモリ節約効果 |
 
-メモリ節約効果は `RESIDENT` × `@resident shared` の交点のみ。安全な
-関数だけ opt-in で集約され、`@resident local` を明示した関数は #MODULE
-RESIDENT でも overlay 内に local 展開される (self-modifying / overlay-
-specific WORK を持つ関数を守る安全策)。
+メモリ節約効果が出るのは **Resident × Shared の交点のみ**。安全な関数だけ
+opt-in で集約され、`@resident local` を明示した関数 (self-modifying /
+overlay-specific WORK を持つ等) は `#MODULE RESIDENT` でも overlay 内に
+local 展開される (安全策)。
 
-#### 現時点 (PR-A) の制約
+#### 既存環境のカバー状況
 
-- 本機能は **ランタイム共有の内部設計まで** が PR-A スコープ。実バイナリ
-  でリンクされるには別 PR (PR-B = 二段アセンブル toolchain) が必要
-- 既存 runtime ライブラリには `@resident shared` がまだ付いていないので、
-  `#MODULE $addr RESIDENT` を書いても現時点では **何も共有されない**
-  (動作は完全に現状互換)。共有効果は別 PR (PR-C) で `MPRNT` / `P10` /
-  `VTOS` 等に段階的に `@resident shared` を付与してから出る
-- 未実装ポリシー (`SELFCONTAIN` / `AUTO`) はコンパイルエラーになる
-- overlay ASM 末尾に `; === Shared Runtime References ===` という EXTERN
-  コメントが出力される (= PR-B での EQU 注入の入力リスト)
+全 13 環境 (lsx / x1 / msxlsx / msx2 / msxrom / sos / sosx1 / pc80mk2 /
+pc80mk2x / pc88mk2sr / vgs0 / zxn / cpm) の runtime ライブラリには
+`@resident shared|local` 属性が付与済 (= 共有 773 関数 / overlay-local
+14 関数)。`#MODULE $addr RESIDENT` を書けば即効果が出る。
 
-### 二段アセンブル toolchain `slangbuild` (v0.23 PR-B)
+`SELFCONTAIN` / `AUTO` 識別子は enum 予約済み、現時点はコンパイルエラー
+(将来拡張用)。
 
-PR-B で新ドライバ `slangbuild` を追加。`slangc` を呼んで ASM 群を生成し、
-AILZ80ASM で main → overlay の順に二段アセンブルする。`#MODULE RESIDENT`
-で main 集約された runtime シンボルを overlay 側で実バイナリレベルで解決する:
+#### 実測効果 (`examples/MODTEST_RESIDENT.SL`)
+
+| | overlay バイナリサイズ |
+|---|---|
+| Local (`#MODULE $3000`)             | 248 byte |
+| Resident (`#MODULE $3000 RESIDENT`) | **57 byte** (-77%) |
+
+overlay を増やすほど節約効果が大きい (= 共有関数を main 1 箇所で持つため)。
+
+---
+
+### slangbuild driver
+
+`slangc` は ASM 生成までを担当し、`slangbuild` driver が AILZ80ASM を呼んで
+main + overlay の bin を生成する (GCC 的責務分離)。
 
 ```
+# bin 出力 (default、--emit bin と同等)
 slangbuild source.SL -E lsx
-  → source.bin              (main bin)
-  → source._m0.bin          (overlay 0 bin、main の shared label を参照済み)
-  → source._mN.bin          (...)
+  → source.bin         (メイン bin)
+  → source._m0.bin     (モジュール 0 bin、main の shared label を解決済み)
+  → source._mN.bin     (...)
+
+# disk image 出力 (--emit disk、後述「ディスクイメージ出力」節を参照)
+slangbuild source.SL -E lsx --emit disk --disk-image out.d88
+  → source.bin / source._m*.bin (中間)
+  → out.d88            (template 由来の D88 に main + overlay を注入)
 ```
 
-`#MODULE` を使わない通常の SL でも `slangbuild` は使える (単段フローで
-従来の `slangc + AILZ80ASM` と同じ結果)。
-
-#### 二段アセンブル機構
-
-1. `slangc source.SL` → `source.ASM` + `source._mN.ASM` + `source.inc`
-2. `AILZ80ASM source.ASM -sm minimal-equ` → `source.bin` + `source.sym`
-3. 各 overlay について: overlay ASM 内の `; EXTERN` リストと `source.sym`
-   の交集合だけを抽出した `source._mN.imports.asm` を生成 (raw `source.sym`
-   を渡すと compiler 内部ラベル等の衝突リスクがあるため filter する)
-4. `AILZ80ASM source._mN.imports.asm source._mN.ASM -sm minimal-equ` →
-   `source._mN.bin`
-
-#### CLI
+`#MODULE` を使わない通常の SL でも `slangbuild` で OK (単段フローで動く)。
 
 ```
 slangbuild <input.SL> [options]
-  -o <prefix>     Output file prefix (default: derived from input)
-  -E <env>        Environment name (default: lsx)
-  -I <path>       Include search path passed to slangc (repeatable)
-  -L <path>       Library search path passed to slangc (repeatable)
-  --asm <path>    AILZ80ASM executable path (override resolution)
-  --slangc <path> slangc executable path (override resolution)
-  --keep-asm      Keep intermediate ASM / sym files
-  --verbose       Show subprocess (slangc / AILZ80ASM) output
+
+# 入出力 / 環境
+  -o <prefix>          Output file prefix (default: derived from input)
+  -E <env>             Environment name (default: lsx)
+  -I <path>            Include search path (passed to slangc, repeatable)
+  -L <path>            Library search path (passed to slangc, repeatable)
+
+# 出力モード (--emit disk 関連)
+  --emit <bin|disk>    Output mode (default: bin)
+  --disk-image <path>  Output disk image path (--emit disk 時、default: <prefix>.d88)
+  --disk-template <p>  Override env's disk.template (--emit disk 時のみ)
+
+# ツール path (省略時は ToolResolver で自動解決)
+  --slangc <path>      slangc executable path
+  --asm <path>         AILZ80ASM executable path
+  --ndc <path>         ndc executable path     (--emit disk + tool=ndc 時)
+  --hudisk <path>      HuDisk executable path  (--emit disk + tool=hudisk 時)
+
+# その他
+  --keep-asm           Keep intermediate ASM / sym files
+  --verbose            Show subprocess output
+  -h, --help           Show usage
+  -v, --version        Show version
 ```
 
-#### ツール解決順 (実行ファイル基準)
+`--emit disk` / `--disk-image` / `--disk-template` の組み合わせ:
 
-`AppContext.BaseDirectory` を起点に決定論的に探す。配布スクリプトでは
-`--slangc` / `--asm` を明示指定する運用 (PATH 優先は再現性が低いため):
+- `--emit disk` 単独: 出力先 = `<output_prefix>.d88` (= `-o build/PROG --emit disk` なら `build/PROG.d88`)
+- `--disk-image <p>` を付ければ任意の出力先に書ける
+- `--disk-template <p>` で env file の `disk.template` を CLI 上書き (= installed 環境で template が無い場合の代替策、または別 template での実験用)
+- `--disk-image` / `--disk-template` を `--emit bin` (= default) で指定すると **error** (= ユーザー意図の取り違え防止)
 
-- **slangc**: `--slangc` → bundled bin (slangbuild と同 publish 物) → PATH → `dotnet run --project ...` (dev fallback、SDK 必要)
-- **AILZ80ASM**: `--asm` → `AILZ80ASM_PATH` 環境変数 → PATH → bundled `tools/AILZ80ASM` → repo root (dev fallback)
+#### 動作モード (自動選択)
 
-#### 現時点 (PR-B) の制約
+| モード | 適用条件 | 動作 |
+|---|---|---|
+| **単段** | `#MODULE` 未使用 | 従来の `slangc + AILZ80ASM` 1 回相当 |
+| **二段** | `#MODULE` 使用、関数 cross-reference なし | main を先にアセンブル → overlay は main.sym から filtered EQU 注入で解決 |
+| **prelink** | `#MODULE` 使用、関数 cross-reference あり | 各 target を 3 pass でアセンブル (= 関数 cross-reference 対応、後述) |
 
-- `slangbuild` は二段アセンブル機構を提供するが、**実際にメモリ節約効果が
-  出るには runtime ライブラリへの `@resident shared` 付与 (PR-C) が必要**。
-  本 PR-B 単体では現状互換 (overlay に runtime が複製展開される) のまま動く
-- AILZ80ASM の制約により、imports ファイルの拡張子は `.asm` を使う
-  (`.sym` 拡張子は出力扱いされてエラーになる)
-- 未解決ラベル (overlay の `; EXTERN` リストにあるが main.sym にない) は
-  `--verbose` 時に warning として表示。AILZ80ASM 側で「未定義シンボル」
-  エラーで止まる
+二段モードでは `AILZ80ASM` 側で `-sm minimal-equ` 指定。raw `source.sym` を
+overlay に渡すと compiler 内部ラベルとの衝突リスクがあるため、overlay 内の
+`; EXTERN` リストと交集合した filtered imports.asm を都度生成する。
 
-### 全ファイル間関数 cross-reference 解決 (v0.23 PR-B2)
+#### ツール解決順
 
-PR-B2 で `slangbuild` を拡張し、`main / overlay 0 / overlay 1 / ...` の
-任意の組み合わせ間で **SLANG 関数を相互呼び出し** できるようにする
-(prelink 二段アセンブル方式)。
+`AppContext.BaseDirectory` を起点に決定論的に探す。共通の install dir 検索順は
+`$SLANG_HOME/tools/` → `~/.config/SLANG/tools/` (= `make install` 後の配置先)。
+
+- **slangc**: `--slangc` → 同梱 `{baseDir}/slangc(.exe)` / `{baseDir}/bin/slangc(.exe)` → dev publish 物 (`src/SLANGCompiler.CLI/bin/Release/net8.0/<rid>/publish/slangc`) → `PATH` → `dotnet run --project <csproj>` (dev fallback)
+- **AILZ80ASM**: `--asm` → `AILZ80ASM_PATH` 環境変数 → `PATH` → 同梱 `{baseDir}/tools/`
+  → 同梱 `{baseDir}/../tools/` → install dir → repo root `tools/` (dev fallback)
+- **ndc** (`--emit disk` の `tool: ndc`): `--ndc` → `NDC_PATH` 環境変数 → 同梱
+  `{baseDir}/tools/` → 同梱 `{baseDir}/../tools/` → install dir → `PATH` →
+  repo root `tools/`
+- **HuDisk** (`--emit disk` の `tool: hudisk`): `--hudisk` → `HUDISK_PATH` 環境変数
+  → 同梱 `{baseDir}/tools/HuDisk.exe` → install dir → `PATH` → repo root。
+  Windows は `.exe` 直接実行、**Linux/macOS は mono 経由起動** (= setup-tools が
+  取得する `HuDisk.exe` は ho-ogino/HuDisk fork の .NET assembly)
+
+配布スクリプト (`Makefile.dist` / `publish.sh`) では `--slangc` / `--asm` /
+`--ndc` / `--hudisk` を明示指定する運用 (PATH 優先は再現性が低いため)。
+`make setup-tools` がライセンス都合で同梱できない `ndc` / `HuDisk.exe` を
+ダウンロードして `tools/` に配置し、`make install` で `~/.config/SLANG/tools/`
+にコピーする。
+
+---
+
+### 関数 cross-reference (prelink モード)
+
+`main / overlay 0 / overlay 1 / ...` の任意の組み合わせ間で **SLANG 関数を
+相互呼び出し** できる。`slangbuild` が cross-reference を検出すると自動的に
+prelink モードに入る (ユーザーが明示する必要なし)。
 
 #### サポート範囲 (関数シンボルのみ)
 
 - main → overlay 関数
-- overlay → overlay 関数
 - overlay → main 関数
+- overlay → overlay 関数
 
-#### 仕様 (= ユーザー責任)
+overlay private 変数 / overlay work / data の cross-reference は対応外。
+
+#### 仕様 — swap 制御はユーザー責任
 
 - 解決するのは **アドレスだけ**。呼び先 overlay が実行時にメモリにロード
   されている保証は driver / runtime には無い
@@ -882,32 +947,59 @@ PR-B2 で `slangbuild` を拡張し、`main / overlay 0 / overlay 1 / ...` の
 - swap タイミング / 呼び出し可否はすべて **ユーザー責任**
 
 つまり SLANG は呼び出しコードを `CALL <address>` として吐くだけで、その
-address が今そこに居るかは関知しない (低レベル言語の責務分担)。
+address に呼び先 overlay が今居るかは関知しない (低レベル言語の責務分担)。
 
 #### 仕組み (内部、参考)
 
-`slangc` が各 ASM に **Exports** (= 自分が定義する関数: `; FUNC <name>`) と
-**User Function References** (= 自分が呼ぶ他ファイル関数: `; EXTERN <name>`)
-の 2 セクションをコメントとして出力する。`slangbuild` がこれらを検出した
-場合、自動的に prelink モードに入る:
+`slangc` が各 ASM に **Exports** (= 自分が定義する関数) と **User Function
+References** (= 自分が呼ぶ他ファイル関数) の 2 セクションをコメントとして
+出力する。`slangbuild` がこれらを検出した場合、3 pass で prelink:
 
 ```
 Pass 1: 各 target に dummy imports (全 extern を $0000 EQU) を渡してアセンブル
         → 各 target.pass1.sym 取得 (= 自身が定義する label のアドレス確定)
 Pass 2: 全 target の Exports セクションに列挙された関数だけを拾って
         ExportedFunctionTable を構築
-        (注: runtime 関数等 export 宣言されていない label は除外、衝突なし)
-Pass 3: combined imports.asm を生成 (= user function は ExportedFunctionTable
+Pass 3: combined imports.asm を生成 (user function は ExportedFunctionTable
         から、shared runtime / globals は main.sym から解決) → 各 target を
         本番アセンブル
 ```
 
-`-nsa` (no super-assemble) は **prelink モード時のみ** 付与され、Pass 1
-と Pass 3 で同じ target 内のラベルアドレスが一致することを保証する。
-PR-B 既存の単段フロー (cross-ref 無しの場合) では `-nsa` を付けない。
+`-nsa` (no super-assemble) は **prelink モード時のみ** 付与され、Pass 1 と
+Pass 3 で同じ target 内のラベルアドレスが一致することを保証する (二段
+モードでは付けない、単段モードと挙動互換のため)。
 
-#### 制約 (本 PR-B2)
+---
 
-- 関数シンボルのみ対応。overlay private 変数 / overlay work / data の
-  cross-reference は未対応
-- `#MODULE` のネストは禁止 (`#END` 不足の検出を兼ねて compile エラー)
+### overlay loader sample
+
+`examples/MODTEST_RESIDENT.SL` が `#MODULE $3000 RESIDENT` + LSX-Dodgers の
+ファイル API (`FOPEN` / `FREAD` / `FCLOSE`) で overlay バイナリを実行時に
+ロードする最小実装サンプル。
+
+```bash
+# lsx / x1: D88 イメージに PROG.com + M0.BIN を書き込み (実機エミュレータ用)
+make ENV=lsx TARGET=examples/MODTEST_RESIDENT disk_image
+make ENV=x1  TARGET=examples/MODTEST_RESIDENT disk_image
+
+# cpm: RunCPM staging に PROG.com + M0.BIN を配置して即実行
+make ENV=cpm TARGET=examples/MODTEST_RESIDENT run
+```
+
+実装は env ごとに分担:
+- **lsx / x1** (D88, ndc): `Makefile.dist` の `disk_image` ターゲットが `slangbuild --emit disk` を呼ぶ。slangbuild が env file の `disk:` セクション (`template`, `tool: ndc`, `main_name: PROG.COM`, `overlay_name: M{index}.BIN`) を読み、template d88 を **コピーしてから** `ndc P` で `PROG.COM` + `M0.BIN` 群を書き込む (template 自体は不変)
+- **sos / sosx1** (D88, HuDisk): 同じく `slangbuild --emit disk --hudisk` を呼ぶ。env file は `tool: hudisk` + `main_load: "$3000"` / `main_exec: "$3000"` / `overlay_load: "$3000"` を持ち、HuDisk を `-a <d88> <file> -r <load> -g <exec>` で起動 (Linux/macOS では mono 経由)
+- **cpm** (RunCPM): `tools/runcpm.{sh,bat}` が staging dir に `PROG._m*.bin` を `M<N>.BIN` としてコピーしてから RunCPM を起動
+
+`slangbuild input.SL -E lsx --emit disk --disk-image out.d88` の形で直接呼び
+出すこともできる (Makefile.dist 経由はこの 1 行への薄い wrapper)。env file の
+`disk.template` は `--disk-template <path>` で CLI 上書き可能 (= installed 環境
+の代替策 + 実験用)。
+
+旧 `tools/disk-add-overlays.py` は legacy helper として残置 (新規利用は非推奨)。
+msx2 / msxlsx / pc80mk2 / pc88mk2sr 等の d88 系 env は従来の `tools/disk-add-overlays.py`
+経路を維持しており、今後 env ごとに `--emit disk` 経路へ移行予定。
+
+サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
+128 byte 以内であることを前提としている (より大きい overlay は loader 拡張
+が必要)。
