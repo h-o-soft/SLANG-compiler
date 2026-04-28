@@ -875,13 +875,25 @@ overlay に渡すと compiler 内部ラベルとの衝突リスクがあるた�
 
 #### ツール解決順
 
-`AppContext.BaseDirectory` を起点に決定論的に探す:
+`AppContext.BaseDirectory` を起点に決定論的に探す。共通の install dir 検索順は
+`$SLANG_HOME/tools/` → `~/.config/SLANG/tools/` (= `make install` 後の配置先)。
 
 - **slangc**: `--slangc` → 同 publish 物 → `PATH` → `dotnet run` (dev fallback)
-- **AILZ80ASM**: `--asm` → `AILZ80ASM_PATH` 環境変数 → `PATH` → 同梱 `tools/AILZ80ASM`
+- **AILZ80ASM**: `--asm` → `AILZ80ASM_PATH` 環境変数 → `PATH` → 同梱 `{baseDir}/tools/`
+  → 同梱 `{baseDir}/../tools/` → install dir → repo root `tools/` (dev fallback)
+- **ndc** (`--emit disk` の `tool: ndc`): `--ndc` → `NDC_PATH` 環境変数 → 同梱
+  `{baseDir}/tools/` → 同梱 `{baseDir}/../tools/` → install dir → `PATH` →
+  repo root `tools/`
+- **HuDisk** (`--emit disk` の `tool: hudisk`): `--hudisk` → `HUDISK_PATH` 環境変数
+  → 同梱 `{baseDir}/tools/HuDisk.exe` → install dir → `PATH` → repo root。
+  Windows は `.exe` 直接実行、**Linux/macOS は mono 経由起動** (= setup-tools が
+  取得する `HuDisk.exe` は ho-ogino/HuDisk fork の .NET assembly)
 
-配布スクリプト (`Makefile.dist` / `publish.sh`) では `--slangc` / `--asm` を
-明示指定する運用 (PATH 優先は再現性が低いため)。
+配布スクリプト (`Makefile.dist` / `publish.sh`) では `--slangc` / `--asm` /
+`--ndc` / `--hudisk` を明示指定する運用 (PATH 優先は再現性が低いため)。
+`make setup-tools` がライセンス都合で同梱できない `ndc` / `HuDisk.exe` を
+ダウンロードして `tools/` に配置し、`make install` で `~/.config/SLANG/tools/`
+にコピーする (Phase 2 以降)。
 
 ---
 
@@ -957,8 +969,8 @@ make ENV=cpm TARGET=examples/MODTEST_RESIDENT run
 の代替策 + 実験用)。
 
 旧 `tools/disk-add-overlays.py` は legacy helper として残置 (新規利用は非推奨)。
-msx2 / msxlsx / pc80mk2 / pc88mk2sr 等の d88 系 env は Phase 3+ で順次
-`--emit disk` 経路に移行予定。
+msx2 / msxlsx / pc80mk2 / pc88mk2sr 等の d88 系 env は従来の `tools/disk-add-overlays.py`
+経路を維持しており、後続リリースで順次 `--emit disk` 経路へ移行予定。
 
 サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
 128 byte 以内であることを前提としている (より大きい overlay は loader 拡張

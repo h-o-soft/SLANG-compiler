@@ -327,11 +327,18 @@ RunCPM (MIT) を自動的に使うため、特別な設定は不要です。
 
 ### ディスクイメージの準備
 
-エミュレータで実行するには、imagesフォルダに起動ディスクイメージが必要です。
+`slangbuild --emit disk` (Makefile.dist の `disk_image` ターゲット経由) は
+**pristine な template ディスクイメージ** を `images/templates/` から読み、
+**出力先** `images/<env>PROG.d88` 等にコピーしてから main + overlay を書き込みます
+(template 自体は不変、`Makefile.dist` の `DISK_IMAGE` 変数で出力先を上書き可能)。
 
-- LSX-Dodgers用: `images/LSXPROG.D88`
-- S-OS用: `images/SOSPROG.D88`
-- MSX-DOS用: `images/dosformsx.dsk`
+template の入手:
+
+| 環境 | 出力先 (`DISK_IMAGE`) | template (`disk.template`) | 入手方法 |
+|------|----------------------|---------------------------|---------|
+| lsx / x1 | `images/LSXPROG.d88` | `images/templates/LSXPROG.D88` | repo 同梱 |
+| sos / sosx1 | `images/SOSPROG.D88` | `images/templates/SOSPROG.D88` | `make setup-tools` で取得 (S-OS 配布物 + AUTOEXEC.BAT 注入) |
+| MSX-DOS 系 | `images/dosformsx.dsk` | (Phase 3+ で `--emit disk` 統合予定) | `make setup-tools` で取得 |
 
 # LSX-Dodgersバージョン依存について
 

@@ -79,11 +79,11 @@ ASM_OPT =
 # エミュレータ設定（環境に応じて変更）
 ifeq ($(ENV), lsx)
   EMU = @echo "Set EMU variable for your emulator" \#
-  DISK_IMAGE = images/LSXPROG.D88
+  DISK_IMAGE = images/LSXPROG.d88
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), x1)
   EMU = @echo "Set EMU variable for your emulator" \#
-  DISK_IMAGE = images/LSXPROG.D88
+  DISK_IMAGE = images/LSXPROG.d88
   BIN_EXT_ENV = .com
 else ifeq ($(ENV), sos)
   EMU = @echo "Set EMU variable for your emulator" \#
@@ -300,8 +300,9 @@ help:
 	@echo "  make clean         - Clean build artifacts"
 	@echo ""
 	@echo "Options:"
-	@echo "  PREFIX=path        - Installation prefix (default: /usr/local)"
+	@echo "  PREFIX=path        - Installation prefix (default: ~/.local on Unix,"
+	@echo "                       %LOCALAPPDATA%\\Programs\\SLANG on Windows)"
 	@echo "  TARGET=path        - Sample source file (without extension)"
-	@echo "  ENV=env            - Target environment (lsx/x1/sos/msx2/msxrom/cpm)"
+	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/msx2/msxrom/cpm)"
 	@echo ""
 	@echo "Detected OS: $(DETECTED_OS)"

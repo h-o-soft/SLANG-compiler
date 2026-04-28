@@ -23,19 +23,16 @@
   - `examples/MODTEST_RESIDENT.SL` で LSX-Dodgers のファイル API (`FOPEN` / `FREAD`) 経由 overlay ロード → 実機エミュレータ (X Millennium / Cocoa1 等) で動作確認
   - **サンプル限定の最小実装**: 命名は `M<N>.BIN` 固定、overlay 0 が 128 byte 以内であることを前提
 
-- `slangbuild --emit disk` で D88 ディスクイメージまで一気通貫ビルド (#157 Phase 1 + Phase 2)
-  - **Phase 1**: 新オプション `--emit disk` / `--disk-image <path>` / `--ndc <path>` を追加。`slangbuild input.SL -E lsx --emit disk --disk-image out.d88` 1 コマンドで slangc → AILZ80ASM → ndc P まで完結 (z88dk + appmake 相当)
-  - env file (lsx / x1) に新規 `disk:` セクション追加 (`format: d88` / `template: ../../images/templates/LSXPROG.D88` / `tool: ndc` / `main_name: PROG.COM` / `overlay_name: M{index}.BIN`)。pristine template (`images/templates/LSXPROG.D88`) はビルドごとに `$(DISK_IMAGE)` 既定 = `images/LSXPROG.d88` 等の出力先にコピーしてから書き込み、template 自体は不変 (CI で SHA-256 比較で検証)
-  - **Phase 2**: 以下の機能を追加
-    - **sos / sosx1 (HuDisk)** を `--emit disk` 経路に統合。`disk:` schema を `tool: hudisk` + `main_load` / `main_exec` / `overlay_load` (`$3000` / `0x3000` / 10進対応) で拡張。`Makefile.dist` の sos / sosx1 disk_image を `slangbuild --emit disk --hudisk` に書換
-    - **`--disk-template <path>`** で env の `disk.template` を CLI 上書き (installed 環境の代替策 + 実験用)
-    - **`--hudisk <path>`** option 追加。`HUDISK_PATH` 環境変数 / bundled `tools/HuDisk.exe` / installed `~/.config/SLANG/tools/HuDisk.exe` / PATH の順で解決。Linux/macOS では mono 経由起動 (Windows は直接実行)
-    - **`make install` で images/ + tools/ を `~/.config/SLANG/` 配下に配置** (Phase 1 制約解消)。`ToolResolver` の解決順に `~/.config/SLANG/tools/` を追加。これで installed 環境でも `slangbuild --emit disk` が動作
-    - **setup-tools が S-OS template を `images/templates/SOSPROG.D88` に配置** (LSX と整合)
-    - **配布物の HuDisk** は ho-ogino/HuDisk fork の `feature/write-ascii-mode` ブランチ (= ASCII 書き込み可能版、setup-tools が curl で取得済)
-  - `Makefile.dist` の `disk_image` ターゲットは **lsx / x1 / sos / sosx1** で `slangbuild --emit disk` 経路。それ以外の d88 系 env (msx2 / msxlsx / pc80mk2 / pc88mk2sr 等) は従来の `tools/disk-add-overlays.py` 経路を維持 (Phase 3+ で順次移行予定)
+- `slangbuild --emit disk` で D88 ディスクイメージまで一気通貫ビルド (#157)
+  - 新オプション `--emit disk` / `--disk-image <path>` / `--disk-template <path>` / `--ndc <path>` / `--hudisk <path>` を追加。`slangbuild input.SL -E lsx --emit disk --disk-image out.d88` 1 コマンドで slangc → AILZ80ASM → ディスクイメージ書き込みまで完結 (z88dk + appmake 相当)
+  - env file に新規 `disk:` セクション (`format: d88` / `template` / `tool: ndc | hudisk` / `main_name` / `overlay_name` / `main_load` / `main_exec` / `overlay_load`)。アドレス値は `$3000` / `0x3000` / 10進すべて受理
+  - pristine template は **`images/templates/`** に分離 (`images/templates/LSXPROG.D88` / `SOSPROG.D88`)。ビルドごとに `$(DISK_IMAGE)` 出力先にコピーしてから書き込み、template 自体は不変 (CI で SHA-256 比較により検証)
+  - **対応済 env (`Makefile.dist disk_image`)**: lsx / x1 (ndc 経路)、sos / sosx1 (HuDisk 経路)
+  - **従来経路維持 env**: msx2 / msxlsx / pc80mk2 / pc88mk2sr 等は従来の `tools/disk-add-overlays.py` 経路 (= 後続リリースで順次 `--emit disk` へ移行予定)
   - `tools/disk-add-overlays.py` は legacy helper として残置 (旧経路ユーザー保護、新規利用は非推奨)
-  - **動作環境**: `make setup-tools && make install` 後の installed 環境 (`~/.config/SLANG/`)、配布 zip 解凍直後、開発時の repo 直下、いずれでも動作 (Phase 1 の「installed 環境では template 不在で使えない」制約は Phase 2 の `install-lib` 拡張で解消済)。Linux/macOS の sos 系では `mono` (HuDisk.exe 起動用) と setupenv での S-OS template 取得が前提
+  - **動作環境**: `make setup-tools && make install` 後の installed 環境 (`~/.config/SLANG/`)、配布 zip 解凍直後、開発時の repo 直下、いずれでも動作。`make install` で `images/` + `tools/` も `~/.config/SLANG/` に配置、`ToolResolver` が install dir 配下を検索する。Linux/macOS の sos 系では `mono` (HuDisk.exe 起動用) と setupenv での S-OS template 取得が前提
+  - **配布物の HuDisk**: `make setup-tools` が ho-ogino/HuDisk fork の `feature/write-ascii-mode` ブランチ (= ASCII 書き込み可能版) を curl で取得。Windows は `.exe` 直接実行、Linux/macOS は mono 経由起動
+  - **配布同梱**: ライセンス都合で `ndc` / `HuDisk.exe` 本体は配布 zip に含めない (= `make setup-tools` でユーザー側ダウンロード)
 
 - `make install` の default を `~/.local/bin` (= XDG Base Dir Spec) に変更 (Linux/macOS、Windows は元々 `%LOCALAPPDATA%\Programs\SLANG` でユーザーローカル)
   - 旧 default `/usr/local/bin` は sudo 必須で、かつ sudo 起動だと `$(HOME)/.config/SLANG` の `$HOME` が `/root` に取られて lib が user dir に入らない問題があった
