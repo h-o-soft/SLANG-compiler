@@ -242,6 +242,45 @@ public class ToolResolver
             + "Specify --ndc <path> explicitly.");
     }
 
+    /// <summary>
+    /// HuDisk (S-OS hu-basic 系 .dsk/.d88 操作ツール) を解決。`--emit disk` の
+    /// tool: hudisk 経路で必要 (sos / sosx1 等)。解決順は ResolveNdc と同じ:
+    /// 1) cliOverride (--hudisk)
+    /// 2) HUDISK_PATH 環境変数
+    /// 3) {baseDir}/tools/HuDisk(.exe)
+    /// 4) {baseDir}/../tools/HuDisk(.exe)
+    /// 5) PATH 上の HuDisk
+    /// 6) repo root 基準 tools/HuDisk(.exe) (dev fallback)
+    /// </summary>
+    public ResolvedTool ResolveHudisk(string? cliOverride)
+    {
+        if (!string.IsNullOrEmpty(cliOverride) && File.Exists(cliOverride))
+            return new ResolvedTool(cliOverride, ResolutionKind.DirectExe);
+
+        var envPath = Environment.GetEnvironmentVariable("HUDISK_PATH");
+        if (!string.IsNullOrEmpty(envPath) && File.Exists(envPath))
+            return new ResolvedTool(envPath, ResolutionKind.DirectExe);
+
+        var name = $"HuDisk{ExeSuffix}";
+
+        var bundledSibling = Path.Combine(_baseDir, "tools", name);
+        if (File.Exists(bundledSibling)) return new ResolvedTool(bundledSibling, ResolutionKind.DirectExe);
+        var bundledParent = Path.Combine(_baseDir, "..", "tools", name);
+        if (File.Exists(bundledParent))
+            return new ResolvedTool(Path.GetFullPath(bundledParent), ResolutionKind.DirectExe);
+
+        var onPath = FindOnPath(name);
+        if (onPath != null) return new ResolvedTool(onPath, ResolutionKind.DirectExe);
+
+        var repoTools = LocateRepoFile($"tools/{name}");
+        if (repoTools != null) return new ResolvedTool(repoTools, ResolutionKind.DirectExe);
+
+        throw new FileNotFoundException(
+            "HuDisk not found. Tried: --hudisk, $HUDISK_PATH, bundled "
+            + "{baseDir}/tools, {baseDir}/../tools, PATH, and repo root. "
+            + "Specify --hudisk <path> explicitly.");
+    }
+
     private string? ResolveExecutable(string? cliOverride, string fileName, bool includeBundledTools)
     {
         if (!string.IsNullOrEmpty(cliOverride) && File.Exists(cliOverride))

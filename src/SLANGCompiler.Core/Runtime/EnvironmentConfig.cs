@@ -47,4 +47,15 @@ public class DiskConfig
     /// `{index}` placeholder を 0..N に展開して使う。
     /// </summary>
     public string OverlayName { get; set; } = "";
+
+    /// <summary>HuDisk の <c>-r &lt;load&gt;</c> 引数。null なら付けない (= ndc 等の
+    /// load address 概念無しツール)。</summary>
+    public int? MainLoad { get; set; }
+
+    /// <summary>HuDisk の <c>-g &lt;exec&gt;</c> 引数。null なら付けない。</summary>
+    public int? MainExec { get; set; }
+
+    /// <summary>overlay の load address。null なら -r を付けない。
+    /// (overlay には exec を付けない sos の慣習)</summary>
+    public int? OverlayLoad { get; set; }
 }

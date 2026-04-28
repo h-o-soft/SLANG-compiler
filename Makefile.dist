@@ -132,12 +132,16 @@ ifeq ($(DETECTED_OS),Windows)
 	-$(MKDIR) "$(CONFIG_DIR)"
 	-$(MKDIR) "$(CONFIG_DIR)\include"
 	-$(MKDIR) "$(CONFIG_DIR)\runtime"
+	-$(MKDIR) "$(CONFIG_DIR)\images"
+	-$(MKDIR) "$(CONFIG_DIR)\images\templates"
 	$(XCOPY) include "$(CONFIG_DIR)\include"
 	$(XCOPY) runtime "$(CONFIG_DIR)\runtime"
+	$(XCOPY) images "$(CONFIG_DIR)\images"
 else
 	$(MKDIR) $(CONFIG_DIR)
 	$(XCOPY) include $(CONFIG_DIR)/
 	$(XCOPY) runtime $(CONFIG_DIR)/
+	$(XCOPY) images $(CONFIG_DIR)/
 endif
 
 # アンインストール

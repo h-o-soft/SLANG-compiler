@@ -67,6 +67,13 @@ public class EnvironmentLoader
                 MainName = raw.Disk.MainName ?? "",
                 OverlayName = raw.Disk.OverlayName ?? "",
             };
+            // HuDisk の -r / -g 用 (lsx/x1 では未指定 = null のまま)
+            if (!string.IsNullOrEmpty(raw.Disk.MainLoad))
+                config.Disk.MainLoad = ParseAddress(raw.Disk.MainLoad);
+            if (!string.IsNullOrEmpty(raw.Disk.MainExec))
+                config.Disk.MainExec = ParseAddress(raw.Disk.MainExec);
+            if (!string.IsNullOrEmpty(raw.Disk.OverlayLoad))
+                config.Disk.OverlayLoad = ParseAddress(raw.Disk.OverlayLoad);
         }
 
         return config;
@@ -126,5 +133,15 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "overlay_name")]
         public string? OverlayName { get; set; }
+
+        // HuDisk -r / -g 用 (string で受けて ParseAddress で int 化)
+        [YamlMember(Alias = "main_load")]
+        public string? MainLoad { get; set; }
+
+        [YamlMember(Alias = "main_exec")]
+        public string? MainExec { get; set; }
+
+        [YamlMember(Alias = "overlay_load")]
+        public string? OverlayLoad { get; set; }
     }
 }
