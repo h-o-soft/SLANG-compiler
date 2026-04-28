@@ -338,7 +338,7 @@ template の入手:
 |------|----------------------|---------------------------|---------|
 | lsx / x1 | `images/LSXPROG.d88` | `images/templates/LSXPROG.D88` | repo 同梱 |
 | sos / sosx1 | `images/SOSPROG.D88` | `images/templates/SOSPROG.D88` | `make setup-tools` で取得 (S-OS 配布物 + AUTOEXEC.BAT 注入) |
-| MSX-DOS 系 | `images/dosformsx.dsk` | (Phase 3+ で `--emit disk` 統合予定) | `make setup-tools` で取得 |
+| MSX-DOS 系 | `images/dosformsx.dsk` | (従来経路を維持、今後 `--emit disk` 経路へ移行予定) | `make setup-tools` で取得 |
 
 # LSX-Dodgersバージョン依存について
 

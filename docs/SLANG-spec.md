@@ -998,7 +998,7 @@ make ENV=cpm TARGET=examples/MODTEST_RESIDENT run
 
 旧 `tools/disk-add-overlays.py` は legacy helper として残置 (新規利用は非推奨)。
 msx2 / msxlsx / pc80mk2 / pc88mk2sr 等の d88 系 env は従来の `tools/disk-add-overlays.py`
-経路を維持しており、後続リリースで順次 `--emit disk` 経路へ移行予定。
+経路を維持しており、今後 env ごとに `--emit disk` 経路へ移行予定。
 
 サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
 128 byte 以内であることを前提としている (より大きい overlay は loader 拡張
