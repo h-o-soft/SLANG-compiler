@@ -22,12 +22,19 @@ public class Driver
         public string Environment { get; set; } = "lsx";
         public string? AsmPath { get; set; }
         public string? SlangcPath { get; set; }
+        public string? NdcPath { get; set; }
         public bool KeepAsm { get; set; }
         public bool Verbose { get; set; }
         /// <summary>slangc に pass-through する `-I &lt;path&gt;` の値リスト</summary>
         public List<string> IncludePaths { get; } = new();
         /// <summary>slangc に pass-through する `-L &lt;path&gt;` の値リスト</summary>
         public List<string> LibraryPaths { get; } = new();
+
+        /// <summary>"bin" (default) or "disk"。"disk" は env の `disk:` セクション必須。</summary>
+        public string EmitMode { get; set; } = "bin";
+        /// <summary>`--disk-image &lt;path&gt;`。EmitMode == "disk" 時のみ意味を持つ。
+        /// null の場合は &lt;output_prefix&gt;.d88 を使う。</summary>
+        public string? DiskImagePath { get; set; }
     }
 
     private readonly Options _opts;
@@ -137,6 +144,17 @@ public class Driver
                 int rc = AssemblePrelink(runner, plan, mainBin, mainSym,
                                          outputDir, intermediates);
                 if (rc != 0) return rc;
+            }
+
+            // === Step 4: --emit disk → disk image 組み立て ===
+            if (_opts.EmitMode == "disk")
+            {
+                var overlayBins = overlayAsms
+                    .Select(a => Path.Combine(outputDir,
+                        Path.GetFileNameWithoutExtension(a) + ".bin"))
+                    .ToList();
+                int diskRc = BuildDiskImage(mainBin, overlayBins, outputBase);
+                if (diskRc != 0) return diskRc;
             }
 
             if (_opts.Verbose)
@@ -315,6 +333,61 @@ public class Driver
         }
         intermediates.Add(mainSym);
         return 0;
+    }
+
+    /// <summary>
+    /// `--emit disk` 用の disk image 組み立て phase。
+    /// env file を Core の <see cref="EnvironmentResolver"/> 経由で解決し
+    /// (= slangc と検索順を一致させる)、disk セクションが無ければ error。
+    /// Phase 1 は format=d88 / tool=ndc のみサポート。
+    /// </summary>
+    private int BuildDiskImage(string mainBin, IList<string> overlayBins, string outputBase)
+    {
+        // env file 解決 (= slangc と同じ resolver / search paths を使用)
+        var pathResolver = new PathResolver(_opts.IncludePaths, _opts.LibraryPaths);
+        var searchPaths = pathResolver.GetRuntimePaths().Concat(pathResolver.GetLibPaths());
+        var resolved = EnvironmentResolver.Resolve(_opts.Environment, searchPaths);
+        if (resolved == null)
+        {
+            Console.Error.WriteLine(
+                $"slangbuild: --emit disk: env not found: {_opts.Environment}");
+            return 1;
+        }
+        var (envConfig, envPath) = resolved.Value;
+        if (_opts.Verbose)
+            Console.Error.WriteLine($"slangbuild: disk: env loaded from {envPath}");
+
+        if (envConfig.Disk == null)
+        {
+            Console.Error.WriteLine(
+                $"slangbuild: --emit disk requires `disk:` section in env: {envPath}");
+            return 1;
+        }
+
+        // Phase 1 制約 (format / tool)
+        if (envConfig.Disk.Format != "d88")
+        {
+            Console.Error.WriteLine(
+                $"slangbuild: Phase 1 supports only disk.format: d88 (got: {envConfig.Disk.Format})");
+            return 1;
+        }
+        if (envConfig.Disk.Tool != "ndc")
+        {
+            Console.Error.WriteLine(
+                $"slangbuild: Phase 1 supports only disk.tool: ndc (got: {envConfig.Disk.Tool})");
+            return 1;
+        }
+
+        // 出力 disk image path: --disk-image 指定があればそれ、無ければ <output_prefix>.d88
+        var diskOut = !string.IsNullOrEmpty(_opts.DiskImagePath)
+            ? Path.GetFullPath(_opts.DiskImagePath)
+            : outputBase + ".d88";
+
+        var ndc = _resolver.ResolveNdc(_opts.NdcPath);
+        if (_opts.Verbose) Console.Error.WriteLine($"slangbuild: using ndc: {ndc.Path}");
+
+        var builder = new DiskImageBuilder(envConfig.Disk, ndc.Path, _opts.Verbose);
+        return builder.Build(mainBin, overlayBins, diskOut);
     }
 
     private int SpawnSlangc(ResolvedTool slangc, string inputPath, string outAsmPath, string env)

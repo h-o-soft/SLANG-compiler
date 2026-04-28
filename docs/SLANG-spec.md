@@ -947,10 +947,12 @@ make ENV=cpm TARGET=examples/MODTEST_RESIDENT run
 ```
 
 実装は env ごとに分担:
-- **lsx / x1** (D88): `Makefile.dist` の `disk_image` ターゲットが `tools/disk-add-overlays.{sh,bat}` を呼び、`NDC P` で `PROG._m*.bin` を `M<N>.BIN` として d88 に書き込む
+- **lsx / x1** (D88): `Makefile.dist` の `disk_image` ターゲットが `slangbuild --emit disk` を呼ぶ。slangbuild が env file (`runtime/env/lsx.env` / `x1.env`) の `disk:` セクション (`template`, `main_name: PROG.COM`, `overlay_name: M{index}.BIN`) を読み、template d88 を **コピーしてから** `ndc P` で `PROG.COM` + `M0.BIN` 群を書き込む (template 自体は不変)
 - **cpm** (RunCPM): `tools/runcpm.{sh,bat}` が staging dir に `PROG._m*.bin` を `M<N>.BIN` としてコピーしてから RunCPM を起動
 
-両者とも Windows / POSIX 両対応 (`.sh` / `.bat` のペア)。
+`slangbuild input.SL -E lsx --emit disk --disk-image out.d88` の形で直接呼び
+出すこともできる (Makefile.dist 経由はこの 1 行への薄い wrapper)。
+旧 `tools/disk-add-overlays.py` は legacy helper として残置 (新規利用は非推奨)。
 
 サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
 128 byte 以内であることを前提としている (より大きい overlay は loader 拡張

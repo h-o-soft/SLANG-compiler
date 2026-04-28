@@ -47,6 +47,15 @@ internal class Program
                 case "--slangc" when i + 1 < args.Length:
                     opts.SlangcPath = args[++i];
                     break;
+                case "--ndc" when i + 1 < args.Length:
+                    opts.NdcPath = args[++i];
+                    break;
+                case "--emit" when i + 1 < args.Length:
+                    opts.EmitMode = args[++i];
+                    break;
+                case "--disk-image" when i + 1 < args.Length:
+                    opts.DiskImagePath = args[++i];
+                    break;
                 case "-I" when i + 1 < args.Length:
                     opts.IncludePaths.Add(args[++i]);
                     break;
@@ -75,6 +84,20 @@ internal class Program
             }
         }
 
+        // option validation
+        if (opts.EmitMode != "bin" && opts.EmitMode != "disk")
+        {
+            Console.Error.WriteLine(
+                $"slangbuild: --emit must be 'bin' or 'disk' (got: {opts.EmitMode})");
+            return 1;
+        }
+        if (opts.EmitMode != "disk" && !string.IsNullOrEmpty(opts.DiskImagePath))
+        {
+            Console.Error.WriteLine(
+                "slangbuild: --disk-image requires --emit disk");
+            return 1;
+        }
+
         try
         {
             var driver = new Driver(opts);
@@ -99,6 +122,9 @@ internal class Program
         Console.Error.WriteLine("  -L <path>       Library search path passed to slangc (repeatable)");
         Console.Error.WriteLine("  --asm <path>    AILZ80ASM executable path (override resolution)");
         Console.Error.WriteLine("  --slangc <path> slangc executable path (override resolution)");
+        Console.Error.WriteLine("  --ndc <path>    ndc executable path (override resolution; --emit disk)");
+        Console.Error.WriteLine("  --emit <mode>   Output mode: 'bin' (default) or 'disk' (build d88)");
+        Console.Error.WriteLine("  --disk-image <p> Output disk image path (default: <output_prefix>.d88)");
         Console.Error.WriteLine("  --keep-asm      Keep intermediate ASM / sym files");
         Console.Error.WriteLine("  --verbose       Show subprocess (slangc / AILZ80ASM) output");
         Console.Error.WriteLine("  -h, --help      Show this help");
@@ -107,5 +133,6 @@ internal class Program
         Console.Error.WriteLine("Tool resolution order:");
         Console.Error.WriteLine("  slangc:    --slangc → bundled bin → PATH → dotnet run (dev)");
         Console.Error.WriteLine("  AILZ80ASM: --asm → AILZ80ASM_PATH env → PATH → bundled tools/ → repo root (dev)");
+        Console.Error.WriteLine("  ndc:       --ndc → NDC_PATH env → bundled tools/ → PATH → repo root (dev)");
     }
 }

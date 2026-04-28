@@ -181,16 +181,14 @@ disk_image: $(IMGPROG)
 	$(HUDISK) -d $(DISK_IMAGE) PROG.bin
 	$(HUDISK) -a $(DISK_IMAGE) $(IMGPROG) -r 3000 -g 3000
 else
-# lsx / x1 等 (LSX-Dodgers d88 系)。main + overlay (M0.BIN..) を NDC で書き込む。
-# overlay の disk staging は examples/MODTEST_RESIDENT.SL 用の sample 機能。
-# シェルスクリプト(.sh/.bat)経由は Windows の cmd.exe <-> sh.exe 引数変換で壊れる
-# ことがあるため、Python 製ヘルパーに統一。Python は OS 依存のラッパー無しで動く。
-ADD_OVERLAYS = $(PYTHON) tools/disk-add-overlays.py
-
-disk_image: $(IMGPROG)
-	- $(NDC) D $(DISK_IMAGE) 0 PROG$(BIN_EXT_ENV)
-	$(NDC) P $(DISK_IMAGE) 0 $(IMGPROG)
-	$(ADD_OVERLAYS) $(NDC) $(DISK_IMAGE) $(dir $(TARGET))
+# lsx / x1 等 (LSX-Dodgers d88 系)。Issue #157 Phase 1 で `slangbuild --emit disk`
+# に統合された: 1 コマンドで slangc → AILZ80ASM → ndc P (template d88 をコピーして
+# main + overlay 書き込み) まで完結する。template / 内部ファイル名 (PROG.COM /
+# M0.BIN..) は env file (runtime/env/lsx.env) の `disk:` セクションが規定。
+disk_image: $(TARGET)$(SRC_EXT)
+	$(SLANGBUILD) $< -E $(SLANGENV) -I include \
+		--slangc $(SLANGC) --asm $(ASM) --ndc $(NDC) \
+		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
 endif
 
 # 拡張子変換

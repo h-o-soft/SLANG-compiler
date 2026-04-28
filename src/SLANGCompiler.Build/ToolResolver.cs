@@ -203,6 +203,45 @@ public class ToolResolver
             + "Specify --asm <path> explicitly.");
     }
 
+    /// <summary>
+    /// ndc (d88 disk image 操作ツール) を解決。`--emit disk` で必要。
+    /// 解決順 (環境変数を bundled より優先 = ユーザー override が一番強い):
+    /// 1) cliOverride (--ndc)
+    /// 2) NDC_PATH 環境変数
+    /// 3) {baseDir}/tools/ndc(.exe) (= 配布物同梱)
+    /// 4) {baseDir}/../tools/ndc(.exe) (= dev publish レイアウト)
+    /// 5) PATH 上の ndc
+    /// 6) repo root 基準 tools/ndc(.exe) (dev fallback)
+    /// </summary>
+    public ResolvedTool ResolveNdc(string? cliOverride)
+    {
+        if (!string.IsNullOrEmpty(cliOverride) && File.Exists(cliOverride))
+            return new ResolvedTool(cliOverride, ResolutionKind.DirectExe);
+
+        var envPath = Environment.GetEnvironmentVariable("NDC_PATH");
+        if (!string.IsNullOrEmpty(envPath) && File.Exists(envPath))
+            return new ResolvedTool(envPath, ResolutionKind.DirectExe);
+
+        var name = $"ndc{ExeSuffix}";
+
+        var bundledSibling = Path.Combine(_baseDir, "tools", name);
+        if (File.Exists(bundledSibling)) return new ResolvedTool(bundledSibling, ResolutionKind.DirectExe);
+        var bundledParent = Path.Combine(_baseDir, "..", "tools", name);
+        if (File.Exists(bundledParent))
+            return new ResolvedTool(Path.GetFullPath(bundledParent), ResolutionKind.DirectExe);
+
+        var onPath = FindOnPath(name);
+        if (onPath != null) return new ResolvedTool(onPath, ResolutionKind.DirectExe);
+
+        var repoTools = LocateRepoFile($"tools/{name}");
+        if (repoTools != null) return new ResolvedTool(repoTools, ResolutionKind.DirectExe);
+
+        throw new FileNotFoundException(
+            "ndc not found. Tried: --ndc, $NDC_PATH, bundled "
+            + "{baseDir}/tools, {baseDir}/../tools, PATH, and repo root. "
+            + "Specify --ndc <path> explicitly.");
+    }
+
     private string? ResolveExecutable(string? cliOverride, string fileName, bool includeBundledTools)
     {
         if (!string.IsNullOrEmpty(cliOverride) && File.Exists(cliOverride))

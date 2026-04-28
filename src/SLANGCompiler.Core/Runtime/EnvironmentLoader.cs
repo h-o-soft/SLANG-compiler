@@ -49,6 +49,26 @@ public class EnvironmentLoader
             }
         }
 
+        // disk セクション (slangbuild --emit disk 用)
+        if (raw.Disk != null)
+        {
+            // template path は env file dir 基準の相対パスを絶対化して保存
+            // (= caller 側で再計算しなくて良いように)
+            var envDir = Path.GetDirectoryName(Path.GetFullPath(envFilePath))!;
+            var templateAbs = string.IsNullOrEmpty(raw.Disk.Template)
+                ? ""
+                : Path.GetFullPath(Path.Combine(envDir, raw.Disk.Template));
+
+            config.Disk = new DiskConfig
+            {
+                Format = raw.Disk.Format ?? "",
+                Template = templateAbs,
+                Tool = raw.Disk.Tool ?? "",
+                MainName = raw.Disk.MainName ?? "",
+                OverlayName = raw.Disk.OverlayName ?? "",
+            };
+        }
+
         return config;
     }
 
@@ -85,5 +105,26 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "optimize")]
         public string? Optimize { get; set; }
+
+        [YamlMember(Alias = "disk")]
+        public EnvFileDiskData? Disk { get; set; }
+    }
+
+    private class EnvFileDiskData
+    {
+        [YamlMember(Alias = "format")]
+        public string? Format { get; set; }
+
+        [YamlMember(Alias = "template")]
+        public string? Template { get; set; }
+
+        [YamlMember(Alias = "tool")]
+        public string? Tool { get; set; }
+
+        [YamlMember(Alias = "main_name")]
+        public string? MainName { get; set; }
+
+        [YamlMember(Alias = "overlay_name")]
+        public string? OverlayName { get; set; }
     }
 }
