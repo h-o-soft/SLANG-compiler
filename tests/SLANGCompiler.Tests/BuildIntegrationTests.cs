@@ -510,9 +510,10 @@ MYSUB() BEGIN END;
     [Fact]
     public void EmitDisk_TemplateNotMutated()
     {
-        // Codex 重要指摘: template d88 (= images/LSXPROG.D88) を direct mutate
-        // してはいけない。build 前後で SHA-256 が一致することを CI で保証する。
-        var template = Path.Combine(_projectRoot, "images", "LSXPROG.d88");
+        // Codex 重要指摘: template d88 (= images/templates/LSXPROG.D88) を
+        // direct mutate してはいけない。build 前後で SHA-256 が一致することを
+        // CI で保証する。
+        var template = Path.Combine(_projectRoot, "images", "templates", "LSXPROG.D88");
         Assert.True(File.Exists(template), $"template not found: {template}");
         var hashBefore = ComputeSha256(template);
 

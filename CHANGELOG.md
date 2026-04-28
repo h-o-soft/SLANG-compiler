@@ -25,8 +25,8 @@
 
 - `slangbuild --emit disk` で D88 ディスクイメージまで一気通貫ビルド (#157 Phase 1)
   - 新オプション `--emit disk` / `--disk-image <path>` / `--ndc <path>` を追加。`slangbuild input.SL -E lsx --emit disk --disk-image out.d88` 1 コマンドで slangc → AILZ80ASM → ndc P まで完結 (z88dk + appmake 相当)
-  - env file (lsx / x1) に新規 `disk:` セクション追加 (`format: d88` / `template: ../../images/LSXPROG.D88` / `tool: ndc` / `main_name: PROG.COM` / `overlay_name: M{index}.BIN`)。template の D88 はビルドごとにコピーしてから書き込み、原本 (`images/LSXPROG.D88`) は不変 (CI で SHA-256 比較で検証)
-  - `Makefile.dist` の `disk_image` ターゲット (lsx / x1) は `slangbuild --emit disk` への薄い wrapper に簡素化 (`tools/disk-add-overlays.py` 経路を廃止)。Phase 1 のサポート env は lsx / x1 の D88 のみ — sos / msx2 / msxrom / cpm / msxlsx 等は Phase 2+ 予定
+  - env file (lsx / x1) に新規 `disk:` セクション追加 (`format: d88` / `template: ../../images/templates/LSXPROG.D88` / `tool: ndc` / `main_name: PROG.COM` / `overlay_name: M{index}.BIN`)。pristine template (`images/templates/LSXPROG.D88`) はビルドごとに `$(DISK_IMAGE)` 既定 = `images/LSXPROG.d88` 等の出力先にコピーしてから書き込み、template 自体は不変 (CI で SHA-256 比較で検証)
+  - `Makefile.dist` の `disk_image` ターゲットは **lsx / x1** のみ `slangbuild --emit disk` 経路に切替。それ以外の d88 系 env (msx2 / msxlsx / pc80mk2 / pc88mk2sr 等) は従来の `tools/disk-add-overlays.py` 経路を維持 (= Phase 1 では挙動変えない)。Phase 2+ で env ごとに `disk:` セクションを追加して順次新経路へ移行予定
   - **配布 zip / repo layout 前提**: `make install` 経由 (`~/.config/SLANG/runtime/` のみ展開) では `images/LSXPROG.D88` が無いため `--emit disk` は使えない。配布 zip 内 `images/` 同梱がある場合のみ動作
   - `tools/disk-add-overlays.py` は新規利用は非推奨 (legacy helper)。旧経路 (= 独自 Makefile / shell スクリプト) からの呼び出し用に残置
 

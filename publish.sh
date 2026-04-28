@@ -43,9 +43,12 @@ createRelease() {
   cp ../../tools/disk-add-overlays.py tools/ 2>/dev/null
 
   cp -r ../../env .
-  # images: LSXPROG.d88のみ
-  mkdir -p images
+  # images: LSXPROG.d88 (デフォルトの DISK_IMAGE 出力先) +
+  # templates/LSXPROG.D88 (slangbuild --emit disk が必ずコピーしてから書き込む
+  # pristine 元データ。env file の disk.template が指す)
+  mkdir -p images/templates
   cp ../../images/LSXPROG.d88 images/
+  cp ../../images/templates/LSXPROG.D88 images/templates/
   cp -r ../../docs .
   cp -r ../../syntax .
   cp ../../Makefile.dist ./Makefile

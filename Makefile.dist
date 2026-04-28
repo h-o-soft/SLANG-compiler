@@ -171,6 +171,7 @@ endif
 $(OUTPROG): $(TARGET)$(SRC_EXT)
 	$(SLANGBUILD) $< -E $(SLANGENV) -I include --slangc $(SLANGC) --asm $(ASM) -o $(dir $(TARGET))PROG
 
+
 # ディスクイメージ作成
 ifeq ($(ENV), cpm)
 disk_image: $(OUTPROG)
@@ -180,15 +181,30 @@ else ifeq ($(ENV), sos)
 disk_image: $(IMGPROG)
 	$(HUDISK) -d $(DISK_IMAGE) PROG.bin
 	$(HUDISK) -a $(DISK_IMAGE) $(IMGPROG) -r 3000 -g 3000
-else
-# lsx / x1 等 (LSX-Dodgers d88 系)。Issue #157 Phase 1 で `slangbuild --emit disk`
-# に統合された: 1 コマンドで slangc → AILZ80ASM → ndc P (template d88 をコピーして
-# main + overlay 書き込み) まで完結する。template / 内部ファイル名 (PROG.COM /
-# M0.BIN..) は env file (runtime/env/lsx.env) の `disk:` セクションが規定。
+else ifeq ($(ENV), lsx)
+# Issue #157 Phase 1: `slangbuild --emit disk` に統合 (lsx / x1 のみ)。
+# 1 コマンドで slangc → AILZ80ASM → template d88 を $(DISK_IMAGE) にコピー →
+# ndc P で main + overlay 書き込みまで完結する。template / 内部ファイル名
+# (PROG.COM / M0.BIN..) は env file の `disk:` セクションが規定。
 disk_image: $(TARGET)$(SRC_EXT)
 	$(SLANGBUILD) $< -E $(SLANGENV) -I include \
 		--slangc $(SLANGC) --asm $(ASM) --ndc $(NDC) \
 		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
+else ifeq ($(ENV), x1)
+disk_image: $(TARGET)$(SRC_EXT)
+	$(SLANGBUILD) $< -E $(SLANGENV) -I include \
+		--slangc $(SLANGC) --asm $(ASM) --ndc $(NDC) \
+		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
+else
+# その他 d88 系 (msx2 / msxlsx / pc80mk2 / pc88mk2sr 等): Phase 1 では
+# --emit disk 未対応のため、従来の ndc P + Python helper 経路を維持。
+# Phase 2+ で env ごとに `disk:` セクションを追加して順次新経路へ移行予定。
+ADD_OVERLAYS = $(PYTHON) tools/disk-add-overlays.py
+
+disk_image: $(IMGPROG)
+	- $(NDC) D $(DISK_IMAGE) 0 PROG$(BIN_EXT_ENV)
+	$(NDC) P $(DISK_IMAGE) 0 $(IMGPROG)
+	$(ADD_OVERLAYS) $(NDC) $(DISK_IMAGE) $(dir $(TARGET))
 endif
 
 # 拡張子変換

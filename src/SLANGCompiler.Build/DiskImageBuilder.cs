@@ -156,9 +156,21 @@ public class DiskImageBuilder
             Console.Error.WriteLine($"+ {_ndcPath} {string.Join(" ", args)}");
 
         using var proc = Process.Start(psi)!;
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit(30_000);
+        // pipe バッファが埋まると child が write block するので、stdout/stderr は
+        // async で吸い続ける。同期 ReadToEnd() を先に呼ぶと WaitForExit の timeout
+        // が効かない (child が hang していても pipe close を待ち続けるため)。
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        if (!proc.WaitForExit(30_000))
+        {
+            try { proc.Kill(entireProcessTree: true); } catch { /* best effort */ }
+            Console.Error.WriteLine(
+                $"slangbuild: ndc timed out after 30s: {_ndcPath} {string.Join(" ", args)}");
+            return 1;
+        }
+        // process 終了後なので read は即座に完了する
+        var stdout = stdoutTask.GetAwaiter().GetResult();
+        var stderr = stderrTask.GetAwaiter().GetResult();
 
         if (_verbose)
         {
