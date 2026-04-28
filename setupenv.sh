@@ -9,26 +9,26 @@ fi
 # mac or linux
 TARGETENV=$1
 
-function Error()
-{
+# POSIX sh 互換 (= Linux の /bin/sh = dash でも動く形)。
+# 旧版の `function name() { ... }` は bash 拡張で dash で syntax error になる。
+Error() {
   echo Error!
-  echo 
+  echo
   cd $CURPATH
   exit 1
 }
 
-function CmdError() {
+CmdError() {
   echo !
   echo             _________________
   echo --------------------------------------------
   echo Error! $CMDNAME がインストールされていません
-  echo 
+  echo
   cd $CURPATH
   exit 1
 }
 
 CURPATH=$(cd $(dirname $0);pwd)/
-PROGPATH=`readlink -f $1`
 
 # コマンドがあるかチェック
 CMDNAME=curl
@@ -64,10 +64,10 @@ cd temp
 
 # NDCをダウンロード
 
-# Mac
-if [ $TARGETENV == "mac" ]; then
+# Mac (POSIX sh では `==` ではなく `=`)
+if [ "$TARGETENV" = "mac" ]; then
   DLPATH=https://euee.web.fc2.com/tool/ndcm0a08arm.tgz
-elif [ $TARGETENV == "linux" ]; then
+elif [ "$TARGETENV" = "linux" ]; then
   DLPATH=https://euee.web.fc2.com/tool/ndcl0a08x64.tgz
 else
   Error
@@ -90,9 +90,9 @@ cp HuDisk.exe $TOOLPATH
 rm HuDisk.exe
 
 # AILZ80ASMをダウンロード
-if [ $TARGETENV == "mac" ]; then
+if [ "$TARGETENV" = "mac" ]; then
   DLPATH=https://github.com/AILight/AILZ80ASM/releases/download/v1.0.31/AILZ80ASM.osx-x64.v1.0.31.zip
-elif [ $TARGETENV == "linux" ]; then
+elif [ "$TARGETENV" = "linux" ]; then
   DLPATH=https://github.com/AILight/AILZ80ASM/releases/download/v1.0.31/AILZ80ASM.linux-x64.v1.0.31.zip
 else
   Error
