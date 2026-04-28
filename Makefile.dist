@@ -234,9 +234,9 @@ disk_image: $(TARGET)$(SRC_EXT)
 		--slangc $(SLANGC) --asm $(ASM) --ndc $(NDC) \
 		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
 else
-# その他 d88 系 (msx2 / msxlsx / pc80mk2 / pc88mk2sr 等): Phase 1 では
-# --emit disk 未対応のため、従来の ndc P + Python helper 経路を維持。
-# Phase 2+ で env ごとに `disk:` セクションを追加して順次新経路へ移行予定。
+# その他 d88 系 (msx2 / msxlsx / pc80mk2 / pc88mk2sr 等): 未統合 env は
+# 従来の ndc P + Python helper 経路を維持。今後 env ごとに `disk:` セクション
+# を追加して順次新 `slangbuild --emit disk` 経路へ移行する。
 ADD_OVERLAYS = $(PYTHON) tools/disk-add-overlays.py
 
 disk_image: $(IMGPROG)

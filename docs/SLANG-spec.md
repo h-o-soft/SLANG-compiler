@@ -906,7 +906,7 @@ overlay に渡すと compiler 内部ラベルとの衝突リスクがあるた�
 `AppContext.BaseDirectory` を起点に決定論的に探す。共通の install dir 検索順は
 `$SLANG_HOME/tools/` → `~/.config/SLANG/tools/` (= `make install` 後の配置先)。
 
-- **slangc**: `--slangc` → 同 publish 物 → `PATH` → `dotnet run` (dev fallback)
+- **slangc**: `--slangc` → 同梱 `{baseDir}/slangc(.exe)` / `{baseDir}/bin/slangc(.exe)` → dev publish 物 (`src/SLANGCompiler.CLI/bin/Release/net8.0/<rid>/publish/slangc`) → `PATH` → `dotnet run --project <csproj>` (dev fallback)
 - **AILZ80ASM**: `--asm` → `AILZ80ASM_PATH` 環境変数 → `PATH` → 同梱 `{baseDir}/tools/`
   → 同梱 `{baseDir}/../tools/` → install dir → repo root `tools/` (dev fallback)
 - **ndc** (`--emit disk` の `tool: ndc`): `--ndc` → `NDC_PATH` 環境変数 → 同梱
@@ -921,7 +921,7 @@ overlay に渡すと compiler 内部ラベルとの衝突リスクがあるた�
 `--ndc` / `--hudisk` を明示指定する運用 (PATH 優先は再現性が低いため)。
 `make setup-tools` がライセンス都合で同梱できない `ndc` / `HuDisk.exe` を
 ダウンロードして `tools/` に配置し、`make install` で `~/.config/SLANG/tools/`
-にコピーする (Phase 2 以降)。
+にコピーする。
 
 ---
 
