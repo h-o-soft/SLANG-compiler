@@ -3,6 +3,7 @@ using SLANGCompiler.Lexer;
 using SLANGCompiler.Parser;
 using SLANGCompiler.IR;
 using SLANGCompiler.CodeGen;
+using SLANGCompiler.Runtime;
 
 namespace SLANGCompiler.CLI;
 
@@ -302,24 +303,14 @@ class Program
 
     /// <summary>
     /// 環境名から .env を解決し、(EnvironmentConfig, envファイルの絶対パス) を返す。
-    /// 見つからない場合は null。ファイルは見つかったがロード失敗の場合は例外を呼び出し側に伝播。
-    /// 検索順は runtime/env/ → lib/env/。
+    /// 検索順 (runtime/env/ → lib/env/) は <see cref="Runtime.EnvironmentResolver"/>
+    /// に集約済み。slangbuild 側も同じ resolver を使用することで挙動が一致する。
     /// </summary>
     static (Runtime.EnvironmentConfig Config, string EnvPath)? ResolveEnvironment(
         string envName, PathResolver paths)
     {
-        var envFile = $"{envName}.env";
         var envSearchPaths = paths.GetRuntimePaths().Concat(paths.GetLibPaths());
-        foreach (var dir in envSearchPaths)
-        {
-            var envPath = Path.Combine(dir, "env", envFile);
-            if (!File.Exists(envPath)) continue;
-            // ファイルが見つかった時点で「未定義 env」ではない。
-            // ロード時の例外は呼び出し側が「ファイル破損」として別メッセージで報告する。
-            var config = Runtime.EnvironmentLoader.Load(envPath);
-            return (config, Path.GetFullPath(envPath));
-        }
-        return null;
+        return Runtime.EnvironmentResolver.Resolve(envName, envSearchPaths);
     }
 
     /// <summary>
@@ -359,89 +350,4 @@ class Program
     }
 }
 
-/// <summary>
-/// インクルード/ライブラリ/ランタイムのパス解決。
-/// 検索順: ソースディレクトリ → -I/-L指定 → $SLANG_HOME → ~/.config/SLANG → <compiler>/../share/slang
-/// </summary>
-class PathResolver
-{
-    private readonly List<string> _extraIncludePaths;
-    private readonly List<string> _extraLibPaths;
-    private readonly List<string> _defaultPaths;
-
-    /// <summary>ユーザー設定ディレクトリ（~/.config/SLANG）</summary>
-    public static string UserConfigDir =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "SLANG");
-
-    public PathResolver(List<string> extraIncludePaths, List<string> extraLibPaths)
-    {
-        _extraIncludePaths = extraIncludePaths;
-        _extraLibPaths = extraLibPaths;
-        _defaultPaths = BuildDefaultPaths();
-    }
-
-    /// <summary>デフォルト検索パスを構築</summary>
-    private static List<string> BuildDefaultPaths()
-    {
-        var paths = new List<string>();
-
-        // $SLANG_HOME
-        var slangHome = Environment.GetEnvironmentVariable("SLANG_HOME");
-        if (!string.IsNullOrEmpty(slangHome) && Directory.Exists(slangHome))
-            paths.Add(slangHome);
-
-        // ~/.config/SLANG
-        var configDir = UserConfigDir;
-        if (Directory.Exists(configDir))
-            paths.Add(configDir);
-
-        // <compiler_executable>/../share/slang （システムインストール）
-        var exeDir = Path.GetDirectoryName(Environment.ProcessPath);
-        if (exeDir != null)
-        {
-            var shareDir = Path.Combine(exeDir, "..", "share", "slang");
-            var resolved = Path.GetFullPath(shareDir);
-            if (Directory.Exists(resolved))
-                paths.Add(resolved);
-        }
-
-        return paths;
-    }
-
-    /// <summary>#INCLUDE用の検索パスリスト</summary>
-    public List<string> GetIncludePaths(string sourceDir)
-    {
-        var paths = new List<string>();
-        paths.Add(sourceDir);                   // 1. ソースファイルのディレクトリ
-        paths.AddRange(_extraIncludePaths);      // 2. -I で指定されたパス
-        foreach (var d in _defaultPaths)         // 3-5. デフォルトパス
-            paths.Add(Path.Combine(d, "include"));
-        return paths;
-    }
-
-    /// <summary>lib/（env定義ファイル等）の検索パスリスト</summary>
-    public List<string> GetLibPaths()
-    {
-        var paths = new List<string>();
-        paths.Add("lib");                        // CWDのlib（開発時）
-        paths.AddRange(_extraLibPaths);          // -L で指定されたパス
-        foreach (var d in _defaultPaths)
-            paths.Add(Path.Combine(d, "lib"));
-        return paths;
-    }
-
-    /// <summary>ランタイム(.asm)の検索パスリスト</summary>
-    public List<string> GetRuntimePaths()
-    {
-        var paths = new List<string>();
-        paths.Add("runtime");                    // CWDのruntime（開発時）
-        foreach (var lp in _extraLibPaths)
-        {
-            paths.Add(lp);                       // -Lパス直接（runtime/を直接指定した場合）
-            paths.Add(Path.Combine(lp, "runtime")); // -L配下のruntime/
-        }
-        foreach (var d in _defaultPaths)
-            paths.Add(Path.Combine(d, "runtime"));
-        return paths;
-    }
-}
+// PathResolver は SLANGCompiler.Runtime に移動 (slangbuild と共有)。

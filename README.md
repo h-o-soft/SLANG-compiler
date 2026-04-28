@@ -280,10 +280,11 @@ SLANG Compilerは、Makefileを使ってWindows/macOS/Linuxでクロスプラッ
 
 - **.NET 8 SDK** (必須) — slangc / slangbuild のビルドに必要
 - **Python 3.x** (一部の機能で必要)
-  - `make ENV=lsx|x1 TARGET=examples/MODTEST_RESIDENT disk_image` 等の overlay を含む
-    サンプルの D88 イメージ取り込み (`tools/disk-add-overlays.py`)
   - PCG / フォント変換ツール (`tools/png_to_asm.py`, `tools/charmap-encode.py`)
   - これらを使わない通常のコンパイル / 単一バイナリ実行には不要
+- **mono** (Linux / macOS で `make setup-tools` を実行する場合に必須)
+  - `setupenv.sh` が S-OS template 生成のため `HuDisk.exe` を mono 経由で実行する。Windows は .NET Framework で直接実行されるため不要
+  - sos / sosx1 環境で `slangbuild --emit disk` を使う場合も同じく mono が必要 (HuDisk.exe 起動)。lsx / x1 の ndc 経路だけ使うなら mono 不要
 
 ### ビルドとインストール
 

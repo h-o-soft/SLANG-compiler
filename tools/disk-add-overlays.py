@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Add overlay binaries to a d88 disk image as M0.BIN, M1.BIN, ...
+"""Legacy helper. New code should use `slangbuild --emit disk` instead.
+
+Add overlay binaries to a d88 disk image as M0.BIN, M1.BIN, ...
 
 Usage: disk-add-overlays.py <ndc> <d88> <target-prefix-dir>
 
@@ -12,6 +14,11 @@ This is a *sample-only* helper for examples/MODTEST_RESIDENT.SL etc.
 Cross-platform replacement for the previous .bat / .sh pair: the .bat
 path didn't survive cmd.exe <-> sh.exe argument round-trips on Windows
 make builds, and the .sh path required sh.exe to be on PATH.
+
+Status (issue #157 Phase 1): The Makefile.dist disk_image target now
+calls `slangbuild --emit disk` directly. This script is retained for
+compatibility with user-side Makefiles / shell scripts that still
+invoke it. Removal is deferred to a later phase.
 """
 import glob
 import re

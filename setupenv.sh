@@ -9,26 +9,26 @@ fi
 # mac or linux
 TARGETENV=$1
 
-function Error()
-{
+# POSIX sh 互換 (= Linux の /bin/sh = dash でも動く形)。
+# 旧版の `function name() { ... }` は bash 拡張で dash で syntax error になる。
+Error() {
   echo Error!
-  echo 
+  echo
   cd $CURPATH
   exit 1
 }
 
-function CmdError() {
+CmdError() {
   echo !
   echo             _________________
   echo --------------------------------------------
   echo Error! $CMDNAME がインストールされていません
-  echo 
+  echo
   cd $CURPATH
   exit 1
 }
 
 CURPATH=$(cd $(dirname $0);pwd)/
-PROGPATH=`readlink -f $1`
 
 # コマンドがあるかチェック
 CMDNAME=curl
@@ -57,16 +57,17 @@ fi
 
 TOOLPATH=$(cd $(dirname $0);pwd)/tools/
 mkdir images
+mkdir -p images/templates
 mkdir tools
 mkdir temp
 cd temp
 
 # NDCをダウンロード
 
-# Mac
-if [ $TARGETENV == "mac" ]; then
+# Mac (POSIX sh では `==` ではなく `=`)
+if [ "$TARGETENV" = "mac" ]; then
   DLPATH=https://euee.web.fc2.com/tool/ndcm0a08arm.tgz
-elif [ $TARGETENV == "linux" ]; then
+elif [ "$TARGETENV" = "linux" ]; then
   DLPATH=https://euee.web.fc2.com/tool/ndcl0a08x64.tgz
 else
   Error
@@ -89,9 +90,9 @@ cp HuDisk.exe $TOOLPATH
 rm HuDisk.exe
 
 # AILZ80ASMをダウンロード
-if [ $TARGETENV == "mac" ]; then
+if [ "$TARGETENV" = "mac" ]; then
   DLPATH=https://github.com/AILight/AILZ80ASM/releases/download/v1.0.31/AILZ80ASM.osx-x64.v1.0.31.zip
-elif [ $TARGETENV == "linux" ]; then
+elif [ "$TARGETENV" = "linux" ]; then
   DLPATH=https://github.com/AILight/AILZ80ASM/releases/download/v1.0.31/AILZ80ASM.linux-x64.v1.0.31.zip
 else
   Error
@@ -108,13 +109,15 @@ rm AILZ80ASM
 rm $FILENAME
 
 # S-OS(X1)をダウンロード
+# 最終的に images/templates/SOSPROG.D88 に置く (= slangbuild --emit disk が
+# 参照する pristine template、LSX の templates/ パターンと整合)。
 curl http://www.retropc.net/ohishi/s-os/SWXCV110.zip -OL
 unzip -xo SWXCV110.zip
 # AUTOEXEC.BATを追加
-mv SWXCV110.d88 SOSPROG.d88
-mono $TOOLPATH/HuDisk.exe SOSPROG.d88 -a ../env/S-OS/AUTOEXEC.BAT --ascii
-cp SOSPROG.d88 ../images/
-rm SOSPROG.d88
+mv SWXCV110.d88 SOSPROG.D88
+mono $TOOLPATH/HuDisk.exe SOSPROG.D88 -a ../env/S-OS/AUTOEXEC.BAT --ascii
+cp SOSPROG.D88 ../images/templates/
+rm SOSPROG.D88
 rm SWXCV110.zip
 
 # LSX-Dodgersは特殊フォーマットのため取得して加工する事が出来ない(NDCでアクセス不可の)ため対応しない

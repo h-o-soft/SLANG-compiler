@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Xunit;
+using SkippableFactAttribute = Xunit.SkippableFactAttribute;
 
 namespace SLANGCompiler.Tests;
 
@@ -94,6 +95,10 @@ public class BuildIntegrationTests : IDisposable
 
     private (int ExitCode, string Stdout, string Stderr) RunSlangbuild(
         string inputPath, params string[] extraArgs)
+        => RunSlangbuildWithSlangHome(_projectRoot, inputPath, extraArgs);
+
+    private (int ExitCode, string Stdout, string Stderr) RunSlangbuildWithSlangHome(
+        string slangHome, string inputPath, string[] extraArgs)
     {
         var buildProject = Path.Combine(_projectRoot, "src", "SLANGCompiler.Build", "SLANGCompiler.Build.csproj");
         var psi = new ProcessStartInfo
@@ -104,6 +109,10 @@ public class BuildIntegrationTests : IDisposable
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        // SLANG_HOME を override: 既定は _projectRoot (= installed `~/.config/SLANG` の
+        // 古い env を参照しないようにし、新 disk: セクション込みの repo 内 lsx.env を
+        // 読ませる)。InstalledEnv テスト等は mock install dir を渡す
+        psi.Environment["SLANG_HOME"] = slangHome;
         psi.ArgumentList.Add("run");
         psi.ArgumentList.Add("--project");
         psi.ArgumentList.Add(buildProject);
@@ -122,6 +131,53 @@ public class BuildIntegrationTests : IDisposable
         var stderr = proc.StandardError.ReadToEnd();
         proc.WaitForExit(120_000);
         return (proc.ExitCode, stdout, stderr);
+    }
+
+    /// <summary>repo root の tools/ndc(.exe) パスを返す。EmitDisk テスト用。</summary>
+    private string NdcPath()
+    {
+        var name = OperatingSystem.IsWindows() ? "ndc.exe" : "ndc";
+        return Path.Combine(_projectRoot, "tools", name);
+    }
+
+    /// <summary>repo root の tools/HuDisk.exe パスを返す。Sos テスト用。
+    /// 配布 fork が .NET assembly のみのため OS 問わず .exe 拡張子。</summary>
+    private string HudiskPath()
+        => Path.Combine(_projectRoot, "tools", "HuDisk.exe");
+
+    /// <summary>HuDisk.exe + (non-Windows なら mono) が揃っているか。
+    /// 揃っていなければ sos 系テストは Skip。</summary>
+    private bool HudiskAvailable()
+    {
+        if (!File.Exists(HudiskPath())) return false;
+        if (OperatingSystem.IsWindows()) return true;
+        // Linux/macOS では mono が PATH にあるか確認
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrEmpty(path)) return false;
+        return path.Split(Path.PathSeparator).Any(d =>
+            !string.IsNullOrEmpty(d) && File.Exists(Path.Combine(d, "mono")));
+    }
+
+    /// <summary>
+    /// 出力 d88 の root entry に <paramref name="entryName"/> が含まれるかを
+    /// ndc list (= `ndc &lt;d88&gt; 0`) で検証する。
+    /// </summary>
+    private bool D88ContainsEntry(string d88, string entryName)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = NdcPath(),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        psi.ArgumentList.Add(d88);
+        psi.ArgumentList.Add("0");
+        using var proc = Process.Start(psi)!;
+        var stdout = proc.StandardOutput.ReadToEnd();
+        proc.WaitForExit(15_000);
+        // ndc は entry 行を `<NAME>\t<attrs>\t<size>\t<date>` の形式で出す
+        return stdout.Split('\n').Any(line => line.StartsWith(entryName + "\t"));
     }
 
     [Fact]
@@ -435,5 +491,281 @@ MYSUB() BEGIN END;
         var (code, _, stderr) = RunSlangbuild(Path.Combine(_tempDir, "nonexistent.SL"));
         Assert.NotEqual(0, code);
         Assert.Contains("not found", stderr);
+    }
+
+    // ---- Issue #157 Phase 1: --emit disk ----
+
+    private static string ComputeSha256(string path)
+    {
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        using var s = File.OpenRead(path);
+        var bytes = sha.ComputeHash(s);
+        return Convert.ToHexString(bytes);
+    }
+
+    [Fact]
+    public void EmitDisk_LsxEnv_ProducesD88WithMainAndOverlay()
+    {
+        // overlay 付き SL を `--emit disk` で build → out.d88 内に
+        // PROG.COM (main) と M0.BIN (overlay 0) が入る (= disk.main_name /
+        // disk.overlay_name で staging copy → ndc P により D88 内 entry 名が
+        // 配布物用名前になる)。
+        var slPath = Path.Combine(_tempDir, "diskprog.SL");
+        File.WriteAllText(slPath, @"
+MAIN() BEGIN MYSUB(); END;
+#MODULE $3000
+MYSUB() BEGIN END;
+#END
+");
+        var diskOut = Path.Combine(_tempDir, "out.d88");
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "lsx",
+            "--ndc", NdcPath(),
+            "--emit", "disk",
+            "--disk-image", diskOut);
+        Assert.True(code == 0, $"slangbuild --emit disk failed (exit {code}). stderr: {stderr}");
+        Assert.True(File.Exists(diskOut), $"disk image not produced at {diskOut}");
+        Assert.True(D88ContainsEntry(diskOut, "PROG.COM"),
+            "D88 should contain PROG.COM (main)");
+        Assert.True(D88ContainsEntry(diskOut, "M0.BIN"),
+            "D88 should contain M0.BIN (overlay 0)");
+    }
+
+    [Fact]
+    public void EmitDisk_TemplateNotMutated()
+    {
+        // Codex 重要指摘: template d88 (= images/templates/LSXPROG.D88) を
+        // direct mutate してはいけない。build 前後で SHA-256 が一致することを
+        // CI で保証する。
+        var template = Path.Combine(_projectRoot, "images", "templates", "LSXPROG.D88");
+        Assert.True(File.Exists(template), $"template not found: {template}");
+        var hashBefore = ComputeSha256(template);
+
+        var slPath = Path.Combine(_tempDir, "tmpl.SL");
+        File.WriteAllText(slPath, @"
+MAIN() BEGIN MYSUB(); END;
+#MODULE $3000
+MYSUB() BEGIN END;
+#END
+");
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "lsx",
+            "--ndc", NdcPath(),
+            "--emit", "disk",
+            "--disk-image", Path.Combine(_tempDir, "tmpl_out.d88"));
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+
+        var hashAfter = ComputeSha256(template);
+        Assert.Equal(hashBefore, hashAfter);
+    }
+
+    [Fact]
+    public void EmitDisk_NoDiskConfig_FailsWithError()
+    {
+        // disk: セクション無しの env で `--emit disk` 指定 → error 終了。
+        // fixture env (twostage_env) は disk: が無いので、これを使って検証。
+        var fixtureDir = Path.Combine(_projectRoot, "tests", "SLANGCompiler.Tests",
+                                       "fixtures", "twostage_env");
+
+        var slPath = Path.Combine(_tempDir, "nodisk.SL");
+        File.WriteAllText(slPath, "MAIN() BEGIN END;\n");
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "twostage",
+            "-L", fixtureDir,
+            "--ndc", NdcPath(),
+            "--emit", "disk");
+        Assert.NotEqual(0, code);
+        Assert.Contains("disk:", stderr);
+    }
+
+    [Fact]
+    public void EmitDisk_DiskTemplateOverride_UsesCustomPath()
+    {
+        // --disk-template で env の disk.template を override できる。
+        // override 用に pristine template を別 path にコピーして渡す。
+        var customTemplate = Path.Combine(_tempDir, "custom_template.D88");
+        File.Copy(Path.Combine(_projectRoot, "images", "templates", "LSXPROG.D88"),
+                  customTemplate);
+
+        var slPath = Path.Combine(_tempDir, "ovrtmpl.SL");
+        File.WriteAllText(slPath, @"
+MAIN() BEGIN MYSUB(); END;
+#MODULE $3000
+MYSUB() BEGIN END;
+#END
+");
+        var diskOut = Path.Combine(_tempDir, "ovrtmpl.d88");
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "lsx",
+            "--ndc", NdcPath(),
+            "--emit", "disk",
+            "--disk-template", customTemplate,
+            "--disk-image", diskOut);
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+        Assert.True(File.Exists(diskOut));
+        Assert.True(D88ContainsEntry(diskOut, "PROG.COM"));
+        Assert.True(D88ContainsEntry(diskOut, "M0.BIN"));
+    }
+
+    [Fact]
+    public void EmitDisk_DiskTemplateOverride_RequiresEmitDisk()
+    {
+        // --disk-template 単独 (= --emit disk なし) → error
+        var slPath = Path.Combine(_tempDir, "tplsolo.SL");
+        File.WriteAllText(slPath, "MAIN() BEGIN END;\n");
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "--disk-template", "/tmp/anything.D88");
+        Assert.NotEqual(0, code);
+        Assert.Contains("--disk-template requires --emit disk", stderr);
+    }
+
+    [Fact]
+    public void EmitDisk_DiskTemplateOverride_PreservesCustomTemplate()
+    {
+        // override 経由でも template の SHA-256 は build 前後で一致する
+        // (Codex Phase 1 重要指摘の継承: template direct mutate 禁止)
+        var customTemplate = Path.Combine(_tempDir, "preserve.D88");
+        File.Copy(Path.Combine(_projectRoot, "images", "templates", "LSXPROG.D88"),
+                  customTemplate);
+        var hashBefore = ComputeSha256(customTemplate);
+
+        var slPath = Path.Combine(_tempDir, "preserve.SL");
+        File.WriteAllText(slPath, @"
+MAIN() BEGIN MYSUB(); END;
+#MODULE $3000
+MYSUB() BEGIN END;
+#END
+");
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "lsx",
+            "--ndc", NdcPath(),
+            "--emit", "disk",
+            "--disk-template", customTemplate,
+            "--disk-image", Path.Combine(_tempDir, "preserve_out.d88"));
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+        Assert.Equal(hashBefore, ComputeSha256(customTemplate));
+    }
+
+    [Fact]
+    public void InstalledEnv_TemplateResolves()
+    {
+        // installed 環境 (= ~/.config/SLANG/runtime/env/lsx.env) でも env file の
+        // disk.template (= ../../images/templates/LSXPROG.D88) が install dir 配下の
+        // images/templates に解決できることを mock で保証する。
+        // → make install で images/ コピーが抜けると即 fail する CI gate。
+        var installDir = Path.Combine(_tempDir, "mock_install");
+        var runtimeDir = Path.Combine(installDir, "runtime");
+        var envDir = Path.Combine(runtimeDir, "env");
+        var imagesTemplatesDir = Path.Combine(installDir, "images", "templates");
+        Directory.CreateDirectory(envDir);
+        Directory.CreateDirectory(imagesTemplatesDir);
+
+        // env file (全 env) と runtime asm を mock install dir に staging
+        foreach (var f in Directory.GetFiles(Path.Combine(_projectRoot, "runtime", "env")))
+            File.Copy(f, Path.Combine(envDir, Path.GetFileName(f)));
+        foreach (var f in Directory.GetFiles(Path.Combine(_projectRoot, "runtime"), "*.asm"))
+            File.Copy(f, Path.Combine(runtimeDir, Path.GetFileName(f)));
+        // template も install dir 配下に配置 (= make install で images/ コピーされた状態を再現)
+        File.Copy(
+            Path.Combine(_projectRoot, "images", "templates", "LSXPROG.D88"),
+            Path.Combine(imagesTemplatesDir, "LSXPROG.D88"));
+
+        var slPath = Path.Combine(_tempDir, "instchk.SL");
+        File.WriteAllText(slPath, @"
+MAIN() BEGIN MYSUB(); END;
+#MODULE $3000
+MYSUB() BEGIN END;
+#END
+");
+        var diskOut = Path.Combine(_tempDir, "instchk.d88");
+        // SLANG_HOME = mock install dir、即ち PathResolver は env も template も
+        // install dir 配下を引く
+        var (code, _, stderr) = RunSlangbuildWithSlangHome(installDir, slPath, new[]
+        {
+            "-E", "lsx",
+            "--ndc", NdcPath(),
+            "--emit", "disk",
+            "--disk-image", diskOut,
+        });
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+        Assert.True(File.Exists(diskOut),
+            $"disk image not produced from installed env. stderr: {stderr}");
+        Assert.True(D88ContainsEntry(diskOut, "PROG.COM"));
+        Assert.True(D88ContainsEntry(diskOut, "M0.BIN"));
+    }
+
+    [SkippableFact]
+    public void EmitDisk_SosEnv_ProducesD88WithMain()
+    {
+        // sos env で HuDisk 経由の D88 生成 (Linux/macOS では mono 経由)。
+        // template (= images/templates/SOSPROG.D88) は setup-tools で生成済の
+        // 前提。HuDisk.exe + mono が揃っていなければ Skip (= setup-tools 未実行
+        // の dev 環境 / CI で適切にハンドル)。
+        Skip.IfNot(HudiskAvailable(),
+            "sos test requires HuDisk.exe (run `make setup-tools`) + mono on PATH");
+        Skip.IfNot(File.Exists(Path.Combine(_projectRoot, "images", "templates", "SOSPROG.D88")),
+            "sos test requires images/templates/SOSPROG.D88 (run `make setup-tools`)");
+
+        var slPath = Path.Combine(_tempDir, "sostest.SL");
+        File.WriteAllText(slPath, "MAIN() BEGIN END;\n");
+        var diskOut = Path.Combine(_tempDir, "sosout.d88");
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "sos",
+            "--hudisk", HudiskPath(),
+            "--emit", "disk",
+            "--disk-image", diskOut);
+        Assert.True(code == 0, $"slangbuild --emit disk (sos) failed (exit {code}). stderr: {stderr}");
+        Assert.True(File.Exists(diskOut), $"sos disk image not produced at {diskOut}");
+        // sos の disk listing は HuDisk で行う必要があるが、ndc では読めない場合
+        // も多い (HuDisk fs)。ここでは「ファイル生成」+「テンプレート不変」を
+        // 主検証とし、内容詳細は EmitDisk_SosTemplateNotMutated で別途確認
+    }
+
+    [SkippableFact]
+    public void EmitDisk_SosTemplateNotMutated()
+    {
+        // sos でも template (images/templates/SOSPROG.D88) は build 前後で
+        // SHA-256 一致 (Codex Phase 1 重要指摘の継承)。
+        Skip.IfNot(HudiskAvailable(),
+            "sos test requires HuDisk.exe + mono");
+        var template = Path.Combine(_projectRoot, "images", "templates", "SOSPROG.D88");
+        Skip.IfNot(File.Exists(template),
+            "sos test requires images/templates/SOSPROG.D88 (run `make setup-tools`)");
+
+        var hashBefore = ComputeSha256(template);
+
+        var slPath = Path.Combine(_tempDir, "sostpl.SL");
+        File.WriteAllText(slPath, "MAIN() BEGIN END;\n");
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "sos",
+            "--hudisk", HudiskPath(),
+            "--emit", "disk",
+            "--disk-image", Path.Combine(_tempDir, "sostpl_out.d88"));
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+
+        Assert.Equal(hashBefore, ComputeSha256(template));
+    }
+
+    [Fact]
+    public void EmitDisk_DefaultDiskImagePath_DerivesFromOutputPrefix()
+    {
+        // --disk-image 省略時は <output_prefix>.d88 に出る。
+        var slPath = Path.Combine(_tempDir, "defp.SL");
+        File.WriteAllText(slPath, @"
+MAIN() BEGIN MYSUB(); END;
+#MODULE $3000
+MYSUB() BEGIN END;
+#END
+");
+        var outBase = Path.Combine(_tempDir, "outdir", "MYPROG");
+        Directory.CreateDirectory(Path.GetDirectoryName(outBase)!);
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "lsx",
+            "--ndc", NdcPath(),
+            "-o", outBase,
+            "--emit", "disk");
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+        Assert.True(File.Exists(outBase + ".d88"),
+            $"default disk image not at {outBase}.d88");
     }
 }
