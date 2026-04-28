@@ -188,6 +188,14 @@ public class DiskImageBuilder
         return rc;
     }
 
+    // ---- HuDisk 経路 (skeleton: 実 binary なしで未検証) ----
+    //
+    // ⚠ Phase 2 時点では HuDisk の upstream binary 入手 + ライセンス確認が
+    // 未完了のため、本メソッドは sos.env への disk: 追加を伴う統合 commit
+    // (PR 後段) で実機検証する。特に -r / -g に渡すアドレスを `$XXXX`
+    // 形式 (= Makefile.dist の旧 sos 経路と同形式) で渡しているが、upstream
+    // HuDisk が `0x` / 10 進 / `$` のどれを受理するかは要確認。受理形式が
+    // 異なる場合は本箇所を修正する。
     private int WriteEntryHudisk(string entryName, string staged, string d88, bool isMain)
     {
         // 旧 entry 削除 (= 失敗無視)
@@ -199,12 +207,12 @@ public class DiskImageBuilder
         if (load.HasValue)
         {
             args.Add("-r");
-            args.Add($"${load.Value:X}");
+            args.Add($"${load.Value:X}"); // ⚠ upstream HuDisk の受理形式要確認
         }
         if (isMain && _disk.MainExec.HasValue)
         {
             args.Add("-g");
-            args.Add($"${_disk.MainExec.Value:X}");
+            args.Add($"${_disk.MainExec.Value:X}"); // ⚠ 同上
         }
         var rc = RunTool(_hudiskPath!, args.ToArray(), ignoreFailure: false);
         if (rc != 0)
