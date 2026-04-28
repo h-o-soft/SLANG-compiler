@@ -194,13 +194,23 @@ public class ToolResolver
         if (File.Exists(bundledParent))
             return new ResolvedTool(Path.GetFullPath(bundledParent), ResolutionKind.DirectExe);
 
+        // install dir (~/.config/SLANG/tools/, $SLANG_HOME/tools/) — make install 後の経路
+        // (Phase 2 で追加: setup-tools → install で AILZ80ASM が install dir 配下に
+        //  入るが、それを slangbuild から見つけられないと「AILZ80ASM not found」エラー)
+        foreach (var installDir in GetInstallToolDirs())
+        {
+            var p = Path.Combine(installDir, name);
+            if (File.Exists(p)) return new ResolvedTool(p, ResolutionKind.DirectExe);
+        }
+
         var repoTools = LocateRepoFile($"tools/{name}");
         if (repoTools != null) return new ResolvedTool(repoTools, ResolutionKind.DirectExe);
 
         throw new FileNotFoundException(
             "AILZ80ASM not found. Tried: --asm, $AILZ80ASM_PATH, PATH, bundled "
-            + "{baseDir}/tools, {baseDir}/../tools, and repo root. "
-            + "Specify --asm <path> explicitly.");
+            + "{baseDir}/tools, {baseDir}/../tools, install dir tools/, and repo root. "
+            + "Run `make setup-tools` and `make install` to populate, "
+            + "or specify --asm <path> explicitly.");
     }
 
     /// <summary>
