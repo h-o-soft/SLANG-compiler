@@ -43,11 +43,12 @@ createRelease() {
   cp ../../tools/disk-add-overlays.py tools/ 2>/dev/null
 
   cp -r ../../env .
-  # images: LSXPROG.d88 (デフォルトの DISK_IMAGE 出力先) +
-  # templates/LSXPROG.D88 (slangbuild --emit disk が必ずコピーしてから書き込む
-  # pristine 元データ。env file の disk.template が指す)
+  # images/templates/LSXPROG.D88: pristine template (slangbuild --emit disk が
+  # 必ずコピーしてから書き込む元データ、env file の disk.template が指す)。
+  # 出力先 images/LSXPROG.d88 はユーザーが `make ENV=lsx disk_image` を実行
+  # した時点で生成されるので、配布 zip には含めない。SOSPROG.D88 等は
+  # ライセンス都合で同梱せず、make setup-tools で取得する想定。
   mkdir -p images/templates
-  cp ../../images/LSXPROG.d88 images/
   cp ../../images/templates/LSXPROG.D88 images/templates/
   cp -r ../../docs .
   cp -r ../../syntax .
