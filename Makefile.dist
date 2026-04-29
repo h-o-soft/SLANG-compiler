@@ -128,12 +128,13 @@ else ifeq ($(ENV), pc80mk2x)
 else ifeq ($(ENV), pc80mk2xsd)
   # PC-8001mkII XBIOS 直接環境 (SD カード経路): CMT 出力 + 個別配置。
   # slangbuild が env file (`output: cmt` + `overlay_output_format: bin` +
-  # `overlay_name: M{index}.BIN` + `cmt_assets: [../templates/XBIOS.CMT]`)
-  # を見て、main.cmt は CMT 形式 / overlay は raw binary (M0.BIN, ...) で
-  # 個別出力 + XBIOS.CMT を output dir にコピーする。ユーザーは output dir
-  # 全体を SD カードに移すだけで動く。SL 側で `CONST ASM PC8001_SD = 1;`
-  # を冒頭に書く必要あり。`disk_image` target は OUTPROG (= PROG.cmt) を
-  # 指す (cpm / msxrom / pc80mk2 / pc80mk2x と同じ pattern)。
+  # `overlay_name: M{index}.BIN` + `cmt_assets: [../templates/XBIOS.CMT]` +
+  # `defines: { PC8001_SD: 1 }`) を見て、main.cmt は CMT 形式 / overlay は
+  # raw binary (M0.BIN, ...) で個別出力 + XBIOS.CMT を output dir にコピー
+  # する。ユーザーは output dir 全体を SD カードに移すだけで動く。`PC8001_SD`
+  # 定数は env により自動定義されるので、SL 側で `CONST ASM PC8001_SD = 1;`
+  # を書く必要はない。`disk_image` target は OUTPROG (= PROG.cmt) を指す
+  # (cpm / msxrom / pc80mk2 / pc80mk2x と同じ pattern)。
   EMU = @echo "PC-8001 emulator (SD) not configured. Set EMU variable" \#
   BIN_EXT = .cmt
   BIN_EXT_ENV = .cmt

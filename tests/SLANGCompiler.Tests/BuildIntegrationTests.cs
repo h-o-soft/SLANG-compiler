@@ -861,10 +861,10 @@ MYSUB() BEGIN END;
             "pc80mk2xsd test requires runtime/templates/XBIOS.CMT");
 
         var slPath = Path.Combine(_tempDir, "p80sd_test.SL");
-        // SL 側 CONST ASM PC8001_SD = 1 を冒頭に書いて SD 経路を有効化
-        // (libpc80mk2xbios_base.asm の #IF exists PC8001_SD が活きる)
+        // SL 側 CONST ASM 不要 (= env file の defines: { PC8001_SD: 1 } が
+        // slangc / AILZ80ASM の両方に同名定数を自動 inject するので、user は
+        // env を選ぶだけで SD 経路が有効化される)。
         File.WriteAllText(slPath, @"
-CONST ASM PC8001_SD = 1;
 MAIN() BEGIN MYSUB(); END;
 #MODULE $1000
 MYSUB() BEGIN END;

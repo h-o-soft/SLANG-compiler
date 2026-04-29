@@ -8,14 +8,13 @@
   - **ghost file 対策**: install 時、サブディレクトリ (include / runtime / images / tools) は staging copy → 既存削除 → rename でサブディレクトリ単位置換 (= 古い env file 等が残らない)
   - `make install` / `make uninstall` は scripts への薄い wrapper として残置 (`--force` 既定 ON で後方互換、Make 経由は uninstall も非対話)
   - **Windows install default を `%LOCALAPPDATA%\Programs\SLANG` → `%USERPROFILE%\.local\bin` に変更** (= install.sh の `~/.local/bin` と対称、uv / pipx 等の CLI ツール慣習)
-  - 中期案 (`setupenv.{sh,bat}` の .NET 化 = `slangsetup` 新設) は別 PR で扱う
 
 - pc88mk2sr 環境を `slangbuild --emit disk` 経路に統合
   - 新 tool: `udostool` (.NET assembly、**Bookworm's Library 公開の汎用ディスクルーチン** `filesys_20141128` 系用、サイト記載の「改変含め自由に使ってください」を license として信用し repo 同梱)。`tools/udostool.exe` に commit、setup-tools 不要。Linux/macOS は mono 経由起動、Windows は .exe 直接起動
   - 5 ステップ build: template (`images/templates/PC88MK2SR.D88`) を出力先 copy → `udostool` で IPL / SUB / SYS 書込 → main `$1A00.$$$` + overlay `M{index}.BIN` を staging dir に bulk copy → `udostool disk <staging>` で 1 回 flush
   - 新 `DiskConfig.SystemFiles` フィールド (= IPL / SUB / SYS の path + flag、env file dir 基準で path 絶対化、flag は `-IPL`/`-SUB`/`-SYS` allowlist で大文字固定)
   - **overlay 対応**: `#MODULE` 使った SL の overlay bin が `M{index}.BIN` として disk に格納される。pc88mk2sr では FOPEN/FREAD ではなく libp88_file の `Disk_Load` / `Disk_Load3` 系で読み込む想定、disk 内名は `Disk_Load("M0 BIN", addr)` のような space 区切り形式
-  - **ORG = $1A00 固定運用** (= 本 PR の制約)。SL 側で `#ORG $XXXX` 上書きすると `main_name` (= `"$1A00.$$$"`) と loader 期待が不整合になり、build は通るが boot しない silent wrong になる **既知リスク**。ORG 可変化 (= `main_name` template 化 + slangc 出力 sym からの整合 check) は別 PR で対応
+  - **ORG = $1A00 固定運用**。SL 側で `#ORG $XXXX` 上書きすると `main_name` (= `"$1A00.$$$"`) と loader 期待が不整合になり、build は通るが boot しない silent wrong になる
   - 同梱物の出典 (provenance) を新規 `THIRD_PARTY_NOTICES.md` に記録 (= 配布物名 / 取得元 / 取得日 / 許諾文 / 改変有無 を表で明記)
   - **VRTC 割り込みハンドラの GAMEVSYNC を条件化**: `libp88_base.asm` の `INTVRTC` で `CALL GAMEVSYNC` を `#if exists USE_GAMEVSYNC` で囲み、SL 側で `CONST ASM USE_GAMEVSYNC = 1;` を立てた場合のみ呼ぶ形に。`USE_GAMEVSYNC` 未定義の SL は GAMEVSYNC 関数を書かなくても build できる
   - **AILZ80ASM エラー表示**: `--verbose` 無しでも `main assembly failed` の詳細 (= 未定義 label 等) が stderr に出るよう修正 (= AILZ80ASM がエラーを stdout に流す癖を吸収)
@@ -46,9 +45,10 @@
   - `Driver.Run()` 冒頭で `EnvironmentResolver` を 1 度だけ呼ぶ前倒しに変更、`BuildDiskImage()` 内の env 二重解決を排除。`--emit disk` + `disk:` 不在 env の組合せは compile 前に early reject
   - `Makefile.dist`: `OUTPROG` を `$(BIN_EXT)` 経由で拡張子化 (`PROG.bin` 固定 → `PROG$(BIN_EXT)`)、pc80mk2 ENV ブロック追加 (`BIN_EXT/BIN_EXT_ENV = .cmt`、`DISK_IMAGE = $(OUTPROG)`)、`disk_image` 分岐に `pc80mk2: $(OUTPROG)` 明示追加 (= 旧 ELSE 分岐 ndc 経路に落ちないよう、cpm / msxrom と同じ pattern)、`clean` recipe / `help` ENV 一覧にも反映
   - `make ENV=pc80mk2 build / run / disk_image` のいずれでも `examples/PROG.cmt` が生成される。M88 等のエミュレータで `.cmt` をそのまま CLOAD で読み込める想定 (`EMU` 変数はユーザー側設定)
-  - **scope 外**: pc80mk2x (XBIOS 直接環境、XBIOS.CMT 結合が別途必要) / overlay 結合 (= `M0.cmt` を main に結合) / `--emit disk` 統合 (= cassette は disk じゃないので非対象) は本 PR 外。overlay も `_m0.cmt` 別ファイルで出るのみ、loader 組み立てはユーザー側
+  - overlay は `_m0.cmt` 別ファイルで出るのみで、main への結合 / loader 組み立てはユーザー側
 
 ## Version 0.23.0
+
 
 - `#MODULE` (オーバーレイ) のモジュール専用ワーク対応 (#142)
   - モジュール直下の `VAR` / `ARRAY` を **モジュール私有ワークエリア `__WORK_M<N>__`** に配置。main と同名の変数を宣言しても物理メモリ上同居せず、各 overlay の swap 先でメモリを再利用できる
@@ -76,7 +76,7 @@
   - env file に新規 `disk:` セクション (`format: d88` / `template` / `tool: ndc | hudisk` / `main_name` / `overlay_name` / `main_load` / `main_exec` / `overlay_load`)。アドレス値は `$3000` / `0x3000` / 10進すべて受理
   - pristine template は **`images/templates/`** に分離 (`images/templates/LSXPROG.D88` / `SOSPROG.D88`)。ビルドごとに `$(DISK_IMAGE)` 出力先にコピーしてから書き込み、template 自体は不変 (CI で SHA-256 比較により検証)
   - **対応済 env (`Makefile.dist disk_image`)**: lsx / x1 (ndc 経路)、sos / sosx1 (HuDisk 経路)
-  - **従来経路維持 env**: msx2 / msxlsx / pc80mk2 / pc88mk2sr 等は従来の `tools/disk-add-overlays.py` 経路 (= 今後 env ごとに `--emit disk` へ移行予定)
+  - **従来経路維持 env**: msx2 / msxlsx / pc80mk2 / pc88mk2sr 等は従来の `tools/disk-add-overlays.py` 経路
   - `tools/disk-add-overlays.py` は legacy helper として残置 (旧経路ユーザー保護、新規利用は非推奨)
   - **動作環境**: `make setup-tools && make install` 後の installed 環境 (`~/.config/SLANG/`)、配布 zip 解凍直後、開発時の repo 直下、いずれでも動作。`make install` で `images/` + `tools/` も `~/.config/SLANG/` に配置、`ToolResolver` が install dir 配下を検索する。Linux/macOS の sos 系では `mono` (HuDisk.exe 起動用) と setupenv での S-OS template 取得が前提
   - **配布物の HuDisk**: `make setup-tools` が ho-ogino/HuDisk fork の `feature/write-ascii-mode` ブランチ (= ASCII 書き込み可能版) を curl で取得。Windows は `.exe` 直接実行、Linux/macOS は mono 経由起動
