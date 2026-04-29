@@ -68,3 +68,8 @@ apps/PROG.*
 # fixture runtime/asm はテスト資産なので ignore 例外
 !tests/**/fixtures/**/*.asm
 !tests/**/fixtures/**/*.ASM
+
+# disk image build 出力先 (= make ENV=lsx disk_image / slangbuild --emit disk
+# で書き換えられる作業ファイル)。pristine template は images/templates/ に
+# 分離済み (PR #157)。
+images/LSXPROG.d88
