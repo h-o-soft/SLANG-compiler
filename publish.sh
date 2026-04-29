@@ -41,6 +41,9 @@ createRelease() {
   cp ../../tools/charmap-encode.py    tools/ 2>/dev/null
   cp ../../tools/png_to_asm.py        tools/ 2>/dev/null
   cp ../../tools/disk-add-overlays.py tools/ 2>/dev/null
+  # udostool.exe: pc88mk2sr 用 (Bookworm's Library 由来、repo 同梱で
+  # setup-tools 不要、license 詳細は THIRD_PARTY_NOTICES.md 参照)
+  cp ../../tools/udostool.exe         tools/ 2>/dev/null
 
   cp -r ../../env .
   # images/templates/LSXPROG.D88: pristine template (slangbuild --emit disk が
@@ -49,13 +52,17 @@ createRelease() {
   # した時点で生成されるので、配布 zip には含めない。SOSPROG.D88 等は
   # ライセンス都合で同梱せず、make setup-tools で取得する想定。
   mkdir -p images/templates
-  cp ../../images/templates/LSXPROG.D88 images/templates/
+  cp ../../images/templates/LSXPROG.D88   images/templates/
+  # pc88mk2sr template: Bookworm's Library 由来 (= filesys_20141128 系の boot
+  # disk)、repo 同梱で setup-tools 不要、license 詳細は THIRD_PARTY_NOTICES.md
+  cp ../../images/templates/PC88MK2SR.D88 images/templates/
   cp -r ../../docs .
   cp -r ../../syntax .
   cp ../../Makefile.dist ./Makefile
   cp ../../README.md .
   cp ../../CHANGELOG.md .
   cp ../../LICENSE .
+  cp ../../THIRD_PARTY_NOTICES.md .
   cp ../../setupenv.bat .
   cp ../../setupenv.sh .
   # Issue #160 短期案: install scripts (Makefile に依存しない install 経路)

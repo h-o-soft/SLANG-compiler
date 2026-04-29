@@ -872,8 +872,9 @@ slangbuild <input.SL> [options]
 # ツール path (省略時は ToolResolver で自動解決)
   --slangc <path>      slangc executable path
   --asm <path>         AILZ80ASM executable path
-  --ndc <path>         ndc executable path     (--emit disk + tool=ndc 時)
-  --hudisk <path>      HuDisk executable path  (--emit disk + tool=hudisk 時)
+  --ndc <path>         ndc executable path      (--emit disk + tool=ndc 時)
+  --hudisk <path>      HuDisk executable path   (--emit disk + tool=hudisk 時)
+  --udostool <path>    udostool executable path (--emit disk + tool=udostool 時)
 
 # その他
   --keep-asm           Keep intermediate ASM / sym files
@@ -1032,6 +1033,7 @@ make ENV=cpm TARGET=examples/MODTEST_RESIDENT run
 実装は env ごとに分担:
 - **lsx / x1** (D88, ndc): `Makefile.dist` の `disk_image` ターゲットが `slangbuild --emit disk` を呼ぶ。slangbuild が env file の `disk:` セクション (`template`, `tool: ndc`, `main_name: PROG.COM`, `overlay_name: M{index}.BIN`) を読み、template d88 を **コピーしてから** `ndc P` で `PROG.COM` + `M0.BIN` 群を書き込む (template 自体は不変)
 - **sos / sosx1** (D88, HuDisk): 同じく `slangbuild --emit disk --hudisk` を呼ぶ。env file は `tool: hudisk` + `main_load: "$3000"` / `main_exec: "$3000"` / `overlay_load: "$3000"` を持ち、HuDisk を `-a <d88> <file> -r <load> -g <exec>` で起動 (Linux/macOS では mono 経由)
+- **pc88mk2sr** (D88, udostool): 同じく `slangbuild --emit disk --udostool` を呼ぶ。env file は `tool: udostool` + `main_name: "$1A00.$$$"` (literal、ORG hex) + `overlay_name: M{index}.BIN` + `system_files` (= IPL/SUB/SYS の path + flag) を持ち、template copy → udostool で IPL/SUB/SYS 書込 → main + overlay を staging dir に bulk copy → `udostool disk <staging>` で 1 回 flush (Linux/macOS では mono 経由)
 - **cpm** (RunCPM): `tools/runcpm.{sh,bat}` が staging dir に `PROG._m*.bin` を `M<N>.BIN` としてコピーしてから RunCPM を起動
 
 `slangbuild input.SL -E lsx --emit disk --disk-image out.d88` の形で直接呼び
@@ -1040,8 +1042,9 @@ make ENV=cpm TARGET=examples/MODTEST_RESIDENT run
 の代替策 + 実験用)。
 
 旧 `tools/disk-add-overlays.py` は legacy helper として残置 (新規利用は非推奨)。
-msx2 / msxlsx / pc80mk2 / pc88mk2sr 等の d88 系 env は従来の `tools/disk-add-overlays.py`
-経路を維持しており、今後 env ごとに `--emit disk` 経路へ移行予定。
+msx2 / msxlsx / pc80mk2 / pc80mk2x 等の d88 系 env は従来の `tools/disk-add-overlays.py`
+経路を維持しており、今後 env ごとに `--emit disk` 経路へ移行予定 (= pc88mk2sr は
+udostool 経路で移行済)。
 
 サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
 128 byte 以内であることを前提としている (より大きい overlay は loader 拡張

@@ -303,9 +303,11 @@ default では Linux/macOS は `~/.local/bin` (binary) + `~/.config/SLANG/` (lib
 - **Python 3.x** (一部の機能で必要)
   - PCG / フォント変換ツール (`tools/png_to_asm.py`, `tools/charmap-encode.py`)
   - これらを使わない通常のコンパイル / 単一バイナリ実行には不要
-- **mono** (Linux / macOS で `make setup-tools` を実行する場合に必須)
+- **mono** (Linux / macOS で .NET assembly な disk ツール `HuDisk.exe` / `udostool.exe` を起動する場合に必須)
   - `setupenv.sh` が S-OS template 生成のため `HuDisk.exe` を mono 経由で実行する。Windows は .NET Framework で直接実行されるため不要
-  - sos / sosx1 環境で `slangbuild --emit disk` を使う場合も同じく mono が必要 (HuDisk.exe 起動)。lsx / x1 の ndc 経路だけ使うなら mono 不要
+  - **sos / sosx1** 環境で `slangbuild --emit disk` を使う場合 (= HuDisk.exe 起動)
+  - **pc88mk2sr** 環境で `slangbuild --emit disk` を使う場合 (= udostool.exe 起動、Bookworm's Library 由来の汎用ディスクルーチン用ツール)
+  - lsx / x1 の ndc 経路だけ使うなら mono 不要
 
 ### ビルドとインストール
 
@@ -359,6 +361,7 @@ template の入手:
 |------|----------------------|---------------------------|---------|
 | lsx / x1 | `images/LSXPROG.d88` | `images/templates/LSXPROG.D88` | repo 同梱 |
 | sos / sosx1 | `images/SOSPROG.D88` | `images/templates/SOSPROG.D88` | `make setup-tools` で取得 (S-OS 配布物 + AUTOEXEC.BAT 注入) |
+| pc88mk2sr | `images/PC88MK2SR.d88` | `images/templates/PC88MK2SR.D88` | repo 同梱 (Bookworm's Library 由来、`THIRD_PARTY_NOTICES.md` 参照) |
 | MSX-DOS 系 | `images/dosformsx.dsk` | (従来経路を維持、今後 `--emit disk` 経路へ移行予定) | `make setup-tools` で取得 |
 
 # LSX-Dodgersバージョン依存について

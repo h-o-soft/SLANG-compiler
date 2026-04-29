@@ -23,11 +23,11 @@ PC-8801mkII SR 環境 (`-E pc88mk2sr`) の `slangbuild --emit disk` 機能で使
 | `iosys.bin` | `runtime/pc88mk2sr/iosys.bin` | 2026-04-29 | 改変なし (`iosys.z80` ソース付き) |
 | `PC88MK2SR.D88` (boot disk template) | `images/templates/PC88MK2SR.D88` | 2026-04-29 | 改変なし |
 
-**取得元**: [Bookworm's Library](https://web.archive.org/) で公開されているサンプルアーカイブ `filesys_20141128.zip` (= 2014 年公開の汎用ディスクルーチン)
+**取得元**: Bookworm's Library で公開されているサンプルアーカイブ `filesys_20141128.zip` (= 2014 年公開の汎用ディスクルーチン)。
+
+**元サイト URL**: `http://mydocuments.g2.xrea.com/index.html` (= 現在は閉鎖、アーカイブ経由でのみ取得可能)。`web.archive.org` で上記 URL を検索すると当時のページ snapshot が確認できる。
 
 **サイト上の許諾文**: 「**改変含め自由に使ってください**」(= サイト記載文をそのまま引用)。これを license として信用し、repo + 配布 zip に同梱しています。
-
-**作者**: 個人特定はしていません。サイト記載連絡先メール: `cowbell600@yahoo.co.jp`。GitHub アカウント `https://github.com/meltycode` との同一性は不確定。
 
 **用途**: PC-8801mkII SR 用 disk image を `slangbuild --emit disk -E pc88mk2sr` で生成する際に、`udostool.exe` で `ipl.bin` (boot loader) / `subsys.bin` (disk subsystem) / `iosys.bin` (main disk system) を template に書き込み、main bin と overlay bin を `D88` 内に格納します。
 
