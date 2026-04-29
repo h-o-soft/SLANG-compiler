@@ -124,13 +124,17 @@ echo Uninstalling SLANG from:
 echo   Binaries:  %BINDIR%\slangc.exe, slangbuild.exe
 echo   Libraries: %CONFIG_DIR% (entire directory)
 
-REM 危険 path guard: trailing \ を正規化してから判定
-set "P=%CONFIG_DIR%"
+REM 危険 path guard:
+REM (1) full path 化して D:\. や D:\foo\.. のような正規化前表現を解決。
+REM     for %%I in (...) do set "P=%%~fI" は cmd.exe の絶対パス展開
+REM     (= Unix 側の cd "$p" && pwd と同じ思想)。
+REM (2) trailing \ を除去 (= D:\ と D: を同一視)。
+REM (3) drive root pattern (?:) を一律 refuse、その後既存 guard。
+for %%I in ("%CONFIG_DIR%") do set "P=%%~fI"
 if "%P:~-1%"=="\" set "P=%P:~0,-1%"
 if "%P%"==""                    goto :err_path
-REM 任意 drive root (X:) を refuse — C:\ / D:\ / E:\ ... を一律拒否。
-REM 正規化済 %P% は drive letter のみなら長さ 2 (= 例: "D:")。
-REM 2 文字目が ':' かつ それ以降が空なら drive root と判定。
+REM 任意 drive root (X:) を refuse — C:\ / D:\ / D:\. / D:\foo\.. を全て拒否
+REM (上記 full path 化により D:\. は D:\ → D: に解決済)。
 if "%P:~1,1%"==":" if "%P:~2%"=="" goto :err_path
 REM 親 dir / システム dir 一致拒否
 if /I "%P%"=="%SYSTEMDRIVE%"    goto :err_path
