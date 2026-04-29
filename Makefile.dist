@@ -13,7 +13,7 @@
 # に取られる問題があるため、`sudo make install PREFIX=/usr/local CONFIG_DIR=/usr/local/share/slang`
 # のように CONFIG_DIR も明示する運用を docs で案内 (system-wide は上級ユーザー向け)。
 ifeq ($(OS),Windows_NT)
-    PREFIX ?= $(LOCALAPPDATA)\Programs\SLANG
+    PREFIX ?= $(USERPROFILE)\.local\bin
     BINDIR = $(PREFIX)
     CONFIG_DIR = $(USERPROFILE)\.config\SLANG
 else
@@ -258,7 +258,7 @@ help:
 	@echo ""
 	@echo "Options:"
 	@echo "  PREFIX=path        - Installation prefix (default: ~/.local on Unix,"
-	@echo "                       %LOCALAPPDATA%\\Programs\\SLANG on Windows)"
+	@echo '                       %USERPROFILE%\.local\bin on Windows)'
 	@echo "  TARGET=path        - Sample source file (without extension)"
 	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/msx2/msxrom/cpm)"
 	@echo ""

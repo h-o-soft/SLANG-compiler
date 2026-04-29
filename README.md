@@ -289,7 +289,7 @@ sudo ./install.sh --prefix /usr/local --config-dir /usr/local/share/slang --forc
 ./install.sh --help                       # 全オプション
 ```
 
-default では Linux/macOS は `~/.local/bin` (binary) + `~/.config/SLANG/` (lib)、Windows は `%LOCALAPPDATA%\Programs\SLANG\` (binary) + `%USERPROFILE%\.config\SLANG\` (lib) に配置されます。
+default では Linux/macOS は `~/.local/bin` (binary) + `~/.config/SLANG/` (lib)、Windows は `%USERPROFILE%\.local\bin\` (binary) + `%USERPROFILE%\.config\SLANG\` (lib) に配置されます (= 両 OS で `~/.local/bin` 系に揃え、uv / pipx 等の CLI ツール慣習に整合)。
 
 外部ツール (ndc / HuDisk / AILZ80ASM) はライセンス都合で配布 zip に同梱しないため、`make setup-tools` で別途ダウンロードします (= `~/.config/SLANG/tools/` 配下に配置)。
 
