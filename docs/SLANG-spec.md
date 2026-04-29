@@ -920,8 +920,8 @@ overlay に渡すと compiler 内部ラベルとの衝突リスクがあるた�
 配布スクリプト (`Makefile.dist` / `publish.sh`) では `--slangc` / `--asm` /
 `--ndc` / `--hudisk` を明示指定する運用 (PATH 優先は再現性が低いため)。
 `make setup-tools` がライセンス都合で同梱できない `ndc` / `HuDisk.exe` を
-ダウンロードして `tools/` に配置し、`make install` で `~/.config/SLANG/tools/`
-にコピーする。
+ダウンロードして `tools/` に配置し、`./install.sh` (または `make install`) で
+`~/.config/SLANG/tools/` にコピーする。
 
 ---
 
