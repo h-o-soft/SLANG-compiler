@@ -17,6 +17,8 @@
   - **overlay 対応**: `#MODULE` 使った SL の overlay bin が `M{index}.BIN` として disk に格納される。pc88mk2sr では FOPEN/FREAD ではなく libp88_file の `Disk_Load` / `Disk_Load3` 系で読み込む想定、disk 内名は `Disk_Load("M0 BIN", addr)` のような space 区切り形式
   - **ORG = $1A00 固定運用** (= 本 PR の制約)。SL 側で `#ORG $XXXX` 上書きすると `main_name` (= `"$1A00.$$$"`) と loader 期待が不整合になり、build は通るが boot しない silent wrong になる **既知リスク**。ORG 可変化 (= `main_name` template 化 + slangc 出力 sym からの整合 check) は別 PR で対応
   - 同梱物の出典 (provenance) を新規 `THIRD_PARTY_NOTICES.md` に記録 (= 配布物名 / 取得元 / 取得日 / 許諾文 / 改変有無 を表で明記)
+  - **VRTC 割り込みハンドラの GAMEVSYNC を条件化**: `libp88_base.asm` の `INTVRTC` で `CALL GAMEVSYNC` を `#if exists USE_GAMEVSYNC` で囲み、SL 側で `CONST ASM USE_GAMEVSYNC = 1;` を立てた場合のみ呼ぶ形に。`USE_GAMEVSYNC` 未定義の SL は GAMEVSYNC 関数を書かなくても build できる
+  - **AILZ80ASM エラー表示**: `--verbose` 無しでも `main assembly failed` の詳細 (= 未定義 label 等) が stderr に出るよう修正 (= AILZ80ASM がエラーを stdout に流す癖を吸収)
   - 他 PC-8801 系 (pc80mk2 / pc80mk2x) は別 PR で順次
 
 ## Version 0.23.0

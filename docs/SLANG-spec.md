@@ -946,6 +946,26 @@ overlay に渡すと compiler 内部ラベルとの衝突リスクがあるた�
 `main_name: "$1A00.$$$"` で literal 固定) と loader 期待値が不整合になり、
 build は通るが boot しない silent wrong になる。ORG 可変化は別 PR で対応予定。
 
+#### pc88mk2sr の `USE_GAMEVSYNC` 制約 (= VRTC 割り込みでの GAMEVSYNC 呼出し)
+
+`libp88_base.asm` の VRTC 割り込みハンドラ (`INTVRTC`) は、SL 側で
+`CONST ASM USE_GAMEVSYNC = 1;` を立てた場合のみ `GAMEVSYNC` 関数を呼ぶ
+(`#if exists USE_GAMEVSYNC` で条件化)。VSYNC 同期処理が必要な SL は次の
+ように書く:
+
+```
+CONST ASM USE_GAMEVSYNC = 1;
+GAMEVSYNC() BEGIN
+  // VSYNC 毎の処理 (= sprite 移動、サウンド更新 等)
+END;
+MAIN() BEGIN
+  // ...
+END;
+```
+
+VSYNC 同期処理が不要な SL は `USE_GAMEVSYNC` も `GAMEVSYNC` 関数も書かなく
+て良い (= VRTC 割り込み自体は鳴り続けるが何も呼ばない、軽量)。
+
 ---
 
 ### 関数 cross-reference (prelink モード)
