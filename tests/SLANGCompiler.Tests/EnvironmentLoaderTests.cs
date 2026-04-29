@@ -232,6 +232,75 @@ libraries:
     }
 
     [Fact]
+    public void CmtConcat_DeserializesAndAbsolutizes()
+    {
+        // env file dir 基準の相対 path が絶対化されること。
+        // env file = <tempDir>/env/foo.env、cmt_concat の path = ../templates/X.CMT
+        // → 絶対化後 = <tempDir>/templates/X.CMT
+        var envDir = Path.Combine(_tempDir, "env");
+        Directory.CreateDirectory(envDir);
+        Directory.CreateDirectory(Path.Combine(_tempDir, "templates"));
+
+        var envPath = Path.Combine(envDir, "cmtconcat.env");
+        File.WriteAllText(envPath, """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: cmt
+cmt_concat:
+  - ../templates/X.CMT
+  - ../templates/Y.CMT
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+
+        Assert.NotNull(config.CmtConcat);
+        Assert.Equal(2, config.CmtConcat!.Count);
+        Assert.Equal(Path.GetFullPath(Path.Combine(_tempDir, "templates", "X.CMT")),
+                     config.CmtConcat[0]);
+        Assert.Equal(Path.GetFullPath(Path.Combine(_tempDir, "templates", "Y.CMT")),
+                     config.CmtConcat[1]);
+    }
+
+    [Fact]
+    public void CmtConcat_NullByDefault()
+    {
+        // `cmt_concat:` 未指定 env では CmtConcat == null。
+        var envPath = WriteEnv("no_concat.env", """
+env_type: 0
+os_type: 0
+default_org: "$100"
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+        Assert.Null(config.CmtConcat);
+    }
+
+    [Fact]
+    public void CmtConcat_RequiresOutputCmt_OtherwiseThrows()
+    {
+        // `cmt_concat:` 指定 + `output:` 未指定 (= bin default) は壊れた
+        // ファイル生成 silent wrong になるので InvalidDataException で reject。
+        var envPath = WriteEnv("concat_no_cmt.env", """
+env_type: 0
+os_type: 0
+default_org: "$100"
+cmt_concat:
+  - somewhere.cmt
+libraries:
+  - runtime.yml
+""");
+
+        var ex = Assert.Throws<InvalidDataException>(() => EnvironmentLoader.Load(envPath));
+        Assert.Contains("cmt_concat", ex.Message);
+        Assert.Contains("output: cmt", ex.Message);
+    }
+
+    [Fact]
     public void DiskSystemFiles_PathNormalization_RemovesDotSegments()
     {
         // env file dir 基準で `./xxx/../foo/ipl.bin` のような dotted path が

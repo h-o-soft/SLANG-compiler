@@ -28,6 +28,15 @@ public class EnvironmentConfig
     /// `disk:` セクションが無ければ null。
     /// </summary>
     public DiskConfig? Disk { get; set; }
+
+    /// <summary>
+    /// AILZ80ASM 出力後に main bin の直後に concat する追加 .cmt path のリスト
+    /// (env file dir 基準の相対 path → 絶対化済み)。pc80mk2x の XBIOS.CMT 結合用。
+    /// null/empty = 結合なし。<see cref="OutputFormat"/> == "cmt" 必須
+    /// (= 不一致は <c>EnvironmentLoader</c> で reject)。
+    /// 結合順序: main.cmt + cmt_concat[0..] + overlay._mN.cmt (overlay 最後)
+    /// </summary>
+    public List<string>? CmtConcat { get; set; }
 }
 
 /// <summary>

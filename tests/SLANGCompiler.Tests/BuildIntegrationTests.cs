@@ -747,6 +747,140 @@ MYSUB() BEGIN END;
     }
 
     [Fact]
+    public void Pc80mk2x_CmtConcat_ProducesConcatenatedCmt()
+    {
+        // pc80mk2x env (= `output: cmt` + `cmt_concat: [../templates/XBIOS.CMT]`)
+        // で slangbuild → 結合済 `<prefix>.cmt` が出ること、bytes が
+        // (main.cmt + XBIOS.CMT + overlay._mN.cmt) の concat と一致すること、
+        // 結合に消費された overlay._mN.cmt は intermediate cleanup で消える
+        // ことを検証する。
+        //
+        // bytes 比較は **pc80mk2x.env と同じ libraries で `cmt_concat` だけ
+        // 無い一時 fixture env** を作って main.cmt を取得 (= pc80mk2 の
+        // libraries は違うので pc80mk2 main.cmt とは比較できない、Codex 指摘)。
+        var xbiosCmt = Path.Combine(_projectRoot, "runtime", "templates", "XBIOS.CMT");
+        Skip.IfNot(File.Exists(xbiosCmt),
+            "pc80mk2x test requires runtime/templates/XBIOS.CMT (= obsolete から救出済の bootstrap binary)");
+
+        var slPath = Path.Combine(_tempDir, "p80x_test.SL");
+        File.WriteAllText(slPath, @"
+MAIN() BEGIN MYSUB(); END;
+#MODULE $1000
+MYSUB() BEGIN END;
+#END
+");
+
+        // === pc80mk2x で結合 cmt 取得 ===
+        var (codeX, _, stderrX) = RunSlangbuild(slPath, "-E", "pc80mk2x");
+        Assert.True(codeX == 0,
+            $"slangbuild (pc80mk2x) failed (exit {codeX}). stderr: {stderrX}");
+
+        var concatCmt = Path.Combine(_tempDir, "p80x_test.cmt");
+        Assert.True(File.Exists(concatCmt),
+            $"concatenated cmt not produced at {concatCmt}");
+
+        // overlay は cleanup で消えていること
+        var overlayCmt = Path.Combine(_tempDir, "p80x_test._m0.cmt");
+        Assert.False(File.Exists(overlayCmt),
+            $"overlay should be cleanup-ed (consumed by concat): {overlayCmt}");
+
+        // === bytes 比較用: 一時 fixture env で cmt_concat だけ無い同等 build ===
+        // pc80mk2x.env を読んで、cmt_concat 行だけ抜いた fixture を temp に作り、
+        // env 検索 path を temp に向けて再 build。同じ libraries で main.cmt
+        // だけが出る (= 結合前の素の main.cmt)。
+        var origEnv = File.ReadAllText(
+            Path.Combine(_projectRoot, "runtime", "env", "pc80mk2x.env"));
+        // cmt_concat: ブロック (= 行 + 次のリスト要素) を除去
+        var lines = origEnv.Split('\n');
+        var filtered = new List<string>();
+        bool skipping = false;
+        foreach (var line in lines)
+        {
+            if (skipping)
+            {
+                // 続くリスト要素 (`  - ` で始まる行) も skip、それ以外で再開
+                if (line.TrimStart().StartsWith("- ")) continue;
+                skipping = false;
+            }
+            if (line.TrimStart().StartsWith("cmt_concat:"))
+            {
+                skipping = true;
+                continue;
+            }
+            filtered.Add(line);
+        }
+
+        // fixture dir 構成: <fixture>/env/p80x_nocat.env + libraries/templates は
+        // _projectRoot 側を流用 (= -L で path 追加して resolve 可能)
+        var fixtureEnvDir = Path.Combine(_tempDir, "fxenv", "env");
+        Directory.CreateDirectory(fixtureEnvDir);
+        var fixtureEnvPath = Path.Combine(fixtureEnvDir, "p80x_nocat.env");
+        File.WriteAllText(fixtureEnvPath, string.Join("\n", filtered));
+
+        var slPath2 = Path.Combine(_tempDir, "p80x_nocat.SL");
+        File.WriteAllText(slPath2, @"
+MAIN() BEGIN MYSUB(); END;
+#MODULE $1000
+MYSUB() BEGIN END;
+#END
+");
+
+        var (code2, _, stderr2) = RunSlangbuild(slPath2,
+            "-E", "p80x_nocat",
+            "-L", Path.Combine(_tempDir, "fxenv"));
+        Assert.True(code2 == 0,
+            $"slangbuild (p80x_nocat fixture) failed (exit {code2}). stderr: {stderr2}");
+
+        var rawMainCmt = Path.Combine(_tempDir, "p80x_nocat.cmt");
+        Assert.True(File.Exists(rawMainCmt),
+            $"raw main cmt not produced at {rawMainCmt}");
+        var rawOverlayCmt = Path.Combine(_tempDir, "p80x_nocat._m0.cmt");
+        Assert.True(File.Exists(rawOverlayCmt),
+            $"raw overlay cmt not produced at {rawOverlayCmt}");
+
+        // === bytes 比較: concat = raw main + XBIOS + raw overlay ===
+        var expected = File.ReadAllBytes(rawMainCmt)
+            .Concat(File.ReadAllBytes(xbiosCmt))
+            .Concat(File.ReadAllBytes(rawOverlayCmt))
+            .ToArray();
+        var actual = File.ReadAllBytes(concatCmt);
+        Assert.Equal(expected.Length, actual.Length);
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void CmtConcat_MissingFile_ReturnsFriendlyError()
+    {
+        // `cmt_concat:` の path が存在しない fixture env で build → exit 1 +
+        // `slangbuild: cmt_concat: file not found: ...` (= silent wrong 防止)。
+        var fixtureEnvDir = Path.Combine(_tempDir, "missing_env", "env");
+        Directory.CreateDirectory(fixtureEnvDir);
+        var fixtureEnvPath = Path.Combine(fixtureEnvDir, "missing.env");
+        // 既存の lsx libraries を流用 (= 最小 build が通る)、cmt_concat だけ
+        // 存在しない path を指す
+        File.WriteAllText(fixtureEnvPath, """
+env_type: 0
+os_type: 0
+default_org: "$100"
+output: cmt
+cmt_concat:
+  - nonexistent_xbios.cmt
+libraries:
+  - runtime.yml
+""");
+
+        var slPath = Path.Combine(_tempDir, "missing_test.SL");
+        File.WriteAllText(slPath, "MAIN() BEGIN END;\n");
+
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "missing",
+            "-L", Path.Combine(_tempDir, "missing_env"));
+        Assert.NotEqual(0, code);
+        Assert.Contains("cmt_concat", stderr);
+        Assert.Contains("file not found", stderr);
+    }
+
+    [Fact]
     public void Pc80mk2_OutputCmt_ProducesCmtNotBin()
     {
         // pc80mk2 env (= `output: cmt`) で slangbuild → `<prefix>.cmt` が出ること、

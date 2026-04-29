@@ -12,6 +12,11 @@ createRelease() {
   mv slangbuild* bin
   cp -r ../../include .
   cp -r ../../runtime .
+  # XBIOS.CMT (= pc80mk2x 用 bootstrap binary) は License 確認完了まで
+  # 配布対象から除外。runtime/templates/ は将来他 template (= cmt_assets
+  # 用 SD 経路、次 PR) も入る予定なので dir 自体は残す。License 確認完了
+  # 後はこの rm -f 行を削除するだけで配布対象化される。
+  rm -f runtime/templates/XBIOS.CMT
   # examples: SLANGソースのみ（ビルド成果物除外）
   # top-level の *.SL と、サブディレクトリ chip / spr / tile / tilespr / ui
   # から *.SL / *.sl / README.md / *.json のみ whitelist 方式で拾う。

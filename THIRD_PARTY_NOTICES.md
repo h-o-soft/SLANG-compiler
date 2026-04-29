@@ -33,6 +33,31 @@ PC-8801mkII SR 環境 (`-E pc88mk2sr`) の `slangbuild --emit disk` 機能で使
 
 ---
 
+## XBIOS.CMT (PC-8001mkII XBIOS bootstrap binary)
+
+PC-8001mkII XBIOS 直接環境 (`-E pc80mk2x`) の CMT 結合 build で使用される `XBIOS.CMT` (= 0000H に load される bootstrap binary、3,726 byte) の出典:
+
+| 項目 | 内容 |
+|---|---|
+| 配置 | `runtime/templates/XBIOS.CMT` (repo 内のみ、配布 zip からは除外) |
+| 用途 | pc80mk2x build 時に slangbuild が main.cmt の直後に結合する bootstrap binary (= 0000H 配置の XBIOS が main code から参照される) |
+| 出典 | Oh!MZ 1987 年 9 月号掲載の PC-8001/8801 用 S-OS が原典 (= TITY SOFT 1986 の XBIOS for NEC PC-8801 SERIES, Version 1.00, Revision 1.00) |
+| 改変者 | h-o-soft (= 本リポジトリの主作者) による SHARP X1 風カラー化改変版 |
+| source | `obsolete/lib/pc8001/XBIOS/XBIOSMAIN.ASM` (= 改変済 source、`README.md` 同梱) |
+| 同梱履歴 | 本 PR より前から `obsolete/lib/pc8001/XBIOS/` に同梱 |
+| 取得日 | 不明 (= initial commit から存在) |
+| 改変 | あり (= XBIOSMAIN.ASM 内 `README.md` 記載のカラー化改変) |
+| 許諾 | 明示的記載なし |
+
+**配布 zip の扱い**: 本 PR 時点では `publish.sh` で配布対象から除外
+(= license 確認完了まで、`cp -r ../../runtime .` の直後に
+`rm -f runtime/templates/XBIOS.CMT`)。配布 zip 解凍環境で pc80mk2x を使う
+ユーザーは repo から `runtime/templates/XBIOS.CMT` を手動で installed
+`~/.config/SLANG/runtime/templates/` にコピーする運用。license 確認完了
+後は `publish.sh` の `rm -f` 行を削除するだけで配布対象化。
+
+---
+
 ## 今後追記予定
 
 以下の既存同梱物については本ファイルへの provenance 追記が未完了です。今後の PR で順次整理します:

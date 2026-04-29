@@ -1081,7 +1081,46 @@ libraries:
 
 **現在の制約**: overlay (`#MODULE` 使用時) も `_m0.cmt` 別ファイルで出るのみ
 で、main への結合 / loader 組み立てはユーザー側責務。pc80mk2x (XBIOS 直接
-環境) は別 env で対応予定。
+環境) では結合 build flow (= 下記 CMT 結合 env) が用意されている。
+
+#### CMT 結合 env (= pc80mk2x)
+
+`pc80mk2x` (PC-8001mkII XBIOS 直接環境) は CMT 出力 + **XBIOS.CMT 自動結合**
+を行う。env file (`runtime/env/pc80mk2x.env`) の `output: cmt` + `cmt_concat:`
+フィールドで build flow が決まる:
+
+```yaml
+# runtime/env/pc80mk2x.env (抜粋)
+output: cmt
+cmt_concat:
+  - ../templates/XBIOS.CMT       # env file dir = runtime/env/
+```
+
+`slangbuild` は AILZ80ASM 出力後に **main.cmt + cmt_concat 群 + 各
+overlay._mN.cmt** の順で 1 本の cmt に結合する (= 旧 dev Makefile で書か
+れていた `COPY /B PROG.CMT+XBIOS.CMT+OVERLAY.CMT GAME.CMT` を内製化)。
+overlay も CMT 形式 (= main と同じ) で出力されて結合される (= テープ上
+で各 block に CMT header が必要なため)。
+
+結合の semantics:
+- 結合先 = main.cmt 上書き (= 同一 dir tmp file + overwrite move で
+  delete-then-move の中間状態を回避)
+- cmt_concat の path が存在しない場合は明示エラー (= silent wrong 防止)
+- 結合に消費された overlay._mN.cmt は intermediate cleanup 対象 (=
+  `--keep-asm` 指定時のみ残る)
+- `cmt_concat` は `output: cmt` 専用 (= bin / null env で指定すると
+  env load 時 reject)
+
+##### XBIOS.CMT の配布対象除外
+
+XBIOS.CMT は license 確認中のため、本リポジトリ内
+(`runtime/templates/XBIOS.CMT`) のみに同梱され、配布 zip では除外される。
+配布 zip 解凍環境で pc80mk2x を使う場合は repo から
+`runtime/templates/XBIOS.CMT` を手動で
+`~/.config/SLANG/runtime/templates/` にコピーする。
+
+**SD カード環境 (pc80mk2xsd)** は build flow が違い (= 結合せず個別配置)、
+**次 PR で対応予定**。
 
 サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
 128 byte 以内であることを前提としている (より大きい overlay は loader 拡張
