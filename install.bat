@@ -145,6 +145,11 @@ if /I "%P%"=="%PROGRAMFILES%"   goto :err_path
 if /I "%P%"=="%PROGRAMFILES(X86)%" goto :err_path
 if /I "%P%"=="%SYSTEMROOT%"     goto :err_path
 if /I "%P%"=="%WINDIR%"         goto :err_path
+REM Refuse default-parent dirs (typo without trailing \SLANG would wipe other
+REM apps' settings). Example: --config-dir "%USERPROFILE%\.config" without
+REM \SLANG would remove all of ~/.config (git, vim, etc.).
+if /I "%P%"=="%USERPROFILE%\.config" goto :err_path
+if /I "%P%"=="%USERPROFILE%\.local"  goto :err_path
 
 if "%FORCE%"=="0" (
   set /p ANS="Continue? [y/N]: "

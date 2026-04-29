@@ -104,9 +104,13 @@ guard_path() {
   [ "$abs" = "/" ] || abs="${abs%/}"
   # $HOME の親 dir も拒否 (= macOS の /Users, Linux の /home を動的に取得)。
   # 静的 path も併記してベルトとサスペンダーで防御。
+  # 加えて default の親 dir (= $HOME/.config, $HOME/.local) を refuse する。
+  # 例: --config-dir "$HOME/.config" を `/SLANG` 抜きで typo 指定すると
+  # ~/.config 配下の他アプリ設定 (git, vim, etc.) を全部消す事故になる。
   HOME_PARENT=$(dirname "$HOME")
   case "$abs" in
     "" | "/" | "$HOME" | "$HOME_PARENT" \
+    | "$HOME/.config" | "$HOME/.local" \
     | "/root" | "/root/.config" \
     | "/home" | "/Users" \
     | "/usr" | "/etc" | "/var" | "/tmp" | "/opt")
