@@ -163,6 +163,75 @@ disk:
     }
 
     [Fact]
+    public void OutputFormat_DeserializesAndNormalizes()
+    {
+        // `output: CMT` (大文字) も `cmt` に lowercase 正規化される。
+        var envPath = WriteEnv("cmt_upper.env", """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: CMT
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+        Assert.Equal("cmt", config.OutputFormat);
+    }
+
+    [Fact]
+    public void OutputFormat_NullByDefault()
+    {
+        // `output:` 未指定 env では OutputFormat == null (= bin default)。
+        var envPath = WriteEnv("no_output.env", """
+env_type: 0
+os_type: 0
+default_org: "$100"
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+        Assert.Null(config.OutputFormat);
+    }
+
+    [Fact]
+    public void OutputFormat_BinNormalizedToNull()
+    {
+        // `output: bin` は default と同じなので null に正規化 (= 内部表現統一)。
+        var envPath = WriteEnv("bin_explicit.env", """
+env_type: 0
+os_type: 0
+default_org: "$100"
+output: bin
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+        Assert.Null(config.OutputFormat);
+    }
+
+    [Fact]
+    public void OutputFormat_InvalidValueThrows()
+    {
+        // `output: rom` 等の未知値は InvalidDataException で reject (= typo 早期検出)。
+        var envPath = WriteEnv("bad_output.env", """
+env_type: 0
+os_type: 0
+default_org: "$100"
+output: rom
+libraries:
+  - runtime.yml
+""");
+
+        var ex = Assert.Throws<InvalidDataException>(() => EnvironmentLoader.Load(envPath));
+        Assert.Contains("rom", ex.Message);
+        Assert.Contains("bin", ex.Message);
+        Assert.Contains("cmt", ex.Message);
+    }
+
+    [Fact]
     public void DiskSystemFiles_PathNormalization_RemovesDotSegments()
     {
         // env file dir 基準で `./xxx/../foo/ipl.bin` のような dotted path が

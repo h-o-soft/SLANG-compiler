@@ -747,6 +747,27 @@ MYSUB() BEGIN END;
     }
 
     [Fact]
+    public void Pc80mk2_OutputCmt_ProducesCmtNotBin()
+    {
+        // pc80mk2 env (= `output: cmt`) で slangbuild → `<prefix>.cmt` が出ること、
+        // および `.bin` が出ないこと (= Driver の `.bin` hardcode 漏れを CI で検出)。
+        // AILZ80ASM の `-cmt -gap 0` 引数は env 経由で自動的に付与される。
+        var slPath = Path.Combine(_tempDir, "pc80mk2_smoke.SL");
+        File.WriteAllText(slPath, "MAIN() BEGIN END;\n");
+
+        var (code, _, stderr) = RunSlangbuild(slPath, "-E", "pc80mk2");
+        Assert.True(code == 0,
+            $"slangbuild (pc80mk2) failed (exit {code}). stderr: {stderr}");
+
+        var cmtPath = Path.Combine(_tempDir, "pc80mk2_smoke.cmt");
+        var binPath = Path.Combine(_tempDir, "pc80mk2_smoke.bin");
+        Assert.True(File.Exists(cmtPath),
+            $"main cmt not produced at {cmtPath}. stderr: {stderr}");
+        Assert.False(File.Exists(binPath),
+            $"unexpected `.bin` produced at {binPath} — `.bin` hardcode regression");
+    }
+
+    [Fact]
     public void EmitDisk_DefaultDiskImagePath_DerivesFromOutputPrefix()
     {
         // --disk-image 省略時は <output_prefix>.d88 に出る。

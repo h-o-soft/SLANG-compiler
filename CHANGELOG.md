@@ -21,6 +21,15 @@
   - **AILZ80ASM エラー表示**: `--verbose` 無しでも `main assembly failed` の詳細 (= 未定義 label 等) が stderr に出るよう修正 (= AILZ80ASM がエラーを stdout に流す癖を吸収)
   - 他 PC-8801 系 (pc80mk2 / pc80mk2x) は別 PR で順次
 
+- pc80mk2 環境 (PC-8001mkII ROM 環境) を `slangbuild` に統合 — CMT (cassette tape) 出力対応 (Phase 3 続編)
+  - env file (`runtime/env/pc80mk2.env`) に新フィールド `output: cmt` を追加。`slangbuild` が AILZ80ASM 起動時に `-bin` shortcut を `-cmt` に置換 + `-gap 0` を自動付与し、出力拡張子を `.bin` → `.cmt` に切替 (= 旧 dev `Makefile` の `BIN_EXT/ASM_OPT` 設定を `slangbuild` に移植、`Makefile.dist` 化で抜けていた CMT 対応を復元)
+  - 新 `EnvironmentConfig.OutputFormat` (string?)。null/未指定 = `.bin` default、`"cmt"` で AILZ80ASM CMT format。`output:` 値は `bin` / `cmt` のみ許可、それ以外は `InvalidDataException` で reject (= typo 早期検出)
+  - `AssemblerRunner.AssembleMain` / `AssembleOverlay` に `outputFlag` (`-bin` / `-cmt`) + `extraArgs: string[]?` 引数追加。`-bin` と `-cmt` を同時に渡すと両 format の file が出てしまうので、format ごとに 1 つに切替える設計。prelink Pass 1 / Pass 3 / 単段 / overlay 全段で同じ outputFlag/extraArgs を pass (= AILZ80ASM option 不一致でアドレス解決崩壊するのを防止)
+  - `Driver.Run()` 冒頭で `EnvironmentResolver` を 1 度だけ呼ぶ前倒しに変更、`BuildDiskImage()` 内の env 二重解決を排除。`--emit disk` + `disk:` 不在 env の組合せは compile 前に early reject
+  - `Makefile.dist`: `OUTPROG` を `$(BIN_EXT)` 経由で拡張子化 (`PROG.bin` 固定 → `PROG$(BIN_EXT)`)、pc80mk2 ENV ブロック追加 (`BIN_EXT/BIN_EXT_ENV = .cmt`、`DISK_IMAGE = $(OUTPROG)`)、`disk_image` 分岐に `pc80mk2: $(OUTPROG)` 明示追加 (= 旧 ELSE 分岐 ndc 経路に落ちないよう、cpm / msxrom と同じ pattern)、`clean` recipe / `help` ENV 一覧にも反映
+  - `make ENV=pc80mk2 build / run / disk_image` のいずれでも `examples/PROG.cmt` が生成される。M88 等のエミュレータで `.cmt` をそのまま CLOAD で読み込める想定 (`EMU` 変数はユーザー側設定)
+  - **scope 外**: pc80mk2x (XBIOS 直接環境、XBIOS.CMT 結合が別途必要) / overlay 結合 (= `M0.cmt` を main に結合) / `--emit disk` 統合 (= cassette は disk じゃないので非対象) は本 PR 外。overlay も `_m0.cmt` 別ファイルで出るのみ、loader 組み立てはユーザー側
+
 ## Version 0.23.0
 
 - `#MODULE` (オーバーレイ) のモジュール専用ワーク対応 (#142)

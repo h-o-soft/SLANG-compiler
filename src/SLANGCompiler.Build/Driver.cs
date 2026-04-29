@@ -65,6 +65,44 @@ public class Driver
             return 1;
         }
 
+        // === env 解決 (前倒し) ===
+        // env file を 1 度だけ解決し、出力 format / disk image 組み立てに共有する。
+        // env 未解決は即 error (= slangc 側でも fail するので早期失敗で十分)。
+        // BuildDiskImage 側で再解決する旧フローは廃止 (= 二重解決排除)。
+        var pathResolver = new PathResolver(_opts.IncludePaths, _opts.LibraryPaths);
+        var searchPaths = pathResolver.GetRuntimePaths()
+                                       .Concat(pathResolver.GetLibPaths())
+                                       .ToList();
+        var resolved = EnvironmentResolver.Resolve(_opts.Environment, searchPaths);
+        if (resolved == null)
+        {
+            Console.Error.WriteLine($"slangbuild: env not found: {_opts.Environment}");
+            return 1;
+        }
+        var (envConfig, envPath) = resolved.Value;
+
+        // --emit disk + disk: セクション無しは早期 reject (= 無駄な compile/asm 回避)
+        if (_opts.EmitMode == "disk" && envConfig.Disk == null)
+        {
+            Console.Error.WriteLine(
+                $"slangbuild: --emit disk requires `disk:` section in env: {envPath}");
+            return 1;
+        }
+
+        // === 出力 format / 拡張子 / AILZ80ASM 出力 flag / extra args 決定 ===
+        // env file `output: cmt` 指定で `.bin` → `.cmt` 切替 + AILZ80ASM の
+        // shortcut option を `-bin` → `-cmt` に置換 + `-gap 0` を追加 pass。
+        // `-bin` と `-cmt` を同時に渡すと両 format の file が出るので、format
+        // ごとに 1 つに切替える設計 (= AssemblerRunner 側 outputFlag 引数)。
+        // null/未指定 (= bin default) なら従来通り `-bin` のみ。
+        // outputFlag / extraArgs は prelink Pass 1/3 でアドレス整合上 main /
+        // overlay 全段で同じものを渡す必要 (= 各 helper method で参照)。
+        var binExt = (envConfig.OutputFormat == "cmt") ? ".cmt" : ".bin";
+        var asmOutputFlag = (envConfig.OutputFormat == "cmt") ? "-cmt" : "-bin";
+        var asmExtraArgs = (envConfig.OutputFormat == "cmt")
+            ? new[] { "-gap", "0" }
+            : null;
+
         // 出力ベースパス決定:
         //   -o 指定あり → 絶対パスならそのまま、相対パスなら cwd 基準で resolve
         //                  (Path.GetFullPath は相対なら cwd を補う)。これにより
@@ -81,7 +119,7 @@ public class Driver
         var outputDir = Path.GetDirectoryName(outputBase)!;
         var prefix = Path.GetFileName(outputBase);
         var mainAsm = outputBase + ".ASM";
-        var mainBin = outputBase + ".bin";
+        var mainBin = outputBase + binExt;
         var mainSym = outputBase + ".sym";
 
         var intermediates = new List<string>();
@@ -140,14 +178,16 @@ public class Driver
             {
                 // === 単段モード (PR-B 既存パス) ===
                 int rc = AssembleSingleStage(runner, plan, mainAsm, mainBin, mainSym,
-                                             overlayAsms, outputDir, intermediates);
+                                             overlayAsms, outputDir, intermediates,
+                                             binExt, asmOutputFlag, asmExtraArgs);
                 if (rc != 0) return rc;
             }
             else
             {
                 // === prelink モード (PR-B2): Pass 1 → Pass 2 → Pass 3 ===
                 int rc = AssemblePrelink(runner, plan, mainBin, mainSym,
-                                         outputDir, intermediates);
+                                         outputDir, intermediates,
+                                         binExt, asmOutputFlag, asmExtraArgs);
                 if (rc != 0) return rc;
             }
 
@@ -156,15 +196,15 @@ public class Driver
             {
                 var overlayBins = overlayAsms
                     .Select(a => Path.Combine(outputDir,
-                        Path.GetFileNameWithoutExtension(a) + ".bin"))
+                        Path.GetFileNameWithoutExtension(a) + binExt))
                     .ToList();
-                int diskRc = BuildDiskImage(mainBin, overlayBins, outputBase);
+                int diskRc = BuildDiskImage(envConfig, envPath, mainBin, overlayBins, outputBase);
                 if (diskRc != 0) return diskRc;
             }
 
             if (_opts.Verbose)
             {
-                Console.Error.WriteLine($"slangbuild: success — {prefix}.bin"
+                Console.Error.WriteLine($"slangbuild: success — {prefix}{binExt}"
                     + (overlayAsms.Count > 0 ? $" + {overlayAsms.Count} overlay(s)" : ""));
             }
             succeeded = true;
@@ -204,10 +244,14 @@ public class Driver
     /// </summary>
     private int AssembleSingleStage(AssemblerRunner runner, PrelinkPlan plan,
         string mainAsm, string mainBin, string mainSym,
-        List<string> overlayAsms, string outputDir, List<string> intermediates)
+        List<string> overlayAsms, string outputDir, List<string> intermediates,
+        string binExt, string asmOutputFlag, string[]? asmExtraArgs)
     {
         var mainLst = Path.ChangeExtension(mainBin, ".LST");
-        var mainResult = runner.AssembleMain(mainAsm, mainBin, mainSym, lstPath: mainLst);
+        var mainResult = runner.AssembleMain(mainAsm, mainBin, mainSym,
+                                             lstPath: mainLst,
+                                             outputFlag: asmOutputFlag,
+                                             extraArgs: asmExtraArgs);
         if (!mainResult.Success)
         {
             Console.Error.Write(mainResult.Stderr);
@@ -220,7 +264,7 @@ public class Driver
         {
             var overlayBase = Path.GetFileNameWithoutExtension(overlayAsm);
             var importsAsm = Path.Combine(outputDir, overlayBase + ".imports.asm");
-            var overlayBin = Path.Combine(outputDir, overlayBase + ".bin");
+            var overlayBin = Path.Combine(outputDir, overlayBase + binExt);
             var overlaySym = Path.Combine(outputDir, overlayBase + ".sym");
             var overlayLst = Path.Combine(outputDir, overlayBase + ".LST");
 
@@ -235,7 +279,9 @@ public class Driver
             }
 
             var ovResult = runner.AssembleOverlay(importsAsm, overlayAsm, overlayBin, overlaySym,
-                                                  lstPath: overlayLst);
+                                                  lstPath: overlayLst,
+                                                  outputFlag: asmOutputFlag,
+                                                  extraArgs: asmExtraArgs);
             if (!ovResult.Success)
             {
                 Console.Error.Write(ovResult.Stderr);
@@ -256,7 +302,8 @@ public class Driver
     /// アドレスが一致することを保証する。
     /// </summary>
     private int AssemblePrelink(AssemblerRunner runner, PrelinkPlan plan,
-        string mainBin, string mainSym, string outputDir, List<string> intermediates)
+        string mainBin, string mainSym, string outputDir, List<string> intermediates,
+        string binExt, string asmOutputFlag, string[]? asmExtraArgs)
     {
         if (_opts.Verbose) Console.Error.WriteLine($"slangbuild: prelink mode (cross-references found)");
 
@@ -266,7 +313,10 @@ public class Driver
         {
             var baseName = Path.GetFileNameWithoutExtension(t.AsmPath);
             var dummyImportsPath = Path.Combine(outputDir, baseName + ".dummy.imports.asm");
-            var pass1BinPath = Path.Combine(outputDir, baseName + ".pass1.bin");
+            // Pass 1 の bin は即削除 intermediate なので拡張子は固定で良いが、
+            // AILZ80ASM 出力 format (= -cmt) を main / Pass 3 と揃える都合上、
+            // ファイル extension も binExt にしておく (= 一貫性、debug 時の混乱防止)。
+            var pass1BinPath = Path.Combine(outputDir, baseName + ".pass1" + binExt);
             var pass1SymPath = Path.Combine(outputDir, baseName + ".pass1.sym");
 
             PrelinkPlan.WriteDummyImports(t, dummyImportsPath);
@@ -274,7 +324,9 @@ public class Driver
 
             var result = runner.AssembleOverlay(dummyImportsPath, t.AsmPath,
                                                 pass1BinPath, pass1SymPath,
-                                                superAssemble: false);
+                                                superAssemble: false,
+                                                outputFlag: asmOutputFlag,
+                                                extraArgs: asmExtraArgs);
             if (!result.Success)
             {
                 Console.Error.Write(result.Stderr);
@@ -310,7 +362,7 @@ public class Driver
                     + "(none found in any target sym: " + string.Join(", ", unresolved) + ")");
             }
 
-            // 本番出力ファイル名: main は <prefix>.bin、overlay は <prefix>._mN.bin
+            // 本番出力ファイル名: main は <prefix>{binExt}、overlay は <prefix>._mN{binExt}
             string outBin, outSym, outLst;
             if (t.Label == "main")
             {
@@ -320,13 +372,15 @@ public class Driver
             }
             else
             {
-                outBin = Path.Combine(outputDir, baseName + ".bin");
+                outBin = Path.Combine(outputDir, baseName + binExt);
                 outSym = Path.Combine(outputDir, baseName + ".sym");
                 outLst = Path.Combine(outputDir, baseName + ".LST");
             }
 
             var result = runner.AssembleOverlay(importsAsm, t.AsmPath, outBin, outSym,
-                                                superAssemble: false, lstPath: outLst);
+                                                superAssemble: false, lstPath: outLst,
+                                                outputFlag: asmOutputFlag,
+                                                extraArgs: asmExtraArgs);
             if (!result.Success)
             {
                 Console.Error.Write(result.Stderr);
@@ -342,26 +396,17 @@ public class Driver
 
     /// <summary>
     /// `--emit disk` 用の disk image 組み立て phase。
-    /// env file を Core の <see cref="EnvironmentResolver"/> 経由で解決し
-    /// (= slangc と検索順を一致させる)、disk セクションが無ければ error。
+    /// envConfig は Run() 冒頭で <see cref="EnvironmentResolver"/> 経由で解決済み
+    /// (= 二重解決排除、Disk null チェックも Run() 側で early reject 済)。
     /// Phase 1 は format=d88 / tool=ndc のみサポート。
     /// </summary>
-    private int BuildDiskImage(string mainBin, IList<string> overlayBins, string outputBase)
+    private int BuildDiskImage(EnvironmentConfig envConfig, string envPath,
+                               string mainBin, IList<string> overlayBins, string outputBase)
     {
-        // env file 解決 (= slangc と同じ resolver / search paths を使用)
-        var pathResolver = new PathResolver(_opts.IncludePaths, _opts.LibraryPaths);
-        var searchPaths = pathResolver.GetRuntimePaths().Concat(pathResolver.GetLibPaths());
-        var resolved = EnvironmentResolver.Resolve(_opts.Environment, searchPaths);
-        if (resolved == null)
-        {
-            Console.Error.WriteLine(
-                $"slangbuild: --emit disk: env not found: {_opts.Environment}");
-            return 1;
-        }
-        var (envConfig, envPath) = resolved.Value;
         if (_opts.Verbose)
             Console.Error.WriteLine($"slangbuild: disk: env loaded from {envPath}");
 
+        // Run() 冒頭で early reject 済みだが、防御的に再 check (= 内部不整合検出)
         if (envConfig.Disk == null)
         {
             Console.Error.WriteLine(

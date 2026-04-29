@@ -1042,9 +1042,46 @@ make ENV=cpm TARGET=examples/MODTEST_RESIDENT run
 の代替策 + 実験用)。
 
 旧 `tools/disk-add-overlays.py` は legacy helper として残置 (新規利用は非推奨)。
-msx2 / msxlsx / pc80mk2 / pc80mk2x 等の d88 系 env は従来の `tools/disk-add-overlays.py`
+msx2 / msxlsx / pc80mk2x 等の d88 系 env は従来の `tools/disk-add-overlays.py`
 経路を維持しており、今後 env ごとに `--emit disk` 経路へ移行予定 (= pc88mk2sr は
-udostool 経路で移行済)。
+udostool 経路、pc80mk2 は CMT 出力経路で移行済)。
+
+#### CMT (cassette tape) 出力 env (= pc80mk2)
+
+`pc80mk2` (PC-8001mkII ROM 環境) は disk image ではなく **cassette tape 形式
+(CMT)** で出力する。env file (`runtime/env/pc80mk2.env`) の新フィールド
+`output: cmt` を見て、`slangbuild` が AILZ80ASM 起動時に `-bin` shortcut を
+`-cmt` に置換 + `-gap 0` を自動付与し、出力拡張子を `.bin` → `.cmt` に
+切替える (`-bin` と `-cmt` を同時に渡すと両 format が出るので、format ごとに
+1 つに切替える設計):
+
+```yaml
+# runtime/env/pc80mk2.env (抜粋)
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: cmt          # ← この一行で AILZ80ASM `-cmt -gap 0` + `.cmt` 拡張子
+libraries:
+  - runtime.yml
+  ...
+```
+
+`output:` フィールドの仕様:
+
+| 値 | 意味 |
+|---|---|
+| 未指定 / `bin` | `.bin` 拡張子、AILZ80ASM `-bin <path>` (= default) |
+| `cmt` | `.cmt` 拡張子、AILZ80ASM `-cmt <path> -gap 0` (= `-bin` の代わりに `-cmt`、加えて `-gap 0`) |
+| その他 (`rom` / `sna` 等) | env load 時 `InvalidDataException` で reject (= typo 早期検出) |
+
+`make ENV=pc80mk2 build / run / disk_image` のいずれでも `examples/PROG.cmt`
+が生成され、M88 等のエミュレータで CLOAD 経由で読み込める想定 (`Makefile.dist`
+の `EMU` 変数はユーザー側設定)。`disk:` セクションは持たないので
+`--emit disk` は env load 後に early reject される。
+
+**現在の制約**: overlay (`#MODULE` 使用時) も `_m0.cmt` 別ファイルで出るのみ
+で、main への結合 / loader 組み立てはユーザー側責務。pc80mk2x (XBIOS 直接
+環境) は別 env で対応予定。
 
 サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
 128 byte 以内であることを前提としている (より大きい overlay は loader 拡張
