@@ -288,3 +288,15 @@ XBIOS:
 * 全体的に検証が甘いのであちこち変だと思います
 * 98%くらいはS-OSで使われていた時のままですので、権利のほとんどはオリジナルの作者様に帰属します
 * 無保証です
+
+---
+
+## 注: XBIOS.CMT の現在の配置
+
+XBIOS.CMT 自体は本ディレクトリから `runtime/templates/XBIOS.CMT` に移動済。
+SLANG クロスコンパイラの slangbuild が `pc80mk2x` 環境 build 時に
+自動的に main.cmt + XBIOS.CMT + overlay._mN.cmt を結合する
+(= 旧 `COPY /B` / `cat` 手動結合は不要)。
+
+XBIOSMAIN.ASM (= source) と XBIOS.ASM (= include wrapper) は本ディレクトリ
+に残置 (= 歴史的記録、再 build 時参照)。

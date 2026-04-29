@@ -191,6 +191,22 @@ public class Driver
                 if (rc != 0) return rc;
             }
 
+            // === Step 3.5: CMT 結合 (env.CmtConcat 指定時のみ) ===
+            // pc80mk2x で main.cmt + XBIOS.CMT + overlay._mN.cmt を 1 本に
+            // 結合。結合先 = main.cmt 上書き (= ユーザーは結合済 1 本だけ
+            // 使う運用)。disk 環境とは排他 (= disk: section を持つ env は
+            // cmt_concat を持たない設計、env file 上で分離)。
+            if (envConfig.CmtConcat != null && envConfig.CmtConcat.Count > 0)
+            {
+                var overlayBinsForConcat = overlayAsms
+                    .Select(a => Path.Combine(outputDir,
+                        Path.GetFileNameWithoutExtension(a) + binExt))
+                    .ToList();
+                int concatRc = ConcatCmt(mainBin, envConfig.CmtConcat,
+                                          overlayBinsForConcat, intermediates);
+                if (concatRc != 0) return concatRc;
+            }
+
             // === Step 4: --emit disk → disk image 組み立て ===
             if (_opts.EmitMode == "disk")
             {
@@ -392,6 +408,85 @@ public class Driver
         }
         intermediates.Add(mainSym);
         return 0;
+    }
+
+    /// <summary>
+    /// CMT 結合 phase (env file `cmt_concat:` 指定時)。main.cmt の直後に
+    /// 追加 .cmt path 群と各 overlay._mN.cmt を 1 本に結合し、結合先 = main.cmt
+    /// 上書き (= ユーザーは結合済 1 本だけ使う)。
+    /// 結合は同 dir tmp file 経由 + <c>File.Move(.., overwrite: true)</c> で
+    /// delete-then-move の中間状態を回避 (= main.cmt 破壊を避ける)。
+    /// 結合元欠落時は明示エラー (= silent wrong 防止)。結合に消費された
+    /// overlay は intermediate cleanup 対象に追加 (= --keep-asm 時は残る)。
+    /// </summary>
+    private int ConcatCmt(string mainBin, List<string> concatFiles,
+                          List<string> overlayBins, List<string> intermediates)
+    {
+        // 結合元の存在確認 (= concat file が無いと silent wrong になる)
+        foreach (var f in concatFiles)
+        {
+            if (!File.Exists(f))
+            {
+                Console.Error.WriteLine(
+                    $"slangbuild: cmt_concat: file not found: {f}");
+                return 1;
+            }
+        }
+
+        // tmp file は main と同じ dir に置いて File.Move を同 FS 内 rename
+        // に限定。OS / API / FS で挙動が多少違うので「atomic」とは言い切ら
+        // ないが、cross-FS 失敗 / delete-then-move の中間状態は避けられる。
+        var mainDir = Path.GetDirectoryName(mainBin)!;
+        var mainName = Path.GetFileName(mainBin);
+        var tmpPath = Path.Combine(mainDir, "." + mainName + ".concat.tmp");
+
+        try
+        {
+            using (var tmp = File.Create(tmpPath))
+            {
+                CopyToStream(mainBin, tmp);
+                foreach (var f in concatFiles) CopyToStream(f, tmp);
+                foreach (var ov in overlayBins)
+                {
+                    if (File.Exists(ov)) CopyToStream(ov, tmp);
+                }
+            }
+            // overwrite: true で「delete-then-move」を避けつつ置換
+            // (= 旧版の File.Delete + File.Move 2 段は中間状態で main を失う
+            // 可能性、Codex Medium 指摘)
+            File.Move(tmpPath, mainBin, overwrite: true);
+
+            if (_opts.Verbose)
+            {
+                var inputs = string.Join(" + ",
+                    new[] { Path.GetFileName(mainBin) }
+                        .Concat(concatFiles.Select(Path.GetFileName))
+                        .Concat(overlayBins.Where(File.Exists)
+                                            .Select(Path.GetFileName)));
+                Console.Error.WriteLine(
+                    $"slangbuild: cmt concat: {inputs} → {Path.GetFileName(mainBin)}");
+            }
+        }
+        catch
+        {
+            try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { }
+            throw;
+        }
+
+        // overlay bin は結合に消費されたので intermediate cleanup 対象に追加
+        // (= --keep-asm 指定時は残る、既存 cleanup ロジック)
+        foreach (var ov in overlayBins)
+        {
+            if (File.Exists(ov) && !intermediates.Contains(ov))
+                intermediates.Add(ov);
+        }
+        return 0;
+    }
+
+    private static void CopyToStream(string srcPath, FileStream dst)
+    {
+        using var src = File.OpenRead(srcPath);
+        src.CopyTo(dst);
     }
 
     /// <summary>

@@ -21,6 +21,15 @@
   - **AILZ80ASM エラー表示**: `--verbose` 無しでも `main assembly failed` の詳細 (= 未定義 label 等) が stderr に出るよう修正 (= AILZ80ASM がエラーを stdout に流す癖を吸収)
   - 他 PC-8801 系 (pc80mk2 / pc80mk2x) は別 PR で順次
 
+- pc80mk2x 環境 (PC-8001mkII XBIOS 直接環境、CMT 結合 build) を `slangbuild` に統合 (Phase 3 続編、PR 1/2)
+  - `obsolete/lib/pc8001/XBIOS/XBIOS.CMT` を `runtime/templates/XBIOS.CMT` に移動。slangbuild が pc80mk2x build 時に main.cmt + XBIOS.CMT + overlay._mN.cmt を 1 本に結合 (= 旧 `COPY /B` / `cat` 手動結合を内製化)
+  - 新 `EnvironmentConfig.CmtConcat` (List<string>?) + env file `cmt_concat:` フィールド (= env file dir 基準の相対 path リスト、build 後 main bin 直後に concat される)
+  - 結合は同一 dir tmp file 経由 + `File.Move(.., overwrite: true)` で delete-then-move の中間状態を避けつつ main.cmt を置換、結合元欠落時は明示エラー、結合に消費された overlay は intermediate cleanup 対象 (= `--keep-asm` 指定時は残る)
+  - `cmt_concat` は `output: cmt` 専用、それ以外で指定すると env load 時 `InvalidDataException` で reject (= 壊れた出力 silent wrong 防止)
+  - `publish.sh` で `runtime/templates/XBIOS.CMT` を配布 zip から除外 (= license 確認完了まで、`cp -r` の直後に `rm -f`)。`THIRD_PARTY_NOTICES.md` に出典 / 同梱履歴 / 改変有無 / 配布除外状態を観測事実のみで記載
+  - 配布 zip 解凍環境で pc80mk2x を使う場合、repo から `runtime/templates/XBIOS.CMT` を手動で installed `~/.config/SLANG/runtime/templates/` にコピーする運用 (README に明記)
+  - **scope 外 (次 PR)**: pc80mk2xsd (SD カード経路) / cmt_assets / overlay_name / overlay_output_format
+
 - pc80mk2 環境 (PC-8001mkII ROM 環境) を `slangbuild` に統合 — CMT (cassette tape) 出力対応 (Phase 3 続編)
   - env file (`runtime/env/pc80mk2.env`) に新フィールド `output: cmt` を追加。`slangbuild` が AILZ80ASM 起動時に `-bin` shortcut を `-cmt` に置換 + `-gap 0` を自動付与し、出力拡張子を `.bin` → `.cmt` に切替 (= 旧 dev `Makefile` の `BIN_EXT/ASM_OPT` 設定を `slangbuild` に移植、`Makefile.dist` 化で抜けていた CMT 対応を復元)
   - 新 `EnvironmentConfig.OutputFormat` (string?)。null/未指定 = `.bin` default、`"cmt"` で AILZ80ASM CMT format。`output:` 値は `bin` / `cmt` のみ許可、それ以外は `InvalidDataException` で reject (= typo 早期検出)

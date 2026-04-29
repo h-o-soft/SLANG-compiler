@@ -69,6 +69,24 @@ public class EnvironmentLoader
             }
         }
 
+        // cmt_concat (pc80mk2x 等で main.cmt + XBIOS.CMT + overlay._mN.cmt
+        // を 1 本に結合するための追加 .cmt path リスト)。
+        // 整合 check: cmt_concat は output: cmt 専用 (= bin / 未指定 env で
+        // 指定すると壊れたファイル生成 silent wrong になるため reject)。
+        bool hasCmtConcat = raw.CmtConcat != null && raw.CmtConcat.Count > 0;
+        if (hasCmtConcat && config.OutputFormat != "cmt")
+        {
+            throw new InvalidDataException(
+                $"`cmt_concat` requires `output: cmt` in {envFilePath}.");
+        }
+        if (hasCmtConcat)
+        {
+            var envDir = Path.GetDirectoryName(Path.GetFullPath(envFilePath))!;
+            config.CmtConcat = raw.CmtConcat!
+                .Select(p => Path.GetFullPath(Path.Combine(envDir, p)))
+                .ToList();
+        }
+
         // disk セクション (slangbuild --emit disk 用)
         if (raw.Disk != null)
         {
@@ -151,6 +169,9 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "output")]
         public string? Output { get; set; }
+
+        [YamlMember(Alias = "cmt_concat")]
+        public List<string>? CmtConcat { get; set; }
 
         [YamlMember(Alias = "disk")]
         public EnvFileDiskData? Disk { get; set; }

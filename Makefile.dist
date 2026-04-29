@@ -115,6 +115,18 @@ else ifeq ($(ENV), pc80mk2)
   BIN_EXT = .cmt
   BIN_EXT_ENV = .cmt
   DISK_IMAGE = $(OUTPROG)
+else ifeq ($(ENV), pc80mk2x)
+  # PC-8001mkII XBIOS 直接環境: CMT 出力 + XBIOS.CMT 自動結合。
+  # slangbuild が env file (`output: cmt` + `cmt_concat: [../templates/XBIOS.CMT]`)
+  # を見て、main.cmt + XBIOS.CMT + overlay._mN.cmt を 1 本に結合 (= 旧
+  # `COPY /B PROG.CMT+XBIOS.CMT GAME.CMT` を内製化)。`disk_image` target は
+  # 結合済 OUTPROG (= PROG.cmt) を指す (cpm / msxrom / pc80mk2 と同じ pattern)。
+  # 配布 zip 解凍環境では XBIOS.CMT が同梱されていない (license 確認中) ので、
+  # repo から手動で `~/.config/SLANG/runtime/templates/` にコピーが必要。
+  EMU = @echo "PC-8001 emulator not configured. Set EMU variable" \#
+  BIN_EXT = .cmt
+  BIN_EXT_ENV = .cmt
+  DISK_IMAGE = $(OUTPROG)
 else ifeq ($(ENV), msxrom)
   EMU = @echo "Set EMU variable for your emulator" \#
   BIN_EXT_ENV = $(BIN_EXT)
@@ -190,6 +202,11 @@ else ifeq ($(ENV), pc80mk2)
 # `output: cmt` に従って `.cmt` を出すので、disk_image target は main bin
 # (= PROG.cmt) を produce すれば十分 (= cpm / msxrom と同じパターン)。
 disk_image: $(OUTPROG)
+else ifeq ($(ENV), pc80mk2x)
+# pc80mk2x は CMT 結合出力 (= main.cmt + XBIOS.CMT + overlay._mN.cmt が
+# slangbuild により 1 本に結合される)。pc80mk2 と同じく disk image なし、
+# disk_image target は結合済 OUTPROG (= PROG.cmt) を produce すれば十分。
+disk_image: $(OUTPROG)
 else ifeq ($(ENV), sos)
 # sos / sosx1 は slangbuild --emit disk + HuDisk 経路。template
 # (images/templates/SOSPROG.D88) を $(DISK_IMAGE) にコピーしてから main +
@@ -228,10 +245,11 @@ disk_image: $(TARGET)$(SRC_EXT)
 		--slangc $(SLANGC) --asm $(ASM) --ndc $(NDC) \
 		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
 else
-# その他 d88 系 (msx2 / msxlsx / pc80mk2x 等): 未統合 env は
+# その他 d88 系 (msx2 / msxlsx / pc80mk2xsd 等): 未統合 env は
 # 従来の ndc P + Python helper 経路を維持。今後 env ごとに `disk:` セクション
 # を追加して順次新 `slangbuild --emit disk` 経路へ移行する
-# (= pc88mk2sr は udostool / pc80mk2 は CMT 出力経路で移行済)。
+# (= pc88mk2sr は udostool / pc80mk2 は CMT 出力 / pc80mk2x は CMT 結合
+# 経路で移行済。pc80mk2xsd は次 PR で対応予定)。
 ADD_OVERLAYS = $(PYTHON) tools/disk-add-overlays.py
 
 disk_image: $(IMGPROG)
@@ -298,6 +316,6 @@ help:
 	@echo "  PREFIX=path        - Installation prefix (default: ~/.local on Unix,"
 	@echo '                       %USERPROFILE%\.local\bin on Windows)'
 	@echo "  TARGET=path        - Sample source file (without extension)"
-	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/pc88mk2sr/pc80mk2/msx2/msxrom/cpm)"
+	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/pc88mk2sr/pc80mk2/pc80mk2x/msx2/msxrom/cpm)"
 	@echo ""
 	@echo "Detected OS: $(DETECTED_OS)"
