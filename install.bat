@@ -2,7 +2,7 @@
 REM SLANG Compiler installer (Windows, cmd.exe).
 REM
 REM Usage: install.bat [options]
-REM   --prefix <path>      Install bin to <path>      (default: %LOCALAPPDATA%\Programs\SLANG)
+REM   --prefix <path>      Install bin to <path>      (default: %USERPROFILE%\.local\bin)
 REM   --config-dir <path>  Install lib to <path>      (default: %USERPROFILE%\.config\SLANG)
 REM   --dry-run            Show actions without executing
 REM   --verbose            Print each step to stderr
@@ -49,7 +49,7 @@ call :usage 1>&2
 exit /b 2
 :parsed
 
-if "%PREFIX%"==""     set "PREFIX=%LOCALAPPDATA%\Programs\SLANG"
+if "%PREFIX%"==""     set "PREFIX=%USERPROFILE%\.local\bin"
 if "%CONFIG_DIR%"=="" set "CONFIG_DIR=%USERPROFILE%\.config\SLANG"
 set "BINDIR=%PREFIX%"
 
@@ -58,8 +58,8 @@ if /I "%ACTION%"=="uninstall" goto do_uninstall
 REM ============================================================
 REM   do_install
 REM ============================================================
-REM sanity check は install 経路でだけ走らせる (= uninstall は配布 zip
-REM 解凍 dir から実行する必要がない)。Codex 指摘の Medium fix。
+REM Run sanity check only on the install path. (uninstall does not need
+REM to be run from an extracted distribution dir.)
 for %%F in (bin\slangc.exe bin\slangbuild.exe include runtime images tools) do (
   if not exist "%%F" (
     echo Error: '%%F' not found in %SCRIPT_DIR%. 1>&2
@@ -103,7 +103,7 @@ if "%VERBOSE%"=="1" echo   copy bin\slangbuild.exe -^> %BINDIR%\ 1>&2
 copy /Y bin\slangbuild.exe "%BINDIR%\" >nul
 if errorlevel 1 ( echo Error: failed to copy slangbuild.exe 1>&2 & exit /b 1 )
 
-REM ghost file 対策: 既存サブディレクトリを RD /S /Q で削除してから xcopy /E /Y /I
+REM Ghost-file safety: remove the existing subdir with rd /s /q before xcopy /E /Y /I.
 for %%D in (include runtime images tools) do (
   if "%VERBOSE%"=="1" echo   replace %CONFIG_DIR%\%%D 1>&2
   if exist "%CONFIG_DIR%\%%D" rd /s /q "%CONFIG_DIR%\%%D"
@@ -124,19 +124,19 @@ echo Uninstalling SLANG from:
 echo   Binaries:  %BINDIR%\slangc.exe, slangbuild.exe
 echo   Libraries: %CONFIG_DIR% (entire directory)
 
-REM 危険 path guard:
-REM (1) full path 化して D:\. や D:\foo\.. のような正規化前表現を解決。
-REM     for %%I in (...) do set "P=%%~fI" は cmd.exe の絶対パス展開
-REM     (= Unix 側の cd "$p" && pwd と同じ思想)。
-REM (2) trailing \ を除去 (= D:\ と D: を同一視)。
-REM (3) drive root pattern (?:) を一律 refuse、その後既存 guard。
+REM Dangerous-path guard:
+REM (1) Resolve to a full path so D:\. or D:\foo\.. normalize first.
+REM     for %%I in (...) do set "P=%%~fI" expands to an absolute path
+REM     (analogous to cd "$p" && pwd on Unix).
+REM (2) Strip trailing backslash (treat D:\ and D: as the same).
+REM (3) Refuse any drive-root pattern (?:), then apply the existing guard.
 for %%I in ("%CONFIG_DIR%") do set "P=%%~fI"
 if "%P:~-1%"=="\" set "P=%P:~0,-1%"
 if "%P%"==""                    goto :err_path
-REM 任意 drive root (X:) を refuse — C:\ / D:\ / D:\. / D:\foo\.. を全て拒否
-REM (上記 full path 化により D:\. は D:\ → D: に解決済)。
+REM Refuse any drive root (X:) -- C:\ / D:\ / D:\. / D:\foo\.. all rejected
+REM (the full-path step above already resolves D:\. to D:\ -> D:).
 if "%P:~1,1%"==":" if "%P:~2%"=="" goto :err_path
-REM 親 dir / システム dir 一致拒否
+REM Refuse parent / system dirs.
 if /I "%P%"=="%SYSTEMDRIVE%"    goto :err_path
 if /I "%P%"=="%USERPROFILE%"    goto :err_path
 if /I "%P%"=="%LOCALAPPDATA%"   goto :err_path
@@ -172,7 +172,7 @@ exit /b 1
 echo SLANG Compiler installer (Windows, cmd.exe).
 echo.
 echo Usage: install.bat [options]
-echo   --prefix ^<path^>      Install bin to ^<path^>      (default: %%LOCALAPPDATA%%\Programs\SLANG)
+echo   --prefix ^<path^>      Install bin to ^<path^>      (default: %%USERPROFILE%%\.local\bin)
 echo   --config-dir ^<path^>  Install lib to ^<path^>      (default: %%USERPROFILE%%\.config\SLANG)
 echo   --dry-run            Show actions without executing
 echo   --verbose            Print each step to stderr
