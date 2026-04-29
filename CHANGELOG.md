@@ -8,38 +8,47 @@
   - **ghost file 対策**: install 時、サブディレクトリ (include / runtime / images / tools) は staging copy → 既存削除 → rename でサブディレクトリ単位置換 (= 古い env file 等が残らない)
   - `make install` / `make uninstall` は scripts への薄い wrapper として残置 (`--force` 既定 ON で後方互換、Make 経由は uninstall も非対話)
   - **Windows install default を `%LOCALAPPDATA%\Programs\SLANG` → `%USERPROFILE%\.local\bin` に変更** (= install.sh の `~/.local/bin` と対称、uv / pipx 等の CLI ツール慣習)
-  - 中期案 (`setupenv.{sh,bat}` の .NET 化 = `slangsetup` 新設) は別 PR で扱う
 
-- pc88mk2sr 環境を `slangbuild --emit disk` 経路に統合 (#157 follow-up: env 統合 Phase 3 最初)
+- pc88mk2sr 環境を `slangbuild --emit disk` 経路に統合
   - 新 tool: `udostool` (.NET assembly、**Bookworm's Library 公開の汎用ディスクルーチン** `filesys_20141128` 系用、サイト記載の「改変含め自由に使ってください」を license として信用し repo 同梱)。`tools/udostool.exe` に commit、setup-tools 不要。Linux/macOS は mono 経由起動、Windows は .exe 直接起動
   - 5 ステップ build: template (`images/templates/PC88MK2SR.D88`) を出力先 copy → `udostool` で IPL / SUB / SYS 書込 → main `$1A00.$$$` + overlay `M{index}.BIN` を staging dir に bulk copy → `udostool disk <staging>` で 1 回 flush
   - 新 `DiskConfig.SystemFiles` フィールド (= IPL / SUB / SYS の path + flag、env file dir 基準で path 絶対化、flag は `-IPL`/`-SUB`/`-SYS` allowlist で大文字固定)
   - **overlay 対応**: `#MODULE` 使った SL の overlay bin が `M{index}.BIN` として disk に格納される。pc88mk2sr では FOPEN/FREAD ではなく libp88_file の `Disk_Load` / `Disk_Load3` 系で読み込む想定、disk 内名は `Disk_Load("M0 BIN", addr)` のような space 区切り形式
-  - **ORG = $1A00 固定運用** (= 本 PR の制約)。SL 側で `#ORG $XXXX` 上書きすると `main_name` (= `"$1A00.$$$"`) と loader 期待が不整合になり、build は通るが boot しない silent wrong になる **既知リスク**。ORG 可変化 (= `main_name` template 化 + slangc 出力 sym からの整合 check) は別 PR で対応
+  - **ORG = $1A00 固定運用**。SL 側で `#ORG $XXXX` 上書きすると `main_name` (= `"$1A00.$$$"`) と loader 期待が不整合になり、build は通るが boot しない silent wrong になる
   - 同梱物の出典 (provenance) を新規 `THIRD_PARTY_NOTICES.md` に記録 (= 配布物名 / 取得元 / 取得日 / 許諾文 / 改変有無 を表で明記)
   - **VRTC 割り込みハンドラの GAMEVSYNC を条件化**: `libp88_base.asm` の `INTVRTC` で `CALL GAMEVSYNC` を `#if exists USE_GAMEVSYNC` で囲み、SL 側で `CONST ASM USE_GAMEVSYNC = 1;` を立てた場合のみ呼ぶ形に。`USE_GAMEVSYNC` 未定義の SL は GAMEVSYNC 関数を書かなくても build できる
   - **AILZ80ASM エラー表示**: `--verbose` 無しでも `main assembly failed` の詳細 (= 未定義 label 等) が stderr に出るよう修正 (= AILZ80ASM がエラーを stdout に流す癖を吸収)
-  - 他 PC-8801 系 (pc80mk2 / pc80mk2x) は別 PR で順次
 
-- pc80mk2x 環境 (PC-8001mkII XBIOS 直接環境、CMT 結合 build) を `slangbuild` に統合 (Phase 3 続編、PR 1/2)
+- pc80mk2xsd 環境 (PC-8001mkII XBIOS 直接環境、SD カード経路) を `slangbuild` に対応
+  - 新 env file フィールド `cmt_assets:` (= output dir に copy する static asset の相対 path リスト)、`overlay_name:` (= overlay 出力 file 名 template、`{index}` 展開)、`overlay_output_format:` (= overlay 専用の出力 format、bin / cmt 切替)
+  - pc80mk2xsd では main を CMT 形式 + overlay を raw binary で出し、`M{index}.BIN` 命名で output dir に rename。`cmt_assets` で `XBIOS.CMT` を output dir にコピーするので、user は output dir 全体を SD カードに移すだけで揃う
+  - `cmt_concat` と `cmt_assets` は同 env で両方指定すると env load 時 reject (= build flow 排他)
+  - 全 CMT 系新フィールドは `output: cmt` 専用 (= 不一致は reject)
+  - `overlay_name` は `{index}` placeholder 必須、output dir 外書き禁止 (= absolute path / separator / `..` を loader と driver の二重で validate)
+
+- env file `defines:` フィールドを追加 — env 別の整数定数を slangc Preprocessor と AILZ80ASM に同時 inject
+  - env file `defines: { NAME: int_value }` 形式で、env 選択時に slangc が `Preprocessor.DefineConst()` 経由で SL の `#IF NAME==VAL` 判定に登録、slangbuild が AILZ80ASM 起動時に `-dl NAME=VAL` を main / overlay / prelink Pass 1/3 全段に pass (= ASM 側 `#IF exists NAME` も活きる)
+  - pc80mk2xsd で `defines: { PC8001_SD: 1 }` を定義しているので、ユーザー側 SL に `CONST ASM PC8001_SD = 1;` を書く必要なし (env 切替だけで SD 経路が自動活性化)
+  - 名前は `^[A-Za-z_][A-Za-z0-9_]*$` で validate、value は int 限定
+
+- pc80mk2x 環境 (PC-8001mkII XBIOS 直接環境) を `slangbuild` に対応 — XBIOS.CMT 結合 build
   - `obsolete/lib/pc8001/XBIOS/XBIOS.CMT` を `runtime/templates/XBIOS.CMT` に移動。slangbuild が pc80mk2x build 時に main.cmt + XBIOS.CMT + overlay._mN.cmt を 1 本に結合 (= 旧 `COPY /B` / `cat` 手動結合を内製化)
   - 新 `EnvironmentConfig.CmtConcat` (List<string>?) + env file `cmt_concat:` フィールド (= env file dir 基準の相対 path リスト、build 後 main bin 直後に concat される)
   - 結合は同一 dir tmp file 経由 + `File.Move(.., overwrite: true)` で delete-then-move の中間状態を避けつつ main.cmt を置換、結合元欠落時は明示エラー、結合に消費された overlay は intermediate cleanup 対象 (= `--keep-asm` 指定時は残る)
   - `cmt_concat` は `output: cmt` 専用、それ以外で指定すると env load 時 `InvalidDataException` で reject (= 壊れた出力 silent wrong 防止)
-  - `publish.sh` で `runtime/templates/XBIOS.CMT` を配布 zip から除外 (= license 確認完了まで、`cp -r` の直後に `rm -f`)。`THIRD_PARTY_NOTICES.md` に出典 / 同梱履歴 / 改変有無 / 配布除外状態を観測事実のみで記載
-  - 配布 zip 解凍環境で pc80mk2x を使う場合、repo から `runtime/templates/XBIOS.CMT` を手動で installed `~/.config/SLANG/runtime/templates/` にコピーする運用 (README に明記)
-  - **scope 外 (次 PR)**: pc80mk2xsd (SD カード経路) / cmt_assets / overlay_name / overlay_output_format
+  - `THIRD_PARTY_NOTICES.md` に XBIOS.CMT の出典を記載
 
-- pc80mk2 環境 (PC-8001mkII ROM 環境) を `slangbuild` に統合 — CMT (cassette tape) 出力対応 (Phase 3 続編)
+- pc80mk2 環境 (PC-8001mkII ROM 環境) を `slangbuild` に統合 — CMT (cassette tape) 出力対応
   - env file (`runtime/env/pc80mk2.env`) に新フィールド `output: cmt` を追加。`slangbuild` が AILZ80ASM 起動時に `-bin` shortcut を `-cmt` に置換 + `-gap 0` を自動付与し、出力拡張子を `.bin` → `.cmt` に切替 (= 旧 dev `Makefile` の `BIN_EXT/ASM_OPT` 設定を `slangbuild` に移植、`Makefile.dist` 化で抜けていた CMT 対応を復元)
   - 新 `EnvironmentConfig.OutputFormat` (string?)。null/未指定 = `.bin` default、`"cmt"` で AILZ80ASM CMT format。`output:` 値は `bin` / `cmt` のみ許可、それ以外は `InvalidDataException` で reject (= typo 早期検出)
   - `AssemblerRunner.AssembleMain` / `AssembleOverlay` に `outputFlag` (`-bin` / `-cmt`) + `extraArgs: string[]?` 引数追加。`-bin` と `-cmt` を同時に渡すと両 format の file が出てしまうので、format ごとに 1 つに切替える設計。prelink Pass 1 / Pass 3 / 単段 / overlay 全段で同じ outputFlag/extraArgs を pass (= AILZ80ASM option 不一致でアドレス解決崩壊するのを防止)
   - `Driver.Run()` 冒頭で `EnvironmentResolver` を 1 度だけ呼ぶ前倒しに変更、`BuildDiskImage()` 内の env 二重解決を排除。`--emit disk` + `disk:` 不在 env の組合せは compile 前に early reject
   - `Makefile.dist`: `OUTPROG` を `$(BIN_EXT)` 経由で拡張子化 (`PROG.bin` 固定 → `PROG$(BIN_EXT)`)、pc80mk2 ENV ブロック追加 (`BIN_EXT/BIN_EXT_ENV = .cmt`、`DISK_IMAGE = $(OUTPROG)`)、`disk_image` 分岐に `pc80mk2: $(OUTPROG)` 明示追加 (= 旧 ELSE 分岐 ndc 経路に落ちないよう、cpm / msxrom と同じ pattern)、`clean` recipe / `help` ENV 一覧にも反映
   - `make ENV=pc80mk2 build / run / disk_image` のいずれでも `examples/PROG.cmt` が生成される。M88 等のエミュレータで `.cmt` をそのまま CLOAD で読み込める想定 (`EMU` 変数はユーザー側設定)
-  - **scope 外**: pc80mk2x (XBIOS 直接環境、XBIOS.CMT 結合が別途必要) / overlay 結合 (= `M0.cmt` を main に結合) / `--emit disk` 統合 (= cassette は disk じゃないので非対象) は本 PR 外。overlay も `_m0.cmt` 別ファイルで出るのみ、loader 組み立てはユーザー側
+  - overlay は `_m0.cmt` 別ファイルで出るのみで、main への結合 / loader 組み立てはユーザー側
 
 ## Version 0.23.0
+
 
 - `#MODULE` (オーバーレイ) のモジュール専用ワーク対応 (#142)
   - モジュール直下の `VAR` / `ARRAY` を **モジュール私有ワークエリア `__WORK_M<N>__`** に配置。main と同名の変数を宣言しても物理メモリ上同居せず、各 overlay の swap 先でメモリを再利用できる
@@ -67,7 +76,7 @@
   - env file に新規 `disk:` セクション (`format: d88` / `template` / `tool: ndc | hudisk` / `main_name` / `overlay_name` / `main_load` / `main_exec` / `overlay_load`)。アドレス値は `$3000` / `0x3000` / 10進すべて受理
   - pristine template は **`images/templates/`** に分離 (`images/templates/LSXPROG.D88` / `SOSPROG.D88`)。ビルドごとに `$(DISK_IMAGE)` 出力先にコピーしてから書き込み、template 自体は不変 (CI で SHA-256 比較により検証)
   - **対応済 env (`Makefile.dist disk_image`)**: lsx / x1 (ndc 経路)、sos / sosx1 (HuDisk 経路)
-  - **従来経路維持 env**: msx2 / msxlsx / pc80mk2 / pc88mk2sr 等は従来の `tools/disk-add-overlays.py` 経路 (= 今後 env ごとに `--emit disk` へ移行予定)
+  - **従来経路維持 env**: msx2 / msxlsx / pc80mk2 / pc88mk2sr 等は従来の `tools/disk-add-overlays.py` 経路
   - `tools/disk-add-overlays.py` は legacy helper として残置 (旧経路ユーザー保護、新規利用は非推奨)
   - **動作環境**: `make setup-tools && make install` 後の installed 環境 (`~/.config/SLANG/`)、配布 zip 解凍直後、開発時の repo 直下、いずれでも動作。`make install` で `images/` + `tools/` も `~/.config/SLANG/` に配置、`ToolResolver` が install dir 配下を検索する。Linux/macOS の sos 系では `mono` (HuDisk.exe 起動用) と setupenv での S-OS template 取得が前提
   - **配布物の HuDisk**: `make setup-tools` が ho-ogino/HuDisk fork の `feature/write-ascii-mode` ブランチ (= ASCII 書き込み可能版) を curl で取得。Windows は `.exe` 直接実行、Linux/macOS は mono 経由起動

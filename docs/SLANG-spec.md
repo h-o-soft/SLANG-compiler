@@ -1111,16 +1111,67 @@ overlay も CMT 形式 (= main と同じ) で出力されて結合される (= �
 - `cmt_concat` は `output: cmt` 専用 (= bin / null env で指定すると
   env load 時 reject)
 
-##### XBIOS.CMT の配布対象除外
+#### SD カード経路 env (= pc80mk2xsd)
 
-XBIOS.CMT は license 確認中のため、本リポジトリ内
-(`runtime/templates/XBIOS.CMT`) のみに同梱され、配布 zip では除外される。
-配布 zip 解凍環境で pc80mk2x を使う場合は repo から
-`runtime/templates/XBIOS.CMT` を手動で
-`~/.config/SLANG/runtime/templates/` にコピーする。
+`pc80mk2xsd` は CMT 結合せずに **個別ファイル**で出力する SD カード経路。
+env file (`runtime/env/pc80mk2xsd.env`) は `output: cmt` + 以下 3 フィールドで
+build flow を切替える:
 
-**SD カード環境 (pc80mk2xsd)** は build flow が違い (= 結合せず個別配置)、
-**次 PR で対応予定**。
+```yaml
+# runtime/env/pc80mk2xsd.env (抜粋)
+output: cmt
+overlay_output_format: bin       # overlay は raw binary (header / gap なし)
+overlay_name: "M{index}.BIN"     # overlay rename: M0.BIN, M1.BIN, ...
+cmt_assets:
+  - ../templates/XBIOS.CMT       # output dir に copy
+```
+
+build 後、output dir には:
+- `<prefix>.cmt` (main、CMT 形式)
+- `M0.BIN`, `M1.BIN`, ... (= overlay、raw binary、`overlay_name` template
+  で rename 済)
+- `XBIOS.CMT` (= `cmt_assets` で copy 済)
+
+が揃う。ユーザーは output dir 全体を SD カードに移すだけで動作する。
+env file の `defines: { PC8001_SD: 1 }` (後述) により、libpc80mk2xbios_base.asm
+の SD ROM/RAM 切替経路 + SL 側の `#IF PC8001_SD==1` が自動的に活きるので、
+**SL 側で `CONST ASM PC8001_SD = 1;` を書く必要はない**。
+
+新 env file フィールド (CMT 系):
+
+| フィールド | 内容 |
+|---|---|
+| `cmt_assets:` | output dir に copy する static asset の path リスト (env file dir 基準の相対 path)。`cmt_concat` とは排他 |
+| `overlay_name:` | overlay 出力 file 名 template (= `{index}` 必須、separator/.. 禁止) |
+| `overlay_output_format:` | overlay 専用の出力 format (`bin` / `cmt`)。null = main の `output:` に追従 |
+
+すべて `output: cmt` 専用 (= bin / null env で指定すると env load 時 reject)。
+
+#### env file `defines:` (env 別の自動定義)
+
+env file に `defines:` を書くと、env 選択時に slangc / AILZ80ASM の両方
+に同名定数が自動的に注入される:
+
+```yaml
+defines:
+  PC8001_SD: 1
+```
+
+- **slangc 側**: `Preprocessor.DefineConst()` 経由で SL の `#IF NAME==VAL`
+  判定に登録される。例: `#IF PC8001_SD==1 ... #ELSE ... #ENDIF` で SD/CMT
+  分岐コードを書ける
+- **slangbuild 側**: AILZ80ASM 起動時に `-dl NAME=VAL` を main / overlay /
+  prelink Pass 1/3 全段に pass する。ASM 側の `#IF exists NAME` も活きる
+  (例: `libpc80mk2xbios_base.asm` の SD ROM/RAM 切替経路)
+
+仕様:
+- value は int 限定 (= hex / 式は未対応、後続で検討)
+- 名前は `^[A-Za-z_][A-Za-z0-9_]*$` (= C/asm 識別子規則と同等) で validate、
+  違反は env load 時 `InvalidDataException` で reject
+- `ENV_TYPE` / `OS_TYPE` は env file `env_type:` / `os_type:` から
+  自動的に登録される (= 既存挙動、`defines:` を書かなくても利用可能)
+
+---
 
 サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
 128 byte 以内であることを前提としている (より大きい overlay は loader 拡張

@@ -95,13 +95,21 @@ public class Driver
         // `-bin` と `-cmt` を同時に渡すと両 format の file が出るので、format
         // ごとに 1 つに切替える設計 (= AssemblerRunner 側 outputFlag 引数)。
         // null/未指定 (= bin default) なら従来通り `-bin` のみ。
-        // outputFlag / extraArgs は prelink Pass 1/3 でアドレス整合上 main /
-        // overlay 全段で同じものを渡す必要 (= 各 helper method で参照)。
+        // outputFlag / extraArgs は prelink Pass 1/3 でアドレス整合上 同 target
+        // で同じものを渡す必要 (= 各 helper method で参照)。
         var binExt = (envConfig.OutputFormat == "cmt") ? ".cmt" : ".bin";
         var asmOutputFlag = (envConfig.OutputFormat == "cmt") ? "-cmt" : "-bin";
-        var asmExtraArgs = (envConfig.OutputFormat == "cmt")
-            ? new[] { "-gap", "0" }
-            : null;
+        var asmExtraArgs = BuildAsmExtras(envConfig.OutputFormat, envConfig.Defines);
+
+        // overlay 用は env.OverlayOutputFormat (= 未指定なら main に追従)
+        // で別計算。pc80mk2xsd では main = cmt + overlay = bin (= raw binary、
+        // SD で SD_RREAD 用、CMT header / gap 不要) のような env-specific
+        // 設計を許容する。defines は main / overlay 共通で pass される
+        // (= ASM 側 #IF exists NAME 判定が main / overlay どちらでも活きる)。
+        var overlayFormat = envConfig.OverlayOutputFormat ?? envConfig.OutputFormat;
+        var overlayBinExt = (overlayFormat == "cmt") ? ".cmt" : ".bin";
+        var asmOverlayOutputFlag = (overlayFormat == "cmt") ? "-cmt" : "-bin";
+        var asmOverlayExtraArgs = BuildAsmExtras(overlayFormat, envConfig.Defines);
 
         // 出力ベースパス決定:
         //   -o 指定あり → 絶対パスならそのまま、相対パスなら cwd 基準で resolve
@@ -179,7 +187,9 @@ public class Driver
                 // === 単段モード (PR-B 既存パス) ===
                 int rc = AssembleSingleStage(runner, plan, mainAsm, mainBin, mainSym,
                                              overlayAsms, outputDir, intermediates,
-                                             binExt, asmOutputFlag, asmExtraArgs);
+                                             binExt, asmOutputFlag, asmExtraArgs,
+                                             overlayBinExt, asmOverlayOutputFlag,
+                                             asmOverlayExtraArgs);
                 if (rc != 0) return rc;
             }
             else
@@ -187,34 +197,94 @@ public class Driver
                 // === prelink モード (PR-B2): Pass 1 → Pass 2 → Pass 3 ===
                 int rc = AssemblePrelink(runner, plan, mainBin, mainSym,
                                          outputDir, intermediates,
-                                         binExt, asmOutputFlag, asmExtraArgs);
+                                         binExt, asmOutputFlag, asmExtraArgs,
+                                         overlayBinExt, asmOverlayOutputFlag,
+                                         asmOverlayExtraArgs);
                 if (rc != 0) return rc;
             }
 
-            // === Step 3.5: CMT 結合 (env.CmtConcat 指定時のみ) ===
+            // === Step 3.5a: overlay rename (env.OverlayName 指定時) ===
+            // 旧 path: <output dir>/<prefix>._m{N}{overlayBinExt}
+            // 新 path: <output dir>/<env.OverlayName で {index} 展開>
+            // pc80mk2xsd で M0.BIN 命名にするため。pc80mk2x も rename して
+            // 同 path を後続 cmt_concat step で使う (= path 計算 1 本化)。
+            var renamedOverlayBins = new List<string>();
+            var outputDirFull = Path.GetFullPath(outputDir);
+            if (!string.IsNullOrEmpty(envConfig.OverlayName))
+            {
+                for (int i = 0; i < overlayAsms.Count; i++)
+                {
+                    var oldPath = Path.Combine(outputDir,
+                        Path.GetFileNameWithoutExtension(overlayAsms[i]) + overlayBinExt);
+                    var newName = envConfig.OverlayName!.Replace("{index}", i.ToString());
+                    var newPath = Path.Combine(outputDir, newName);
+
+                    // rename 直前の二重 check: 最終 path が outputDir 直下に
+                    // 居ることを確認 (= Loader で `{index}` 必須 + separator/..
+                    // 禁止を vetting 済みだが、placeholder 値や OS 差のある
+                    // separator 経由のパス攻撃の最終防御)
+                    var newPathFull = Path.GetFullPath(newPath);
+                    if (Path.GetDirectoryName(newPathFull) != outputDirFull)
+                    {
+                        Console.Error.WriteLine(
+                            $"slangbuild: overlay_name produced out-of-output-dir path: {newPath}");
+                        return 1;
+                    }
+
+                    if (File.Exists(oldPath))
+                    {
+                        File.Move(oldPath, newPath, overwrite: true);
+                    }
+                    renamedOverlayBins.Add(newPath);
+                }
+            }
+            else
+            {
+                renamedOverlayBins = overlayAsms
+                    .Select(a => Path.Combine(outputDir,
+                        Path.GetFileNameWithoutExtension(a) + overlayBinExt))
+                    .ToList();
+            }
+
+            // === Step 3.5b: cmt_assets コピー (env.CmtAssets 指定時) ===
+            // pc80mk2xsd で XBIOS.CMT 等を output dir にコピー。ユーザーは
+            // output dir 全体を SD カードに移すだけで揃う運用。
+            if (envConfig.CmtAssets != null && envConfig.CmtAssets.Count > 0)
+            {
+                foreach (var srcPath in envConfig.CmtAssets)
+                {
+                    if (!File.Exists(srcPath))
+                    {
+                        Console.Error.WriteLine(
+                            $"slangbuild: cmt_assets: file not found: {srcPath}");
+                        return 1;
+                    }
+                    var dstPath = Path.Combine(outputDir, Path.GetFileName(srcPath));
+                    File.Copy(srcPath, dstPath, overwrite: true);
+                    if (_opts.Verbose)
+                        Console.Error.WriteLine(
+                            $"slangbuild: cmt asset: {Path.GetFileName(srcPath)} → {dstPath}");
+                }
+            }
+
+            // === Step 3.5c: CMT 結合 (env.CmtConcat 指定時のみ) ===
             // pc80mk2x で main.cmt + XBIOS.CMT + overlay._mN.cmt を 1 本に
             // 結合。結合先 = main.cmt 上書き (= ユーザーは結合済 1 本だけ
-            // 使う運用)。disk 環境とは排他 (= disk: section を持つ env は
-            // cmt_concat を持たない設計、env file 上で分離)。
+            // 使う運用)。Loader で cmt_concat と cmt_assets が排他保証済。
             if (envConfig.CmtConcat != null && envConfig.CmtConcat.Count > 0)
             {
-                var overlayBinsForConcat = overlayAsms
-                    .Select(a => Path.Combine(outputDir,
-                        Path.GetFileNameWithoutExtension(a) + binExt))
-                    .ToList();
                 int concatRc = ConcatCmt(mainBin, envConfig.CmtConcat,
-                                          overlayBinsForConcat, intermediates);
+                                          renamedOverlayBins, intermediates);
                 if (concatRc != 0) return concatRc;
             }
 
             // === Step 4: --emit disk → disk image 組み立て ===
             if (_opts.EmitMode == "disk")
             {
-                var overlayBins = overlayAsms
-                    .Select(a => Path.Combine(outputDir,
-                        Path.GetFileNameWithoutExtension(a) + binExt))
-                    .ToList();
-                int diskRc = BuildDiskImage(envConfig, envPath, mainBin, overlayBins, outputBase);
+                // overlay は env.OverlayName で rename 済なら renamedOverlayBins、
+                // 未指定なら overlayBinExt 拡張子の既定 path
+                int diskRc = BuildDiskImage(envConfig, envPath, mainBin,
+                                            renamedOverlayBins, outputBase);
                 if (diskRc != 0) return diskRc;
             }
 
@@ -246,6 +316,32 @@ public class Driver
         }
     }
 
+    /// <summary>
+    /// AILZ80ASM の extra args を組み立てる。format == "cmt" なら <c>-gap 0</c>、
+    /// env file `defines:` 指定があれば各 entry を <c>-dl NAME=VAL</c> として
+    /// append する。両者なしなら null (= 引数追加なし)。
+    /// main / overlay 両方で共通利用 (= prelink Pass 1/3 と本番 assemble で
+    /// 同じ args を全 target に pass する設計、target 内整合のため)。
+    /// </summary>
+    private static string[]? BuildAsmExtras(string? format, Dictionary<string, int>? defines)
+    {
+        var list = new List<string>();
+        if (format == "cmt")
+        {
+            list.Add("-gap");
+            list.Add("0");
+        }
+        if (defines != null && defines.Count > 0)
+        {
+            foreach (var (name, value) in defines)
+            {
+                list.Add("-dl");
+                list.Add($"{name}={value}");
+            }
+        }
+        return list.Count > 0 ? list.ToArray() : null;
+    }
+
     private static string DerivePrefix(string inputPath)
     {
         var name = Path.GetFileName(inputPath);
@@ -261,7 +357,9 @@ public class Driver
     private int AssembleSingleStage(AssemblerRunner runner, PrelinkPlan plan,
         string mainAsm, string mainBin, string mainSym,
         List<string> overlayAsms, string outputDir, List<string> intermediates,
-        string binExt, string asmOutputFlag, string[]? asmExtraArgs)
+        string binExt, string asmOutputFlag, string[]? asmExtraArgs,
+        string overlayBinExt, string asmOverlayOutputFlag,
+        string[]? asmOverlayExtraArgs)
     {
         var mainLst = Path.ChangeExtension(mainBin, ".LST");
         var mainResult = runner.AssembleMain(mainAsm, mainBin, mainSym,
@@ -280,7 +378,7 @@ public class Driver
         {
             var overlayBase = Path.GetFileNameWithoutExtension(overlayAsm);
             var importsAsm = Path.Combine(outputDir, overlayBase + ".imports.asm");
-            var overlayBin = Path.Combine(outputDir, overlayBase + binExt);
+            var overlayBin = Path.Combine(outputDir, overlayBase + overlayBinExt);
             var overlaySym = Path.Combine(outputDir, overlayBase + ".sym");
             var overlayLst = Path.Combine(outputDir, overlayBase + ".LST");
 
@@ -296,8 +394,8 @@ public class Driver
 
             var ovResult = runner.AssembleOverlay(importsAsm, overlayAsm, overlayBin, overlaySym,
                                                   lstPath: overlayLst,
-                                                  outputFlag: asmOutputFlag,
-                                                  extraArgs: asmExtraArgs);
+                                                  outputFlag: asmOverlayOutputFlag,
+                                                  extraArgs: asmOverlayExtraArgs);
             if (!ovResult.Success)
             {
                 Console.Error.Write(ovResult.Stderr);
@@ -319,7 +417,9 @@ public class Driver
     /// </summary>
     private int AssemblePrelink(AssemblerRunner runner, PrelinkPlan plan,
         string mainBin, string mainSym, string outputDir, List<string> intermediates,
-        string binExt, string asmOutputFlag, string[]? asmExtraArgs)
+        string binExt, string asmOutputFlag, string[]? asmExtraArgs,
+        string overlayBinExt, string asmOverlayOutputFlag,
+        string[]? asmOverlayExtraArgs)
     {
         if (_opts.Verbose) Console.Error.WriteLine($"slangbuild: prelink mode (cross-references found)");
 
@@ -327,12 +427,20 @@ public class Driver
         var pass1Symbols = new Dictionary<string, Dictionary<string, int>>(); // target.Label → sym dict
         foreach (var t in plan.Targets)
         {
+            // target ごとに main / overlay の outputFlag を切替 (= pc80mk2xsd で
+            // main = cmt + overlay = bin の組合せに対応)。各 target 内では
+            // Pass 1 と Pass 3 で同じ outputFlag を使う必要 (= prelink アドレス整合)。
+            bool isMain = (t.Label == "main");
+            var tBinExt = isMain ? binExt : overlayBinExt;
+            var tOutputFlag = isMain ? asmOutputFlag : asmOverlayOutputFlag;
+            var tExtraArgs = isMain ? asmExtraArgs : asmOverlayExtraArgs;
+
             var baseName = Path.GetFileNameWithoutExtension(t.AsmPath);
             var dummyImportsPath = Path.Combine(outputDir, baseName + ".dummy.imports.asm");
             // Pass 1 の bin は即削除 intermediate なので拡張子は固定で良いが、
             // AILZ80ASM 出力 format (= -cmt) を main / Pass 3 と揃える都合上、
             // ファイル extension も binExt にしておく (= 一貫性、debug 時の混乱防止)。
-            var pass1BinPath = Path.Combine(outputDir, baseName + ".pass1" + binExt);
+            var pass1BinPath = Path.Combine(outputDir, baseName + ".pass1" + tBinExt);
             var pass1SymPath = Path.Combine(outputDir, baseName + ".pass1.sym");
 
             PrelinkPlan.WriteDummyImports(t, dummyImportsPath);
@@ -341,8 +449,8 @@ public class Driver
             var result = runner.AssembleOverlay(dummyImportsPath, t.AsmPath,
                                                 pass1BinPath, pass1SymPath,
                                                 superAssemble: false,
-                                                outputFlag: asmOutputFlag,
-                                                extraArgs: asmExtraArgs);
+                                                outputFlag: tOutputFlag,
+                                                extraArgs: tExtraArgs);
             if (!result.Success)
             {
                 Console.Error.Write(result.Stderr);
@@ -378,9 +486,15 @@ public class Driver
                     + "(none found in any target sym: " + string.Join(", ", unresolved) + ")");
             }
 
-            // 本番出力ファイル名: main は <prefix>{binExt}、overlay は <prefix>._mN{binExt}
+            // target ごとに main / overlay の outputFlag を切替 (Pass 1 と一致)
+            bool isMain = (t.Label == "main");
+            var tBinExt = isMain ? binExt : overlayBinExt;
+            var tOutputFlag = isMain ? asmOutputFlag : asmOverlayOutputFlag;
+            var tExtraArgs = isMain ? asmExtraArgs : asmOverlayExtraArgs;
+
+            // 本番出力ファイル名: main は <prefix>{binExt}、overlay は <prefix>._mN{overlayBinExt}
             string outBin, outSym, outLst;
-            if (t.Label == "main")
+            if (isMain)
             {
                 outBin = mainBin;
                 outSym = mainSym;
@@ -388,15 +502,15 @@ public class Driver
             }
             else
             {
-                outBin = Path.Combine(outputDir, baseName + binExt);
+                outBin = Path.Combine(outputDir, baseName + tBinExt);
                 outSym = Path.Combine(outputDir, baseName + ".sym");
                 outLst = Path.Combine(outputDir, baseName + ".LST");
             }
 
             var result = runner.AssembleOverlay(importsAsm, t.AsmPath, outBin, outSym,
                                                 superAssemble: false, lstPath: outLst,
-                                                outputFlag: asmOutputFlag,
-                                                extraArgs: asmExtraArgs);
+                                                outputFlag: tOutputFlag,
+                                                extraArgs: tExtraArgs);
             if (!result.Success)
             {
                 Console.Error.Write(result.Stderr);

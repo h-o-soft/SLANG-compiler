@@ -126,6 +126,18 @@ class Program
             preprocessor.DefineConst("ENV_TYPE", envConfig.EnvType);
             preprocessor.DefineConst("OS_TYPE", envConfig.OsType);
 
+            // env file の `defines:` で定義された名前を Preprocessor に注入
+            // (= 例: pc80mk2xsd で PC8001_SD=1 が定義されると、SL 側の
+            // `#IF PC8001_SD==1` が有効化される。ユーザーが SL に
+            // `CONST ASM PC8001_SD = 1;` を書かなくても済む)。
+            // 同時に slangbuild が AILZ80ASM 起動時に `-dl K=V` も pass する
+            // ので、ASM 側の `#IF exists NAME` も活きる。
+            if (envConfig.Defines != null)
+            {
+                foreach (var (name, value) in envConfig.Defines)
+                    preprocessor.DefineConst(name, value);
+            }
+
             tokens = preprocessor.Process(tokens, baseDir);
 
             if (diagnostics.HasErrors)
