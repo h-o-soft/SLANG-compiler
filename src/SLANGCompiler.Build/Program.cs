@@ -123,6 +123,13 @@ internal class Program
             Console.Error.WriteLine($"slangbuild: {ex.Message}");
             return 1;
         }
+        catch (InvalidDataException ex)
+        {
+            // EnvironmentLoader から throw される env file 構文エラー
+            // (= `output:` 値の typo 等)。stack trace は不要 = 一行 message 化。
+            Console.Error.WriteLine($"slangbuild: {ex.Message}");
+            return 1;
+        }
     }
 
     private static void PrintUsage()

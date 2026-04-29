@@ -15,6 +15,15 @@ public class EnvironmentConfig
     public bool CodeReadonly { get; set; }
 
     /// <summary>
+    /// AILZ80ASM の出力 format。null/未指定 = bin (= `.bin` 拡張子、追加
+    /// オプションなし)。"cmt" = cassette tape image (= `.cmt` 拡張子 +
+    /// AILZ80ASM に `-cmt -gap 0` を pass)。
+    /// 将来 "rom" / "sna" 等の format 追加可能 (= EnvironmentLoader 側で
+    /// allowlist を拡張)。
+    /// </summary>
+    public string? OutputFormat { get; set; }
+
+    /// <summary>
     /// disk image 出力設定 (slangbuild --emit disk 用)。env file に
     /// `disk:` セクションが無ければ null。
     /// </summary>

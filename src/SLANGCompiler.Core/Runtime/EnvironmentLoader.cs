@@ -38,6 +38,26 @@ public class EnvironmentLoader
         // コード領域の読取専用フラグ（ROM環境）
         config.CodeReadonly = raw.CodeReadonly;
 
+        // output: AILZ80ASM 出力 format (default = bin、"cmt" で CMT 出力)。
+        // 空白/null は null、"bin" も null に正規化 (= 内部表現統一)、
+        // それ以外は明示エラーで typo を早期検出。
+        var rawOutput = raw.Output?.Trim();
+        if (string.IsNullOrEmpty(rawOutput))
+        {
+            config.OutputFormat = null;
+        }
+        else
+        {
+            var normalized = rawOutput.ToLowerInvariant();
+            if (normalized != "bin" && normalized != "cmt")
+            {
+                throw new InvalidDataException(
+                    $"Invalid `output:` value '{rawOutput}' in {envFilePath}. "
+                    + "Allowed: bin (default) / cmt.");
+            }
+            config.OutputFormat = (normalized == "bin") ? null : normalized;
+        }
+
         // ライブラリリスト（.yml → .asm に変換）
         if (raw.Libraries != null)
         {
@@ -128,6 +148,9 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "optimize")]
         public string? Optimize { get; set; }
+
+        [YamlMember(Alias = "output")]
+        public string? Output { get; set; }
 
         [YamlMember(Alias = "disk")]
         public EnvFileDiskData? Disk { get; set; }
