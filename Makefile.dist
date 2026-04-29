@@ -120,66 +120,24 @@ IMGPROG = $(basename $(OUTPROG))$(BIN_EXT_ENV)
 
 all: help
 
-# インストール
-install: install-bin install-lib
-	@echo "Installation complete!"
-	@echo "  Binaries: $(BINDIR)"
-	@echo "  Libraries: $(CONFIG_DIR)"
+# インストール / アンインストール
+# Issue #160: 実体は install.sh / install.bat に切り出し済。本ターゲットは
+# 互換 wrapper として残置。Make 経由は --force 既定 ON のため、uninstall も
+# **確認 prompt なしで削除**される (= 既存 CI / muscle memory との互換維持)。
+# 確認 prompt を出したい場合は ./install.sh --uninstall を直接呼ぶ。
+install:
 ifeq ($(OS),Windows_NT)
-	@echo ""
-	@echo "Note: Please ensure '$(BINDIR)' is in your PATH."
+	install.bat --prefix "$(PREFIX)" --config-dir "$(CONFIG_DIR)" --force
 else
-	@echo ""
-	@echo "Note: If '$(BINDIR)' is not on your PATH, add this to your shell rc:"
-	@echo "  export PATH=\"$(BINDIR):\$$PATH\""
+	./install.sh --prefix "$(PREFIX)" --config-dir "$(CONFIG_DIR)" --force
 endif
 
-install-bin:
-ifeq ($(DETECTED_OS),Windows)
-	@echo "Windows: Please add bin directory to PATH manually"
-	-$(MKDIR) "$(BINDIR)"
-	$(CP) bin\slangc.exe "$(BINDIR)\"
-	$(CP) bin\slangbuild.exe "$(BINDIR)\"
-else
-	$(MKDIR) $(BINDIR)
-	$(CP) bin/slangc $(BINDIR)/
-	$(CP) bin/slangbuild $(BINDIR)/
-	chmod +x $(BINDIR)/slangc
-	chmod +x $(BINDIR)/slangbuild
-endif
-
-install-lib:
-ifeq ($(DETECTED_OS),Windows)
-	-$(MKDIR) "$(CONFIG_DIR)"
-	-$(MKDIR) "$(CONFIG_DIR)\include"
-	-$(MKDIR) "$(CONFIG_DIR)\runtime"
-	-$(MKDIR) "$(CONFIG_DIR)\images"
-	-$(MKDIR) "$(CONFIG_DIR)\images\templates"
-	-$(MKDIR) "$(CONFIG_DIR)\tools"
-	$(XCOPY) include "$(CONFIG_DIR)\include"
-	$(XCOPY) runtime "$(CONFIG_DIR)\runtime"
-	$(XCOPY) images "$(CONFIG_DIR)\images"
-	$(XCOPY) tools "$(CONFIG_DIR)\tools"
-else
-	$(MKDIR) $(CONFIG_DIR)
-	$(XCOPY) include $(CONFIG_DIR)/
-	$(XCOPY) runtime $(CONFIG_DIR)/
-	$(XCOPY) images $(CONFIG_DIR)/
-	$(XCOPY) tools $(CONFIG_DIR)/
-endif
-
-# アンインストール
 uninstall:
-ifeq ($(DETECTED_OS),Windows)
-	$(RM) "$(BINDIR)\slangc.exe"
-	$(RM) "$(BINDIR)\slangbuild.exe"
-	$(RMDIR) "$(CONFIG_DIR)"
+ifeq ($(OS),Windows_NT)
+	uninstall.bat --prefix "$(PREFIX)" --config-dir "$(CONFIG_DIR)" --force
 else
-	$(RM) $(BINDIR)/slangc
-	$(RM) $(BINDIR)/slangbuild
-	$(RMDIR) $(CONFIG_DIR)
+	./uninstall.sh --prefix "$(PREFIX)" --config-dir "$(CONFIG_DIR)" --force
 endif
-	@echo "Uninstallation complete!"
 
 # 開発ツールのセットアップ
 setup-tools:

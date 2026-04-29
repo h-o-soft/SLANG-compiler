@@ -272,7 +272,28 @@ UILIB は SPRLIB と組み合わせる場合、UI 領域にスプライトを侵
 
 # 環境構築とSLANGプログラムのビルド方法
 
-SLANG Compilerは、Makefileを使ってWindows/macOS/Linuxでクロスプラットフォームにインストール・ビルドできます。
+SLANG Compilerは、Windows/macOS/Linuxでクロスプラットフォームにインストール・ビルドできます。
+
+## 配布 zip からのインストール
+
+[GitHub Releases](https://github.com/h-o-soft/SLANG-compiler/releases) から OS 別 zip をダウンロード→解凍した dir で:
+
+```
+./install.sh                              # Linux / macOS (ユーザーローカル、sudo 不要)
+install.bat                               # Windows
+sudo ./install.sh --prefix /usr/local --config-dir /usr/local/share/slang --force
+                                          # システムワイド (sudo 必須、CONFIG_DIR
+                                          # も必ず明示しないと sudo の HOME=/root 問題)
+./install.sh --uninstall                  # アンインストール
+./install.sh --dry-run                    # 何が起こるか事前確認
+./install.sh --help                       # 全オプション
+```
+
+default では Linux/macOS は `~/.local/bin` (binary) + `~/.config/SLANG/` (lib)、Windows は `%LOCALAPPDATA%\Programs\SLANG\` (binary) + `%USERPROFILE%\.config\SLANG\` (lib) に配置されます。
+
+外部ツール (ndc / HuDisk / AILZ80ASM) はライセンス都合で配布 zip に同梱しないため、`make setup-tools` で別途ダウンロードします (= `~/.config/SLANG/tools/` 配下に配置)。
+
+互換: `make install` / `make uninstall` も従来通り動作 (内部で install.sh / install.bat を呼ぶ wrapper)。**Make 経由は `--force` 既定 ON のため uninstall 時の確認 prompt は出ません**。
 
 ## ソースからビルドする場合
 

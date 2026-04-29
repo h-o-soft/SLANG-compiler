@@ -58,6 +58,12 @@ createRelease() {
   cp ../../LICENSE .
   cp ../../setupenv.bat .
   cp ../../setupenv.sh .
+  # Issue #160 短期案: install scripts (Makefile に依存しない install 経路)
+  cp ../../install.sh    .
+  cp ../../install.bat   .
+  cp ../../uninstall.sh  .
+  cp ../../uninstall.bat .
+  chmod +x install.sh uninstall.sh
 
   # RunCPM bundle (per-platform binary + CP/M utilities + wrapper)
   mkdir -p tools/runcpm/cpm
