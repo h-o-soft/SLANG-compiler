@@ -23,8 +23,7 @@ public class EnvironmentConfig
 
 /// <summary>
 /// `disk:` セクション (slangbuild --emit disk 用)。
-/// 現状サポートは format=d88、tool=ndc / hudisk (sos.env への適用は素材揃い
-/// 後の Phase で予定)。
+/// 現状サポートは format=d88、tool=ndc / hudisk / udostool。
 /// </summary>
 public class DiskConfig
 {
@@ -37,7 +36,7 @@ public class DiskConfig
     /// </summary>
     public string Template { get; set; } = "";
 
-    /// <summary>"ndc" / "hudisk"</summary>
+    /// <summary>"ndc" / "hudisk" / "udostool"</summary>
     public string Tool { get; set; } = "";
 
     /// <summary>main bin の disk 内ファイル名 (例: "PROG.COM")</summary>
@@ -59,4 +58,24 @@ public class DiskConfig
     /// <summary>overlay の load address。null なら -r を付けない。
     /// (overlay には exec を付けない sos の慣習)</summary>
     public int? OverlayLoad { get; set; }
+
+    /// <summary>
+    /// udostool 専用: IPL / SUB / SYS など disk 構築の前段で書き込む系統ファイル。
+    /// 他 tool では null (= 未指定)。EnvironmentLoader 側で env file dir 基準の
+    /// 相対 path を絶対化済み。順序保証 = YAML の system_files リスト順。
+    /// </summary>
+    public List<DiskSystemFile>? SystemFiles { get; set; }
+}
+
+/// <summary>
+/// udostool 経路で template に書き込む系統ファイル 1 entry
+/// (= IPL / SUB / SYS のいずれか)。
+/// </summary>
+public class DiskSystemFile
+{
+    /// <summary>system file の絶対 path (= EnvironmentLoader が env file dir 基準で絶対化済)</summary>
+    public string Path { get; set; } = "";
+
+    /// <summary>udostool の flag。"-IPL" / "-SUB" / "-SYS" のいずれか (= 大文字固定)</summary>
+    public string Flag { get; set; } = "";
 }

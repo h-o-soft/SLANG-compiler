@@ -916,12 +916,35 @@ overlay に渡すと compiler 内部ラベルとの衝突リスクがあるた�
   → 同梱 `{baseDir}/tools/HuDisk.exe` → install dir → `PATH` → repo root。
   Windows は `.exe` 直接実行、**Linux/macOS は mono 経由起動** (= setup-tools が
   取得する `HuDisk.exe` は ho-ogino/HuDisk fork の .NET assembly)
+- **udostool** (`--emit disk` の `tool: udostool`): `--udostool` → `UDOSTOOL_PATH`
+  環境変数 → 同梱 `{baseDir}/tools/udostool.exe` → install dir → `PATH` → repo
+  root。Windows は `.exe` 直接実行、**Linux/macOS は mono 経由起動**
+  (= Bookworm's Library 公開の汎用ディスクルーチン用 .NET assembly、repo 同梱
+  なので setup-tools 不要)
 
 配布スクリプト (`Makefile.dist` / `publish.sh`) では `--slangc` / `--asm` /
-`--ndc` / `--hudisk` を明示指定する運用 (PATH 優先は再現性が低いため)。
-`make setup-tools` がライセンス都合で同梱できない `ndc` / `HuDisk.exe` を
-ダウンロードして `tools/` に配置し、`./install.sh` (または `make install`) で
-`~/.config/SLANG/tools/` にコピーする。
+`--ndc` / `--hudisk` / `--udostool` を明示指定する運用 (PATH 優先は再現性が
+低いため)。`make setup-tools` がライセンス都合で同梱できない `ndc` /
+`HuDisk.exe` をダウンロードして `tools/` に配置し、`./install.sh`
+(または `make install`) で `~/.config/SLANG/tools/` にコピーする
+(`udostool.exe` は repo 同梱されているため setup-tools 不要)。
+
+#### pc88mk2sr の disk 内ファイル名規約 (= libp88_file API 対応表)
+
+`pc88mk2sr` 環境では `Disk_Load` / `Disk_Load3` 系で disk 内ファイルを読む。
+`disk.overlay_name` で指定する disk 内 base name と、`Disk_Load(name, addr)`
+の `name` 引数 (= space 区切り 8.3 名) は次の対応:
+
+| disk 内ファイル名 (`overlay_name` 展開) | `Disk_Load` での指定 |
+|---|---|
+| `M0.BIN` | `Disk_Load("M0 BIN", addr)` |
+| `M1.BIN` | `Disk_Load("M1 BIN", addr)` |
+| `$1A00.$$$` (main bin) | (boot 時に IPL/SUB/SYS が読み込むので user code からの直接 load は通常不要) |
+
+**現在の制約**: pc88mk2sr の `--emit disk` は **`#ORG $1A00` 固定運用**。SL 側
+で `#ORG $XXXX` 上書きすると main bin の disk 内ファイル名 (= env file の
+`main_name: "$1A00.$$$"` で literal 固定) と loader 期待値が不整合になり、
+build は通るが boot しない silent wrong になる。ORG 可変化は別 PR で対応予定。
 
 ---
 

@@ -10,6 +10,15 @@
   - **Windows install default を `%LOCALAPPDATA%\Programs\SLANG` → `%USERPROFILE%\.local\bin` に変更** (= install.sh の `~/.local/bin` と対称、uv / pipx 等の CLI ツール慣習)
   - 中期案 (`setupenv.{sh,bat}` の .NET 化 = `slangsetup` 新設) は別 PR で扱う
 
+- pc88mk2sr 環境を `slangbuild --emit disk` 経路に統合 (#157 follow-up: env 統合 Phase 3 最初)
+  - 新 tool: `udostool` (.NET assembly、**Bookworm's Library 公開の汎用ディスクルーチン** `filesys_20141128` 系用、サイト記載の「改変含め自由に使ってください」を license として信用し repo 同梱)。`tools/udostool.exe` に commit、setup-tools 不要。Linux/macOS は mono 経由起動、Windows は .exe 直接起動
+  - 5 ステップ build: template (`images/templates/PC88MK2SR.D88`) を出力先 copy → `udostool` で IPL / SUB / SYS 書込 → main `$1A00.$$$` + overlay `M{index}.BIN` を staging dir に bulk copy → `udostool disk <staging>` で 1 回 flush
+  - 新 `DiskConfig.SystemFiles` フィールド (= IPL / SUB / SYS の path + flag、env file dir 基準で path 絶対化、flag は `-IPL`/`-SUB`/`-SYS` allowlist で大文字固定)
+  - **overlay 対応**: `#MODULE` 使った SL の overlay bin が `M{index}.BIN` として disk に格納される。pc88mk2sr では FOPEN/FREAD ではなく libp88_file の `Disk_Load` / `Disk_Load3` 系で読み込む想定、disk 内名は `Disk_Load("M0 BIN", addr)` のような space 区切り形式
+  - **ORG = $1A00 固定運用** (= 本 PR の制約)。SL 側で `#ORG $XXXX` 上書きすると `main_name` (= `"$1A00.$$$"`) と loader 期待が不整合になり、build は通るが boot しない silent wrong になる **既知リスク**。ORG 可変化 (= `main_name` template 化 + slangc 出力 sym からの整合 check) は別 PR で対応
+  - 同梱物の出典 (provenance) を新規 `THIRD_PARTY_NOTICES.md` に記録 (= 配布物名 / 取得元 / 取得日 / 許諾文 / 改変有無 を表で明記)
+  - 他 PC-8801 系 (pc80mk2 / pc80mk2x) は別 PR で順次
+
 ## Version 0.23.0
 
 - `#MODULE` (オーバーレイ) のモジュール専用ワーク対応 (#142)

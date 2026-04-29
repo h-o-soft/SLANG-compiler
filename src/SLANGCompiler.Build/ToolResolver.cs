@@ -345,6 +345,83 @@ public class ToolResolver
     }
 
     /// <summary>
+    /// udostool (Bookworm's Library 公開の汎用ディスクルーチン用 .NET assembly) を解決。
+    /// `--emit disk` の tool: udostool 経路で必要 (pc88mk2sr 等)。
+    ///
+    /// HuDisk と同じ .NET assembly (.exe) のため、Windows は直接実行、
+    /// Linux/macOS は mono 経由起動。<see cref="MakeHudiskResolved"/> と同じ
+    /// MonoRun pattern。
+    ///
+    /// TODO (次 PR): MakeHudiskResolved / MakeUdostoolResolved の共通ロジックを
+    /// MakeMonoExeResolved(string exePath, string toolNameForError) に統合する。
+    ///
+    /// 解決順 (ndc / HuDisk と同じ):
+    /// 1) cliOverride (--udostool)
+    /// 2) UDOSTOOL_PATH 環境変数
+    /// 3) {baseDir}/tools/udostool.exe
+    /// 4) {baseDir}/../tools/udostool.exe
+    /// 5) install dir (~/.config/SLANG/tools/udostool.exe, $SLANG_HOME/tools/...)
+    /// 6) PATH 上の udostool.exe
+    /// 7) repo root 基準 tools/udostool.exe (dev fallback)
+    /// </summary>
+    public ResolvedTool ResolveUdostool(string? cliOverride)
+    {
+        const string assemblyName = "udostool.exe";
+
+        if (!string.IsNullOrEmpty(cliOverride) && File.Exists(cliOverride))
+            return MakeUdostoolResolved(cliOverride);
+
+        var envPath = Environment.GetEnvironmentVariable("UDOSTOOL_PATH");
+        if (!string.IsNullOrEmpty(envPath) && File.Exists(envPath))
+            return MakeUdostoolResolved(envPath);
+
+        var bundledSibling = Path.Combine(_baseDir, "tools", assemblyName);
+        if (File.Exists(bundledSibling))
+            return MakeUdostoolResolved(bundledSibling);
+        var bundledParent = Path.Combine(_baseDir, "..", "tools", assemblyName);
+        if (File.Exists(bundledParent))
+            return MakeUdostoolResolved(Path.GetFullPath(bundledParent));
+
+        foreach (var installDir in GetInstallToolDirs())
+        {
+            var p = Path.Combine(installDir, assemblyName);
+            if (File.Exists(p)) return MakeUdostoolResolved(p);
+        }
+
+        var onPath = FindOnPath(assemblyName);
+        if (onPath != null) return MakeUdostoolResolved(onPath);
+
+        var repoTools = LocateRepoFile($"tools/{assemblyName}");
+        if (repoTools != null) return MakeUdostoolResolved(repoTools);
+
+        throw new FileNotFoundException(
+            "udostool not found. Tried: --udostool, $UDOSTOOL_PATH, bundled "
+            + "{baseDir}/tools, {baseDir}/../tools, install dir tools/, PATH, and repo root. "
+            + "udostool.exe is shipped in tools/ — re-extract the distribution if missing, "
+            + "or specify --udostool <path> explicitly.");
+    }
+
+    /// <summary>
+    /// udostool path を ResolvedTool に包む。MakeHudiskResolved と同じ
+    /// MonoRun pattern (= 次 PR で MakeMonoExeResolved に共通化予定)。
+    /// </summary>
+    private ResolvedTool MakeUdostoolResolved(string udostoolPath)
+    {
+        var ext = Path.GetExtension(udostoolPath);
+        bool isDotnetAssembly = string.Equals(ext, ".exe", StringComparison.OrdinalIgnoreCase);
+        if (isDotnetAssembly && !IsWindows)
+        {
+            var mono = FindOnPath("mono");
+            if (mono == null)
+                throw new FileNotFoundException(
+                    $"udostool found at {udostoolPath} but `mono` not on PATH. "
+                    + "Install mono (Linux/macOS) or specify a native udostool via --udostool.");
+            return new ResolvedTool(mono, ResolutionKind.MonoRun, udostoolPath);
+        }
+        return new ResolvedTool(udostoolPath, ResolutionKind.DirectExe);
+    }
+
+    /// <summary>
     /// install dir (= make install で配置される) 配下の tools/ を返す。
     /// SLANG_HOME → ~/.config/SLANG の順、存在するもののみ。
     /// </summary>

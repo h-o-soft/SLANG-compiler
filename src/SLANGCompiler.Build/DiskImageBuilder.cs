@@ -25,25 +25,34 @@ public class DiskImageBuilder
     private readonly DiskConfig _disk;
     private readonly ResolvedTool? _ndc;
     private readonly ResolvedTool? _hudisk;
+    private readonly ResolvedTool? _udostool;
     private readonly string? _templateOverride;
     private readonly bool _verbose;
+
+    // udostool は flag を大文字で受ける仕様 (= -IPL/-SUB/-SYS)。
+    // Ordinal 比較で大文字固定、エラー文に "uppercase only" を明記して原因把握を助ける。
+    private static readonly HashSet<string> AllowedSystemFlags =
+        new(StringComparer.Ordinal) { "-IPL", "-SUB", "-SYS" };
 
     /// <summary>
     /// </summary>
     /// <param name="disk">env file の disk: セクション</param>
     /// <param name="ndc">tool == "ndc" 時の ResolvedTool。それ以外は null 可</param>
     /// <param name="hudisk">tool == "hudisk" 時の ResolvedTool (Linux/macOS では MonoRun でラップ済)。それ以外は null 可</param>
+    /// <param name="udostool">tool == "udostool" 時の ResolvedTool (Linux/macOS では MonoRun でラップ済)。それ以外は null 可</param>
     /// <param name="verbose">subprocess の I/O を stderr に流す</param>
     /// <param name="templateOverride">--disk-template による env.Disk.Template の上書き</param>
     public DiskImageBuilder(DiskConfig disk,
                             ResolvedTool? ndc = null,
                             ResolvedTool? hudisk = null,
+                            ResolvedTool? udostool = null,
                             bool verbose = false,
                             string? templateOverride = null)
     {
         _disk = disk;
         _ndc = ndc;
         _hudisk = hudisk;
+        _udostool = udostool;
         _verbose = verbose;
         _templateOverride = templateOverride;
     }
@@ -101,6 +110,13 @@ public class DiskImageBuilder
                     return 1;
                 }
                 break;
+            case "udostool":
+                if (_udostool == null)
+                {
+                    Console.Error.WriteLine("slangbuild: udostool not provided for tool: udostool");
+                    return 1;
+                }
+                break;
             default:
                 Console.Error.WriteLine(
                     $"slangbuild: unsupported disk.tool: {_disk.Tool}");
@@ -121,7 +137,54 @@ public class DiskImageBuilder
         var stagingDir = outputAbs + ".staging";
         try
         {
+            // udostool は staging dir 配下を全部 disk に書き込むため、前回失敗時の
+            // 残骸が混入すると disk に流れ込む事故になる → 事前再帰削除 + 再作成。
+            // ndc/hudisk 経路は per-entry で個別書き込みなので残骸混入リスクは低いが、
+            // 整合性のため両経路で同じ対策を入れる。
+            if (Directory.Exists(stagingDir))
+                Directory.Delete(stagingDir, recursive: true);
             Directory.CreateDirectory(stagingDir);
+
+            // === udostool 経路 (main + overlay を同 staging dir に bulk copy → 1 回 flush) ===
+            if (_disk.Tool == "udostool")
+            {
+                int rcSys = WriteSystemFilesUdostool(outputAbs);
+                if (rcSys != 0) return rcSys;
+
+                // main: $1A00.$$$ など (literal、頭の $ も含む)
+                var stagedMain = Path.Combine(stagingDir, _disk.MainName);
+                File.Copy(mainBinPath, stagedMain, overwrite: true);
+
+                // overlay 0..N: M0.BIN / M1.BIN ... (= OverlayName 既存フィールドを再利用)
+                for (int i = 0; i < overlayBinPaths.Count; i++)
+                {
+                    if (string.IsNullOrEmpty(_disk.OverlayName))
+                    {
+                        Console.Error.WriteLine(
+                            "slangbuild: disk.overlay_name is empty but overlay bins exist");
+                        return 1;
+                    }
+                    var entryName = _disk.OverlayName.Replace("{index}", i.ToString());
+                    var stagedOv = Path.Combine(stagingDir, entryName);
+                    File.Copy(overlayBinPaths[i], stagedOv, overwrite: true);
+                }
+
+                // bulk flush: udostool disk <staging_dir>
+                var rcFlush = RunTool(_udostool!,
+                    new[] { outputAbs, stagingDir }, ignoreFailure: false);
+                if (rcFlush != 0)
+                {
+                    Console.Error.WriteLine(
+                        $"slangbuild: udostool flush staging failed (exit {rcFlush})");
+                    return rcFlush;
+                }
+
+                if (_verbose)
+                    Console.Error.WriteLine($"slangbuild: disk image written: {outputAbs}");
+                return 0;
+            }
+
+            // === ndc / hudisk 経路 (= per-entry WriteEntry ループ、既存パス) ===
 
             // main: MainName 名で copy → 書き込み
             int rc = WriteEntry(mainBinPath, _disk.MainName, isMain: true,
@@ -155,6 +218,43 @@ public class DiskImageBuilder
             }
             catch { /* best effort */ }
         }
+    }
+
+    // ---- udostool 経路 (pc88mk2sr) ----
+    //
+    // disk 構築の前段で IPL / SUB / SYS など系統ファイルを 1 つずつ書き込む。
+    // disk.system_files の YAML 順 = 書込順 (= 通常 IPL → SUB → SYS)。
+    // Flag は -IPL/-SUB/-SYS の allowlist (= env file の typo を builder で
+    // 早期 reject する)。
+    private int WriteSystemFilesUdostool(string d88)
+    {
+        if (_disk.SystemFiles == null) return 0;
+        foreach (var sf in _disk.SystemFiles)
+        {
+            if (string.IsNullOrEmpty(sf.Path) || !File.Exists(sf.Path))
+            {
+                Console.Error.WriteLine(
+                    $"slangbuild: disk.system_files entry not found: {sf.Path} (flag {sf.Flag})");
+                return 1;
+            }
+            if (!AllowedSystemFlags.Contains(sf.Flag))
+            {
+                Console.Error.WriteLine(
+                    $"slangbuild: disk.system_files flag must be one of -IPL/-SUB/-SYS "
+                    + $"(uppercase only): got '{sf.Flag}'");
+                return 1;
+            }
+            // udostool disk.d88 ipl.bin -IPL
+            var rc = RunTool(_udostool!,
+                new[] { d88, sf.Path, sf.Flag }, ignoreFailure: false);
+            if (rc != 0)
+            {
+                Console.Error.WriteLine(
+                    $"slangbuild: udostool {sf.Flag} failed for {Path.GetFileName(sf.Path)} (exit {rc})");
+                return rc;
+            }
+        }
+        return 0;
     }
 
     /// <summary>
