@@ -130,6 +130,8 @@ BIOS処理については比較的汎用的に作られており、PC-8001版の
 
 `slangbuild` (および `Makefile.dist build / run / disk_image ENV=pc80mk2x`) は、メイン .cmt の直後に **XBIOS.CMT (= 0000H 配置の bootstrap binary)** を自動的に結合します (= 旧 `COPY /B PROG.CMT+XBIOS.CMT GAME.CMT` 手動結合の内製化)。`#MODULE` を使った overlay も同じ .cmt に結合されます。
 
+SD カード経由でロードする場合は `pc80mk2xsd` 環境を選択してください。`slangbuild` が main `.cmt` + 各 overlay (`M0.BIN`, `M1.BIN`, ...) + `XBIOS.CMT` を出力ディレクトリに**個別配置**するので、出力ディレクトリ全体を SD カードに置けば動作します。`PC8001_SD` 定数は env により自動的に定義されるため、SL コードで `CONST ASM PC8001_SD = 1;` を書く必要はありません。
+
 ## pc88mk2sr (PC-8801mkIISR)
 
 PC-8801mkIISR用の環境です。

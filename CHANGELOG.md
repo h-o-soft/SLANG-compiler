@@ -26,7 +26,11 @@
   - `cmt_concat` と `cmt_assets` は同 env で両方指定すると env load 時 reject (= build flow 排他)
   - 全 CMT 系新フィールドは `output: cmt` 専用 (= 不一致は reject)
   - `overlay_name` は `{index}` placeholder 必須、output dir 外書き禁止 (= absolute path / separator / `..` を loader と driver の二重で validate)
-  - SL 側で `CONST ASM PC8001_SD = 1;` を冒頭に書くと libpc80mk2xbios_base.asm の SD ROM/RAM 切替経路が活きる
+
+- env file `defines:` フィールドを追加 — env 別の整数定数を slangc Preprocessor と AILZ80ASM に同時 inject
+  - env file `defines: { NAME: int_value }` 形式で、env 選択時に slangc が `Preprocessor.DefineConst()` 経由で SL の `#IF NAME==VAL` 判定に登録、slangbuild が AILZ80ASM 起動時に `-dl NAME=VAL` を main / overlay / prelink Pass 1/3 全段に pass (= ASM 側 `#IF exists NAME` も活きる)
+  - pc80mk2xsd で `defines: { PC8001_SD: 1 }` を定義しているので、ユーザー側 SL に `CONST ASM PC8001_SD = 1;` を書く必要なし (env 切替だけで SD 経路が自動活性化)
+  - 名前は `^[A-Za-z_][A-Za-z0-9_]*$` で validate、value は int 限定
 
 - pc80mk2x 環境 (PC-8001mkII XBIOS 直接環境) を `slangbuild` に対応 — XBIOS.CMT 結合 build
   - `obsolete/lib/pc8001/XBIOS/XBIOS.CMT` を `runtime/templates/XBIOS.CMT` に移動。slangbuild が pc80mk2x build 時に main.cmt + XBIOS.CMT + overlay._mN.cmt を 1 本に結合 (= 旧 `COPY /B` / `cat` 手動結合を内製化)

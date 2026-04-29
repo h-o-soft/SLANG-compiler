@@ -124,6 +124,30 @@ public class EnvironmentLoader
             config.OverlayOutputFormat = ofnorm;
         }
 
+        // defines: env が自動定義する名前→値 map (integer 限定)。slangc 側で
+        // Preprocessor.DefineConst() 経由で SL の #IF NAME==VAL に、slangbuild
+        // 側で AILZ80ASM `-dl NAME=VAL` 引数で参照される (= ASM 側 #IF exists
+        // NAME も活きる)。例: pc80mk2xsd で PC8001_SD: 1 を定義すれば、SL に
+        // CONST ASM 行を書かずに SD 経路が自動的に有効化される。
+        // 名前 validate: ^[A-Za-z_][A-Za-z0-9_]*$ (= C/asm 識別子規則と同等)。
+        if (raw.Defines != null && raw.Defines.Count > 0)
+        {
+            var nameRe = new System.Text.RegularExpressions.Regex(
+                @"^[A-Za-z_][A-Za-z0-9_]*$");
+            var validated = new Dictionary<string, int>();
+            foreach (var (name, value) in raw.Defines)
+            {
+                if (!nameRe.IsMatch(name))
+                {
+                    throw new InvalidDataException(
+                        $"Invalid `defines:` name '{name}' in {envFilePath}. "
+                        + "Must match ^[A-Za-z_][A-Za-z0-9_]*$.");
+                }
+                validated[name] = value;
+            }
+            config.Defines = validated;
+        }
+
         // overlay_name validate (path 安全性 + {index} 必須):
         // - {index} placeholder 必須 (= 無いと overlay 複数個で全部同じ path
         //   に上書き silent wrong)
@@ -239,6 +263,9 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "overlay_output_format")]
         public string? OverlayOutputFormat { get; set; }
+
+        [YamlMember(Alias = "defines")]
+        public Dictionary<string, int>? Defines { get; set; }
 
         [YamlMember(Alias = "disk")]
         public EnvFileDiskData? Disk { get; set; }

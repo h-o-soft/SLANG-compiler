@@ -462,6 +462,66 @@ libraries:
     }
 
     [Fact]
+    public void Defines_DeserializesIntegerValues()
+    {
+        // env file の defines: が Dictionary<string, int> として読まれること。
+        var envPath = WriteEnv("defs.env", """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+defines:
+  PC8001_SD: 1
+  DEBUG_LEVEL: 2
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+
+        Assert.NotNull(config.Defines);
+        Assert.Equal(2, config.Defines!.Count);
+        Assert.Equal(1, config.Defines["PC8001_SD"]);
+        Assert.Equal(2, config.Defines["DEBUG_LEVEL"]);
+    }
+
+    [Fact]
+    public void Defines_NullByDefault()
+    {
+        // defines: 未指定 env では Defines == null。
+        var envPath = WriteEnv("nodefs.env", """
+env_type: 0
+os_type: 0
+default_org: "$100"
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+        Assert.Null(config.Defines);
+    }
+
+    [Fact]
+    public void Defines_InvalidName_Throws()
+    {
+        // 識別子規則 (= ^[A-Za-z_][A-Za-z0-9_]*$) に違反する名前は reject。
+        // 数字始まり / 記号 / 空白等の名前は AILZ80ASM の `-dl` でも slangc の
+        // Preprocessor でも識別子として扱えないため。
+        var envPath = WriteEnv("baddef.env", """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+defines:
+  "1BAD_NAME": 1
+libraries:
+  - runtime.yml
+""");
+
+        var ex = Assert.Throws<InvalidDataException>(() => EnvironmentLoader.Load(envPath));
+        Assert.Contains("defines", ex.Message);
+        Assert.Contains("1BAD_NAME", ex.Message);
+    }
+
+    [Fact]
     public void DiskSystemFiles_PathNormalization_RemovesDotSegments()
     {
         // env file dir 基準で `./xxx/../foo/ipl.bin` のような dotted path が

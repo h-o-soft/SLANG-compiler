@@ -67,6 +67,20 @@ public class EnvironmentConfig
     /// <see cref="OutputFormat"/> == "cmt" 必須。
     /// </summary>
     public string? OverlayOutputFormat { get; set; }
+
+    /// <summary>
+    /// env が自動的に define する名前→値 map (= integer 値のみ)。
+    /// slangc 側では <c>Preprocessor.DefineConst()</c> 経由で SL の
+    /// <c>#IF NAME==VAL</c> 判定に参照される。
+    /// slangbuild 側では AILZ80ASM 起動時に <c>-dl NAME=VAL</c> 引数として
+    /// 全 assemble 呼出 (main / overlay / prelink Pass 1/3) に pass される
+    /// (= ASM 側の <c>#IF exists NAME</c> も活きる)。
+    /// 例: pc80mk2xsd で <c>PC8001_SD: 1</c> を定義することで、ユーザーが
+    /// SL に <c>CONST ASM PC8001_SD = 1;</c> を書かなくても SD 経路が
+    /// 自動的に有効化される。
+    /// 名前は <c>^[A-Za-z_][A-Za-z0-9_]*$</c> regex で validate。
+    /// </summary>
+    public Dictionary<string, int>? Defines { get; set; }
 }
 
 /// <summary>

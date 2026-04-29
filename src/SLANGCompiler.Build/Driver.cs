@@ -99,20 +99,17 @@ public class Driver
         // で同じものを渡す必要 (= 各 helper method で参照)。
         var binExt = (envConfig.OutputFormat == "cmt") ? ".cmt" : ".bin";
         var asmOutputFlag = (envConfig.OutputFormat == "cmt") ? "-cmt" : "-bin";
-        var asmExtraArgs = (envConfig.OutputFormat == "cmt")
-            ? new[] { "-gap", "0" }
-            : null;
+        var asmExtraArgs = BuildAsmExtras(envConfig.OutputFormat, envConfig.Defines);
 
         // overlay 用は env.OverlayOutputFormat (= 未指定なら main に追従)
         // で別計算。pc80mk2xsd では main = cmt + overlay = bin (= raw binary、
         // SD で SD_RREAD 用、CMT header / gap 不要) のような env-specific
-        // 設計を許容する。
+        // 設計を許容する。defines は main / overlay 共通で pass される
+        // (= ASM 側 #IF exists NAME 判定が main / overlay どちらでも活きる)。
         var overlayFormat = envConfig.OverlayOutputFormat ?? envConfig.OutputFormat;
         var overlayBinExt = (overlayFormat == "cmt") ? ".cmt" : ".bin";
         var asmOverlayOutputFlag = (overlayFormat == "cmt") ? "-cmt" : "-bin";
-        var asmOverlayExtraArgs = (overlayFormat == "cmt")
-            ? new[] { "-gap", "0" }
-            : null;
+        var asmOverlayExtraArgs = BuildAsmExtras(overlayFormat, envConfig.Defines);
 
         // 出力ベースパス決定:
         //   -o 指定あり → 絶対パスならそのまま、相対パスなら cwd 基準で resolve
@@ -317,6 +314,32 @@ public class Driver
                     "slangbuild: build failed — keeping intermediate files for inspection.");
             }
         }
+    }
+
+    /// <summary>
+    /// AILZ80ASM の extra args を組み立てる。format == "cmt" なら <c>-gap 0</c>、
+    /// env file `defines:` 指定があれば各 entry を <c>-dl NAME=VAL</c> として
+    /// append する。両者なしなら null (= 引数追加なし)。
+    /// main / overlay 両方で共通利用 (= prelink Pass 1/3 と本番 assemble で
+    /// 同じ args を全 target に pass する設計、target 内整合のため)。
+    /// </summary>
+    private static string[]? BuildAsmExtras(string? format, Dictionary<string, int>? defines)
+    {
+        var list = new List<string>();
+        if (format == "cmt")
+        {
+            list.Add("-gap");
+            list.Add("0");
+        }
+        if (defines != null && defines.Count > 0)
+        {
+            foreach (var (name, value) in defines)
+            {
+                list.Add("-dl");
+                list.Add($"{name}={value}");
+            }
+        }
+        return list.Count > 0 ? list.ToArray() : null;
     }
 
     private static string DerivePrefix(string inputPath)

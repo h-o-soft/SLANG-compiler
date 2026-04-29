@@ -1132,9 +1132,10 @@ build 後、output dir には:
   で rename 済)
 - `XBIOS.CMT` (= `cmt_assets` で copy 済)
 
-が揃う。ユーザーは output dir 全体を SD カードに移すだけで動作する。SL
-側で `CONST ASM PC8001_SD = 1;` を冒頭に書くことで libpc80mk2xbios_base.asm
-の SD ROM/RAM 切替経路が活きる (= env と SL の整合は user 責任)。
+が揃う。ユーザーは output dir 全体を SD カードに移すだけで動作する。
+env file の `defines: { PC8001_SD: 1 }` (後述) により、libpc80mk2xbios_base.asm
+の SD ROM/RAM 切替経路 + SL 側の `#IF PC8001_SD==1` が自動的に活きるので、
+**SL 側で `CONST ASM PC8001_SD = 1;` を書く必要はない**。
 
 新 env file フィールド (CMT 系):
 
@@ -1145,6 +1146,30 @@ build 後、output dir には:
 | `overlay_output_format:` | overlay 専用の出力 format (`bin` / `cmt`)。null = main の `output:` に追従 |
 
 すべて `output: cmt` 専用 (= bin / null env で指定すると env load 時 reject)。
+
+#### env file `defines:` (env 別の自動定義)
+
+env file に `defines:` を書くと、env 選択時に slangc / AILZ80ASM の両方
+に同名定数が自動的に注入される:
+
+```yaml
+defines:
+  PC8001_SD: 1
+```
+
+- **slangc 側**: `Preprocessor.DefineConst()` 経由で SL の `#IF NAME==VAL`
+  判定に登録される。例: `#IF PC8001_SD==1 ... #ELSE ... #ENDIF` で SD/CMT
+  分岐コードを書ける
+- **slangbuild 側**: AILZ80ASM 起動時に `-dl NAME=VAL` を main / overlay /
+  prelink Pass 1/3 全段に pass する。ASM 側の `#IF exists NAME` も活きる
+  (例: `libpc80mk2xbios_base.asm` の SD ROM/RAM 切替経路)
+
+仕様:
+- value は int 限定 (= hex / 式は未対応、後続で検討)
+- 名前は `^[A-Za-z_][A-Za-z0-9_]*$` (= C/asm 識別子規則と同等) で validate、
+  違反は env load 時 `InvalidDataException` で reject
+- `ENV_TYPE` / `OS_TYPE` は env file `env_type:` / `os_type:` から
+  自動的に登録される (= 既存挙動、`defines:` を書かなくても利用可能)
 
 ---
 

@@ -900,6 +900,82 @@ MYSUB() BEGIN END;
     }
 
     [Fact]
+    public void Pc80mk2xsd_DefinesActivateSdBranch_NoUserConstNeeded()
+    {
+        // pc80mk2xsd env が `defines: { PC8001_SD: 1 }` を持っているので、
+        // ユーザー側 SL に `CONST ASM PC8001_SD = 1;` を書かなくても、
+        // slangc 側の Preprocessor で `#IF PC8001_SD==1` が SD branch を取る。
+        // 同時に slangbuild が AILZ80ASM に `-dl PC8001_SD=1` を pass するので
+        // ASM 側 `#IF exists PC8001_SD` も活きる。
+        //
+        // 検証方法: SL に MAIN から呼ぶ関数名を `#IF` で分岐させ、出力 ASM に
+        // SD 側関数 label のみが含まれて CMT 側関数 label は含まれないこと
+        // を確認 (--keep-asm で .ASM 残す)。
+        var slPath = Path.Combine(_tempDir, "sd_branch.SL");
+        File.WriteAllText(slPath, """
+MAIN()
+BEGIN
+#IF PC8001_SD==1
+  PROC_SD_MARKER();
+#ELSE
+  PROC_CMT_MARKER();
+#ENDIF
+END;
+#IF PC8001_SD==1
+PROC_SD_MARKER() BEGIN END;
+#ELSE
+PROC_CMT_MARKER() BEGIN END;
+#ENDIF
+""");
+
+        var (code, _, stderr) = RunSlangbuild(slPath, "-E", "pc80mk2xsd", "--keep-asm");
+        Assert.True(code == 0,
+            $"slangbuild (pc80mk2xsd) failed (exit {code}). stderr: {stderr}");
+
+        var asmPath = Path.Combine(_tempDir, "sd_branch.ASM");
+        Assert.True(File.Exists(asmPath), $"main ASM not preserved at {asmPath}");
+        var asmContent = File.ReadAllText(asmPath);
+
+        Assert.Contains("PROC_SD_MARKER", asmContent);
+        Assert.DoesNotContain("PROC_CMT_MARKER", asmContent);
+    }
+
+    [Fact]
+    public void Pc80mk2x_DefinesAreEnvScoped_CmtBranchKept()
+    {
+        // pc80mk2x (= CMT 結合 env) は defines: を持たないので、PC8001_SD は
+        // 未定義のまま CMT branch が取られる。pc80mk2xsd の defines 機能が
+        // pc80mk2x 経路に漏れないことの regression guard。
+        var slPath = Path.Combine(_tempDir, "cmt_branch.SL");
+        File.WriteAllText(slPath, """
+MAIN()
+BEGIN
+#IF PC8001_SD==1
+  PROC_SD_MARKER();
+#ELSE
+  PROC_CMT_MARKER();
+#ENDIF
+END;
+#IF PC8001_SD==1
+PROC_SD_MARKER() BEGIN END;
+#ELSE
+PROC_CMT_MARKER() BEGIN END;
+#ENDIF
+""");
+
+        var (code, _, stderr) = RunSlangbuild(slPath, "-E", "pc80mk2x", "--keep-asm");
+        Assert.True(code == 0,
+            $"slangbuild (pc80mk2x) failed (exit {code}). stderr: {stderr}");
+
+        var asmPath = Path.Combine(_tempDir, "cmt_branch.ASM");
+        Assert.True(File.Exists(asmPath));
+        var asmContent = File.ReadAllText(asmPath);
+
+        Assert.Contains("PROC_CMT_MARKER", asmContent);
+        Assert.DoesNotContain("PROC_SD_MARKER", asmContent);
+    }
+
+    [Fact]
     public void CmtConcat_MissingFile_ReturnsFriendlyError()
     {
         // `cmt_concat:` の path が存在しない fixture env で build → exit 1 +
