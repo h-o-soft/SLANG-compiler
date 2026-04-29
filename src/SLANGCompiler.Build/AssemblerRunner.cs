@@ -93,6 +93,16 @@ public class AssemblerRunner
             if (!string.IsNullOrEmpty(stdout)) Console.Out.Write(stdout);
             if (!string.IsNullOrEmpty(stderr)) Console.Error.Write(stderr);
         }
+        else if (code != 0)
+        {
+            // 失敗時は verbose 無しでもエラー詳細を出す。
+            // AILZ80ASM はエラーを stdout に流す癖があり、stderr だけだと
+            // 「main assembly failed (exit 1)」だけ見えて原因不明になる。
+            // unix 慣習に合わせて stdout / stderr とも stderr へ流す
+            // (= ユーザーが `2>` で捕まえられる)。
+            if (!string.IsNullOrEmpty(stdout)) Console.Error.Write(stdout);
+            if (!string.IsNullOrEmpty(stderr)) Console.Error.Write(stderr);
+        }
 
         return new AssemblerResult(code, stdout, stderr);
     }

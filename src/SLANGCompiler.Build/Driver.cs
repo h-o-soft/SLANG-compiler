@@ -24,6 +24,7 @@ public class Driver
         public string? SlangcPath { get; set; }
         public string? NdcPath { get; set; }
         public string? HudiskPath { get; set; }
+        public string? UdostoolPath { get; set; }
         public bool KeepAsm { get; set; }
         public bool Verbose { get; set; }
         /// <summary>slangc に pass-through する `-I &lt;path&gt;` の値リスト</summary>
@@ -375,10 +376,13 @@ public class Driver
                 $"slangbuild: only disk.format: d88 supported (got: {envConfig.Disk.Format})");
             return 1;
         }
-        if (envConfig.Disk.Tool != "ndc" && envConfig.Disk.Tool != "hudisk")
+        if (envConfig.Disk.Tool != "ndc"
+            && envConfig.Disk.Tool != "hudisk"
+            && envConfig.Disk.Tool != "udostool")
         {
             Console.Error.WriteLine(
-                $"slangbuild: only disk.tool: ndc or hudisk supported (got: {envConfig.Disk.Tool})");
+                $"slangbuild: only disk.tool: ndc / hudisk / udostool supported "
+                + $"(got: {envConfig.Disk.Tool})");
             return 1;
         }
 
@@ -390,6 +394,7 @@ public class Driver
         // tool ごとに必要な実行ファイルだけ resolve (= 不要な resolver で fail させない)
         ResolvedTool? ndc = null;
         ResolvedTool? hudisk = null;
+        ResolvedTool? udostool = null;
         if (envConfig.Disk.Tool == "ndc")
         {
             ndc = _resolver.ResolveNdc(_opts.NdcPath);
@@ -406,6 +411,17 @@ public class Driver
                 Console.Error.WriteLine($"slangbuild: using HuDisk: {via}");
             }
         }
+        else if (envConfig.Disk.Tool == "udostool")
+        {
+            udostool = _resolver.ResolveUdostool(_opts.UdostoolPath);
+            if (_opts.Verbose)
+            {
+                var via = udostool.Kind == ResolutionKind.MonoRun
+                    ? $"mono {udostool.ProjectPath}"
+                    : udostool.Path;
+                Console.Error.WriteLine($"slangbuild: using udostool: {via}");
+            }
+        }
 
         // --disk-template が指定されていれば env の disk.template を override
         var templateOverride = !string.IsNullOrEmpty(_opts.DiskTemplatePath)
@@ -414,7 +430,7 @@ public class Driver
         if (_opts.Verbose && templateOverride != null)
             Console.Error.WriteLine($"slangbuild: disk template override: {templateOverride}");
 
-        var builder = new DiskImageBuilder(envConfig.Disk, ndc, hudisk,
+        var builder = new DiskImageBuilder(envConfig.Disk, ndc, hudisk, udostool,
                                            _opts.Verbose, templateOverride);
         return builder.Build(mainBin, overlayBins, diskOut);
     }

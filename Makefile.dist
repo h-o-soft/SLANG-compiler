@@ -72,6 +72,11 @@ NDC = tools/ndc$(EXE_EXT)
 # Linux/macOS では mono 経由で起動するが、その分岐は slangbuild の ToolResolver
 # 側に閉じている (= Makefile からは OS によらず .exe 拡張子で渡す)。
 HUDISK = tools/HuDisk.exe
+# udostool: Bookworm's Library 公開の汎用ディスクルーチン (.NET assembly)
+# 用ツール。サイト記載の「改変含め自由に使ってください」を license として
+# 信用し repo 同梱 (setup-tools 不要)。Linux/macOS は mono 経由で起動するが、
+# その分岐は slangbuild の ToolResolver に閉じている。
+UDOSTOOL = tools/udostool.exe
 
 OUTPROG = $(dir $(TARGET))PROG.bin
 ASM_OPT =
@@ -92,6 +97,10 @@ else ifeq ($(ENV), sos)
 else ifeq ($(ENV), sosx1)
   EMU = @echo "Set EMU variable for your emulator" \#
   DISK_IMAGE = images/SOSPROG.D88
+  BIN_EXT_ENV = $(BIN_EXT)
+else ifeq ($(ENV), pc88mk2sr)
+  EMU = @echo "Set EMU variable for your emulator" \#
+  DISK_IMAGE = images/PC88MK2SR.d88
   BIN_EXT_ENV = $(BIN_EXT)
 else ifeq ($(ENV), msxrom)
   EMU = @echo "Set EMU variable for your emulator" \#
@@ -176,6 +185,16 @@ disk_image: $(TARGET)$(SRC_EXT)
 	$(SLANGBUILD) $< -E $(SLANGENV) -I include \
 		--slangc $(SLANGC) --asm $(ASM) --hudisk $(HUDISK) \
 		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
+else ifeq ($(ENV), pc88mk2sr)
+# pc88mk2sr は slangbuild --emit disk + udostool 経路。template
+# (images/templates/PC88MK2SR.D88) をコピー → udostool で IPL/SUB/SYS 書込 →
+# main `$1A00.$$$` + overlay `M{index}.BIN` を staging dir に bulk copy →
+# udostool で staging を一括 flush。Bookworm's Library 公開の汎用ディスク
+# ルーチン (= filesys_20141128 系) を使用。
+disk_image: $(TARGET)$(SRC_EXT)
+	$(SLANGBUILD) $< -E $(SLANGENV) -I include \
+		--slangc $(SLANGC) --asm $(ASM) --udostool $(UDOSTOOL) \
+		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
 else ifeq ($(ENV), lsx)
 # lsx / x1 は slangbuild --emit disk + ndc 経路。template
 # (images/templates/LSXPROG.D88) を $(DISK_IMAGE) にコピーしてから ndc P で
@@ -191,9 +210,10 @@ disk_image: $(TARGET)$(SRC_EXT)
 		--slangc $(SLANGC) --asm $(ASM) --ndc $(NDC) \
 		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
 else
-# その他 d88 系 (msx2 / msxlsx / pc80mk2 / pc88mk2sr 等): 未統合 env は
+# その他 d88 系 (msx2 / msxlsx / pc80mk2 / pc80mk2x 等): 未統合 env は
 # 従来の ndc P + Python helper 経路を維持。今後 env ごとに `disk:` セクション
-# を追加して順次新 `slangbuild --emit disk` 経路へ移行する。
+# を追加して順次新 `slangbuild --emit disk` 経路へ移行する
+# (= pc88mk2sr は udostool 経路で移行済)。
 ADD_OVERLAYS = $(PYTHON) tools/disk-add-overlays.py
 
 disk_image: $(IMGPROG)

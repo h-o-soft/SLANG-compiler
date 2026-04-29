@@ -74,6 +74,22 @@ public class EnvironmentLoader
                 config.Disk.MainExec = ParseAddress(raw.Disk.MainExec);
             if (!string.IsNullOrEmpty(raw.Disk.OverlayLoad))
                 config.Disk.OverlayLoad = ParseAddress(raw.Disk.OverlayLoad);
+
+            // udostool の system_files (= ipl/subsys/iosys 等)。
+            // env file dir 基準の相対 path を絶対化して保持 (= 既存 disk.template
+            // と同じ pattern、installed 環境でも path が解決される)。
+            if (raw.Disk.SystemFiles != null && raw.Disk.SystemFiles.Count > 0)
+            {
+                config.Disk.SystemFiles = raw.Disk.SystemFiles
+                    .Select(sf => new DiskSystemFile
+                    {
+                        Path = string.IsNullOrEmpty(sf.Path)
+                            ? ""
+                            : Path.GetFullPath(Path.Combine(envDir, sf.Path)),
+                        Flag = sf.Flag ?? "",
+                    })
+                    .ToList();
+            }
         }
 
         return config;
@@ -143,5 +159,17 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "overlay_load")]
         public string? OverlayLoad { get; set; }
+
+        [YamlMember(Alias = "system_files")]
+        public List<EnvFileSystemFile>? SystemFiles { get; set; }
+    }
+
+    private class EnvFileSystemFile
+    {
+        [YamlMember(Alias = "path")]
+        public string? Path { get; set; }
+
+        [YamlMember(Alias = "flag")]
+        public string? Flag { get; set; }
     }
 }

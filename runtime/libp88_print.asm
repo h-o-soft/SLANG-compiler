@@ -89,10 +89,17 @@ JR .pstr1
 ; @name PCHR
 ; @resident shared
 ; @calls PRT
+; 16-bit 値 HL のうち 0 バイトは出力しない。
+; 従来は 0 を出力すると VRAM に NUL が書かれ、画面に文字と NUL が交互に
+; 表示される問題があった (lsx 環境 PCHR と同じバグ構造、v0.22.0 #138 fix
+; と同じパターンで修正)。
 LD A, H
-CALL PRT
+OR A
+CALL NZ,PRT
 LD A, L
-JR PRT
+OR A
+JR NZ,PRT
+RET
 
 
 ; @name CRDISP

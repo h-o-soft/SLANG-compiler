@@ -248,7 +248,13 @@ INTVRTC:
 DI
 PUSH AF
 
+; VRTC 割り込みハンドラ。SL 側で `CONST ASM USE_GAMEVSYNC = 1;` を立てた
+; 場合のみ GAMEVSYNC() 関数を呼ぶ (= 同時に SL で GAMEVSYNC() BEGIN ... END;
+; を必ず定義する)。CONST ASM 未定義時は CALL GAMEVSYNC を出さないので、
+; GAMEVSYNC 関数が無くても build できる。
+#if exists USE_GAMEVSYNC
 CALL GAMEVSYNC
+#endif
 
 LD A,(WKE4)
 OUT (0E4H),A

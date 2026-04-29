@@ -872,8 +872,9 @@ slangbuild <input.SL> [options]
 # ツール path (省略時は ToolResolver で自動解決)
   --slangc <path>      slangc executable path
   --asm <path>         AILZ80ASM executable path
-  --ndc <path>         ndc executable path     (--emit disk + tool=ndc 時)
-  --hudisk <path>      HuDisk executable path  (--emit disk + tool=hudisk 時)
+  --ndc <path>         ndc executable path      (--emit disk + tool=ndc 時)
+  --hudisk <path>      HuDisk executable path   (--emit disk + tool=hudisk 時)
+  --udostool <path>    udostool executable path (--emit disk + tool=udostool 時)
 
 # その他
   --keep-asm           Keep intermediate ASM / sym files
@@ -916,12 +917,55 @@ overlay に渡すと compiler 内部ラベルとの衝突リスクがあるた�
   → 同梱 `{baseDir}/tools/HuDisk.exe` → install dir → `PATH` → repo root。
   Windows は `.exe` 直接実行、**Linux/macOS は mono 経由起動** (= setup-tools が
   取得する `HuDisk.exe` は ho-ogino/HuDisk fork の .NET assembly)
+- **udostool** (`--emit disk` の `tool: udostool`): `--udostool` → `UDOSTOOL_PATH`
+  環境変数 → 同梱 `{baseDir}/tools/udostool.exe` → install dir → `PATH` → repo
+  root。Windows は `.exe` 直接実行、**Linux/macOS は mono 経由起動**
+  (= Bookworm's Library 公開の汎用ディスクルーチン用 .NET assembly、repo 同梱
+  なので setup-tools 不要)
 
 配布スクリプト (`Makefile.dist` / `publish.sh`) では `--slangc` / `--asm` /
-`--ndc` / `--hudisk` を明示指定する運用 (PATH 優先は再現性が低いため)。
-`make setup-tools` がライセンス都合で同梱できない `ndc` / `HuDisk.exe` を
-ダウンロードして `tools/` に配置し、`./install.sh` (または `make install`) で
-`~/.config/SLANG/tools/` にコピーする。
+`--ndc` / `--hudisk` / `--udostool` を明示指定する運用 (PATH 優先は再現性が
+低いため)。`make setup-tools` がライセンス都合で同梱できない `ndc` /
+`HuDisk.exe` をダウンロードして `tools/` に配置し、`./install.sh`
+(または `make install`) で `~/.config/SLANG/tools/` にコピーする
+(`udostool.exe` は repo 同梱されているため setup-tools 不要)。
+
+#### pc88mk2sr の disk 内ファイル名規約 (= libp88_file API 対応表)
+
+`pc88mk2sr` 環境では `Disk_Load` / `Disk_Load3` 系で disk 内ファイルを読む。
+`disk.overlay_name` で指定する disk 内 base name と、`Disk_Load(name, addr)`
+の `name` 引数 (= space 区切り 8.3 名) は次の対応:
+
+| disk 内ファイル名 (`overlay_name` 展開) | `Disk_Load` での指定 |
+|---|---|
+| `M0.BIN` | `Disk_Load("M0 BIN", addr)` |
+| `M1.BIN` | `Disk_Load("M1 BIN", addr)` |
+| `$1A00.$$$` (main bin) | (boot 時に IPL/SUB/SYS が読み込むので user code からの直接 load は通常不要) |
+
+**現在の制約**: pc88mk2sr の `--emit disk` は **`#ORG $1A00` 固定運用**。SL 側
+で `#ORG $XXXX` 上書きすると main bin の disk 内ファイル名 (= env file の
+`main_name: "$1A00.$$$"` で literal 固定) と loader 期待値が不整合になり、
+build は通るが boot しない silent wrong になる。ORG 可変化は別 PR で対応予定。
+
+#### pc88mk2sr の `USE_GAMEVSYNC` 制約 (= VRTC 割り込みでの GAMEVSYNC 呼出し)
+
+`libp88_base.asm` の VRTC 割り込みハンドラ (`INTVRTC`) は、SL 側で
+`CONST ASM USE_GAMEVSYNC = 1;` を立てた場合のみ `GAMEVSYNC` 関数を呼ぶ
+(`#if exists USE_GAMEVSYNC` で条件化)。VSYNC 同期処理が必要な SL は次の
+ように書く:
+
+```
+CONST ASM USE_GAMEVSYNC = 1;
+GAMEVSYNC() BEGIN
+  // VSYNC 毎の処理 (= sprite 移動、サウンド更新 等)
+END;
+MAIN() BEGIN
+  // ...
+END;
+```
+
+VSYNC 同期処理が不要な SL は `USE_GAMEVSYNC` も `GAMEVSYNC` 関数も書かなく
+て良い (= VRTC 割り込み自体は鳴り続けるが何も呼ばない、軽量)。
 
 ---
 
@@ -989,6 +1033,7 @@ make ENV=cpm TARGET=examples/MODTEST_RESIDENT run
 実装は env ごとに分担:
 - **lsx / x1** (D88, ndc): `Makefile.dist` の `disk_image` ターゲットが `slangbuild --emit disk` を呼ぶ。slangbuild が env file の `disk:` セクション (`template`, `tool: ndc`, `main_name: PROG.COM`, `overlay_name: M{index}.BIN`) を読み、template d88 を **コピーしてから** `ndc P` で `PROG.COM` + `M0.BIN` 群を書き込む (template 自体は不変)
 - **sos / sosx1** (D88, HuDisk): 同じく `slangbuild --emit disk --hudisk` を呼ぶ。env file は `tool: hudisk` + `main_load: "$3000"` / `main_exec: "$3000"` / `overlay_load: "$3000"` を持ち、HuDisk を `-a <d88> <file> -r <load> -g <exec>` で起動 (Linux/macOS では mono 経由)
+- **pc88mk2sr** (D88, udostool): 同じく `slangbuild --emit disk --udostool` を呼ぶ。env file は `tool: udostool` + `main_name: "$1A00.$$$"` (literal、ORG hex) + `overlay_name: M{index}.BIN` + `system_files` (= IPL/SUB/SYS の path + flag) を持ち、template copy → udostool で IPL/SUB/SYS 書込 → main + overlay を staging dir に bulk copy → `udostool disk <staging>` で 1 回 flush (Linux/macOS では mono 経由)
 - **cpm** (RunCPM): `tools/runcpm.{sh,bat}` が staging dir に `PROG._m*.bin` を `M<N>.BIN` としてコピーしてから RunCPM を起動
 
 `slangbuild input.SL -E lsx --emit disk --disk-image out.d88` の形で直接呼び
@@ -997,8 +1042,9 @@ make ENV=cpm TARGET=examples/MODTEST_RESIDENT run
 の代替策 + 実験用)。
 
 旧 `tools/disk-add-overlays.py` は legacy helper として残置 (新規利用は非推奨)。
-msx2 / msxlsx / pc80mk2 / pc88mk2sr 等の d88 系 env は従来の `tools/disk-add-overlays.py`
-経路を維持しており、今後 env ごとに `--emit disk` 経路へ移行予定。
+msx2 / msxlsx / pc80mk2 / pc80mk2x 等の d88 系 env は従来の `tools/disk-add-overlays.py`
+経路を維持しており、今後 env ごとに `--emit disk` 経路へ移行予定 (= pc88mk2sr は
+udostool 経路で移行済)。
 
 サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
 128 byte 以内であることを前提としている (より大きい overlay は loader 拡張
