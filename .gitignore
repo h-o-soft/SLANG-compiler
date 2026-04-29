@@ -2,6 +2,9 @@
 bin/
 obj/
 
+# Claude Code (個人開発用、共有しない)
+.claude/
+
 # mac
 .DS_Store
 
