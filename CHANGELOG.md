@@ -10,7 +10,7 @@
   - **Windows install default を `%LOCALAPPDATA%\Programs\SLANG` → `%USERPROFILE%\.local\bin` に変更** (= install.sh の `~/.local/bin` と対称、uv / pipx 等の CLI ツール慣習)
   - 中期案 (`setupenv.{sh,bat}` の .NET 化 = `slangsetup` 新設) は別 PR で扱う
 
-- pc88mk2sr 環境を `slangbuild --emit disk` 経路に統合 (#157 follow-up: env 統合 Phase 3 最初)
+- pc88mk2sr 環境を `slangbuild --emit disk` 経路に統合
   - 新 tool: `udostool` (.NET assembly、**Bookworm's Library 公開の汎用ディスクルーチン** `filesys_20141128` 系用、サイト記載の「改変含め自由に使ってください」を license として信用し repo 同梱)。`tools/udostool.exe` に commit、setup-tools 不要。Linux/macOS は mono 経由起動、Windows は .exe 直接起動
   - 5 ステップ build: template (`images/templates/PC88MK2SR.D88`) を出力先 copy → `udostool` で IPL / SUB / SYS 書込 → main `$1A00.$$$` + overlay `M{index}.BIN` を staging dir に bulk copy → `udostool disk <staging>` で 1 回 flush
   - 新 `DiskConfig.SystemFiles` フィールド (= IPL / SUB / SYS の path + flag、env file dir 基準で path 絶対化、flag は `-IPL`/`-SUB`/`-SYS` allowlist で大文字固定)
@@ -19,18 +19,23 @@
   - 同梱物の出典 (provenance) を新規 `THIRD_PARTY_NOTICES.md` に記録 (= 配布物名 / 取得元 / 取得日 / 許諾文 / 改変有無 を表で明記)
   - **VRTC 割り込みハンドラの GAMEVSYNC を条件化**: `libp88_base.asm` の `INTVRTC` で `CALL GAMEVSYNC` を `#if exists USE_GAMEVSYNC` で囲み、SL 側で `CONST ASM USE_GAMEVSYNC = 1;` を立てた場合のみ呼ぶ形に。`USE_GAMEVSYNC` 未定義の SL は GAMEVSYNC 関数を書かなくても build できる
   - **AILZ80ASM エラー表示**: `--verbose` 無しでも `main assembly failed` の詳細 (= 未定義 label 等) が stderr に出るよう修正 (= AILZ80ASM がエラーを stdout に流す癖を吸収)
-  - 他 PC-8801 系 (pc80mk2 / pc80mk2x) は別 PR で順次
 
-- pc80mk2x 環境 (PC-8001mkII XBIOS 直接環境、CMT 結合 build) を `slangbuild` に統合 (Phase 3 続編、PR 1/2)
+- pc80mk2xsd 環境 (PC-8001mkII XBIOS 直接環境、SD カード経路) を `slangbuild` に対応
+  - 新 env file フィールド `cmt_assets:` (= output dir に copy する static asset の相対 path リスト)、`overlay_name:` (= overlay 出力 file 名 template、`{index}` 展開)、`overlay_output_format:` (= overlay 専用の出力 format、bin / cmt 切替)
+  - pc80mk2xsd では main を CMT 形式 + overlay を raw binary で出し、`M{index}.BIN` 命名で output dir に rename。`cmt_assets` で `XBIOS.CMT` を output dir にコピーするので、user は output dir 全体を SD カードに移すだけで揃う
+  - `cmt_concat` と `cmt_assets` は同 env で両方指定すると env load 時 reject (= build flow 排他)
+  - 全 CMT 系新フィールドは `output: cmt` 専用 (= 不一致は reject)
+  - `overlay_name` は `{index}` placeholder 必須、output dir 外書き禁止 (= absolute path / separator / `..` を loader と driver の二重で validate)
+  - SL 側で `CONST ASM PC8001_SD = 1;` を冒頭に書くと libpc80mk2xbios_base.asm の SD ROM/RAM 切替経路が活きる
+
+- pc80mk2x 環境 (PC-8001mkII XBIOS 直接環境) を `slangbuild` に対応 — XBIOS.CMT 結合 build
   - `obsolete/lib/pc8001/XBIOS/XBIOS.CMT` を `runtime/templates/XBIOS.CMT` に移動。slangbuild が pc80mk2x build 時に main.cmt + XBIOS.CMT + overlay._mN.cmt を 1 本に結合 (= 旧 `COPY /B` / `cat` 手動結合を内製化)
   - 新 `EnvironmentConfig.CmtConcat` (List<string>?) + env file `cmt_concat:` フィールド (= env file dir 基準の相対 path リスト、build 後 main bin 直後に concat される)
   - 結合は同一 dir tmp file 経由 + `File.Move(.., overwrite: true)` で delete-then-move の中間状態を避けつつ main.cmt を置換、結合元欠落時は明示エラー、結合に消費された overlay は intermediate cleanup 対象 (= `--keep-asm` 指定時は残る)
   - `cmt_concat` は `output: cmt` 専用、それ以外で指定すると env load 時 `InvalidDataException` で reject (= 壊れた出力 silent wrong 防止)
-  - `publish.sh` で `runtime/templates/XBIOS.CMT` を配布 zip から除外 (= license 確認完了まで、`cp -r` の直後に `rm -f`)。`THIRD_PARTY_NOTICES.md` に出典 / 同梱履歴 / 改変有無 / 配布除外状態を観測事実のみで記載
-  - 配布 zip 解凍環境で pc80mk2x を使う場合、repo から `runtime/templates/XBIOS.CMT` を手動で installed `~/.config/SLANG/runtime/templates/` にコピーする運用 (README に明記)
-  - **scope 外 (次 PR)**: pc80mk2xsd (SD カード経路) / cmt_assets / overlay_name / overlay_output_format
+  - `THIRD_PARTY_NOTICES.md` に XBIOS.CMT の出典を記載
 
-- pc80mk2 環境 (PC-8001mkII ROM 環境) を `slangbuild` に統合 — CMT (cassette tape) 出力対応 (Phase 3 続編)
+- pc80mk2 環境 (PC-8001mkII ROM 環境) を `slangbuild` に統合 — CMT (cassette tape) 出力対応
   - env file (`runtime/env/pc80mk2.env`) に新フィールド `output: cmt` を追加。`slangbuild` が AILZ80ASM 起動時に `-bin` shortcut を `-cmt` に置換 + `-gap 0` を自動付与し、出力拡張子を `.bin` → `.cmt` に切替 (= 旧 dev `Makefile` の `BIN_EXT/ASM_OPT` 設定を `slangbuild` に移植、`Makefile.dist` 化で抜けていた CMT 対応を復元)
   - 新 `EnvironmentConfig.OutputFormat` (string?)。null/未指定 = `.bin` default、`"cmt"` で AILZ80ASM CMT format。`output:` 値は `bin` / `cmt` のみ許可、それ以外は `InvalidDataException` で reject (= typo 早期検出)
   - `AssemblerRunner.AssembleMain` / `AssembleOverlay` に `outputFlag` (`-bin` / `-cmt`) + `extraArgs: string[]?` 引数追加。`-bin` と `-cmt` を同時に渡すと両 format の file が出てしまうので、format ごとに 1 つに切替える設計。prelink Pass 1 / Pass 3 / 単段 / overlay 全段で同じ outputFlag/extraArgs を pass (= AILZ80ASM option 不一致でアドレス解決崩壊するのを防止)

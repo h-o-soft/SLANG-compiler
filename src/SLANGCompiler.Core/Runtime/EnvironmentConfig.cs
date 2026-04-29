@@ -37,6 +37,36 @@ public class EnvironmentConfig
     /// 結合順序: main.cmt + cmt_concat[0..] + overlay._mN.cmt (overlay 最後)
     /// </summary>
     public List<string>? CmtConcat { get; set; }
+
+    /// <summary>
+    /// AILZ80ASM 出力後に output dir に copy する static asset の path リスト
+    /// (env file dir 基準の相対 path → 絶対化済み)。pc80mk2xsd の XBIOS.CMT
+    /// SD カード配置用 (= ユーザーは output dir 全体を SD に移すだけで揃う)。
+    /// null/empty = コピーなし。<see cref="OutputFormat"/> == "cmt" 必須。
+    /// <see cref="CmtConcat"/> と同 env で両方指定すると Loader で reject
+    /// (= build flow が排他、結合経路と個別配置経路の使い分け)。
+    /// コピー先 file 名は asset path の basename。
+    /// </summary>
+    public List<string>? CmtAssets { get; set; }
+
+    /// <summary>
+    /// overlay 出力 file 名 template (例: <c>"M{index}.BIN"</c>)。
+    /// `{index}` placeholder を 0..N に展開して overlay の最終 path を決定。
+    /// null = template なし (= 既存挙動 <c>&lt;prefix&gt;._m{index}.{overlayBinExt}</c>)。
+    /// pc80mk2xsd で旧慣例の <c>M0.BIN</c> 命名に揃えるため。
+    /// <see cref="OutputFormat"/> == "cmt" 必須、`{index}` 必須、output dir 外
+    /// 書き禁止 (= absolute path / separator / `..` を Loader で validate)。
+    /// </summary>
+    public string? OverlayName { get; set; }
+
+    /// <summary>
+    /// overlay の AILZ80ASM 出力 format (<c>"bin"</c> / <c>"cmt"</c> / null)。
+    /// null = main の <see cref="OutputFormat"/> に追従 (= 既存挙動互換)。
+    /// pc80mk2xsd では <c>"bin"</c> 指定 (= main は CMT 形式 header 込みだが
+    /// overlay は raw binary、SD カードから SD_RREAD で読むため header 不要)。
+    /// <see cref="OutputFormat"/> == "cmt" 必須。
+    /// </summary>
+    public string? OverlayOutputFormat { get; set; }
 }
 
 /// <summary>

@@ -849,6 +849,57 @@ MYSUB() BEGIN END;
     }
 
     [Fact]
+    public void Pc80mk2xsd_ProducesIndividualFiles()
+    {
+        // pc80mk2xsd env (= `output: cmt` + `overlay_output_format: bin` +
+        // `overlay_name: M{index}.BIN` + `cmt_assets: [../templates/XBIOS.CMT]`)
+        // で slangbuild → 結合せず main.cmt + M0.BIN + XBIOS.CMT が output dir
+        // に**個別**で揃うこと、overlay は raw binary (= AILZ80ASM `-bin` 出力)
+        // で出ること、`<prefix>._m0.cmt` は rename 後存在しないことを検証する。
+        var xbiosCmt = Path.Combine(_projectRoot, "runtime", "templates", "XBIOS.CMT");
+        Skip.IfNot(File.Exists(xbiosCmt),
+            "pc80mk2xsd test requires runtime/templates/XBIOS.CMT");
+
+        var slPath = Path.Combine(_tempDir, "p80sd_test.SL");
+        // SL 側 CONST ASM PC8001_SD = 1 を冒頭に書いて SD 経路を有効化
+        // (libpc80mk2xbios_base.asm の #IF exists PC8001_SD が活きる)
+        File.WriteAllText(slPath, @"
+CONST ASM PC8001_SD = 1;
+MAIN() BEGIN MYSUB(); END;
+#MODULE $1000
+MYSUB() BEGIN END;
+#END
+");
+
+        var (code, _, stderr) = RunSlangbuild(slPath, "-E", "pc80mk2xsd");
+        Assert.True(code == 0,
+            $"slangbuild (pc80mk2xsd) failed (exit {code}). stderr: {stderr}");
+
+        // main.cmt が出る (CMT 形式)
+        var mainCmt = Path.Combine(_tempDir, "p80sd_test.cmt");
+        Assert.True(File.Exists(mainCmt),
+            $"main cmt not produced at {mainCmt}");
+
+        // M0.BIN が出る (= rename 済 + raw binary)
+        var m0Bin = Path.Combine(_tempDir, "M0.BIN");
+        Assert.True(File.Exists(m0Bin),
+            $"renamed overlay not at {m0Bin}");
+
+        // XBIOS.CMT が output dir にコピーされている
+        var xbiosCopied = Path.Combine(_tempDir, "XBIOS.CMT");
+        Assert.True(File.Exists(xbiosCopied),
+            $"cmt_assets did not copy XBIOS.CMT to {xbiosCopied}");
+        // bytes も元と一致 (= File.Copy で改変なし)
+        Assert.Equal(File.ReadAllBytes(xbiosCmt), File.ReadAllBytes(xbiosCopied));
+
+        // rename 後 `_m0.cmt` / `_m0.bin` は存在しない (= rename 済)
+        Assert.False(File.Exists(Path.Combine(_tempDir, "p80sd_test._m0.cmt")),
+            "old overlay path with .cmt should not exist (rename済)");
+        Assert.False(File.Exists(Path.Combine(_tempDir, "p80sd_test._m0.bin")),
+            "old overlay path with .bin should not exist (rename済)");
+    }
+
+    [Fact]
     public void CmtConcat_MissingFile_ReturnsFriendlyError()
     {
         // `cmt_concat:` の path が存在しない fixture env で build → exit 1 +

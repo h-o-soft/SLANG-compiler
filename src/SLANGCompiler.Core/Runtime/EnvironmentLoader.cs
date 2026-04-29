@@ -69,22 +69,81 @@ public class EnvironmentLoader
             }
         }
 
-        // cmt_concat (pc80mk2x 等で main.cmt + XBIOS.CMT + overlay._mN.cmt
-        // を 1 本に結合するための追加 .cmt path リスト)。
-        // 整合 check: cmt_concat は output: cmt 専用 (= bin / 未指定 env で
+        // === CMT 系新フィールドの整合 check ===
+        // cmt_concat (pc80mk2x 経路) / cmt_assets (pc80mk2xsd 経路) /
+        // overlay_name (overlay rename template) / overlay_output_format
+        // (overlay 専用 format) は全て output: cmt 専用 (= bin / 未指定 env で
         // 指定すると壊れたファイル生成 silent wrong になるため reject)。
         bool hasCmtConcat = raw.CmtConcat != null && raw.CmtConcat.Count > 0;
-        if (hasCmtConcat && config.OutputFormat != "cmt")
+        bool hasCmtAssets = raw.CmtAssets != null && raw.CmtAssets.Count > 0;
+        bool hasOverlayName = !string.IsNullOrEmpty(raw.OverlayName);
+        bool hasOverlayOutputFormat = !string.IsNullOrEmpty(raw.OverlayOutputFormat);
+        bool hasAnyCmtField = hasCmtConcat || hasCmtAssets || hasOverlayName
+                              || hasOverlayOutputFormat;
+
+        if (hasAnyCmtField && config.OutputFormat != "cmt")
         {
             throw new InvalidDataException(
-                $"`cmt_concat` requires `output: cmt` in {envFilePath}.");
+                $"`cmt_concat` / `cmt_assets` / `overlay_name` / `overlay_output_format` "
+                + $"require `output: cmt` in {envFilePath}.");
         }
+
+        // cmt_concat と cmt_assets は build flow が排他 (= 同 env で両方指定
+        // すると結合と個別配置が衝突)。両方 non-empty で reject。
+        if (hasCmtConcat && hasCmtAssets)
+        {
+            throw new InvalidDataException(
+                $"`cmt_concat` and `cmt_assets` are mutually exclusive in {envFilePath}.");
+        }
+
+        var envDir = Path.GetDirectoryName(Path.GetFullPath(envFilePath))!;
+
         if (hasCmtConcat)
         {
-            var envDir = Path.GetDirectoryName(Path.GetFullPath(envFilePath))!;
             config.CmtConcat = raw.CmtConcat!
                 .Select(p => Path.GetFullPath(Path.Combine(envDir, p)))
                 .ToList();
+        }
+        if (hasCmtAssets)
+        {
+            config.CmtAssets = raw.CmtAssets!
+                .Select(p => Path.GetFullPath(Path.Combine(envDir, p)))
+                .ToList();
+        }
+
+        // overlay_output_format allowlist (= bin / cmt のみ、output: と同じ)
+        if (hasOverlayOutputFormat)
+        {
+            var ofnorm = raw.OverlayOutputFormat!.Trim().ToLowerInvariant();
+            if (ofnorm != "bin" && ofnorm != "cmt")
+            {
+                throw new InvalidDataException(
+                    $"Invalid `overlay_output_format:` value '{raw.OverlayOutputFormat}' "
+                    + $"in {envFilePath}. Allowed: bin / cmt.");
+            }
+            config.OverlayOutputFormat = ofnorm;
+        }
+
+        // overlay_name validate (path 安全性 + {index} 必須):
+        // - {index} placeholder 必須 (= 無いと overlay 複数個で全部同じ path
+        //   に上書き silent wrong)
+        // - absolute path 拒否、separator/.. 禁止 (= output dir 外書き防御)
+        if (hasOverlayName)
+        {
+            var name = raw.OverlayName!;
+            if (!name.Contains("{index}"))
+            {
+                throw new InvalidDataException(
+                    $"`overlay_name:` must contain `{{index}}` placeholder "
+                    + $"in {envFilePath} (got: '{name}').");
+            }
+            if (Path.IsPathRooted(name) || Path.GetFileName(name) != name)
+            {
+                throw new InvalidDataException(
+                    $"`overlay_name:` must be a single file name without "
+                    + $"directory separator or `..` in {envFilePath} (got: '{name}').");
+            }
+            config.OverlayName = name;
         }
 
         // disk セクション (slangbuild --emit disk 用)
@@ -92,7 +151,6 @@ public class EnvironmentLoader
         {
             // template path は env file dir 基準の相対パスを絶対化して保存
             // (= caller 側で再計算しなくて良いように)
-            var envDir = Path.GetDirectoryName(Path.GetFullPath(envFilePath))!;
             var templateAbs = string.IsNullOrEmpty(raw.Disk.Template)
                 ? ""
                 : Path.GetFullPath(Path.Combine(envDir, raw.Disk.Template));
@@ -172,6 +230,15 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "cmt_concat")]
         public List<string>? CmtConcat { get; set; }
+
+        [YamlMember(Alias = "cmt_assets")]
+        public List<string>? CmtAssets { get; set; }
+
+        [YamlMember(Alias = "overlay_name")]
+        public string? OverlayName { get; set; }
+
+        [YamlMember(Alias = "overlay_output_format")]
+        public string? OverlayOutputFormat { get; set; }
 
         [YamlMember(Alias = "disk")]
         public EnvFileDiskData? Disk { get; set; }

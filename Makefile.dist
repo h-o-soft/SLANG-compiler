@@ -121,9 +121,20 @@ else ifeq ($(ENV), pc80mk2x)
   # を見て、main.cmt + XBIOS.CMT + overlay._mN.cmt を 1 本に結合 (= 旧
   # `COPY /B PROG.CMT+XBIOS.CMT GAME.CMT` を内製化)。`disk_image` target は
   # 結合済 OUTPROG (= PROG.cmt) を指す (cpm / msxrom / pc80mk2 と同じ pattern)。
-  # 配布 zip 解凍環境では XBIOS.CMT が同梱されていない (license 確認中) ので、
-  # repo から手動で `~/.config/SLANG/runtime/templates/` にコピーが必要。
   EMU = @echo "PC-8001 emulator not configured. Set EMU variable" \#
+  BIN_EXT = .cmt
+  BIN_EXT_ENV = .cmt
+  DISK_IMAGE = $(OUTPROG)
+else ifeq ($(ENV), pc80mk2xsd)
+  # PC-8001mkII XBIOS 直接環境 (SD カード経路): CMT 出力 + 個別配置。
+  # slangbuild が env file (`output: cmt` + `overlay_output_format: bin` +
+  # `overlay_name: M{index}.BIN` + `cmt_assets: [../templates/XBIOS.CMT]`)
+  # を見て、main.cmt は CMT 形式 / overlay は raw binary (M0.BIN, ...) で
+  # 個別出力 + XBIOS.CMT を output dir にコピーする。ユーザーは output dir
+  # 全体を SD カードに移すだけで動く。SL 側で `CONST ASM PC8001_SD = 1;`
+  # を冒頭に書く必要あり。`disk_image` target は OUTPROG (= PROG.cmt) を
+  # 指す (cpm / msxrom / pc80mk2 / pc80mk2x と同じ pattern)。
+  EMU = @echo "PC-8001 emulator (SD) not configured. Set EMU variable" \#
   BIN_EXT = .cmt
   BIN_EXT_ENV = .cmt
   DISK_IMAGE = $(OUTPROG)
@@ -207,6 +218,11 @@ else ifeq ($(ENV), pc80mk2x)
 # slangbuild により 1 本に結合される)。pc80mk2 と同じく disk image なし、
 # disk_image target は結合済 OUTPROG (= PROG.cmt) を produce すれば十分。
 disk_image: $(OUTPROG)
+else ifeq ($(ENV), pc80mk2xsd)
+# pc80mk2xsd は CMT 個別配置 (= slangbuild が main.cmt + 各 M{N}.BIN +
+# XBIOS.CMT を output dir に揃える)。disk image なし、disk_image target は
+# OUTPROG (= PROG.cmt) を produce すれば十分。
+disk_image: $(OUTPROG)
 else ifeq ($(ENV), sos)
 # sos / sosx1 は slangbuild --emit disk + HuDisk 経路。template
 # (images/templates/SOSPROG.D88) を $(DISK_IMAGE) にコピーしてから main +
@@ -245,11 +261,11 @@ disk_image: $(TARGET)$(SRC_EXT)
 		--slangc $(SLANGC) --asm $(ASM) --ndc $(NDC) \
 		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
 else
-# その他 d88 系 (msx2 / msxlsx / pc80mk2xsd 等): 未統合 env は
-# 従来の ndc P + Python helper 経路を維持。今後 env ごとに `disk:` セクション
-# を追加して順次新 `slangbuild --emit disk` 経路へ移行する
-# (= pc88mk2sr は udostool / pc80mk2 は CMT 出力 / pc80mk2x は CMT 結合
-# 経路で移行済。pc80mk2xsd は次 PR で対応予定)。
+# その他 d88 系 (msx2 / msxlsx 等): 未統合 env は従来の ndc P + Python
+# helper 経路を維持。今後 env ごとに `disk:` セクションを追加して順次
+# 新 `slangbuild --emit disk` 経路へ移行する (= pc88mk2sr は udostool /
+# pc80mk2 は CMT 出力 / pc80mk2x は CMT 結合 / pc80mk2xsd は CMT 個別配置
+# 経路で移行済)。
 ADD_OVERLAYS = $(PYTHON) tools/disk-add-overlays.py
 
 disk_image: $(IMGPROG)
@@ -316,6 +332,6 @@ help:
 	@echo "  PREFIX=path        - Installation prefix (default: ~/.local on Unix,"
 	@echo '                       %USERPROFILE%\.local\bin on Windows)'
 	@echo "  TARGET=path        - Sample source file (without extension)"
-	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/pc88mk2sr/pc80mk2/pc80mk2x/msx2/msxrom/cpm)"
+	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/pc88mk2sr/pc80mk2/pc80mk2x/pc80mk2xsd/msx2/msxrom/cpm)"
 	@echo ""
 	@echo "Detected OS: $(DETECTED_OS)"

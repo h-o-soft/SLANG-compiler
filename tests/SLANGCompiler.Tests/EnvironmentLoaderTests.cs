@@ -301,6 +301,167 @@ libraries:
     }
 
     [Fact]
+    public void CmtAssets_DeserializesAndAbsolutizes()
+    {
+        // env file dir 基準の相対 path が絶対化されること (= cmt_concat と同じ pattern)。
+        var envDir = Path.Combine(_tempDir, "env");
+        Directory.CreateDirectory(envDir);
+        Directory.CreateDirectory(Path.Combine(_tempDir, "templates"));
+
+        var envPath = Path.Combine(envDir, "assets.env");
+        File.WriteAllText(envPath, """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: cmt
+cmt_assets:
+  - ../templates/X.CMT
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+
+        Assert.NotNull(config.CmtAssets);
+        Assert.Single(config.CmtAssets!);
+        Assert.Equal(Path.GetFullPath(Path.Combine(_tempDir, "templates", "X.CMT")),
+                     config.CmtAssets[0]);
+    }
+
+    [Fact]
+    public void OverlayName_DeserializesAndPreserves()
+    {
+        var envPath = WriteEnv("ovname.env", """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: cmt
+overlay_name: "M{index}.BIN"
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+        Assert.Equal("M{index}.BIN", config.OverlayName);
+    }
+
+    [Fact]
+    public void OverlayOutputFormat_DeserializesAndNormalizes()
+    {
+        // bin / cmt 以外は reject される。bin は そのまま、cmt は そのまま。
+        var envPath = WriteEnv("ovfmt_bin.env", """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: cmt
+overlay_output_format: BIN
+libraries:
+  - runtime.yml
+""");
+        var config = EnvironmentLoader.Load(envPath);
+        Assert.Equal("bin", config.OverlayOutputFormat);
+    }
+
+    [Fact]
+    public void OverlayOutputFormat_InvalidValueThrows()
+    {
+        var envPath = WriteEnv("ovfmt_bad.env", """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: cmt
+overlay_output_format: rom
+libraries:
+  - runtime.yml
+""");
+        var ex = Assert.Throws<InvalidDataException>(() => EnvironmentLoader.Load(envPath));
+        Assert.Contains("overlay_output_format", ex.Message);
+    }
+
+    [Fact]
+    public void CmtAssets_AndCmtConcat_AreMutuallyExclusive()
+    {
+        // 同 env で両方指定すると build flow が排他なので reject。
+        var envPath = WriteEnv("excl.env", """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: cmt
+cmt_concat:
+  - x.cmt
+cmt_assets:
+  - y.cmt
+libraries:
+  - runtime.yml
+""");
+        var ex = Assert.Throws<InvalidDataException>(() => EnvironmentLoader.Load(envPath));
+        Assert.Contains("cmt_concat", ex.Message);
+        Assert.Contains("cmt_assets", ex.Message);
+    }
+
+    [Fact]
+    public void OverlayName_RequiresIndexPlaceholder()
+    {
+        // {index} 無しは複数 overlay で全部上書き silent wrong になるので reject。
+        var envPath = WriteEnv("noidx.env", """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: cmt
+overlay_name: "M.BIN"
+libraries:
+  - runtime.yml
+""");
+        var ex = Assert.Throws<InvalidDataException>(() => EnvironmentLoader.Load(envPath));
+        Assert.Contains("{index}", ex.Message);
+    }
+
+    [Fact]
+    public void OverlayName_RejectsPathSeparatorAndAbsolute()
+    {
+        // separator 含み (= output dir 外書きの予兆) は reject
+        var envPath1 = WriteEnv("sep.env", """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: cmt
+overlay_name: "sub/M{index}.BIN"
+libraries:
+  - runtime.yml
+""");
+        Assert.Throws<InvalidDataException>(() => EnvironmentLoader.Load(envPath1));
+
+        // absolute path も reject
+        var envPath2 = WriteEnv("abs.env", """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: cmt
+overlay_name: "/etc/M{index}.BIN"
+libraries:
+  - runtime.yml
+""");
+        Assert.Throws<InvalidDataException>(() => EnvironmentLoader.Load(envPath2));
+    }
+
+    [Fact]
+    public void CmtFields_RequireOutputCmt_OtherwiseThrows()
+    {
+        // cmt_assets / overlay_name / overlay_output_format も
+        // output: cmt 必須。1 つでも違反すれば reject。
+        var envPath = WriteEnv("nocmt.env", """
+env_type: 0
+os_type: 0
+default_org: "$100"
+overlay_name: "M{index}.BIN"
+libraries:
+  - runtime.yml
+""");
+        var ex = Assert.Throws<InvalidDataException>(() => EnvironmentLoader.Load(envPath));
+        Assert.Contains("output: cmt", ex.Message);
+    }
+
+    [Fact]
     public void DiskSystemFiles_PathNormalization_RemovesDotSegments()
     {
         // env file dir 基準で `./xxx/../foo/ipl.bin` のような dotted path が
