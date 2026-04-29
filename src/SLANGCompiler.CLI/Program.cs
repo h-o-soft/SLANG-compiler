@@ -9,7 +9,7 @@ namespace SLANGCompiler.CLI;
 
 class Program
 {
-    const string Version = "0.22.0";
+    const string Version = "0.23.0";
 
     static int Main(string[] args)
     {
