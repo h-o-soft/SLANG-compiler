@@ -102,30 +102,36 @@ guard_path() {
   # 末尾 / を除去 (= /home/foo/ と /home/foo を同一視)。
   # ただし `/` 単体は除去すると "" になり message 表示が壊れるので保持。
   [ "$abs" = "/" ] || abs="${abs%/}"
+  # $HOME の親 dir も拒否 (= macOS の /Users, Linux の /home を動的に取得)。
+  # 静的 path も併記してベルトとサスペンダーで防御。
+  HOME_PARENT=$(dirname "$HOME")
   case "$abs" in
-    "" | "/" | "$HOME" | "/root" | "/root/.config" | "/home" | "/usr" | \
-    "/etc" | "/var" | "/tmp" | "/opt")
+    "" | "/" | "$HOME" | "$HOME_PARENT" \
+    | "/root" | "/root/.config" \
+    | "/home" | "/Users" \
+    | "/usr" | "/etc" | "/var" | "/tmp" | "/opt")
       echo "Refusing to remove dangerous path: '$abs' (from '$p')" >&2
       exit 1 ;;
   esac
   case "$p" in "." | "..") echo "Refusing relative path: '$p'" >&2; exit 1 ;; esac
 }
 
-# ---- sanity check (= 配布 zip 解凍 dir で実行されているか) ----
-for required in bin/slangc bin/slangbuild include runtime images tools; do
-  if [ ! -e "$required" ]; then
-    cat >&2 <<EOF
+# ---- install ----
+do_install() {
+  # sanity check は install 経路でだけ走らせる (= uninstall は配布 zip
+  # 解凍 dir から実行する必要がない)。Codex 指摘の Medium fix。
+  for required in bin/slangc bin/slangbuild include runtime images tools; do
+    if [ ! -e "$required" ]; then
+      cat >&2 <<EOF
 Error: '$required' not found in $SCRIPT_DIR.
 
 This installer must be run from an extracted distribution directory.
 For repo development, run 'make publish-local' first to populate bin/.
 EOF
-    exit 1
-  fi
-done
+      exit 1
+    fi
+  done
 
-# ---- install ----
-do_install() {
   echo "Installing SLANG to:"
   echo "  Binaries:  $BINDIR"
   echo "  Libraries: $CONFIG_DIR"

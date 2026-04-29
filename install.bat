@@ -53,7 +53,13 @@ if "%PREFIX%"==""     set "PREFIX=%LOCALAPPDATA%\Programs\SLANG"
 if "%CONFIG_DIR%"=="" set "CONFIG_DIR=%USERPROFILE%\.config\SLANG"
 set "BINDIR=%PREFIX%"
 
-REM ---- sanity check (= extracted distribution directory check) ----
+if /I "%ACTION%"=="uninstall" goto do_uninstall
+
+REM ============================================================
+REM   do_install
+REM ============================================================
+REM sanity check は install 経路でだけ走らせる (= uninstall は配布 zip
+REM 解凍 dir から実行する必要がない)。Codex 指摘の Medium fix。
 for %%F in (bin\slangc.exe bin\slangbuild.exe include runtime images tools) do (
   if not exist "%%F" (
     echo Error: '%%F' not found in %SCRIPT_DIR%. 1>&2
@@ -64,11 +70,6 @@ for %%F in (bin\slangc.exe bin\slangbuild.exe include runtime images tools) do (
   )
 )
 
-if /I "%ACTION%"=="uninstall" goto do_uninstall
-
-REM ============================================================
-REM   do_install
-REM ============================================================
 echo Installing SLANG to:
 echo   Binaries:  %BINDIR%
 echo   Libraries: %CONFIG_DIR%
@@ -123,11 +124,15 @@ echo Uninstalling SLANG from:
 echo   Binaries:  %BINDIR%\slangc.exe, slangbuild.exe
 echo   Libraries: %CONFIG_DIR% (entire directory)
 
-REM 危険 path guard: trailing \ を正規化してから完全一致で refuse
+REM 危険 path guard: trailing \ を正規化してから判定
 set "P=%CONFIG_DIR%"
 if "%P:~-1%"=="\" set "P=%P:~0,-1%"
 if "%P%"==""                    goto :err_path
-if /I "%P%"=="C:"               goto :err_path
+REM 任意 drive root (X:) を refuse — C:\ / D:\ / E:\ ... を一律拒否。
+REM 正規化済 %P% は drive letter のみなら長さ 2 (= 例: "D:")。
+REM 2 文字目が ':' かつ それ以降が空なら drive root と判定。
+if "%P:~1,1%"==":" if "%P:~2%"=="" goto :err_path
+REM 親 dir / システム dir 一致拒否
 if /I "%P%"=="%SYSTEMDRIVE%"    goto :err_path
 if /I "%P%"=="%USERPROFILE%"    goto :err_path
 if /I "%P%"=="%LOCALAPPDATA%"   goto :err_path
