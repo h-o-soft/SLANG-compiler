@@ -350,9 +350,11 @@ SNDIsPlaying:
 	ld	hl, (SND.CH1 + MML.ADDRESS)
 	ld	a, h
 	or	l
+	ret	nz
 	ld	hl, (SND.CH2 + MML.ADDRESS)
 	ld	a, h
 	or	l
+	ret	nz
 	ld	hl, (SND.CH3 + MML.ADDRESS)
 	ld	a, h
 	or	l
