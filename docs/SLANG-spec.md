@@ -1201,6 +1201,20 @@ switching を持つハードで、各 overlay を 8KB 単位に揃えること�
 switch loader が読み込み可能になる。SL から bank 切替を呼ぶ helper は
 `runtime/libvgs0_base.asm` に既存。
 
+#### raw bin 出力 env (= zxn)
+
+`zxn` (ZX Spectrum Next) は env file (`runtime/env/zxn.env`) に
+`output:` / `bin_pad_size:` / `cmt_concat:` / `disk:` 等の特殊
+フィールドを **一切持たない** 最小 env で、lsx と同じ raw bin 出力
+経路で動作する。`Makefile.dist` には `ENV=zxn` 用の ENV ブロックが
+あり (`BIN_EXT = .bin`、`SRC_EXT = .sl` で小文字 `.sl` ファイル名に
+対応、`DISK_IMAGE = $(OUTPROG)`)、`make ENV=zxn build TARGET=...` で
+slangbuild 経由 build が可能。
+
+`.nex` 形式 (= CSpect 等で実行可能形式) への変換は外部ツール
+`nexcreator` を使う運用 (= `examples/zxn/Makefile` 参照)。slangbuild は
+raw `.bin` の生成までを責務とし、`.nex` 化は scope 外。
+
 ---
 
 サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は

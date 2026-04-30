@@ -19,6 +19,12 @@
   - **VRTC 割り込みハンドラの GAMEVSYNC を条件化**: `libp88_base.asm` の `INTVRTC` で `CALL GAMEVSYNC` を `#if exists USE_GAMEVSYNC` で囲み、SL 側で `CONST ASM USE_GAMEVSYNC = 1;` を立てた場合のみ呼ぶ形に。`USE_GAMEVSYNC` 未定義の SL は GAMEVSYNC 関数を書かなくても build できる
   - **AILZ80ASM エラー表示**: `--verbose` 無しでも `main assembly failed` の詳細 (= 未定義 label 等) が stderr に出るよう修正 (= AILZ80ASM がエラーを stdout に流す癖を吸収)
 
+- zxn 環境 (ZX Spectrum Next、Z80 ターゲット) を `slangbuild` に対応 — Makefile 整理のみ
+  - `Makefile.dist` に zxn ENV ブロック追加 (`BIN_EXT/BIN_EXT_ENV = .bin`、`SRC_EXT = .sl` で `examples/zxn/*.sl` 小文字対応、`DISK_IMAGE = $(OUTPROG)`) + `disk_image` 分岐 + `help` ENV 一覧
+  - `examples/zxn/Makefile` を slangbuild 経由に書き換え (= 旧 `SLANGCompiler -E zxn --output-debug-symbol` + `AILZ80ASM` の 2 段を `slangbuild -E zxn` 1 段に統一)。`%.bin: %.sl` / `%.nex: %.bin %.cfg` の pattern rule 化 + `clean` target 整理
+  - 既存 `runtime/env/zxn.env` / runtime libs / Driver / EnvironmentConfig / EnvironmentLoader は変更なし (= lsx と同じ raw bin 経路で動く)
+  - `.nex` 形式変換は外部ツール `nexcreator` を引き続き使用 (= ユーザー側でインストール、CSpect 等で実行可能形式に変換)
+
 - vgs0 環境 (VGS-Zero、Z80 ターゲット) を `slangbuild` に対応 — 8KB bank switching に合わせた bin padding
   - 新 env file フィールド `bin_pad_size:` (= main 用、固定 byte サイズの末尾 0 padding) と `overlay_pad_align:` (= overlay 用、指定値の倍数に切り上げ末尾 0 padding) を追加
   - `runtime/env/vgs0.env` に `bin_pad_size: 16384` + `overlay_pad_align: 8192` を設定 (= main を 16KB 固定 ROM、各 overlay を 8KB bank 単位に揃える)
