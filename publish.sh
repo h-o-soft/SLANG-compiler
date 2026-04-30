@@ -29,6 +29,18 @@ createRelease() {
     fi
   done
 
+  # examples/zxn は ZX Spectrum Next 用 (= asset binary も配布対象)。
+  # NextDAW Runtime Player (= NextDAW_RuntimePlayer_E000.bin) は
+  # シェアウェアにつき配布不可、.gitignore で除外済 (whitelist 拡張子に
+  # 含まれないので自動的に対象外)。
+  if [ -d "../../examples/zxn" ]; then
+    mkdir -p examples/zxn
+    for ext in SL sl cfg nxp nxi spr til ndr nfx; do
+      cp ../../examples/zxn/*.$ext examples/zxn/ 2>/dev/null
+    done
+    cp ../../examples/zxn/Makefile examples/zxn/ 2>/dev/null
+  fi
+
   # assets: UILIB 用フォント / CHARMAP 再生成ソース (PNG, JSON)
   if [ -d "../../assets" ]; then
     cp -r ../../assets .

@@ -1,8 +1,10 @@
 # Third-Party Notices
 
-このファイルは、SLANG Compiler の repo / 配布 zip に同梱される **外部成果物の出典 (provenance)** を記録します。新規追加または更新される同梱物から順次記録します (= 既存同梱物のうちまだ記載されていないものは別 PR で順次追記予定)。
+このファイルは、SLANG Compiler の repo / 配布 zip に同梱される **外部成果物の出典 (provenance)** を記録します。
 
-各エントリには以下を記載します:
+LICENSE 全文を別ファイルで同梱している成果物 (= RunCPM、UI フォント等) については末尾の「LICENSE 別途同梱物」section を参照してください。
+
+各エントリには判明している範囲で以下を記載します:
 - 配布物名
 - 取得元 URL
 - 取得日
@@ -49,13 +51,26 @@ PC-8001mkII XBIOS 直接環境 (`-E pc80mk2x` / `-E pc80mk2xsd`) の build で `
 
 ---
 
-## 今後追記予定
+## LSXPROG.D88 (LSX-Dodgers boot disk template)
 
-以下の既存同梱物については本ファイルへの provenance 追記が未完了です。今後の PR で順次整理します:
+lsx / x1 環境 (`-E lsx` / `-E x1`) の `slangbuild --emit disk` 機能でテンプレート D88 として使用。
 
-- `tools/ndc` (euee 製、D88 操作ツール)
-- `tools/HuDisk.exe` (ho-ogino/HuDisk fork、S-OS 系 D88 操作ツール)
-- `tools/AILZ80ASM` (AILight 製、Z80 アセンブラ)
-- `tools/runcpm/` (RunCPM、CP/M 2.2 互換エミュレータ)
-- `images/templates/LSXPROG.D88` (LSX-Dodgers template)
-- `images/templates/SOSPROG.D88` (S-OS template、setup-tools 経由取得)
+| 項目 | 内容 |
+|---|---|
+| 配置 | `images/templates/LSXPROG.D88` |
+| 出典 | LSX-Dodgers (https://github.com/tablacus/LSX-Dodgers) 由来の boot disk image (LSX-Dodgers 1.62c) |
+| 同梱履歴 | initial commit より前から repo 同梱 |
+| 取得日 | 不明 |
+| License | MIT (= LSX-Dodgers の LICENSE による) |
+| 改変 | なし |
+
+---
+
+## LICENSE 別途同梱物
+
+以下の同梱物は LICENSE 全文を別ファイルとして同梱しています。詳細は各 LICENSE ファイルを参照してください。
+
+| 同梱物 | LICENSE ファイル | 概要 |
+|---|---|---|
+| RunCPM (`tools/runcpm/RunCPM-*` + `tools/runcpm/cpm/EXIT.COM` + `tools/runcpm/cpm/SUBMIT.COM`) | `tools/runcpm/LICENSE` | CP/M 2.2 互換エミュレータ |
+| `assets/ui/` 配下の UI フォント | `assets/ui/LICENSE.font` | UILIB 用ピクセルフォント |

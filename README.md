@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.23.0
+SLANG Compiler (Z80) 0.24.0
 
 # 概要
 
@@ -14,7 +14,7 @@ SLANG Compiler (Z80) 0.23.0
 # 使い方
 
 ```
-SLANG Compiler v0.23.0
+SLANG Compiler v0.24.0
 Usage: slangc [options] <input.sl>
 
 Options:
@@ -156,9 +156,11 @@ ORGは$8000、ワーク領域は$D000からとなっています。
 
 Layer 2グラフィックス、タイルマップ、スプライト、パレット設定、Copperプロセッサなど、ZX Spectrum Next固有の機能に対応したライブラリが用意されています。
 
-サンプルは examples/zxn フォルダにあります。
+サンプルは examples/zxn フォルダにあります。`game.sl` (NextDAW を使う完全版) と `game_nomusic.sl` (NextDAW なし版) の 2 種類が含まれます。
 
-`slangbuild` (および `Makefile.dist build TARGET=examples/zxn/game ENV=zxn`) で `.bin` を出力できます (= 旧 `SLANGCompiler -E zxn` + `AILZ80ASM` の 2 段経路を内製化)。`.nex` 形式 (= CSpect 等の実行可能形式) への変換は外部ツール `nexcreator` を使い、`examples/zxn/Makefile` で flow が完結します。
+`slangbuild` (および `Makefile.dist build TARGET=examples/zxn/game ENV=zxn`) で `.bin` を出力できます。`.nex` 形式 (= CSpect 等の実行可能形式) への変換は外部ツール `nexcreator` を使い、`examples/zxn/Makefile` で flow が完結します。
+
+> **注**: `game.nex` の build には `examples/zxn/NextDAW_RuntimePlayer_E000.bin` (= NextDAW Runtime Player) の配置が必要です。NextDAW ([https://nextdaw.biasillo.com/](https://nextdaw.biasillo.com/)) は外部製品のため配布物には含まれません。**2026-04-30 時点で公式サイトでの入手はできない状態**で、再公開された場合も driver の仕様変更等により `examples/zxn/game.cfg` や `game.sl` の修正が必要となる可能性があります。`game_nomusic.nex` (NextDAW なし版) は外部依存なしで build 可能です。
 
 # ランタイムについて
 
@@ -370,7 +372,7 @@ template の入手:
 | lsx / x1 | `images/LSXPROG.d88` | `images/templates/LSXPROG.D88` | repo 同梱 |
 | sos / sosx1 | `images/SOSPROG.D88` | `images/templates/SOSPROG.D88` | `make setup-tools` で取得 (S-OS 配布物 + AUTOEXEC.BAT 注入) |
 | pc88mk2sr | `images/PC88MK2SR.d88` | `images/templates/PC88MK2SR.D88` | repo 同梱 (Bookworm's Library 由来、`THIRD_PARTY_NOTICES.md` 参照) |
-| MSX-DOS 系 | `images/dosformsx.dsk` | (従来経路を維持、今後 `--emit disk` 経路へ移行予定) | `make setup-tools` で取得 |
+| MSX-DOS 系 | `images/dosformsx.dsk` | `tools/disk-add-overlays.py` 経路 | `make setup-tools` で取得 |
 
 # LSX-Dodgersバージョン依存について
 
@@ -398,4 +400,6 @@ MIT License
 
 Copyright (c) 2022-2026 H.O SOFT / OGINO Hiroshi and contributors
 
-詳細は [LICENSE](LICENSE) ファイルを参照してください。利用しているサードパーティライブラリのライセンスについても同ファイルに記載されています。
+詳細は [LICENSE](LICENSE) ファイルを参照してください。
+
+配布物に同梱される第三者由来の成果物 (= Bookworm's Library / XBIOS / LSXPROG 等) の出典・許諾情報は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) に記載しています。RunCPM や UI フォントのように LICENSE 全文を別ファイルで同梱しているもの (= `tools/runcpm/LICENSE` / `assets/ui/LICENSE.font`) は各 LICENSE ファイルを参照してください。
