@@ -1194,7 +1194,7 @@ overlay_pad_align: 8192     # 各 overlay を 8KB 倍数に切り上げ
 - null / 0 / 負 = padding なし (= 既存挙動、Loader 上で null 相当に正規化)
 - `output: cmt` env で指定すると env load 時 `InvalidDataException` で
   reject (= cmt header 込み bin に padding は意味不明)
-- 拡張領域は OS 保証で 0 fill (= `dd if=/dev/zero conv=notrunc` と等価)
+- 拡張領域は slangbuild が明示的に 0 を書き出して padding する (= `dd if=/dev/zero conv=notrunc` と等価、Windows / Linux / macOS で同じ挙動)
 
 VGS-Zero (https://github.com/suzukiplan/vgszero) は 8KB 単位の bank
 switching を持つハードで、各 overlay を 8KB 単位に揃えることで bank

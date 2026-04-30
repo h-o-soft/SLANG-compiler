@@ -650,12 +650,7 @@ public class Driver
             return 1;
         }
         if (currentSize == targetSize) return 0;
-        // 不足分を 0 で末尾 padding (= FileStream.SetLength で拡張、追加領域
-        // は OS 保証で 0 fill。dd if=/dev/zero conv=notrunc と等価)。
-        using (var fs = new FileStream(binPath, FileMode.Open, FileAccess.Write))
-        {
-            fs.SetLength(targetSize);
-        }
+        WriteZeroPadding(binPath, currentSize, targetSize);
         if (_opts.Verbose)
             Console.Error.WriteLine(
                 $"slangbuild: bin pad: {Path.GetFileName(binPath)} "
@@ -675,15 +670,36 @@ public class Driver
         if (currentSize == 0) return 0; // empty overlay は no-op
         long rounded = ((currentSize + align - 1) / align) * align;
         if (currentSize == rounded) return 0;
-        using (var fs = new FileStream(binPath, FileMode.Open, FileAccess.Write))
-        {
-            fs.SetLength(rounded);
-        }
+        WriteZeroPadding(binPath, currentSize, rounded);
         if (_opts.Verbose)
             Console.Error.WriteLine(
                 $"slangbuild: overlay pad: {Path.GetFileName(binPath)} "
                 + $"{currentSize} → {rounded} byte (align {align}, zero-filled)");
         return 0;
+    }
+
+    /// <summary>
+    /// bin の末尾 (= currentSize の位置) から targetSize まで 0 を明示的に
+    /// 書き込む。<c>FileStream.SetLength</c> の拡張領域は Windows で 0 fill
+    /// が仕様上未定義 (Microsoft Learn 記載) なので、portable に保証するため
+    /// `dd if=/dev/zero conv=notrunc` と等価な明示書き込みで実装する。
+    /// 8KB chunk で write することで巨大 padding でもメモリ消費を抑える。
+    /// </summary>
+    private static void WriteZeroPadding(string binPath, long currentSize, long targetSize)
+    {
+        long padBytes = targetSize - currentSize;
+        if (padBytes <= 0) return;
+        const int ChunkSize = 8192;
+        var zeros = new byte[(int)Math.Min(padBytes, ChunkSize)];
+        using var fs = new FileStream(binPath, FileMode.Open, FileAccess.Write);
+        fs.Seek(0, SeekOrigin.End);
+        long written = 0;
+        while (written < padBytes)
+        {
+            int chunk = (int)Math.Min(zeros.Length, padBytes - written);
+            fs.Write(zeros, 0, chunk);
+            written += chunk;
+        }
     }
 
     /// <summary>
