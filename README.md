@@ -146,6 +146,8 @@ PRINT文はテキストVRAMへの直接書き込みで実現しています。�
 
 VGS-Zero用の環境です。
 
+`slangbuild` (および `Makefile.dist build / run / disk_image ENV=vgs0`) は env file (`bin_pad_size: 16384` + `overlay_pad_align: 8192`) に従って、main を 16KB 固定 ROM、各 overlay (`#MODULE`) を 8KB の倍数に切り上げて末尾を 0 で埋めます。VGS-Zero は 8KB 単位の bank switching を持つため、overlay も 8KB 単位に揃える必要があります。bank 切替は `runtime/libvgs0_base.asm` 既存の helper から呼べます。
+
 ## zxn (ZX Spectrum Next)
 
 ZX Spectrum Next用の環境です。

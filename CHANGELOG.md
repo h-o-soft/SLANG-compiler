@@ -19,6 +19,13 @@
   - **VRTC 割り込みハンドラの GAMEVSYNC を条件化**: `libp88_base.asm` の `INTVRTC` で `CALL GAMEVSYNC` を `#if exists USE_GAMEVSYNC` で囲み、SL 側で `CONST ASM USE_GAMEVSYNC = 1;` を立てた場合のみ呼ぶ形に。`USE_GAMEVSYNC` 未定義の SL は GAMEVSYNC 関数を書かなくても build できる
   - **AILZ80ASM エラー表示**: `--verbose` 無しでも `main assembly failed` の詳細 (= 未定義 label 等) が stderr に出るよう修正 (= AILZ80ASM がエラーを stdout に流す癖を吸収)
 
+- vgs0 環境 (VGS-Zero、Z80 ターゲット) を `slangbuild` に対応 — 8KB bank switching に合わせた bin padding
+  - 新 env file フィールド `bin_pad_size:` (= main 用、固定 byte サイズの末尾 0 padding) と `overlay_pad_align:` (= overlay 用、指定値の倍数に切り上げ末尾 0 padding) を追加
+  - `runtime/env/vgs0.env` に `bin_pad_size: 16384` + `overlay_pad_align: 8192` を設定 (= main を 16KB 固定 ROM、各 overlay を 8KB bank 単位に揃える)
+  - bin が `bin_pad_size` を超えた場合は silent truncation を防ぐため明示エラー (`slangbuild: bin_pad_size: bin size N byte exceeds target ...`)
+  - 両フィールドは `output: cmt` env で指定すると env load 時 `InvalidDataException` で reject (= cmt header 込み bin に padding は意味不明)
+  - `Makefile.dist` に vgs0 ENV ブロック (`BIN_EXT/BIN_EXT_ENV = .bin`、`DISK_IMAGE = $(OUTPROG)`) + `disk_image` 分岐 + help ENV 一覧追加
+
 - pc80mk2xsd 環境 (PC-8001mkII XBIOS 直接環境、SD カード経路) を `slangbuild` に対応
   - 新 env file フィールド `cmt_assets:` (= output dir に copy する static asset の相対 path リスト)、`overlay_name:` (= overlay 出力 file 名 template、`{index}` 展開)、`overlay_output_format:` (= overlay 専用の出力 format、bin / cmt 切替)
   - pc80mk2xsd では main を CMT 形式 + overlay を raw binary で出し、`M{index}.BIN` 命名で output dir に rename。`cmt_assets` で `XBIOS.CMT` を output dir にコピーするので、user は output dir 全体を SD カードに移すだけで揃う

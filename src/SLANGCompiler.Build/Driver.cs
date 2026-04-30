@@ -246,6 +246,36 @@ public class Driver
                     .ToList();
             }
 
+            // === Step 3.5a-pad: bin padding (env.BinPadSize / OverlayPadAlign 指定時) ===
+            // VGS-Zero 等で固定サイズ ROM 出力 (= main を 16384 byte 固定 +
+            // 各 overlay を 8192 倍数に切り上げ padding)。renamedOverlayBins
+            // 経由で rename 後 path に対して padding するので、pc80mk2xsd の
+            // `_m{N}` 命名でも VGS-Zero の `M{index}.BIN` 命名でも対応可能。
+            // CMT 出力 (= output: cmt) との排他は Loader で保証済。
+            if (envConfig.BinPadSize.HasValue && envConfig.BinPadSize.Value > 0)
+            {
+                int padRc = PadBinToFixedSize(mainBin, envConfig.BinPadSize.Value);
+                if (padRc != 0) return padRc;
+            }
+            if (envConfig.OverlayPadAlign.HasValue && envConfig.OverlayPadAlign.Value > 0)
+            {
+                foreach (var ov in renamedOverlayBins)
+                {
+                    // renamedOverlayBins に登録済の overlay は生成されている
+                    // べき成果物。欠落は internal error として silent wrong
+                    // 防止のため明示エラー (cmt_concat の missing file 対応と
+                    // 揃える方針)。
+                    if (!File.Exists(ov))
+                    {
+                        Console.Error.WriteLine(
+                            $"slangbuild: overlay_pad_align: overlay file not found: {ov}");
+                        return 1;
+                    }
+                    int rc = PadBinToAlignment(ov, envConfig.OverlayPadAlign.Value);
+                    if (rc != 0) return rc;
+                }
+            }
+
             // === Step 3.5b: cmt_assets コピー (env.CmtAssets 指定時) ===
             // pc80mk2xsd で XBIOS.CMT 等を output dir にコピー。ユーザーは
             // output dir 全体を SD カードに移すだけで揃う運用。
@@ -601,6 +631,75 @@ public class Driver
     {
         using var src = File.OpenRead(srcPath);
         src.CopyTo(dst);
+    }
+
+    /// <summary>
+    /// bin を指定 byte size まで末尾 0 で padding。既存サイズが指定サイズを
+    /// 超えていた場合は silent truncation を避けるため error 終了。
+    /// VGS-Zero 等の固定サイズ ROM 出力用 (= 16384 byte 固定 ROM 等)。
+    /// </summary>
+    private int PadBinToFixedSize(string binPath, int targetSize)
+    {
+        var currentSize = new FileInfo(binPath).Length;
+        if (currentSize > targetSize)
+        {
+            Console.Error.WriteLine(
+                $"slangbuild: bin_pad_size: bin size {currentSize} byte exceeds "
+                + $"target {targetSize} byte ({binPath}). reduce code size or "
+                + $"increase bin_pad_size in env file.");
+            return 1;
+        }
+        if (currentSize == targetSize) return 0;
+        WriteZeroPadding(binPath, currentSize, targetSize);
+        if (_opts.Verbose)
+            Console.Error.WriteLine(
+                $"slangbuild: bin pad: {Path.GetFileName(binPath)} "
+                + $"{currentSize} → {targetSize} byte (zero-filled)");
+        return 0;
+    }
+
+    /// <summary>
+    /// bin を alignment の倍数 (= ((size + align - 1) / align) * align) に
+    /// 末尾 0 で padding。すでに倍数なら no-op。empty (= 0 byte) でも no-op。
+    /// 上限なし。VGS-Zero の 8KB bank switching 等で各 overlay を bank 単位
+    /// に揃えるため。
+    /// </summary>
+    private int PadBinToAlignment(string binPath, int align)
+    {
+        var currentSize = new FileInfo(binPath).Length;
+        if (currentSize == 0) return 0; // empty overlay は no-op
+        long rounded = ((currentSize + align - 1) / align) * align;
+        if (currentSize == rounded) return 0;
+        WriteZeroPadding(binPath, currentSize, rounded);
+        if (_opts.Verbose)
+            Console.Error.WriteLine(
+                $"slangbuild: overlay pad: {Path.GetFileName(binPath)} "
+                + $"{currentSize} → {rounded} byte (align {align}, zero-filled)");
+        return 0;
+    }
+
+    /// <summary>
+    /// bin の末尾 (= currentSize の位置) から targetSize まで 0 を明示的に
+    /// 書き込む。<c>FileStream.SetLength</c> の拡張領域は Windows で 0 fill
+    /// が仕様上未定義 (Microsoft Learn 記載) なので、portable に保証するため
+    /// `dd if=/dev/zero conv=notrunc` と等価な明示書き込みで実装する。
+    /// 8KB chunk で write することで巨大 padding でもメモリ消費を抑える。
+    /// </summary>
+    private static void WriteZeroPadding(string binPath, long currentSize, long targetSize)
+    {
+        long padBytes = targetSize - currentSize;
+        if (padBytes <= 0) return;
+        const int ChunkSize = 8192;
+        var zeros = new byte[(int)Math.Min(padBytes, ChunkSize)];
+        using var fs = new FileStream(binPath, FileMode.Open, FileAccess.Write);
+        fs.Seek(0, SeekOrigin.End);
+        long written = 0;
+        while (written < padBytes)
+        {
+            int chunk = (int)Math.Min(zeros.Length, padBytes - written);
+            fs.Write(zeros, 0, chunk);
+            written += chunk;
+        }
     }
 
     /// <summary>
