@@ -158,6 +158,8 @@ Layer 2グラフィックス、タイルマップ、スプライト、パレッ�
 
 サンプルは examples/zxn フォルダにあります。
 
+`slangbuild` (および `Makefile.dist build TARGET=examples/zxn/game ENV=zxn`) で `.bin` を出力できます (= 旧 `SLANGCompiler -E zxn` + `AILZ80ASM` の 2 段経路を内製化)。`.nex` 形式 (= CSpect 等の実行可能形式) への変換は外部ツール `nexcreator` を使い、`examples/zxn/Makefile` で flow が完結します。
+
 # ランタイムについて
 
 SLANG Compilerはランタイムライブラリとして、`runtime/` フォルダ内の `.asm` ファイルを読み込みます。

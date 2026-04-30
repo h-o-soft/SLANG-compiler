@@ -149,6 +149,16 @@ else ifeq ($(ENV), vgs0)
   BIN_EXT = .bin
   BIN_EXT_ENV = .bin
   DISK_IMAGE = $(OUTPROG)
+else ifeq ($(ENV), zxn)
+  # ZX Spectrum Next 用 (raw bin 出力)。.nex 形式変換は外部ツール
+  # (nexcreator) でユーザー側で行う。examples/zxn/ サンプルは小文字
+  # `.sl` 拡張子のため SRC_EXT を override する (Linux の case-sensitive
+  # FS 対策)。disk image なし、`disk_image` target は OUTPROG そのもの。
+  EMU = @echo "ZX Spectrum Next emulator not configured. Set EMU variable" \#
+  BIN_EXT = .bin
+  BIN_EXT_ENV = .bin
+  SRC_EXT = .sl
+  DISK_IMAGE = $(OUTPROG)
 else ifeq ($(ENV), msxrom)
   EMU = @echo "Set EMU variable for your emulator" \#
   BIN_EXT_ENV = $(BIN_EXT)
@@ -238,6 +248,10 @@ else ifeq ($(ENV), vgs0)
 # vgs0 は ROM bin 出力 (= disk image なし)。slangbuild が padding 済 bin
 # (16KB 固定 main + 8KB 倍数 overlay) を出すので、disk_image target は
 # OUTPROG (= PROG.bin) を produce すれば十分。
+disk_image: $(OUTPROG)
+else ifeq ($(ENV), zxn)
+# zxn は raw bin 出力 (= disk image なし)。.nex 化は外部 nexcreator で
+# ユーザー側。disk_image target は OUTPROG (= PROG.bin) そのもの。
 disk_image: $(OUTPROG)
 else ifeq ($(ENV), sos)
 # sos / sosx1 は slangbuild --emit disk + HuDisk 経路。template
@@ -348,6 +362,6 @@ help:
 	@echo "  PREFIX=path        - Installation prefix (default: ~/.local on Unix,"
 	@echo '                       %USERPROFILE%\.local\bin on Windows)'
 	@echo "  TARGET=path        - Sample source file (without extension)"
-	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/pc88mk2sr/pc80mk2/pc80mk2x/pc80mk2xsd/vgs0/msx2/msxrom/cpm)"
+	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/pc88mk2sr/pc80mk2/pc80mk2x/pc80mk2xsd/vgs0/zxn/msx2/msxrom/cpm)"
 	@echo ""
 	@echo "Detected OS: $(DETECTED_OS)"
