@@ -976,6 +976,128 @@ PROC_CMT_MARKER() BEGIN END;
     }
 
     [Fact]
+    public void Vgs0_PadsMainTo16384_OverlayTo8192Multiple()
+    {
+        // vgs0 env (= `bin_pad_size: 16384` + `overlay_pad_align: 8192`) で
+        // slangbuild build → main = exactly 16384 byte、各 overlay は 8192
+        // の倍数に切り上げ + 末尾 0 fill。
+        //
+        // 検証戦略: 同じ SL を 2 つの env で build して bytes 比較
+        // (a) 標準 vgs0 env で padded build (= padding 後の bin)
+        // (b) padding なし fixture env で raw build (= padding 前の bin)
+        // → (a) の先頭 raw.Length byte == raw bin の bytes 完全一致 +
+        //   (a) の末尾 padding 部分は全 0
+        var slPath = Path.Combine(_tempDir, "vgs0_test.SL");
+        File.WriteAllText(slPath, """
+MAIN() BEGIN MYSUB(); END;
+#MODULE $1000
+MYSUB() BEGIN END;
+#END
+""");
+
+        // (a) padded build (= 標準 vgs0)
+        var (codeA, _, stderrA) = RunSlangbuild(slPath, "-E", "vgs0", "--keep-asm");
+        Assert.True(codeA == 0,
+            $"slangbuild (vgs0 padded) failed (exit {codeA}). stderr: {stderrA}");
+
+        var paddedMainBin = Path.Combine(_tempDir, "vgs0_test.bin");
+        var paddedOverlayBin = Path.Combine(_tempDir, "vgs0_test._m0.bin");
+        Assert.True(File.Exists(paddedMainBin), $"padded main bin not at {paddedMainBin}");
+        Assert.True(File.Exists(paddedOverlayBin), $"padded overlay bin not at {paddedOverlayBin}");
+
+        // (b) raw build (= vgs0.env から padding fields だけ抜いた fixture)
+        var origEnv = File.ReadAllText(
+            Path.Combine(_projectRoot, "runtime", "env", "vgs0.env"));
+        var lines = origEnv.Split('\n');
+        var filtered = lines.Where(l =>
+            !l.TrimStart().StartsWith("bin_pad_size:")
+            && !l.TrimStart().StartsWith("overlay_pad_align:"));
+
+        var fixtureEnvDir = Path.Combine(_tempDir, "fxnopad", "env");
+        Directory.CreateDirectory(fixtureEnvDir);
+        var fixtureEnvPath = Path.Combine(fixtureEnvDir, "vgs0_nopad.env");
+        File.WriteAllText(fixtureEnvPath, string.Join("\n", filtered));
+
+        var slPath2 = Path.Combine(_tempDir, "vgs0_nopad.SL");
+        File.WriteAllText(slPath2, """
+MAIN() BEGIN MYSUB(); END;
+#MODULE $1000
+MYSUB() BEGIN END;
+#END
+""");
+
+        var (codeB, _, stderrB) = RunSlangbuild(slPath2,
+            "-E", "vgs0_nopad",
+            "-L", Path.Combine(_tempDir, "fxnopad"));
+        Assert.True(codeB == 0,
+            $"slangbuild (vgs0_nopad raw) failed (exit {codeB}). stderr: {stderrB}");
+
+        var rawMainBin = Path.Combine(_tempDir, "vgs0_nopad.bin");
+        var rawOverlayBin = Path.Combine(_tempDir, "vgs0_nopad._m0.bin");
+        Assert.True(File.Exists(rawMainBin));
+        Assert.True(File.Exists(rawOverlayBin));
+
+        // === assertions ===
+        var paddedMain = File.ReadAllBytes(paddedMainBin);
+        var paddedOverlay = File.ReadAllBytes(paddedOverlayBin);
+        var rawMain = File.ReadAllBytes(rawMainBin);
+        var rawOverlay = File.ReadAllBytes(rawOverlayBin);
+
+        // (1) main = 16384 byte 固定
+        Assert.Equal(16384, paddedMain.Length);
+
+        // (2) overlay = 8192 倍数 (= 切り上げ)
+        Assert.True(paddedOverlay.Length > 0,
+            $"padded overlay length is 0");
+        Assert.True(paddedOverlay.Length % 8192 == 0,
+            $"padded overlay length {paddedOverlay.Length} not multiple of 8192");
+        // raw が 8192 byte 以下なら padded は 8192 byte
+        Assert.Equal(((rawOverlay.Length + 8191) / 8192) * 8192, paddedOverlay.Length);
+
+        // (3) main / overlay の先頭 raw.Length byte は raw と完全一致
+        // (= 先頭が壊れる実装ミスを catch)
+        Assert.Equal(rawMain, paddedMain.Take(rawMain.Length).ToArray());
+        Assert.Equal(rawOverlay, paddedOverlay.Take(rawOverlay.Length).ToArray());
+
+        // (4) main / overlay の padding 部分 (= 先頭以降の末尾) は全て 0
+        for (int i = rawMain.Length; i < paddedMain.Length; i++)
+            Assert.Equal((byte)0, paddedMain[i]);
+        for (int i = rawOverlay.Length; i < paddedOverlay.Length; i++)
+            Assert.Equal((byte)0, paddedOverlay[i]);
+    }
+
+    [Fact]
+    public void BinPadSize_Overflow_ReturnsFriendlyError()
+    {
+        // bin が pad_size を超えている場合は silent truncation を防ぐため
+        // 明示エラーで exit 1。`bin_pad_size: 8` の fixture env で大きい
+        // SL を build して overflow を意図的に発生させる。
+        var fixtureEnvDir = Path.Combine(_tempDir, "ovrf_env", "env");
+        Directory.CreateDirectory(fixtureEnvDir);
+        var fixtureEnvPath = Path.Combine(fixtureEnvDir, "ovrf.env");
+        File.WriteAllText(fixtureEnvPath, """
+env_type: 6
+os_type: 5
+default_org: "$0000"
+bin_pad_size: 8
+libraries:
+  - runtime.yml
+  - libfloat.yml
+  - libvgs0_base.yml
+""");
+
+        var slPath = Path.Combine(_tempDir, "ovrf_test.SL");
+        File.WriteAllText(slPath, "MAIN() BEGIN END;\n");
+
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "ovrf",
+            "-L", Path.Combine(_tempDir, "ovrf_env"));
+        Assert.NotEqual(0, code);
+        Assert.Contains("bin_pad_size", stderr);
+        Assert.Contains("exceeds", stderr);
+    }
+
+    [Fact]
     public void CmtConcat_MissingFile_ReturnsFriendlyError()
     {
         // `cmt_concat:` の path が存在しない fixture env で build → exit 1 +

@@ -148,6 +148,23 @@ public class EnvironmentLoader
             config.Defines = validated;
         }
 
+        // bin_pad_size / overlay_pad_align: bin 出力 (= output: cmt 以外)
+        // 専用。cmt 環境で指定すると header 込み bin に padding する形に
+        // なり意味不明なので reject。null / 0 / 負 = padding なし
+        // (= 設定漏れ寛容、明示的 reject はしない、Loader 上で null 相当に
+        // 正規化)。
+        bool hasBinPadSize = raw.BinPadSize.HasValue && raw.BinPadSize.Value > 0;
+        bool hasOverlayPadAlign =
+            raw.OverlayPadAlign.HasValue && raw.OverlayPadAlign.Value > 0;
+        if ((hasBinPadSize || hasOverlayPadAlign) && config.OutputFormat == "cmt")
+        {
+            throw new InvalidDataException(
+                $"`bin_pad_size` / `overlay_pad_align` are not allowed with "
+                + $"`output: cmt` in {envFilePath}.");
+        }
+        if (hasBinPadSize) config.BinPadSize = raw.BinPadSize!.Value;
+        if (hasOverlayPadAlign) config.OverlayPadAlign = raw.OverlayPadAlign!.Value;
+
         // overlay_name validate (path 安全性 + {index} 必須):
         // - {index} placeholder 必須 (= 無いと overlay 複数個で全部同じ path
         //   に上書き silent wrong)
@@ -266,6 +283,12 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "defines")]
         public Dictionary<string, int>? Defines { get; set; }
+
+        [YamlMember(Alias = "bin_pad_size")]
+        public int? BinPadSize { get; set; }
+
+        [YamlMember(Alias = "overlay_pad_align")]
+        public int? OverlayPadAlign { get; set; }
 
         [YamlMember(Alias = "disk")]
         public EnvFileDiskData? Disk { get; set; }

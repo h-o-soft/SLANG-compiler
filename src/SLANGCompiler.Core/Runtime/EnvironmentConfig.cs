@@ -81,6 +81,26 @@ public class EnvironmentConfig
     /// 名前は <c>^[A-Za-z_][A-Za-z0-9_]*$</c> regex で validate。
     /// </summary>
     public Dictionary<string, int>? Defines { get; set; }
+
+    /// <summary>
+    /// main bin の **固定サイズ** (byte 単位)。AILZ80ASM 出力後に末尾を 0
+    /// で埋めて指定サイズに揃える。null / 0 / 負 = padding なし (既存挙動)。
+    /// VGS-Zero (vgs0) で 16384 byte 固定 ROM 出力に使う。
+    /// <see cref="OutputFormat"/> == "cmt" 環境では指定不可 (Loader で reject)。
+    /// 既存 bin が指定サイズを超えていた場合 Driver が error で終了
+    /// (= silent truncation 防止)。
+    /// </summary>
+    public int? BinPadSize { get; set; }
+
+    /// <summary>
+    /// overlay (`#MODULE`) bin の **alignment** (byte 単位)。各 overlay の
+    /// サイズを指定値の倍数に切り上げて末尾を 0 で埋める。null / 0 / 負 =
+    /// padding なし (既存挙動)。VGS-Zero の 8KB bank switching に対応する
+    /// ため <c>8192</c> 指定で各 overlay を 8KB 単位に揃える。
+    /// <see cref="OutputFormat"/> == "cmt" 環境では指定不可 (Loader で reject)。
+    /// 上限なし (= overlay サイズに応じて切り上げ、empty overlay は no-op)。
+    /// </summary>
+    public int? OverlayPadAlign { get; set; }
 }
 
 /// <summary>

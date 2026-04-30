@@ -522,6 +522,139 @@ libraries:
     }
 
     [Fact]
+    public void BinPadSize_DeserializesIntegerValue()
+    {
+        var envPath = WriteEnv("padsize.env", """
+env_type: 6
+os_type: 5
+default_org: "$0000"
+bin_pad_size: 16384
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+        Assert.Equal(16384, config.BinPadSize);
+    }
+
+    [Fact]
+    public void BinPadSize_NullByDefault()
+    {
+        var envPath = WriteEnv("nopadsize.env", """
+env_type: 0
+os_type: 0
+default_org: "$100"
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+        Assert.Null(config.BinPadSize);
+    }
+
+    [Fact]
+    public void BinPadSize_AndOverlayPadAlign_ZeroOrNegativeNormalizesToNull()
+    {
+        // 0 / 負数で指定すると null 相当 (= padding なし扱い、明示 reject
+        // ではなく寛容に 0/負を null と同じ意味として扱う)。
+        var envPathZero = WriteEnv("padzero.env", """
+env_type: 6
+os_type: 5
+default_org: "$0000"
+bin_pad_size: 0
+overlay_pad_align: 0
+libraries:
+  - runtime.yml
+""");
+        var configZero = EnvironmentLoader.Load(envPathZero);
+        Assert.Null(configZero.BinPadSize);
+        Assert.Null(configZero.OverlayPadAlign);
+
+        var envPathNeg = WriteEnv("padneg.env", """
+env_type: 6
+os_type: 5
+default_org: "$0000"
+bin_pad_size: -1
+overlay_pad_align: -8192
+libraries:
+  - runtime.yml
+""");
+        var configNeg = EnvironmentLoader.Load(envPathNeg);
+        Assert.Null(configNeg.BinPadSize);
+        Assert.Null(configNeg.OverlayPadAlign);
+    }
+
+    [Fact]
+    public void OverlayPadAlign_DeserializesIntegerValue()
+    {
+        var envPath = WriteEnv("ovalign.env", """
+env_type: 6
+os_type: 5
+default_org: "$0000"
+overlay_pad_align: 8192
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+        Assert.Equal(8192, config.OverlayPadAlign);
+    }
+
+    [Fact]
+    public void OverlayPadAlign_NullByDefault()
+    {
+        var envPath = WriteEnv("noovalign.env", """
+env_type: 0
+os_type: 0
+default_org: "$100"
+libraries:
+  - runtime.yml
+""");
+
+        var config = EnvironmentLoader.Load(envPath);
+        Assert.Null(config.OverlayPadAlign);
+    }
+
+    [Fact]
+    public void BinPadSize_RequiresOutputBin_OtherwiseThrows()
+    {
+        // output: cmt env で bin_pad_size 指定すると header 込み bin に
+        // padding する形になり意味不明なので reject。
+        var envPath = WriteEnv("padcmt.env", """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: cmt
+bin_pad_size: 16384
+libraries:
+  - runtime.yml
+""");
+
+        var ex = Assert.Throws<InvalidDataException>(() => EnvironmentLoader.Load(envPath));
+        Assert.Contains("bin_pad_size", ex.Message);
+        Assert.Contains("output: cmt", ex.Message);
+    }
+
+    [Fact]
+    public void OverlayPadAlign_RequiresOutputBin_OtherwiseThrows()
+    {
+        // output: cmt env で overlay_pad_align 指定も同じ理由で reject。
+        var envPath = WriteEnv("ovaligncmt.env", """
+env_type: 5
+os_type: 3
+default_org: "$C000"
+output: cmt
+overlay_pad_align: 8192
+libraries:
+  - runtime.yml
+""");
+
+        var ex = Assert.Throws<InvalidDataException>(() => EnvironmentLoader.Load(envPath));
+        Assert.Contains("overlay_pad_align", ex.Message);
+        Assert.Contains("output: cmt", ex.Message);
+    }
+
+    [Fact]
     public void DiskSystemFiles_PathNormalization_RemovesDotSegments()
     {
         // env file dir 基準で `./xxx/../foo/ipl.bin` のような dotted path が

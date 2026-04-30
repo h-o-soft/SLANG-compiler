@@ -139,6 +139,16 @@ else ifeq ($(ENV), pc80mk2xsd)
   BIN_EXT = .cmt
   BIN_EXT_ENV = .cmt
   DISK_IMAGE = $(OUTPROG)
+else ifeq ($(ENV), vgs0)
+  # VGS-Zero ROM 出力 (= raw bin、env file `bin_pad_size: 16384` +
+  # `overlay_pad_align: 8192` で slangbuild が main を 16KB 固定 / 各
+  # overlay を 8KB 倍数に切り上げ padding する)。VGS-Zero は 8KB 単位の
+  # bank switching ハードで、各 overlay を bank 単位に揃える必要があるため。
+  # disk image なし、`disk_image` target は OUTPROG (= PROG.bin) そのもの。
+  EMU = @echo "VGS-Zero emulator not configured. Set EMU variable" \#
+  BIN_EXT = .bin
+  BIN_EXT_ENV = .bin
+  DISK_IMAGE = $(OUTPROG)
 else ifeq ($(ENV), msxrom)
   EMU = @echo "Set EMU variable for your emulator" \#
   BIN_EXT_ENV = $(BIN_EXT)
@@ -223,6 +233,11 @@ else ifeq ($(ENV), pc80mk2xsd)
 # pc80mk2xsd は CMT 個別配置 (= slangbuild が main.cmt + 各 M{N}.BIN +
 # XBIOS.CMT を output dir に揃える)。disk image なし、disk_image target は
 # OUTPROG (= PROG.cmt) を produce すれば十分。
+disk_image: $(OUTPROG)
+else ifeq ($(ENV), vgs0)
+# vgs0 は ROM bin 出力 (= disk image なし)。slangbuild が padding 済 bin
+# (16KB 固定 main + 8KB 倍数 overlay) を出すので、disk_image target は
+# OUTPROG (= PROG.bin) を produce すれば十分。
 disk_image: $(OUTPROG)
 else ifeq ($(ENV), sos)
 # sos / sosx1 は slangbuild --emit disk + HuDisk 経路。template
@@ -333,6 +348,6 @@ help:
 	@echo "  PREFIX=path        - Installation prefix (default: ~/.local on Unix,"
 	@echo '                       %USERPROFILE%\.local\bin on Windows)'
 	@echo "  TARGET=path        - Sample source file (without extension)"
-	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/pc88mk2sr/pc80mk2/pc80mk2x/pc80mk2xsd/msx2/msxrom/cpm)"
+	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/pc88mk2sr/pc80mk2/pc80mk2x/pc80mk2xsd/vgs0/msx2/msxrom/cpm)"
 	@echo ""
 	@echo "Detected OS: $(DETECTED_OS)"

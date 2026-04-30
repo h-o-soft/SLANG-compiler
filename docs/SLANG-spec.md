@@ -1171,6 +1171,36 @@ defines:
 - `ENV_TYPE` / `OS_TYPE` は env file `env_type:` / `os_type:` から
   自動的に登録される (= 既存挙動、`defines:` を書かなくても利用可能)
 
+#### bin padding env (= vgs0)
+
+固定サイズ ROM 出力や bank switching ハードに対応するため、env file に
+`bin_pad_size:` (= main 用、固定 byte) と `overlay_pad_align:` (= overlay
+用、指定値の倍数に切り上げ) を指定すると、slangbuild が AILZ80ASM 出力後
+に末尾を 0 で埋めて指定サイズに揃える:
+
+```yaml
+# runtime/env/vgs0.env (抜粋)
+bin_pad_size: 16384         # main を 16KB 固定 (VGS-Zero ROM 領域 = 8KB×2)
+overlay_pad_align: 8192     # 各 overlay を 8KB 倍数に切り上げ
+                            # (= 8KB bank switching に揃える)
+```
+
+| フィールド | 内容 |
+|---|---|
+| `bin_pad_size:` (int) | main bin の **固定 byte サイズ**。padding 後に必ずこの size になる。既存サイズが超えていたら `slangbuild: bin_pad_size: bin size N byte exceeds target ...` の明示エラーで exit 1 (= silent truncation 防止) |
+| `overlay_pad_align:` (int) | 各 overlay bin を指定値の **倍数に切り上げ** padding。上限なし。empty overlay は no-op |
+
+両者の semantics:
+- null / 0 / 負 = padding なし (= 既存挙動、Loader 上で null 相当に正規化)
+- `output: cmt` env で指定すると env load 時 `InvalidDataException` で
+  reject (= cmt header 込み bin に padding は意味不明)
+- 拡張領域は OS 保証で 0 fill (= `dd if=/dev/zero conv=notrunc` と等価)
+
+VGS-Zero (https://github.com/suzukiplan/vgszero) は 8KB 単位の bank
+switching を持つハードで、各 overlay を 8KB 単位に揃えることで bank
+switch loader が読み込み可能になる。SL から bank 切替を呼ぶ helper は
+`runtime/libvgs0_base.asm` に既存。
+
 ---
 
 サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
