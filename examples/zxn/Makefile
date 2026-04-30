@@ -1,21 +1,28 @@
-PROJECT = game
 NEXCREATOR = nexcreator
 SLANGBUILD = slangbuild
 EMU = mono Emu/CSpect/CSpect.exe -w6 -tv -nextrom -zxnext
 
+# default は NextDAW 不要の game_nomusic 版 (= 配布 zip 解凍直後でも
+# build 可能)。NextDAW を含む完全版が欲しい場合は `make music`
+# (要 NextDAW_RuntimePlayer_E000.bin を examples/zxn/ 配下に配置)。
+
 all: build
-	$(EMU) game.nex
-
-build: game.nex
-
-nomusic: game_nomusic.nex
 	$(EMU) game_nomusic.nex
 
-build_nomusic: game_nomusic.nex
+build: game_nomusic.nex
 
-# slangbuild が SLANG → ASM → bin を 1 段で実行 (旧 SLANGCompiler +
-# AILZ80ASM 2 段経路を内製化)。デバッグ用 .sym / .ASM を残したい場合は
-# --keep-asm を追加。
+# 旧 target との互換 alias
+nomusic: build
+build_nomusic: build
+
+# NextDAW を含む完全版 (要 NextDAW Runtime Player を examples/zxn/ 配下に配置)
+music: game.nex
+	$(EMU) game.nex
+
+build_music: game.nex
+
+# slangbuild が SLANG → ASM → bin を 1 段で実行。デバッグ用 .sym / .ASM
+# を残したい場合は --keep-asm を追加。
 %.bin: %.sl
 	$(SLANGBUILD) -E zxn $< -o $*
 

@@ -1,8 +1,11 @@
 # Third-Party Notices
 
-このファイルは、SLANG Compiler の repo / 配布 zip に同梱される **外部成果物の出典 (provenance)** を記録します。
+このファイルは、SLANG Compiler の repo / 配布 zip に同梱される **外部バイナリ・テンプレート** の出典 (provenance) を記録します。
 
-LICENSE 全文を別ファイルで同梱している成果物 (= RunCPM、UI フォント等) については末尾の「LICENSE 別途同梱物」section を参照してください。
+scope:
+- 含まれる: 外部由来のバイナリ blob (= `tools/udostool.exe`、`runtime/templates/XBIOS.CMT`、`images/templates/*.D88`、Bookworm's Library 由来の `runtime/pc88mk2sr/*.bin` 等)
+- 含まれない: runtime code 中の third-party 由来ライブラリ (= MSX SPDRV、X1 SGL、PC-8001 Sound Driver 等)。これらの attribution は `LICENSE` ファイルおよび各 ASM source の header コメントを参照してください
+- LICENSE 全文を別ファイルで同梱している成果物 (= RunCPM、UI フォント等) については末尾の「LICENSE 別途同梱物」section を参照
 
 各エントリには判明している範囲で以下を記載します:
 - 配布物名

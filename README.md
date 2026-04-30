@@ -160,7 +160,7 @@ Layer 2グラフィックス、タイルマップ、スプライト、パレッ�
 
 `slangbuild` (および `Makefile.dist build TARGET=examples/zxn/game ENV=zxn`) で `.bin` を出力できます。`.nex` 形式 (= CSpect 等の実行可能形式) への変換は外部ツール `nexcreator` を使い、`examples/zxn/Makefile` で flow が完結します。
 
-> **注**: `game.nex` の build には `examples/zxn/NextDAW_RuntimePlayer_E000.bin` (= NextDAW Runtime Player) の配置が必要です。NextDAW ([https://nextdaw.biasillo.com/](https://nextdaw.biasillo.com/)) は外部製品のため配布物には含まれません。**2026-04-30 時点で公式サイトでの入手はできない状態**で、再公開された場合も driver の仕様変更等により `examples/zxn/game.cfg` や `game.sl` の修正が必要となる可能性があります。`game_nomusic.nex` (NextDAW なし版) は外部依存なしで build 可能です。
+> **注**: `examples/zxn/Makefile` の `make build` (default) は NextDAW なし版 (`game_nomusic.nex`) を build します。NextDAW を含む完全版 (`game.nex`) を build するには `make music` を使い、`examples/zxn/NextDAW_RuntimePlayer_E000.bin` (= NextDAW Runtime Player) を `examples/zxn/` 配下に配置してください。NextDAW ([https://nextdaw.biasillo.com/](https://nextdaw.biasillo.com/)) は外部製品のため配布物には含まれません。**2026-04-30 時点で公式サイトでの入手はできない状態**で、再公開された場合も driver の仕様変更等により `examples/zxn/game.cfg` や `game.sl` の修正が必要となる可能性があります。
 
 # ランタイムについて
 

@@ -21,7 +21,7 @@
 - zxn 環境 (ZX Spectrum Next) を `slangbuild` に対応
   - `make ENV=zxn build TARGET=examples/zxn/game` で `.bin` を生成可能。`Makefile.dist` に zxn ENV ブロック追加 (`SRC_EXT = .sl` で `examples/zxn/*.sl` 小文字に対応)
   - `examples/zxn/Makefile` を slangbuild 経由に書き換え。`.nex` 形式 (CSpect 等で実行可能) への変換は外部ツール `nexcreator` を引き続き使用
-  - `examples/zxn` のサンプル (`game.sl` / `game_nomusic.sl` + asset) を配布 zip に同梱。`game.nex` build には NextDAW Runtime Player (= 外部製品、配布対象外) が別途必要 (`https://nextdaw.biasillo.com/`、2026-04-30 時点で公式サイトでの入手は不可)。`game_nomusic.nex` は外部依存なしで build 可能
+  - `examples/zxn` のサンプル (`game.sl` / `game_nomusic.sl` + asset) を配布 zip に同梱。`examples/zxn/Makefile` の default target を NextDAW 不要の `game_nomusic.nex` に変更 (`make build` で動作)。NextDAW を含む完全版 (`game.nex`) は `make music` で build 可能 (= 別途 NextDAW Runtime Player の配置が必要、`https://nextdaw.biasillo.com/`、2026-04-30 時点で公式サイト入手不可)
 
 - vgs0 環境 (VGS-Zero) を `slangbuild` に対応 — 8KB bank switching に合わせた bin padding
   - env file 新フィールド `bin_pad_size:` (main 用、固定サイズで末尾 0 padding) と `overlay_pad_align:` (overlay 用、指定値の倍数に切り上げ末尾 0 padding) を追加

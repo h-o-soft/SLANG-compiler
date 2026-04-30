@@ -1212,9 +1212,3 @@ slangbuild 経由 build が可能。
 `.nex` 形式 (= CSpect 等で実行可能形式) への変換は外部ツール
 `nexcreator` を使う運用 (= `examples/zxn/Makefile` 参照)。slangbuild は
 raw `.bin` の生成までを担当し、`.nex` 化は外部ツールに委ねている。
-
----
-
-サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
-128 byte 以内であることを前提としている (より大きい overlay は loader 拡張
-が必要)。
