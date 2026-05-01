@@ -47,8 +47,9 @@ createRelease() {
   fi
 
   # tools: ホストで動かす Python スクリプト (charmap-encode.py, png_to_asm.py,
-  # disk-add-overlays.py)。disk-add-overlays.py は make ENV=lsx|x1 disk_image で
-  # overlay バイナリ (M0.BIN..) を d88 へ書き込む際の helper。
+  # disk-add-overlays.py, mml2sound.py)。disk-add-overlays.py は make ENV=lsx|x1
+  # disk_image で overlay バイナリ (M0.BIN..) を d88 へ書き込む際の helper、
+  # mml2sound.py は MML テキストから libpc80mk2_sound 用の byte data を生成。
   # RunCPM 系は後段で追加するので、ここでは Python ツールだけ拾う。
   mkdir -p tools
   cp ../../tools/charmap-encode.py    tools/ 2>/dev/null

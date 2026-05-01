@@ -13,7 +13,7 @@
 - MML → ASM コンバータ `tools/mml2sound.py` を追加
   - 簡易 MML テキスト (note + sharp/flat、八度、長さ + dotted、休符) から `libpc80mk2_sound` 用の byte data (length / note / 0x7F rest / 0x80 end) を生成
   - 出力モード: ASM `.db` 列 (既定、`#ASM` block 互換、length 圧縮済) / `--binary <prefix>` で per-channel raw bin
-  - 1..3 ch 制約 + 不足分は `__empty: db 0x80` で自動 padding
+  - 1..3 ch 制約 + 不足分は `.__empty: db 0x80` で自動 padding
   - MML channel 順を物理 CH に対応 (= 1 番目 ch が物理 CH1、SE 多重化は CH3 = MML 3 番目)
   - サンプル `examples/pc80mk2/chouchou.mml` (8 小節「ちょうちょ」、`PC80mk2.SL` の SOUNDDATA 出元) と `examples/pc80mk2/README.md` を同梱
   - 配布 zip に `tools/mml2sound.py` も同梱

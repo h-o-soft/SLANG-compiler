@@ -67,7 +67,7 @@ driver の `SNDMusicStart` は `BGM` の最初のポインタを物理 CH3 に�
 `@3` に置くのが自然です。逆に「SE で melody を一瞬中断する古典的ゲーム
 スタイル」が欲しい場合は MML 内で channel 順を逆に書いてください。
 
-`@1`〜`@3` のうち欠けたチャンネルは `__empty: db 0x80` で自動 padding
+`@1`〜`@3` のうち欠けたチャンネルは `.__empty: db 0x80` で自動 padding
 されます (= driver の 3 ポインタ読込が壊れない)。
 
 ### SOUNDDATA byte format (driver が消費する byte 列)
