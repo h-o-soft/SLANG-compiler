@@ -13,18 +13,19 @@ createRelease() {
   cp -r ../../include .
   cp -r ../../runtime .
   # examples: SLANGソースのみ（ビルド成果物除外）
-  # top-level の *.SL と、サブディレクトリ chip / spr / tile / tilespr / ui
-  # から *.SL / *.sl / README.md / *.json のみ whitelist 方式で拾う。
-  # *.ASM / *.LST / *.SYM / *.bin / PROG.com 等のビルド成果物は含めない。
+  # top-level の *.SL と、サブディレクトリ chip / spr / tile / tilespr / ui /
+  # pc80mk2 から *.SL / *.sl / README.md / *.json / *.mml のみ whitelist 方式で
+  # 拾う。*.ASM / *.LST / *.SYM / *.bin / PROG.com 等のビルド成果物は含めない。
   mkdir -p examples
   cp ../../examples/*.SL examples/ 2>/dev/null
-  for sub in chip spr tile tilespr ui; do
+  for sub in chip spr tile tilespr ui pc80mk2; do
     if [ -d "../../examples/$sub" ]; then
       mkdir -p "examples/$sub"
       cp ../../examples/$sub/*.SL        "examples/$sub/" 2>/dev/null
       cp ../../examples/$sub/*.sl        "examples/$sub/" 2>/dev/null
       cp ../../examples/$sub/README.md   "examples/$sub/" 2>/dev/null
       cp ../../examples/$sub/*.json      "examples/$sub/" 2>/dev/null
+      cp ../../examples/$sub/*.mml       "examples/$sub/" 2>/dev/null
     fi
   done
 

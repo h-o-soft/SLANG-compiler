@@ -1,0 +1,50 @@
+; "ちょうちょ" (Chouchou) - Japanese folk children's song, 8-bar verse
+;
+;   CH1 = melody (single voice, octave 4)
+;   CH2 = bass   (whole note root per measure, octave 2)
+;   CH3 = harmony (third above bass per measure, octave 3)
+;
+; Lyrics / phrasing:
+;   m.1-4 (Phrase A): ちょうちょ ちょうちょ / なのはに とまれ
+;   m.5-8 (Phrase B): なのはに あいたら / さくらに とまれ
+;
+; Harmony plan (C major):
+;   m.1-2 = I (C),  m.3 = IV (F), m.4 = V (G)
+;   m.5   = V (G),  m.6 = I (C),  m.7 = IV (F),  m.8 = I (C)
+;
+; Tick mapping: quarter = 16 ticks (driver default).
+; Convert with:
+;   python3 tools/mml2sound.py examples/pc80mk2/chouchou.mml
+
+@1 o4 l4
+; phrase A: ちょうちょ ちょうちょ なのはに とまれ
+g e e2
+g e e2
+c d e f
+g g g2
+
+; phrase B: なのはに あいたら さくらに とまれ
+g e e e
+f d d d
+c e g g
+e e e2
+
+@2 o2 l1
+; bass: C C F G  G C F C
+c c f g
+g c f c
+
+@3 o3 l4
+; harmony
+c g e g
+o2 b o3 g d g
+c g e g
+c c g2
+
+c g e g
+o2 b o3 g d g
+c g e g
+e e e2
+
+
+
