@@ -2,6 +2,22 @@
 
 ## Version 0.24.0
 
+- PCG ボード (PCG-8100 後期 / PCG-8200 / PCG-8800 + PSA3.0 等の互換) 搭載 8253 3 ch サウンド向けドライバ (`runtime/libpc80mk2_sound.asm`) の品質改善
+  - `SND_ISPLAYING()` の 3 ch 判定バグ修正 (CH1/CH2 の判定結果が捨てられて実質 CH3 のみで判定されていた)
+  - 休符サポート追加 — `TONE.REST = 0x7F` を MML データに置けば該当 length 分 silence
+  - `SND_PROC` 出力段の動的 KEYON マスク (= 休符 / 未使用 ch を 8253 の出力 gate で物理 mute)
+  - `SND_PROC` 出力段の shadow 最適化 (= 同 frequency を毎 VSYNC 書き直すと 8253 mode 3 が再ロードでガタつくため、変化時のみ書き込み)
+  - 音長カウンタ修正 — 旧版は length=N で内部 N+1 tick 占有していた (= silent end 1 tick が length 値に組込まれていなかった) ため ch ごとに音符数が違うと位相ズレが発生していた
+  - `examples/PC80mk2.SL` の SOUNDDATA を新 8 小節 verse (melody + bass + harmony 3 ch、octave doubling 廃止) に更新
+
+- MML → ASM コンバータ `tools/mml2sound.py` を追加
+  - 簡易 MML テキスト (note + sharp/flat、八度、長さ + dotted、休符) から `libpc80mk2_sound` 用の byte data (length / note / 0x7F rest / 0x80 end) を生成
+  - 出力モード: ASM `.db` 列 (既定、`#ASM` block 互換、length 圧縮済) / `--binary <prefix>` で per-channel raw bin
+  - 1..3 ch 制約 + 不足分は `__empty: db 0x80` で自動 padding
+  - MML channel 順を物理 CH に対応 (= 1 番目 ch が物理 CH1、SE 多重化は CH3 = MML 3 番目)
+  - サンプル `examples/pc80mk2/chouchou.mml` (8 小節「ちょうちょ」、`PC80mk2.SL` の SOUNDDATA 出元) と `examples/pc80mk2/README.md` を同梱
+  - 配布 zip に `tools/mml2sound.py` も同梱
+
 - 配布 zip に `install.sh` / `install.bat` / `uninstall.sh` / `uninstall.bat` を同梱、Makefile に依存せず install / uninstall できるよう導線を切り出し
   - オプション: `--prefix <path>` / `--config-dir <path>` / `--dry-run` / `--verbose` / `--force` / `--uninstall` / `--help`
   - **危険 path guard**: uninstall 時に空 / `/` / `$HOME` / `/tmp` 単体 / `C:\` / `%USERPROFILE%` 等を refuse (絶対パス正規化してから完全一致判定、`/tmp/sub` 等は許可)

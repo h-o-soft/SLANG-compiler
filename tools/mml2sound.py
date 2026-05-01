@@ -2,7 +2,9 @@
 """mml2sound.py — MML → libpc80mk2_sound byte data converter.
 
 Converts a small MML subset to the byte stream consumed by
-runtime/libpc80mk2_sound.asm (PC-8001mkII Mode II 3ch BEEP driver).
+runtime/libpc80mk2_sound.asm — a sound driver for PCG-8200 / PCG-8100 (late
+revisions) / PCG-8800 and compatible boards (PSA3.0 等) on PC-8001(mkII) /
+PC-8801, which expose Intel 8253 PIT for 3-channel square-wave BEEP output.
 
 Driver byte format:
   - Length byte:  signed -1..-127  (= playback length 1..127 ticks)

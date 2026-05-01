@@ -218,7 +218,7 @@ SLANG Compilerはランタイムライブラリとして、`runtime/` フォル�
 ## PC-8001mkII関連ライブラリ
 * libpc80mk2_base.asm — PC-8001mkII固有のライブラリ
 * libpc80mk2_print.asm — BIOS部を使ったPRINT関連処理
-* libpc80mk2_sound.asm — サウンド関連
+* libpc80mk2_sound.asm — サウンド関連 (PCG-8100 後期 / PCG-8200 / PCG-8800 系互換ボード = PSA3.0 等が搭載する 8253 PIT で 3 ch 矩形波同時発音、`SND_PLAY` / `SND_SEPLAY` で BGM + SE 同時再生に対応)。MML を ASM data に変換する `tools/mml2sound.py` と、サンプル MML `examples/pc80mk2/chouchou.mml` (+ 詳細は `examples/pc80mk2/README.md`) も同梱
 * libpc80mk2xbios_base.asm — 全RAM版XBIOS
 
 ## PC-8801mkIISR関連ライブラリ
