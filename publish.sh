@@ -42,6 +42,7 @@ createRelease() {
   cp ../../tools/charmap-encode.py    tools/ 2>/dev/null
   cp ../../tools/png_to_asm.py        tools/ 2>/dev/null
   cp ../../tools/disk-add-overlays.py tools/ 2>/dev/null
+  cp ../../tools/mml2sound.py         tools/ 2>/dev/null
   # udostool.exe: pc88mk2sr 用 (Bookworm's Library 由来、repo 同梱で
   # setup-tools 不要、license 詳細は THIRD_PARTY_NOTICES.md 参照)
   cp ../../tools/udostool.exe         tools/ 2>/dev/null

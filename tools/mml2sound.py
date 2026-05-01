@@ -29,8 +29,17 @@ MML syntax (subset):
   Channel ends at next @ marker or EOF; 0x80 is appended automatically.
 
 Output modes:
-  default     — ASM `.db` lines (compatible with #ASM block in .SL)
-  --binary    — raw byte file per channel: <prefix>.@<chan>.bin
+  default     — ASM `.db` lines (compatible with #ASM block in .SL).
+                Driver expects 1..3 channels in BGM dispatch. MML channel
+                order maps to physical CH:
+                  1st MML ch → physical CH1 (clean, no SE multiplex)
+                  2nd MML ch → physical CH2
+                  3rd MML ch → physical CH3 (SE multiplexes here)
+                Missing physical channels are padded with empty data.
+                Reverse the MML channel order if you want melody on CH3
+                (= classic game style: SE briefly mutes the melody).
+  --binary    — raw byte file per channel: <prefix>_<chan>.bin
+                No 1..3 channel restriction (each ch is a separate file).
 """
 
 import argparse
@@ -243,14 +252,43 @@ def emit_asm_channel(name, events):
     return lines
 
 
+EMPTY_LABEL = '.__empty'
+MAX_BGM_CHANNELS = 3
+
+
 def emit_asm(channels, label: str, bgm_label: str) -> str:
+    """Emit SOUNDDATA block with BGM dispatch matched to driver's physical CH order.
+
+    Driver SNDMusicStart reads BGM[0]→CH3, BGM[1]→CH2, BGM[2]→CH1, so we map
+    user's MML channel order to physical CH 1..3 by writing BGM in reverse:
+
+        MML 1st channel → physical CH1 (clean, no SE multiplex)
+        MML 2nd channel → physical CH2
+        MML 3rd channel → physical CH3 (SE multiplexes here)
+
+    Missing physical channels are padded with EMPTY (db 0x80).
+    """
+    if not 1 <= len(channels) <= MAX_BGM_CHANNELS:
+        names = ', '.join(name for name, _ in channels) or '(none)'
+        raise MMLError(
+            f'driver supports 1..{MAX_BGM_CHANNELS} channels in BGM dispatch, '
+            f'got {len(channels)}: {names}')
+
+    # slot 0 = CH3 (BGM[0]), slot 1 = CH2, slot 2 = CH1.
+    slots = [EMPTY_LABEL] * MAX_BGM_CHANNELS
+    for i, (name, _) in enumerate(channels):
+        slots[MAX_BGM_CHANNELS - 1 - i] = label_for(name)
+
     out = [f'{label}:']
-    refs = ', '.join(label_for(n) for n, _ in channels)
-    out.append(f'{bgm_label}:\tdw\t{refs}')
+    out.append(f'{bgm_label}:\tdw\t{", ".join(slots)}')
     for i, (name, events) in enumerate(channels):
         if i > 0:
             out.append('')  # blank line between channels (readability)
         out.extend(emit_asm_channel(name, events))
+    if len(channels) < MAX_BGM_CHANNELS:
+        out.append('')
+        out.append(
+            f'{EMPTY_LABEL}\tdb\t0x{END_BYTE:02X}\t; pad for unused physical channel(s)')
     return '\n'.join(out) + '\n'
 
 
@@ -311,7 +349,11 @@ def main():
             print(f'wrote {path} ({len(data)} bytes)', file=sys.stderr)
 
     if args.output or not args.binary:
-        asm = emit_asm(channels, label=args.label, bgm_label=args.bgm_label)
+        try:
+            asm = emit_asm(channels, label=args.label, bgm_label=args.bgm_label)
+        except MMLError as e:
+            print(f'mml2sound: emit error: {e}', file=sys.stderr)
+            return 1
         if args.output:
             Path(args.output).write_text(asm, encoding='utf-8')
         else:

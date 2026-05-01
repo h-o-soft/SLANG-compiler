@@ -155,7 +155,7 @@ TONE:
 ; サンプルデータ
 ;
 SOUNDDATA:
-BGM:    dw      .@1, .@2, .@3
+BGM:    dw      .@3, .@2, .@1
 .@1     db      -16, TONE.O4 + TONE.G
         db      TONE.O4 + TONE.E
         db      -32, TONE.O4 + TONE.E

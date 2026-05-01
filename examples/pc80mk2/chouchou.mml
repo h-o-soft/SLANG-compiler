@@ -1,8 +1,8 @@
 ; "ちょうちょ" (Chouchou) - Japanese folk children's song, 8-bar verse
 ;
-;   CH1 = melody (single voice, octave 4)
-;   CH2 = bass   (whole note root per measure, octave 2)
-;   CH3 = harmony (third above bass per measure, octave 3)
+;   @1 = melody  (physical CH1, octave 4) - clean voice, no SE multiplex
+;   @2 = bass    (physical CH2, octave 2) - whole note root per measure
+;   @3 = harmony (physical CH3, octave 3) - SE multiplexes here
 ;
 ; Lyrics / phrasing:
 ;   m.1-4 (Phrase A): ちょうちょ ちょうちょ / なのはに とまれ
