@@ -13,18 +13,19 @@ createRelease() {
   cp -r ../../include .
   cp -r ../../runtime .
   # examples: SLANGソースのみ（ビルド成果物除外）
-  # top-level の *.SL と、サブディレクトリ chip / spr / tile / tilespr / ui
-  # から *.SL / *.sl / README.md / *.json のみ whitelist 方式で拾う。
-  # *.ASM / *.LST / *.SYM / *.bin / PROG.com 等のビルド成果物は含めない。
+  # top-level の *.SL と、サブディレクトリ chip / spr / tile / tilespr / ui /
+  # pc80mk2 から *.SL / *.sl / README.md / *.json / *.mml のみ whitelist 方式で
+  # 拾う。*.ASM / *.LST / *.SYM / *.bin / PROG.com 等のビルド成果物は含めない。
   mkdir -p examples
   cp ../../examples/*.SL examples/ 2>/dev/null
-  for sub in chip spr tile tilespr ui; do
+  for sub in chip spr tile tilespr ui pc80mk2; do
     if [ -d "../../examples/$sub" ]; then
       mkdir -p "examples/$sub"
       cp ../../examples/$sub/*.SL        "examples/$sub/" 2>/dev/null
       cp ../../examples/$sub/*.sl        "examples/$sub/" 2>/dev/null
       cp ../../examples/$sub/README.md   "examples/$sub/" 2>/dev/null
       cp ../../examples/$sub/*.json      "examples/$sub/" 2>/dev/null
+      cp ../../examples/$sub/*.mml       "examples/$sub/" 2>/dev/null
     fi
   done
 
@@ -41,6 +42,7 @@ createRelease() {
   cp ../../tools/charmap-encode.py    tools/ 2>/dev/null
   cp ../../tools/png_to_asm.py        tools/ 2>/dev/null
   cp ../../tools/disk-add-overlays.py tools/ 2>/dev/null
+  cp ../../tools/mml2sound.py         tools/ 2>/dev/null
   # udostool.exe: pc88mk2sr 用 (Bookworm's Library 由来、repo 同梱で
   # setup-tools 不要、license 詳細は THIRD_PARTY_NOTICES.md 参照)
   cp ../../tools/udostool.exe         tools/ 2>/dev/null
