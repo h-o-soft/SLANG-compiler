@@ -40,6 +40,31 @@ SNDOutput:
 	ret
 
 ;-----------------------------------------------------------------------
+; �J�E���^�l���ύX�����Ƃ��̂ݏo�͂���
+; B  = �J�E���^�l�ݒ�J�n�r�b�g
+; C  = SNDCH �o�̓|�[�g
+; DE = LAST_Fx �A�h���X
+; HL = ���ۂɏo�͂���J�E���^�l
+;
+; 8253 mode 3 is reloaded by control/counter writes, so keep the currently
+; emitted counter in shadow RAM and skip redundant 60Hz writes.
+SNDOutputChanged:
+	ld	a, (de)
+	cp	l
+	jr	nz, .write
+	inc	de
+	ld	a, (de)
+	cp	h
+	ret	z
+	dec	de
+.write	ld	a, l
+	ld	(de), a
+	inc	de
+	ld	a, h
+	ld	(de), a
+	jp	SNDOutput
+
+;-----------------------------------------------------------------------
 ; �`�����l���ʍX�V�����i�h���C�o�����Ăяo����p�j
 ; HL = ���[�N�擪�A�h���X�i + MML.ADDRESS�j
 ;
@@ -76,6 +101,7 @@ SNDPlayer:
 
 	; ����
 .length	neg				; �������]
+	dec	a			; -1 to compensate for trailing silent tick
 	ld	h, a			; �����������X�V
 
 	; MML�R�}���h���
@@ -84,6 +110,8 @@ SNDPlayer:
 	cp	0x80			; �I���R�[�h�Ŕ�r
 	jr	z, .stop		; ZF=1 �Ȃ�I��
 	jp	nc, .length		; �}�C�i�X�l�Ȃ特��
+	cp	0x7F			; rest (silence)
+	jr	z, .rest
 
 	; ���K
 	ld	l, h			; ������������
@@ -98,6 +126,14 @@ SNDPlayer:
 	ld	h, (hl)
 	ld	l, a			; HL �J�E���^�l
 	push	hl			; MML.FREQ �ɕۑ�
+	jr	.exit
+
+	; rest (silence): FREQ=0, length proceeds normally
+.rest	ld	l, h			; L = LENDATA
+	push	hl			; MML.LENGTH = LENDATA
+	push	de			; MML.ADDRESS = next
+	ld	hl, 0			; FREQ = 0
+	push	hl			; MML.FREQ = 0
 	jr	.exit
 
 
@@ -124,6 +160,8 @@ TONE:
 .O4	equ	(3 * 12)
 .O5	equ	(4 * 12)
 .O6	equ	(5 * 12)
+
+.REST	equ	0x7F		; rest (silence)
 
 ;-----------------------------------------------------------------------
 ; ��������t���O
@@ -166,6 +204,13 @@ SND:
 .SE		ds	MML.SIZE	; SE
 .BLANKFLG	ds	1		; �����A���ʒu�t���O
 
+; shadow registers: last FREQ actually written via SNDOutput per physical channel
+; (CH3 slot tracks SE-or-CH3 multiplexed value). Used to skip redundant
+; SNDWRT writes that would re-trigger 8253 mode-3 reload mid-cycle.
+.LAST_F1	ds	2		; CH1 last sent freq
+.LAST_F2	ds	2		; CH2 last sent freq
+.LAST_F3	ds	2		; CH3/SE last sent freq
+
 
 ; @name SND_STOP
 ; @resident shared
@@ -185,6 +230,10 @@ SNDInitialize:
 	out	(0x02), a	; �L�[�I���t���O��S��~����
 	ld	hl, 0
 	ld	(.retads), sp
+	ld	sp, SND.LAST_F3 + 2	; force first SNDOutput per ch
+	push	hl
+	push	hl
+	push	hl
 	ld	sp, SND.CH1 + MML.ADDRESS + 2
 	push	hl
 	ld	sp, SND.CH2 + MML.ADDRESS + 2
@@ -320,22 +369,53 @@ SNDTimer:
 	ld	hl, SND.SE + MML.ADDRESS
 	call	SNDPlayer
 
-	; ��������
+	; output: skip SNDOutput when FREQ matches shadow (avoid 60Hz mode-3 reload)
+
+	; CH1
 	ld	hl, (SND.CH1 + MML.FREQ)
+	ld	de, SND.LAST_F1
 	ld	bc, SNDWRT.@1 * 256 + SNDCH.@1
-	call	SNDOutput
+	call	SNDOutputChanged
+
+	; CH2
 	ld	hl, (SND.CH2 + MML.FREQ)
+	ld	de, SND.LAST_F2
 	ld	bc, SNDWRT.@2 * 256 + SNDCH.@2
-	call	SNDOutput
+	call	SNDOutputChanged
+
+	; CH3 / SE multiplex (SE wins when non-zero)
 	ld	hl, (SND.SE + MML.FREQ)
-	ld	bc, SNDWRT.@3 * 256 + SNDCH.@3
 	ld	a, h
 	or	l
-	jr	nz, .outpt
+	jr	nz, .pick3
 	ld	hl, (SND.CH3 + MML.FREQ)
-.outpt	call	SNDOutput
-	ld	a, KEYON.All
-	out	(0x02), a	; �L�[�I���t���O��S�������
+.pick3	ld	de, SND.LAST_F3
+	ld	bc, SNDWRT.@3 * 256 + SNDCH.@3
+	call	SNDOutputChanged
+
+	; KEYON mask: only channels with FREQ != 0 (silent ch stays gated off)
+	ld	c, 0
+	ld	hl, (SND.CH1 + MML.FREQ)
+	ld	a, h
+	or	l
+	jr	z, .nk1
+	set	3, c		; KEYON.@1 (bit 3)
+.nk1	ld	hl, (SND.CH2 + MML.FREQ)
+	ld	a, h
+	or	l
+	jr	z, .nk2
+	set	6, c		; KEYON.@2 (bit 6)
+.nk2	ld	hl, (SND.SE + MML.FREQ)
+	ld	a, h
+	or	l
+	jr	nz, .key3
+	ld	hl, (SND.CH3 + MML.FREQ)
+	ld	a, h
+	or	l
+	jr	z, .nk3
+.key3	set	7, c		; KEYON.@3 (bit 7)
+.nk3	ld	a, c
+	out	(0x02), a	; key on active channels only
 	ret
 
 ; @name SND_ISPLAYING
@@ -359,4 +439,3 @@ SNDIsPlaying:
 	ld	a, h
 	or	l
 	ret
-

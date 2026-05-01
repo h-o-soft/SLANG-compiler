@@ -149,87 +149,84 @@ TONE:
 .O5	equ	(4 * 12)
 .O6	equ	(5 * 12)
 
+.REST	equ	0x7F		; rest (silence)
+
 ;-----------------------------------------------------------------------
 ; サンプルデータ
 ;
 SOUNDDATA:
-BGM:	dw	.@1, .@2, .@3
-.@1	db	-16, TONE.O4 + TONE.G
-	db	TONE.O4 + TONE.E
-	db	-32, TONE.O4 + TONE.E	; 64 ちょうちょ～
+BGM:    dw      .@1, .@2, .@3
+.@1     db      -16, TONE.O4 + TONE.G
+        db      TONE.O4 + TONE.E
+        db      -32, TONE.O4 + TONE.E
+        db      -16, TONE.O4 + TONE.G
+        db      TONE.O4 + TONE.E
+        db      -32, TONE.O4 + TONE.E
+        db      -16, TONE.O4 + TONE.C
+        db      TONE.O4 + TONE.D
+        db      TONE.O4 + TONE.E
+        db      TONE.O4 + TONE.F
+        db      TONE.O4 + TONE.G
+        db      TONE.O4 + TONE.G
+        db      -32, TONE.O4 + TONE.G
+        db      -16, TONE.O4 + TONE.G
+        db      TONE.O4 + TONE.E
+        db      TONE.O4 + TONE.E
+        db      TONE.O4 + TONE.E
+        db      TONE.O4 + TONE.F
+        db      TONE.O4 + TONE.D
+        db      TONE.O4 + TONE.D
+        db      TONE.O4 + TONE.D
+        db      TONE.O4 + TONE.C
+        db      TONE.O4 + TONE.E
+        db      TONE.O4 + TONE.G
+        db      TONE.O4 + TONE.G
+        db      TONE.O4 + TONE.E
+        db      TONE.O4 + TONE.E
+        db      -32, TONE.O4 + TONE.E
+        db      0x80
 
-	db	-16, TONE.O4 + TONE.G
-	db	TONE.O4 + TONE.E
-	db	-32, TONE.O4 + TONE.E	; 64 ちょうちょ～
+.@2     db      -64, TONE.O2 + TONE.C
+        db      TONE.O2 + TONE.C
+        db      TONE.O2 + TONE.F
+        db      TONE.O2 + TONE.G
+        db      TONE.O2 + TONE.G
+        db      TONE.O2 + TONE.C
+        db      TONE.O2 + TONE.F
+        db      TONE.O2 + TONE.C
+        db      0x80
 
-	db	-16, TONE.O4 + TONE.C
-	db	TONE.O4 + TONE.D
-	db	TONE.O4 + TONE.E
-	db	TONE.O4 + TONE.F	; 64 なのはに
-
-	db	-16, TONE.O4 + TONE.G
-	db	-16, TONE.O4 + TONE.G
-	db	-32, TONE.O4 + TONE.G	; 64 とまれ～
-
-	db	0x80
-
-.@2	db	-8
-	db	TONE.O2 + TONE.D
-	db	TONE.O2 + TONE.D
-	db	TONE.O2 + TONE.D
-	db	TONE.O2 + TONE.D
-	db	TONE.O2 + TONE.D
-	db	TONE.O2 + TONE.D
-	db	TONE.O2 + TONE.D
-	db	TONE.O2 + TONE.D	; 64
-
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F	; 64
-
-	db	TONE.O2 + TONE.G
-	db	TONE.O2 + TONE.G
-	db	TONE.O2 + TONE.G
-	db	TONE.O2 + TONE.G
-	db	TONE.O2 + TONE.G
-	db	TONE.O2 + TONE.G
-	db	TONE.O2 + TONE.G
-	db	TONE.O2 + TONE.G	; 64
-
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F
-	db	TONE.O2 + TONE.F	; 64
-
-	db	0x80
-
-.@3	db	-16, TONE.O5 + TONE.G
-	db	TONE.O5 + TONE.E
-	db	-32, TONE.O5 + TONE.E
-
-	db	-16, TONE.O5 + TONE.G
-	db	TONE.O5 + TONE.E
-	db	-32, TONE.O5 + TONE.E
-
-	db	-16, TONE.O5 + TONE.C
-	db	TONE.O5 + TONE.D
-	db	TONE.O5 + TONE.E
-	db	TONE.O5 + TONE.F
-
-	db	-16, TONE.O5 + TONE.G
-	db	-16, TONE.O5 + TONE.G
-	db	-32, TONE.O5 + TONE.G
-
-	db	0x80
+.@3     db      -16, TONE.O3 + TONE.C
+        db      TONE.O3 + TONE.G
+        db      TONE.O3 + TONE.E
+        db      TONE.O3 + TONE.G
+        db      TONE.O2 + TONE.B
+        db      TONE.O3 + TONE.G
+        db      TONE.O3 + TONE.D
+        db      TONE.O3 + TONE.G
+        db      TONE.O3 + TONE.C
+        db      TONE.O3 + TONE.G
+        db      TONE.O3 + TONE.E
+        db      TONE.O3 + TONE.G
+        db      TONE.O3 + TONE.C
+        db      TONE.O3 + TONE.C
+        db      -32, TONE.O3 + TONE.G
+        db      -16, TONE.O3 + TONE.C
+        db      TONE.O3 + TONE.G
+        db      TONE.O3 + TONE.E
+        db      TONE.O3 + TONE.G
+        db      TONE.O2 + TONE.B
+        db      TONE.O3 + TONE.G
+        db      TONE.O3 + TONE.D
+        db      TONE.O3 + TONE.G
+        db      TONE.O3 + TONE.C
+        db      TONE.O3 + TONE.G
+        db      TONE.O3 + TONE.E
+        db      TONE.O3 + TONE.G
+        db      TONE.O3 + TONE.E
+        db      TONE.O3 + TONE.E
+        db      -32, TONE.O3 + TONE.E
+        db      0x80
 
 ; o4l48dg>cfb>e
 SEDATA:
