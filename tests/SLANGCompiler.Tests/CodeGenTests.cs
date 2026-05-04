@@ -560,4 +560,73 @@ public class CodeGenTests
         // BYTE store回数（LD (HL),E without INC HL; LD (HL),D）
         Assert.DoesNotContain("INC\tHL\n\tLD\t(HL),D", body);
     }
+
+    [Fact]
+    public void ByteArrayParam_ByteStep_ByteLoad()
+    {
+        // 引数 `BYTE T[]` (BYTE 配列ポインタ) へのインデックスアクセスが
+        // BYTE step / BYTE load コードを生成することを確認 (= 旧バグ:
+        // ParamDecl.IsArray + Size が IR の LocalVarInfo に伝わらず WORD 扱い
+        // → 2 byte step / 2 byte load の wrong code 生成、を防止)。
+        var asm = Compile("F(BYTE T[]) VAR BYTE B[2]; { B[0] = T[0]; B[1] = T[1]; } MAIN() BEGIN F($1000); END;");
+        var body = asm.Split("F:")[1].Split("_F_EXIT")[0];
+        // BYTE load: LD L,(HL); LD H,$00 (1 byte 読込 + 上位 0 fill)
+        Assert.Contains("LD\tL,(HL)", body);
+        Assert.Contains("LD\tH,$00", body);
+        // BYTE step: T[1] には INC HL (= +1 byte)。
+        Assert.Contains("INC\tHL", body);
+        // WORD load (= 2 byte 読込) が出ていないこと
+        Assert.DoesNotContain("LD\tE,(HL)\n\tINC\tHL\n\tLD\tD,(HL)", body);
+    }
+
+    private (string asm, DiagnosticBag diag) TryCompile(string source)
+    {
+        var diag = new DiagnosticBag();
+        var lexer = new Lexer.Lexer(source);
+        var tokens = lexer.Tokenize();
+        var preprocessor = new Preprocessor(diag);
+        tokens = preprocessor.Process(tokens, ".");
+        var parser = new Parser.Parser(tokens, diag);
+        var ast = parser.ParseCompilationUnit();
+        var analyzer = new SemanticAnalyzer(diag);
+        analyzer.Analyze(ast);
+        return ("", diag);
+    }
+
+    [Fact]
+    public void DuplicateName_ParamVsStaticDecl_Errors()
+    {
+        // F(T) VAR BYTE T[]; ... — param T と static decl T が衝突
+        // 旧挙動: silent overwrite で IR と semantic で解決順が逆転する危険
+        var (_, diag) = TryCompile("F(T) VAR BYTE T[]; { T[0] = 0; } MAIN() BEGIN F($1000); END;");
+        Assert.True(diag.HasErrors);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("duplicate name 'T'"));
+    }
+
+    [Fact]
+    public void DuplicateName_ParamVsParam_Errors()
+    {
+        // F(T, T) — 同名パラメータの重複
+        var (_, diag) = TryCompile("F(T, T) { } MAIN() BEGIN F(1, 2); END;");
+        Assert.True(diag.HasErrors);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("duplicate parameter name 'T'"));
+    }
+
+    [Fact]
+    public void DuplicateName_CaseInsensitive_Errors()
+    {
+        // F(T, t) — case-insensitive モード default で同名扱い
+        var (_, diag) = TryCompile("F(T, t) { } MAIN() BEGIN F(1, 2); END;");
+        Assert.True(diag.HasErrors);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("duplicate parameter name"));
+    }
+
+    [Fact]
+    public void DuplicateName_StaticVsLocal_Errors()
+    {
+        // F() VAR X; { VAR X; ... } — static と local の衝突
+        var (_, diag) = TryCompile("F() VAR X; BEGIN VAR X; X=1; END; MAIN() BEGIN F(); END;");
+        Assert.True(diag.HasErrors);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("duplicate name 'X'"));
+    }
 }

@@ -770,15 +770,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _localOffset = 0;
 
         // 仮引数を仮登録（オフセットはLocalDeclarations走査後に確定）
-        // 各引数のバイトサイズを ParamDecl.Size から取得 (FLOAT=3, BYTE/WORD=2)
+        // 各引数のバイトサイズを ParamDecl.Size から取得 (FLOAT=3, BYTE/WORD=2、配列引数は常に 2 byte ポインタ)
         var paramNames = new List<string>();
         var paramSizes = new List<int>();
         foreach (var p in node.Parameters)
         {
-            int sz = p.Size == DataSize.Float ? 3 : 2;
-            _localVars[p.Name] = new LocalVarInfo(0, sz); // 仮オフセット、正しいサイズ
+            var info = MakeParamLocalVarInfo(p, 0); // 仮オフセット
+            _localVars[p.Name] = info;
             paramNames.Add(p.Name);
-            paramSizes.Add(sz);
+            paramSizes.Add(info.ByteSize);
         }
 
         Emit(IrOp.FuncBegin, IrOperand.Sym(LabelUtils.SanitizeLabel(node.Name)));
@@ -798,9 +798,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
             int paramTotalBytes = paramSizes.Sum();
             int totalFrameSize = _localOffset + paramTotalBytes;
             int argOff = 0x70 - totalFrameSize;
-            for (int i = 0; i < paramNames.Count; i++)
+            for (int i = 0; i < node.Parameters.Count; i++)
             {
-                _localVars[paramNames[i]] = new LocalVarInfo(argOff, paramSizes[i]);
+                _localVars[paramNames[i]] = MakeParamLocalVarInfo(node.Parameters[i], argOff);
                 argOff += paramSizes[i];
             }
             // localOffsetに引数分も加算（ADD IY,BCのフレームサイズ）
@@ -833,6 +833,29 @@ public class IrGenerator : IAstVisitor<IrOperand>
     }
 
     /// <summary>ローカル変数のオフセットを割り当て</summary>
+    /// <summary>
+    /// 仮引数 (ParamDecl) を関数スコープの LocalVarInfo に変換する。
+    /// 配列引数 (BYTE T[] など) は常に 2 byte ポインタとしてスタックに積まれるが、
+    /// 添字アクセス時に必要な要素サイズ (BYTE=1 / WORD=2 / FLOAT=3) と byte 配列フラグも反映する。
+    /// </summary>
+    private static LocalVarInfo MakeParamLocalVarInfo(ParamDecl p, int offset)
+    {
+        if (p.IsArray)
+        {
+            int elemSize = p.Size switch
+            {
+                DataSize.Byte => 1,
+                DataSize.Float => 3,
+                _ => 2,
+            };
+            bool isByte = p.Size == DataSize.Byte;
+            return new LocalVarInfo(offset, 2, Kind: VarKind.Pointer, IsByte: isByte, ElemSize: elemSize);
+        }
+        // 非配列: BYTE/WORD はスタックに 2 byte で積む (BYTE は upper byte 不定)、FLOAT は 3 byte
+        int sz = p.Size == DataSize.Float ? 3 : 2;
+        return new LocalVarInfo(offset, sz);
+    }
+
     private int AllocLocalVar(string name, int byteSize)
     {
         // BYTE/WORDとも2バイト確保（仕様準拠）

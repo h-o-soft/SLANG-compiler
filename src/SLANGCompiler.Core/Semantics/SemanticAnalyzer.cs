@@ -25,9 +25,12 @@ public class SemanticAnalyzer : IAstVisitor<object?>
 
     public SymbolTable Symbols => _symbols;
 
+    private readonly bool _caseSensitive;
+
     public SemanticAnalyzer(DiagnosticBag diagnostics, bool caseSensitive = false)
     {
         _diagnostics = diagnostics;
+        _caseSensitive = caseSensitive;
         _symbols = new SymbolTable(caseSensitive);
         _constEval = new ConstEvaluator(_symbols);
         RegisterBuiltins();
@@ -308,7 +311,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     public object? VisitFuncDef(FuncDef node)
     {
         // 関数自体をグローバルに登録 (overlay 配下でも main と共有する global scope へ)
-        var paramTypes = node.Parameters.Select(p => DataSizeToType(p.Size)).ToList();
+        var paramTypes = node.Parameters.Select(MakeParamType).ToList();
         var returnType = DataSizeToType(node.ReturnSize);
         var funcType = new FunctionType(returnType, paramTypes);
         var funcSym = _currentOverlayIndex.HasValue
@@ -322,12 +325,26 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         var prevFunc = _currentFunc;
         _currentFunc = new FuncInfo(node.Name);
 
+        // 関数スコープ内で定義された名前を追跡し、重複をエラー化する。
+        // SymbolTable.Scope.Define は後勝ち上書きで silent overwrite するため、
+        // ここで明示的に重複を検出しないと param と static/local 宣言が同名になっても
+        // 警告すら出ず IR と semantic で解決順が逆転する危険な状態になる。
+        var nameComparer = _caseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
+        var defined = new HashSet<string>(nameComparer);
+
         // 仮引数を動的変数として登録
         // 仕様: 引数は(IY+$70)から順に配置
         int argOffset = 0x70;
         foreach (var param in node.Parameters)
         {
-            var pType = DataSizeToType(param.Size);
+            if (!defined.Add(param.Name))
+            {
+                _diagnostics.Error(
+                    $"duplicate parameter name '{param.Name}' in function '{node.Name}'",
+                    param.Span);
+                continue;
+            }
+            var pType = MakeParamType(param);
             var pSym = _symbols.Define(param.Name, SymbolKind.Parameter, pType);
             pSym.IsGlobal = false;
             pSym.Offset = argOffset;
@@ -338,12 +355,18 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         _currentFuncName = node.Name;
         _inStaticDecl = true;
         foreach (var decl in node.StaticDeclarations)
+        {
+            CheckDuplicateDeclName(decl, defined, node.Name, "static declaration");
             decl.Accept(this);
+        }
         _inStaticDecl = false;
 
         // 局所宣言（IYフレームに配置）
         foreach (var decl in node.LocalDeclarations)
+        {
+            CheckDuplicateDeclName(decl, defined, node.Name, "local declaration");
             decl.Accept(this);
+        }
 
         // 本体
         node.Body.Accept(this);
@@ -517,6 +540,40 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         DataSize.Float => SlangType.Float,
         _ => SlangType.Word,
     };
+
+    /// <summary>
+    /// 仮引数 (ParamDecl) を semantic 型に変換する。
+    /// 配列引数 (BYTE T[] など) は PointerType wrap、それ以外は基本型そのまま。
+    /// IR 側 MakeParamLocalVarInfo と対応する形で IsArray を扱う。
+    /// </summary>
+    private static SlangType MakeParamType(ParamDecl p)
+    {
+        var baseType = DataSizeToType(p.Size);
+        return p.IsArray ? new PointerType(baseType) : baseType;
+    }
+
+    /// <summary>
+    /// 関数スコープ内の宣言ノード (VarDecl / ArrayDecl / ConstDecl) の名前が
+    /// 既存定義と衝突したらエラーを出す。AST ノードによって名前フィールドが
+    /// 異なるので局所的に解決する。defined set にも未定義の名前を追加する。
+    /// </summary>
+    private void CheckDuplicateDeclName(AstNode decl, HashSet<string> defined, string funcName, string kind)
+    {
+        string? name = decl switch
+        {
+            VarDecl v => v.Name,
+            ArrayDecl a => a.Name,
+            ConstDecl c => c.Name,
+            _ => null,
+        };
+        if (name == null) return;
+        if (!defined.Add(name))
+        {
+            _diagnostics.Error(
+                $"duplicate name '{name}' in function '{funcName}' ({kind} conflicts with parameter or earlier declaration)",
+                decl.Span);
+        }
+    }
 }
 
 /// <summary>
