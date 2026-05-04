@@ -2,6 +2,11 @@
 
 ## Version 0.24.0
 
+- コンパイラ: BYTE 配列引数の型情報伝播 + 関数スコープ重複名検出 (#171)
+  - `F(BYTE T[]) ... T[i]` のような BYTE 配列引数が WORD として扱われ、1 byte step / byte load の代わりに 2 byte step / 2 byte load の wrong code を生成していたバグを修正 (`ParamDecl.IsArray` + `Size` を IR の `LocalVarInfo` と semantic の `PointerType` 両方に伝播)
+  - 関数引数とローカル/静的宣言が同名でも警告無しに silent overwrite され、IR と semantic で同一識別子の解決先が逆転する dangerous な状態を解消。`SemanticAnalyzer.VisitFuncDef` で param 同士 / param vs static decl / param vs local decl / static vs local decl の 4 ケースを明示エラー化 (case-insensitive default、`_caseSensitive` 尊重)
+  - **既存 SLANG コードへの behavior change**: BYTE 配列引数を使ってる既存 SL は wrong code が消えて意図通りに動くようになる。重複名を意図的に書いていた既存 SL は build エラーになる (= 修正対象、silent drop で動いていた挙動は本来未定義)
+
 - PCG ボード (PCG-8100 後期 / PCG-8200 / PCG-8800 + PSA3.0 等の互換) 搭載 8253 3 ch サウンド向けドライバ (`runtime/libpc80mk2_sound.asm`) の品質改善
   - `SND_ISPLAYING()` の 3 ch 判定バグ修正 (CH1/CH2 の判定結果が捨てられて実質 CH3 のみで判定されていた)
   - 休符サポート追加 — `TONE.REST = 0x7F` を MML データに置けば該当 length 分 silence
