@@ -104,6 +104,17 @@ createRelease() {
     *)           cp ../../tools/runcpm.sh tools/ ;;
   esac
 
+  # mzd88 (MZ-2500 D88 image 操作ツール、issaUt/mz2500-tools の C 実装、MIT)
+  # repo には platform 別 file 名 (mzd88-{rid}) で commit、配布物では現在 OS 用
+  # binary を `mzd88(.exe)` にリネームコピーする (= ToolResolver が両 file 名を
+  # fallback で探す)。license / 出典は THIRD_PARTY_NOTICES.md に記載。
+  case "$1" in
+    osx-arm64)   cp ../../tools/mzd88-osx-arm64    tools/mzd88     && chmod +x tools/mzd88 ;;
+    osx-x64)     cp ../../tools/mzd88-osx-x64      tools/mzd88     && chmod +x tools/mzd88 ;;
+    linux-x64)   cp ../../tools/mzd88-linux-x64    tools/mzd88     && chmod +x tools/mzd88 ;;
+    win-x64)     cp ../../tools/mzd88-win-x64.exe  tools/mzd88.exe ;;
+  esac
+
   zip -r SLANG-compiler-$3-$1.zip * -x '*/.DS_Store'
   mv SLANG-compiler-$3-$1.zip ../../
   cd ../..

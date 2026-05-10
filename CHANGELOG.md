@@ -90,9 +90,15 @@
   - mz25iocs: 新規 mzd88 driver を追加。`mzd88 -blank` で空 D88 を生成し `mzd88 -add` で main + extra_files を格納
   - env file `disk:` セクション拡張: `title` (mzd88 `--title` 用、optional) / `extra_files` (= mzd88 で main 後に追加格納するファイル群、起動用 BASIC ローダ等)
   - 新 CLI option `--mzd88` + 環境変数 `MZD88_PATH` で path override 可能 (= ndc / hudisk と同パターンの解決順)
-  - mzd88 binary は当面外部依存 (= `make setup-tools` 対象外)、ユーザー側で issaUt/mz2500-tools から build して配置
   - mz25iocs では overlay (`#MODULE`) は当面 scope 外 (= overlay bin が渡されると明示エラーで終了)
   - 配布版 (`Makefile.dist`) の `make ENV=mz25iocs disk_image` 統合は別途対応予定
+
+- mzd88 (MZ-2500 D88 image 操作ツール、issaUt/mz2500-tools の C 実装、MIT) を 4 platform binary として同梱
+  - `tools/mzd88-{osx-arm64,osx-x64,linux-x64,win-x64.exe}` を repo に commit
+  - publish.sh が現在 OS 用の binary を `tools/mzd88(.exe)` にリネームコピー (= 配布 zip では 1 file)
+  - ToolResolver.ResolveMzd88 を platform suffix 付き file 名でも探すよう拡張 (dev 環境で repo の `tools/mzd88-{rid}` を発見可能)
+  - cross-build 手順: macOS は `cc -Os` + `clang -arch x86_64 -Os`、Linux/Windows は `zig cc -target x86_64-linux-musl|x86_64-windows-gnu -Os -Wl,-s`
+  - source 改変なし。license 文 + 出典は `THIRD_PARTY_NOTICES.md` に記載
 
 ## Version 0.23.0
 

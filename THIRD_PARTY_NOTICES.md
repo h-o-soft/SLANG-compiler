@@ -68,6 +68,25 @@ PCG-8100 後期 / PCG-8200 / PCG-8800 系互換ボード (PSA3.0 等の互換含
 
 ---
 
+## mzd88 (MZ-2500 D88 image 操作ツール)
+
+MZ-2500 用 BASIC システム / IOCS 環境 (`-E mz25iocs`) の `slangbuild --emit disk` 機能で使用される D88 image 構築ツール。空 D88 生成 (`-blank`) と main bin / 起動用 BASIC ローダの追加 (`-add`) を担当。
+
+| 配布物名 | repo 配置先 | 配布 zip 配置先 | 取得日 | 改変有無 |
+|---|---|---|---|---|
+| `mzd88` (osx-arm64 binary) | `tools/mzd88-osx-arm64` | `tools/mzd88` (= rename) | 2026-05-10 | source 改変なし、ローカルで `cc -Os` build |
+| `mzd88` (osx-x64 binary) | `tools/mzd88-osx-x64` | `tools/mzd88` (= rename) | 2026-05-10 | source 改変なし、ローカルで `clang -arch x86_64 -Os` build |
+| `mzd88` (linux-x64 binary) | `tools/mzd88-linux-x64` | `tools/mzd88` (= rename) | 2026-05-10 | source 改変なし、ローカルで `zig cc -target x86_64-linux-musl -Os -Wl,-s` build |
+| `mzd88.exe` (win-x64 binary) | `tools/mzd88-win-x64.exe` | `tools/mzd88.exe` (= rename) | 2026-05-10 | source 改変なし、ローカルで `zig cc -target x86_64-windows-gnu -Os -Wl,-s` build |
+
+**取得元**: `https://github.com/issaUt/mz2500-tools` (= `mzd88.c` の C 実装)
+
+**License**: MIT License (= `LICENSE` ファイルあり、Copyright (c) 2026 issaUt)
+
+**用途**: MZ-2500 用 D88 disk image を `slangbuild --emit disk -E mz25iocs` で生成する際に、`mzd88 -blank` で空 D88 を作成し、`mzd88 -add` で main bin (`PROG.OBJ`) と起動用 BASIC ローダ (`runtime/mz2500/J8000.bas.bsd`) を格納します。
+
+---
+
 ## LSXPROG.D88 (LSX-Dodgers boot disk template)
 
 lsx / x1 環境 (`-E lsx` / `-E x1`) の `slangbuild --emit disk` 機能でテンプレート D88 として使用。
