@@ -106,6 +106,8 @@
   - mzd88 path は `--mzd88` 明示せず `ResolveMzd88` の auto fallback に任せる (= 配布物では `tools/mzd88(.exe)`、dev 環境では `tools/mzd88-{rid}(.exe)` を発見、他 tool との非対称な唯一の例外)
   - help target の ENV 一覧に sosmz2500 / mz25iocs 追加
 
+- README / setupenv.sh に Linux/WSL 環境での mono CP932 対応 (`libmono-i18n4.0-all`) 注意書きを追加 (= HuDisk 経路の sos / sosx1 / sosmz2500 で `Encoding 932 data could not be found` を踏むため、Debian/Ubuntu では `sudo apt install libmono-i18n4.0-all` で別途インストール必要、macOS Homebrew mono にはデフォルトで含まれるため不要)
+
 ## Version 0.23.0
 
 
