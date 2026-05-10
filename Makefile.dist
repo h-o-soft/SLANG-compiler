@@ -77,6 +77,13 @@ HUDISK = tools/HuDisk.exe
 # 信用し repo 同梱 (setup-tools 不要)。Linux/macOS は mono 経由で起動するが、
 # その分岐は slangbuild の ToolResolver に閉じている。
 UDOSTOOL = tools/udostool.exe
+# mzd88: MZ-2500 用 D88 image 操作ツール (issaUt/mz2500-tools の C 実装、MIT)。
+# 配布 zip では publish.sh が現在 OS 用 binary を `tools/mzd88(.exe)` に
+# リネームコピーする。repo (dev) では `tools/mzd88-{rid}(.exe)` のみ存在。
+# slangbuild の ResolveMzd88 が両 file 名を fallback で探すため、Makefile.dist
+# からは `--mzd88` を明示せず auto resolve に任せる (= 他 tool と非対称な
+# 唯一の例外。固定 file 名にできない都合上の妥協)。ユーザーが override したい
+# 場合は環境変数 `MZD88_PATH=...` or slangbuild に `--mzd88 ...` を直接指定。
 
 # OUTPROG は ENV ブロック内で BIN_EXT を上書きすると `.cmt` 等にも切替わる
 # (= pc80mk2 で `PROG.cmt` 出力)。slangbuild は env file `output:` から
@@ -101,6 +108,21 @@ else ifeq ($(ENV), sosx1)
   EMU = @echo "Set EMU variable for your emulator" \#
   DISK_IMAGE = images/SOSPROG.D88
   BIN_EXT_ENV = $(BIN_EXT)
+else ifeq ($(ENV), sosmz2500)
+  # MZ-2500 上の S-OS 環境。HuDisk 経路で SOSPROG.D88 共用 template に
+  # main bin (PROG.bin) を書き込む (= sos / sosx1 と同じパターン)。
+  EMU = @echo "MZ-2500 S-OS emulator not configured. Set EMU variable" \#
+  DISK_IMAGE = images/SOSPROG.D88
+  BIN_EXT_ENV = $(BIN_EXT)
+else ifeq ($(ENV), mz25iocs)
+  # MZ-2500 BASIC / IOCS 環境。mzd88 経路で空 D88 を都度生成し、main bin
+  # (PROG.obj) と起動用 BASIC ローダ (runtime/mz2500/J8000.bas.bsd) を格納。
+  # template は使わず `mzd88 -blank` で都度作成するため DISK_IMAGE は出力先
+  # path のみ意味を持つ。BIN_EXT は `.obj` (= MZ-2500 IOCS の object 形式慣例)。
+  EMU = @echo "MZ-2500 emulator not configured. Set EMU variable" \#
+  DISK_IMAGE = $(dir $(TARGET))M25PROG.d88
+  BIN_EXT = .obj
+  BIN_EXT_ENV = .obj
 else ifeq ($(ENV), pc88mk2sr)
   EMU = @echo "Set EMU variable for your emulator" \#
   DISK_IMAGE = images/PC88MK2SR.d88
@@ -266,6 +288,26 @@ disk_image: $(TARGET)$(SRC_EXT)
 	$(SLANGBUILD) $< -E $(SLANGENV) -I include \
 		--slangc $(SLANGC) --asm $(ASM) --hudisk $(HUDISK) \
 		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
+else ifeq ($(ENV), sosmz2500)
+# sosmz2500 は sos / sosx1 と同じ slangbuild --emit disk + HuDisk 経路。
+# template = images/templates/SOSPROG.D88 (sos/sosx1 共用)。MZ-2500 実機で
+# 起動するには本ディスクを B ドライブに入れて X1 用 SOSPROG から呼び出す
+# 運用 (= 詳細は docs/MZ2500.md)。
+disk_image: $(TARGET)$(SRC_EXT)
+	$(SLANGBUILD) $< -E $(SLANGENV) -I include \
+		--slangc $(SLANGC) --asm $(ASM) --hudisk $(HUDISK) \
+		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
+else ifeq ($(ENV), mz25iocs)
+# mz25iocs は slangbuild --emit disk + mzd88 経路。template は使わず
+# `mzd88 -blank` で都度空 D88 を生成、main bin (PROG.obj) と起動用 BASIC
+# ローダ (runtime/mz2500/J8000.bas.bsd) を `-add` で格納する。
+# overlay (`#MODULE`) は当面 scope 外 (= overlay bin が渡されると明示エラー)。
+# `--mzd88` は明示せず ResolveMzd88 の auto fallback に任せる (= 上記 MZD88
+# 定義のコメント参照、平 file 名 / platform 別 file 名の両方を試す仕組み)。
+disk_image: $(TARGET)$(SRC_EXT)
+	$(SLANGBUILD) $< -E $(SLANGENV) -I include \
+		--slangc $(SLANGC) --asm $(ASM) \
+		-o $(dir $(TARGET))PROG --emit disk --disk-image $(DISK_IMAGE)
 else ifeq ($(ENV), pc88mk2sr)
 # pc88mk2sr は slangbuild --emit disk + udostool 経路。template
 # (images/templates/PC88MK2SR.D88) をコピー → udostool で IPL/SUB/SYS 書込 →
@@ -362,6 +404,6 @@ help:
 	@echo "  PREFIX=path        - Installation prefix (default: ~/.local on Unix,"
 	@echo '                       %USERPROFILE%\.local\bin on Windows)'
 	@echo "  TARGET=path        - Sample source file (without extension)"
-	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/pc88mk2sr/pc80mk2/pc80mk2x/pc80mk2xsd/vgs0/zxn/msx2/msxrom/cpm)"
+	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/sosmz2500/mz25iocs/pc88mk2sr/pc80mk2/pc80mk2x/pc80mk2xsd/vgs0/zxn/msx2/msxrom/cpm)"
 	@echo ""
 	@echo "Detected OS: $(DETECTED_OS)"

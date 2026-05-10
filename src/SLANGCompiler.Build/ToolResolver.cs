@@ -422,6 +422,89 @@ public class ToolResolver
     }
 
     /// <summary>
+    /// mzd88 (MZ-2500 D88 image 操作ツール、issaUt/mz2500-tools の C 実装) を解決。
+    /// `--emit disk` の tool: mzd88 経路で必要 (mz25iocs 等)。
+    ///
+    /// mzd88 は単純な native 実行ファイル (= .NET assembly ではない) のため
+    /// MonoRun 不要。<see cref="ResolveNdc"/> と同パターンで解決する。
+    ///
+    /// **dev 環境 vs 配布物の file 名**:
+    /// - repo の tools/ には platform 別 file 名で commit (= mzd88-osx-arm64 /
+    ///   mzd88-osx-x64 / mzd88-linux-x64 / mzd88-win-x64.exe)。配布時 publish.sh
+    ///   が現在 OS 用の binary を選んで `mzd88(.exe)` にリネームコピーする。
+    /// - 配布物環境では `tools/mzd88(.exe)` (= リネーム済) のみ存在
+    /// - dev 環境では `tools/mzd88-{platform}` のみ存在 (= リネーム前)
+    /// 両環境で動かすため、`mzd88(.exe)` と `mzd88-{currentRid}(.exe)` の
+    /// 両方を順番に探す。
+    ///
+    /// 解決順 (ndc と同じ + platform suffix fallback):
+    /// 1) cliOverride (--mzd88)
+    /// 2) MZD88_PATH 環境変数
+    /// 3) {baseDir}/tools/mzd88(.exe) → mzd88-{rid}(.exe) (= 配布物同梱 / dev)
+    /// 4) {baseDir}/../tools/... (= dev publish レイアウト)
+    /// 5) install dir (= ~/.config/SLANG/tools/...)
+    /// 6) PATH 上の mzd88
+    /// 7) repo root 基準 tools/... (dev fallback)
+    /// </summary>
+    public ResolvedTool ResolveMzd88(string? cliOverride)
+    {
+        if (!string.IsNullOrEmpty(cliOverride) && File.Exists(cliOverride))
+            return new ResolvedTool(cliOverride, ResolutionKind.DirectExe);
+
+        var envPath = Environment.GetEnvironmentVariable("MZD88_PATH");
+        if (!string.IsNullOrEmpty(envPath) && File.Exists(envPath))
+            return new ResolvedTool(envPath, ResolutionKind.DirectExe);
+
+        // 候補 file 名: mzd88(.exe) と mzd88-{rid}(.exe) を順次探す。
+        // 配布物 (publish.sh で rename 済) では mzd88、dev 環境では mzd88-{rid}。
+        var names = GetMzd88CandidateNames();
+
+        foreach (var name in names)
+        {
+            var bundledSibling = Path.Combine(_baseDir, "tools", name);
+            if (File.Exists(bundledSibling)) return new ResolvedTool(bundledSibling, ResolutionKind.DirectExe);
+            var bundledParent = Path.Combine(_baseDir, "..", "tools", name);
+            if (File.Exists(bundledParent))
+                return new ResolvedTool(Path.GetFullPath(bundledParent), ResolutionKind.DirectExe);
+
+            // install dir (~/.config/SLANG/tools/, $SLANG_HOME/tools/)
+            foreach (var installDir in GetInstallToolDirs())
+            {
+                var p = Path.Combine(installDir, name);
+                if (File.Exists(p)) return new ResolvedTool(p, ResolutionKind.DirectExe);
+            }
+
+            var onPath = FindOnPath(name);
+            if (onPath != null) return new ResolvedTool(onPath, ResolutionKind.DirectExe);
+
+            var repoTools = LocateRepoFile($"tools/{name}");
+            if (repoTools != null) return new ResolvedTool(repoTools, ResolutionKind.DirectExe);
+        }
+
+        throw new FileNotFoundException(
+            "mzd88 not found. Tried: --mzd88, $MZD88_PATH, bundled "
+            + "{baseDir}/tools, {baseDir}/../tools, install dir tools/, PATH, and repo root "
+            + $"(searched names: {string.Join(", ", names)}). "
+            + "Run `make setup-tools` to populate, or specify --mzd88 <path> explicitly.");
+    }
+
+    /// <summary>
+    /// mzd88 の探索 file 名候補を優先順で返す。
+    /// 配布物では `mzd88(.exe)` (= publish.sh で rename 済)、dev 環境では
+    /// `mzd88-{rid}(.exe)` を見つけたい (= repo に platform 別 file 名で commit
+    /// されているため)。
+    /// </summary>
+    private static IReadOnlyList<string> GetMzd88CandidateNames()
+    {
+        var candidates = new List<string> { $"mzd88{ExeSuffix}" };
+        foreach (var rid in GetCurrentOsRidCandidates())
+        {
+            candidates.Add($"mzd88-{rid}{ExeSuffix}");
+        }
+        return candidates;
+    }
+
+    /// <summary>
     /// install dir (= make install で配置される) 配下の tools/ を返す。
     /// SLANG_HOME → ~/.config/SLANG の順、存在するもののみ。
     /// </summary>

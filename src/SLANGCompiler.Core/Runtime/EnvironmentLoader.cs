@@ -227,6 +227,21 @@ public class EnvironmentLoader
                     })
                     .ToList();
             }
+
+            // mzd88 の title (= --title 引数、optional)
+            if (!string.IsNullOrEmpty(raw.Disk.Title))
+                config.Disk.Title = raw.Disk.Title;
+
+            // mzd88 の extra_files (= 起動用 BASIC ローダ等の追加ファイル)。
+            // system_files と同じく env file dir 基準で絶対化。
+            if (raw.Disk.ExtraFiles != null && raw.Disk.ExtraFiles.Count > 0)
+            {
+                config.Disk.ExtraFiles = raw.Disk.ExtraFiles
+                    .Select(ef => string.IsNullOrEmpty(ef.Path)
+                        ? ""
+                        : Path.GetFullPath(Path.Combine(envDir, ef.Path)))
+                    .ToList();
+            }
         }
 
         return config;
@@ -323,6 +338,21 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "system_files")]
         public List<EnvFileSystemFile>? SystemFiles { get; set; }
+
+        // mzd88 driver 用: --title 引数 (= MZ-2500 D88 image label、optional)
+        [YamlMember(Alias = "title")]
+        public string? Title { get; set; }
+
+        // mzd88 driver 用: main 書込後に -add する追加ファイル群
+        // (= 起動用 BASIC ローダ等)。env file dir 基準の相対 path を絶対化。
+        [YamlMember(Alias = "extra_files")]
+        public List<EnvFileExtraFile>? ExtraFiles { get; set; }
+    }
+
+    private class EnvFileExtraFile
+    {
+        [YamlMember(Alias = "path")]
+        public string? Path { get; set; }
     }
 
     private class EnvFileSystemFile
