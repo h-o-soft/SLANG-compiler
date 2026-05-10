@@ -92,6 +92,12 @@ X1専用のグラフィックス（libx1_grp、libx1_sgl）、PSG、MAGIC、PCG�
 
 X1/X1turbo上のS-OSで動作させる場合はこちらを選択してください。なお、他機種のS-OSでは動作しません。
 
+## sosmz2500 ( S-OS for SHARP MZ-2500 )
+
+S-OSをMZ-2500上で動作させるための環境です。`sos` 環境をベースに標準の入出力・ファイル・SOROBAN ライブラリを使用します。MAGIC 系ライブラリは含まれません。
+
+D88 イメージ作成は X1 用 SOSPROG.D88 (= sos / sosx1 と同じ template) を流用します。MZ-2500 実機 (またはエミュレータ) では、このディスクを B ドライブに挿入し、別途 X1 用の SOSPROG ディスクから呼び出して実行する運用を想定しています。
+
 ## msx2 ( MSX / MSX2 )
 
 LSX-Dodgers環境をベースとし、ファイル関連のみMSX-DOS2に対応させた環境です。
@@ -141,6 +147,16 @@ ORGは$1A00となっており、ディスクベーシックの環境上で動作
 PRINT文はテキストVRAMへの直接書き込みで実現しています。また、VSYNCはV-BLANK割り込みを利用して実装されています。
 
 現状、基本的な文字表示とディスクアクセス機能が実装されていますが、キー入力関連については未実装となります。
+
+## mz25iocs ( SHARP MZ-2500 BASIC / IOCS )
+
+MZ-2500 の BASIC システム / IOCS 上で動作させるための最小環境です。
+
+PRINT・INKEY のみ IOCS (`RST 18H`) 経由で実装しており、その他の入力系 (LINPUT / GETL / GETLIN / INPUT) は呼ばれた場合 ESC キャンセル相当の値を返す stub 実装になっています。グラフィック関連も未実装です。
+
+D88 イメージ作成には外部ツール `mzd88` (issaUt/mz2500-tools の C 実装、MIT、`tools/mzd88-{rid}` として 4 platform binary を同梱) を使用し、`mzd88 -blank` で空 D88 を都度生成して main bin (`PROG.OBJ`) と起動用 BASIC ローダ (`runtime/mz2500/J8000.bas.bsd`) を格納します。BASIC ローダは `&H8000` にバイナリをロードして `CALL` する最小のコードで、`mz25iocs.env` の `default_org: "$8000"` と整合しています。
+
+詳細は [docs/MZ2500.md](docs/MZ2500.md) を参照してください。
 
 ## vgs0 (VGS-Zero)
 
@@ -347,8 +363,11 @@ make TARGET=examples/STARS ENV=x1 run
 | msxrom | MSX ROMカートリッジ |
 | msxlsx | MSX + LSX-Dodgers |
 | pc80mk2 | PC-8001mkII |
-| pc80mk2x | PC-8001mkII (全RAM版) |
+| pc80mk2x | PC-8001mkII (XBIOS 直接環境) |
+| pc80mk2xsd | PC-8001mkII (XBIOS 直接環境、SD カード経路) |
 | pc88mk2sr | PC-8801mkIISR |
+| sosmz2500 | S-OS for SHARP MZ-2500 (X1 SOSPROG 共用、HuDisk D88 作成) |
+| mz25iocs | MZ-2500 BASIC / IOCS 直接環境 (mzd88 で D88 作成) |
 | vgs0 | VGS-Zero |
 | zxn | ZX Spectrum Next |
 | cpm | CP/Mエミュレータ (RunCPM 同梱) |
@@ -371,8 +390,9 @@ template の入手:
 | 環境 | 出力先 (`DISK_IMAGE`) | template (`disk.template`) | 入手方法 |
 |------|----------------------|---------------------------|---------|
 | lsx / x1 | `images/LSXPROG.d88` | `images/templates/LSXPROG.D88` | repo 同梱 |
-| sos / sosx1 | `images/SOSPROG.D88` | `images/templates/SOSPROG.D88` | `make setup-tools` で取得 (S-OS 配布物 + AUTOEXEC.BAT 注入) |
+| sos / sosx1 / sosmz2500 | `images/SOSPROG.D88` | `images/templates/SOSPROG.D88` | `make setup-tools` で取得 (S-OS 配布物 + AUTOEXEC.BAT 注入)。MZ-2500 では本ディスクを B ドライブに挿入し X1 用 SOSPROG から呼び出す運用 |
 | pc88mk2sr | `images/PC88MK2SR.d88` | `images/templates/PC88MK2SR.D88` | repo 同梱 (Bookworm's Library 由来、`THIRD_PARTY_NOTICES.md` 参照) |
+| mz25iocs | `<output dir>/M25PROG.d88` | (template 不要) | `mzd88 -blank` で都度生成、`runtime/mz2500/J8000.bas.bsd` を起動用 BASIC ローダとして格納 |
 | MSX-DOS 系 | `images/dosformsx.dsk` | `tools/disk-add-overlays.py` 経路 | `make setup-tools` で取得 |
 
 # LSX-Dodgersバージョン依存について
