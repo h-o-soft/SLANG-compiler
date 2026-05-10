@@ -2,6 +2,19 @@
 
 ## Unreleased (v0.24.0 候補)
 
+- MZ-2500 環境を追加 (#172)
+  - `sosmz2500`: S-OS 上で動作させる環境 (HuDisk 経由 D88 作成、既存 sos / sosx1 と同じフロー、MAGIC 系ライブラリは含めない)
+  - `mz25iocs`: MZ-2500 BASIC システム / IOCS 上で動作させる最小環境。`PRINT` / `INKEY` のみ IOCS 経由で実装、その他入力系 (`LINPUT` / `GETL` / `GETLIN` / `INPUT`) は ESC キャンセル相当の stub return
+  - 新ライブラリ: `runtime/libmz25iocs_print.asm` / `runtime/libmz25iocs_input.asm` (`libsos_print.asm` / `libsos_input.asm` を下敷きに、S-OS 呼び出しを IOCS 直叩きに置換)
+  - 新サンプル: `examples/MZ25IOCS.SL`
+  - `make run ENV=mz25iocs` で外部ツール `mzd88` 経由 D88 作成に対応 (= `mzd88` は外部依存、`make setup-tools` 対象外、`MZD88=/path/to/mzd88` で指定可)
+  - 起動用 BASIC ローダ `runtime/mz2500/J8000.bas.bsd` を同梱 (= `&H8000` にバイナリをロードして `CALL` する最小コード)
+  - `mz25iocs.env` に新 `env_type: 7` (MZ-2500 IOCS 系) 割り当て (`sosmz2500.env` は S-OS 系として `env_type: 2`)
+  - 新 `Makefile` 変数 `MZD88` (default `mzd88`)、`BIN_EXT = .obj` for mz25iocs
+  - `Makefile` の `OUTPROG = ...PROG.bin` ハードコードを `OUTPROG = ...PROG$(BIN_EXT)` に変更 (default `.bin` 維持、`BIN_EXT` を変える env で別拡張子に切替可能に)
+  - **配布版 (`Makefile.dist`) の MZ-2500 対応は本 PR 範囲外 (= dev ビルド `Makefile` のみ対応、配布 zip での `make ENV=mz25iocs` / `make ENV=sosmz2500` は別途対応予定)**
+  - 詳細メモは `docs/MZ2500.md`
+
 - 配布 zip に `install.sh` / `install.bat` / `uninstall.sh` / `uninstall.bat` を同梱、Makefile に依存せず install / uninstall できるよう導線を切り出し (#160 短期案)
   - オプション: `--prefix <path>` / `--config-dir <path>` / `--dry-run` / `--verbose` / `--force` / `--uninstall` / `--help`
   - **危険 path guard**: uninstall 時に空 / `/` / `$HOME` / `/tmp` 単体 / `C:\` / `%USERPROFILE%` 等を refuse (絶対パス正規化してから完全一致判定、`/tmp/sub` 等は許可)

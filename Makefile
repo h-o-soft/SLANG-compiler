@@ -28,6 +28,7 @@ else
   NDC = tools/ndc
 endif
 HUDISK = HuDisk
+MZD88 ?= mzd88
 MODSPLIT = ModuleSplitter
 
 # ファイル
@@ -35,7 +36,7 @@ SRC = $(TARGET).SL
 ASM_NEW = $(TARGET).ASM
 ASM_OLD = $(TARGET).OLD.ASM
 BIN_EXT = .bin
-OUTPROG = $(dir $(TARGET))PROG.bin
+OUTPROG = $(dir $(TARGET))PROG$(BIN_EXT)
 LST = $(TARGET).lst
 SYM = $(TARGET).sym
 
@@ -79,6 +80,14 @@ else ifeq ($(ENV), sosx1)
   # EMU = ~/emu/X1/X1.exe
   EMU = @echo "S-OS emulator not configured. Set EMU variable" \#
   DISK_IMAGE = images/SOSPROG.D88
+else ifeq ($(ENV), sosmz2500)
+  EMU = @echo "MZ-2500 S-OS emulator not configured. Set EMU variable" \#
+  DISK_IMAGE = images/SOSPROG.D88
+else ifeq ($(ENV), mz25iocs)
+  EMU = @echo "MZ-2500 emulator not configured. Set EMU variable" \#
+  DISK_IMAGE = $(dir $(TARGET))M25PROG.D88
+  BIN_EXT = .obj
+  BIN_EXT_ENV = .obj
 else ifeq ($(ENV), msxrom)
   # EMU = /Applications/openMSX.app/Contents/MacOS/openmsx
   EMU = @echo "MSX emulator not configured. Set EMU variable" \#
@@ -147,11 +156,18 @@ else ifeq ($(ENV), msxrom)
 # MSX ROM: カートリッジとして実行
 run: $(OUTPROG)
 	$(EMU) $(EMUOPT) $(DISK_IMAGE)
-else ifeq ($(ENV),$(filter $(ENV),sos sosx1))
+else ifeq ($(ENV),$(filter $(ENV),sos sosx1 sosmz2500))
 # S-OS: HuDiskでD88イメージに格納
 run: $(IMGPROG)
 	$(HUDISK) -d $(DISK_IMAGE) PROG.bin
 	$(HUDISK) -a $(DISK_IMAGE) $(IMGPROG) -r 3000 -g 3000
+	$(EMU) $(DISK_IMAGE)
+else ifeq ($(ENV),mz25iocs)
+# MZ-2500 BASIC/IOCS: mzd88でD88イメージに格納
+run: $(IMGPROG)
+	$(MZD88) -blank $(DISK_IMAGE) --title SLANG
+	$(MZD88) -add $(DISK_IMAGE) $(IMGPROG) --force --load-addr 8000H --exec-addr 8000H
+	$(MZD88) -add $(DISK_IMAGE) runtime/mz2500/J8000.bas.bsd --force
 	$(EMU) $(DISK_IMAGE)
 else ifeq ($(ENV),$(filter $(ENV),x1 msx2 msxlsx))
 # X1/MSX: ndcでディスクイメージに格納

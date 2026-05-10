@@ -1,0 +1,1 @@
+   10 cls 3 ' init "crt2:320,200,16": init "crt1:80,25,1,0"   20 clear &H8000   30 bload "PROG",&H8000   50 call &H8000
