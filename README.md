@@ -315,9 +315,10 @@ default では Linux/macOS は `~/.local/bin` (binary) + `~/.config/SLANG/` (lib
   - これらを使わない通常のコンパイル / 単一バイナリ実行には不要
 - **mono** (Linux / macOS で .NET assembly な disk ツール `HuDisk.exe` / `udostool.exe` を起動する場合に必須)
   - `setupenv.sh` が S-OS template 生成のため `HuDisk.exe` を mono 経由で実行する。Windows は .NET Framework で直接実行されるため不要
-  - **sos / sosx1** 環境で `slangbuild --emit disk` を使う場合 (= HuDisk.exe 起動)
+  - **sos / sosx1 / sosmz2500** 環境で `slangbuild --emit disk` を使う場合 (= HuDisk.exe 起動)
   - **pc88mk2sr** 環境で `slangbuild --emit disk` を使う場合 (= udostool.exe 起動、Bookworm's Library 由来の汎用ディスクルーチン用ツール)
   - lsx / x1 の ndc 経路だけ使うなら mono 不要
+  - **Linux / WSL**: デフォルトの mono は日本語 (CP932) コードページを含まないため、HuDisk が `Encoding 932 data could not be found` で失敗します。Debian/Ubuntu では `sudo apt install libmono-i18n4.0-all` で別途インストールしてください。macOS の Homebrew mono にはデフォルトで含まれているため不要
 
 ### ビルドとインストール
 
