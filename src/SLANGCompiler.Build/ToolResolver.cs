@@ -422,6 +422,59 @@ public class ToolResolver
     }
 
     /// <summary>
+    /// mzd88 (MZ-2500 D88 image 操作ツール、issaUt/mz2500-tools の C 実装) を解決。
+    /// `--emit disk` の tool: mzd88 経路で必要 (mz25iocs 等)。
+    ///
+    /// mzd88 は単純な native 実行ファイル (= .NET assembly ではない) のため
+    /// MonoRun 不要。<see cref="ResolveNdc"/> と同パターンで解決する。
+    ///
+    /// 解決順 (ndc と同じ):
+    /// 1) cliOverride (--mzd88)
+    /// 2) MZD88_PATH 環境変数
+    /// 3) {baseDir}/tools/mzd88(.exe) (= 配布物同梱)
+    /// 4) {baseDir}/../tools/mzd88(.exe) (= dev publish レイアウト)
+    /// 5) install dir (= ~/.config/SLANG/tools/mzd88(.exe), $SLANG_HOME/tools/...)
+    /// 6) PATH 上の mzd88
+    /// 7) repo root 基準 tools/mzd88(.exe) (dev fallback)
+    /// </summary>
+    public ResolvedTool ResolveMzd88(string? cliOverride)
+    {
+        if (!string.IsNullOrEmpty(cliOverride) && File.Exists(cliOverride))
+            return new ResolvedTool(cliOverride, ResolutionKind.DirectExe);
+
+        var envPath = Environment.GetEnvironmentVariable("MZD88_PATH");
+        if (!string.IsNullOrEmpty(envPath) && File.Exists(envPath))
+            return new ResolvedTool(envPath, ResolutionKind.DirectExe);
+
+        var name = $"mzd88{ExeSuffix}";
+
+        var bundledSibling = Path.Combine(_baseDir, "tools", name);
+        if (File.Exists(bundledSibling)) return new ResolvedTool(bundledSibling, ResolutionKind.DirectExe);
+        var bundledParent = Path.Combine(_baseDir, "..", "tools", name);
+        if (File.Exists(bundledParent))
+            return new ResolvedTool(Path.GetFullPath(bundledParent), ResolutionKind.DirectExe);
+
+        // install dir (~/.config/SLANG/tools/, $SLANG_HOME/tools/) — make install 後の経路
+        foreach (var installDir in GetInstallToolDirs())
+        {
+            var p = Path.Combine(installDir, name);
+            if (File.Exists(p)) return new ResolvedTool(p, ResolutionKind.DirectExe);
+        }
+
+        var onPath = FindOnPath(name);
+        if (onPath != null) return new ResolvedTool(onPath, ResolutionKind.DirectExe);
+
+        var repoTools = LocateRepoFile($"tools/{name}");
+        if (repoTools != null) return new ResolvedTool(repoTools, ResolutionKind.DirectExe);
+
+        throw new FileNotFoundException(
+            "mzd88 not found. Tried: --mzd88, $MZD88_PATH, bundled "
+            + "{baseDir}/tools, {baseDir}/../tools, install dir tools/, PATH, and repo root. "
+            + "Build mzd88 from https://github.com/issaUt/mz2500-tools and place in tools/, "
+            + "or specify --mzd88 <path> explicitly.");
+    }
+
+    /// <summary>
     /// install dir (= make install で配置される) 配下の tools/ を返す。
     /// SLANG_HOME → ~/.config/SLANG の順、存在するもののみ。
     /// </summary>

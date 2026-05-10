@@ -25,6 +25,7 @@ public class Driver
         public string? NdcPath { get; set; }
         public string? HudiskPath { get; set; }
         public string? UdostoolPath { get; set; }
+        public string? Mzd88Path { get; set; }
         public bool KeepAsm { get; set; }
         public bool Verbose { get; set; }
         /// <summary>slangc に pass-through する `-I &lt;path&gt;` の値リスト</summary>
@@ -731,10 +732,11 @@ public class Driver
         }
         if (envConfig.Disk.Tool != "ndc"
             && envConfig.Disk.Tool != "hudisk"
-            && envConfig.Disk.Tool != "udostool")
+            && envConfig.Disk.Tool != "udostool"
+            && envConfig.Disk.Tool != "mzd88")
         {
             Console.Error.WriteLine(
-                $"slangbuild: only disk.tool: ndc / hudisk / udostool supported "
+                $"slangbuild: only disk.tool: ndc / hudisk / udostool / mzd88 supported "
                 + $"(got: {envConfig.Disk.Tool})");
             return 1;
         }
@@ -748,6 +750,7 @@ public class Driver
         ResolvedTool? ndc = null;
         ResolvedTool? hudisk = null;
         ResolvedTool? udostool = null;
+        ResolvedTool? mzd88 = null;
         if (envConfig.Disk.Tool == "ndc")
         {
             ndc = _resolver.ResolveNdc(_opts.NdcPath);
@@ -775,6 +778,11 @@ public class Driver
                 Console.Error.WriteLine($"slangbuild: using udostool: {via}");
             }
         }
+        else if (envConfig.Disk.Tool == "mzd88")
+        {
+            mzd88 = _resolver.ResolveMzd88(_opts.Mzd88Path);
+            if (_opts.Verbose) Console.Error.WriteLine($"slangbuild: using mzd88: {mzd88.Path}");
+        }
 
         // --disk-template が指定されていれば env の disk.template を override
         var templateOverride = !string.IsNullOrEmpty(_opts.DiskTemplatePath)
@@ -783,7 +791,7 @@ public class Driver
         if (_opts.Verbose && templateOverride != null)
             Console.Error.WriteLine($"slangbuild: disk template override: {templateOverride}");
 
-        var builder = new DiskImageBuilder(envConfig.Disk, ndc, hudisk, udostool,
+        var builder = new DiskImageBuilder(envConfig.Disk, ndc, hudisk, udostool, mzd88,
                                            _opts.Verbose, templateOverride);
         return builder.Build(mainBin, overlayBins, diskOut);
     }

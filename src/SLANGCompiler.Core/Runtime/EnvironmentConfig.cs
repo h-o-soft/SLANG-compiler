@@ -147,6 +147,20 @@ public class DiskConfig
     /// 相対 path を絶対化済み。順序保証 = YAML の system_files リスト順。
     /// </summary>
     public List<DiskSystemFile>? SystemFiles { get; set; }
+
+    /// <summary>
+    /// mzd88 専用: <c>--title</c> 引数 (= MZ-2500 D88 image label、optional)。
+    /// 他 tool では null/空。
+    /// </summary>
+    public string? Title { get; set; }
+
+    /// <summary>
+    /// mzd88 専用: main 書込後に <c>-add</c> で追加格納するファイル群
+    /// (= MZ-2500 起動用 BASIC ローダ等、load/exec 指定なしで disk に格納)。
+    /// EnvironmentLoader 側で env file dir 基準の相対 path を絶対化済み。
+    /// 順序保証 = YAML リスト順。他 tool では null。
+    /// </summary>
+    public List<string>? ExtraFiles { get; set; }
 }
 
 /// <summary>

@@ -85,6 +85,15 @@
   - 配布版 (`Makefile.dist`) の MZ-2500 対応は別途対応予定 (= dev ビルド `Makefile` のみ対応)
   - 詳細メモは `docs/MZ2500.md`
 
+- slangbuild の MZ-2500 系環境 (sosmz2500 / mz25iocs) 対応 — `--emit disk` で D88 image 自動生成
+  - sosmz2500: 既存 HuDisk driver でそのまま動作 (env file の `disk:` セクションは sos / sosx1 と同形式)
+  - mz25iocs: 新規 mzd88 driver を追加。`mzd88 -blank` で空 D88 を生成し `mzd88 -add` で main + extra_files を格納
+  - env file `disk:` セクション拡張: `title` (mzd88 `--title` 用、optional) / `extra_files` (= mzd88 で main 後に追加格納するファイル群、起動用 BASIC ローダ等)
+  - 新 CLI option `--mzd88` + 環境変数 `MZD88_PATH` で path override 可能 (= ndc / hudisk と同パターンの解決順)
+  - mzd88 binary は当面外部依存 (= `make setup-tools` 対象外)、ユーザー側で issaUt/mz2500-tools から build して配置
+  - mz25iocs では overlay (`#MODULE`) は当面 scope 外 (= overlay bin が渡されると明示エラーで終了)
+  - 配布版 (`Makefile.dist`) の `make ENV=mz25iocs disk_image` 統合は別途対応予定
+
 ## Version 0.23.0
 
 

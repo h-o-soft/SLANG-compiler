@@ -26,6 +26,7 @@ public class DiskImageBuilder
     private readonly ResolvedTool? _ndc;
     private readonly ResolvedTool? _hudisk;
     private readonly ResolvedTool? _udostool;
+    private readonly ResolvedTool? _mzd88;
     private readonly string? _templateOverride;
     private readonly bool _verbose;
 
@@ -40,12 +41,14 @@ public class DiskImageBuilder
     /// <param name="ndc">tool == "ndc" 時の ResolvedTool。それ以外は null 可</param>
     /// <param name="hudisk">tool == "hudisk" 時の ResolvedTool (Linux/macOS では MonoRun でラップ済)。それ以外は null 可</param>
     /// <param name="udostool">tool == "udostool" 時の ResolvedTool (Linux/macOS では MonoRun でラップ済)。それ以外は null 可</param>
+    /// <param name="mzd88">tool == "mzd88" 時の ResolvedTool (= native binary、MonoRun 不要)。それ以外は null 可</param>
     /// <param name="verbose">subprocess の I/O を stderr に流す</param>
     /// <param name="templateOverride">--disk-template による env.Disk.Template の上書き</param>
     public DiskImageBuilder(DiskConfig disk,
                             ResolvedTool? ndc = null,
                             ResolvedTool? hudisk = null,
                             ResolvedTool? udostool = null,
+                            ResolvedTool? mzd88 = null,
                             bool verbose = false,
                             string? templateOverride = null)
     {
@@ -53,6 +56,7 @@ public class DiskImageBuilder
         _ndc = ndc;
         _hudisk = hudisk;
         _udostool = udostool;
+        _mzd88 = mzd88;
         _verbose = verbose;
         _templateOverride = templateOverride;
     }
@@ -62,6 +66,11 @@ public class DiskImageBuilder
     /// </summary>
     public int Build(string mainBinPath, IList<string> overlayBinPaths, string outputDiskPath)
     {
+        // mzd88 経路は template / staging dir を使わず -blank で空 D88 を生成 →
+        // -add で 1 ファイルずつ追加するため、フローが大きく異なる。早期 dispatch。
+        if (_disk.Tool == "mzd88")
+            return BuildMzd88(mainBinPath, overlayBinPaths, outputDiskPath);
+
         // === 事前チェック ===
         var templatePath = !string.IsNullOrEmpty(_templateOverride)
             ? _templateOverride
@@ -204,6 +213,139 @@ public class DiskImageBuilder
                 rc = WriteEntry(overlayBinPaths[i], entryName, isMain: false,
                                 outputAbs, stagingDir);
                 if (rc != 0) return rc;
+            }
+
+            if (_verbose)
+                Console.Error.WriteLine($"slangbuild: disk image written: {outputAbs}");
+            return 0;
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(stagingDir)) Directory.Delete(stagingDir, recursive: true);
+            }
+            catch { /* best effort */ }
+        }
+    }
+
+    // ---- mzd88 経路 (mz25iocs) ----
+    //
+    // MZ-2500 用 D88 操作ツール (issaUt/mz2500-tools の C 実装)。
+    // template を使わず `-blank` で空 D88 を生成し、`-add` で main + extra_files
+    // を追加格納する。HuDisk / udostool と異なり .NET assembly ではない native
+    // binary なので MonoRun 不要 (= ResolutionKind.DirectExe で起動)。
+    //
+    // コマンド形式:
+    //   mzd88 -blank <d88> [--title <title>]
+    //   mzd88 -add   <d88> <main_bin>  --force --load-addr XXXXH --exec-addr XXXXH
+    //   mzd88 -add   <d88> <extra_bin> --force                                       (load/exec なし)
+    //
+    // overlay は本経路では未対応 (= overlay_bin が渡された場合は明示エラーで終了)。
+    private int BuildMzd88(string mainBinPath, IList<string> overlayBinPaths, string outputDiskPath)
+    {
+        if (_mzd88 == null)
+        {
+            Console.Error.WriteLine("slangbuild: mzd88 not provided for tool: mzd88");
+            return 1;
+        }
+        if (!File.Exists(mainBinPath))
+        {
+            Console.Error.WriteLine($"slangbuild: main bin not found: {mainBinPath}");
+            return 1;
+        }
+        if (overlayBinPaths.Count > 0)
+        {
+            Console.Error.WriteLine(
+                "slangbuild: tool: mzd88 does not support overlays yet (got "
+                + $"{overlayBinPaths.Count} overlay bin(s)).");
+            return 1;
+        }
+
+        var outputAbs = Path.GetFullPath(outputDiskPath);
+        var outputDir = Path.GetDirectoryName(outputAbs);
+        if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
+            Directory.CreateDirectory(outputDir);
+
+        // 既存出力があれば削除 (= mzd88 -blank は既存ファイルへの上書きで予期せぬ
+        // 結果になる可能性があるため事前 unlink で再現性を確保)。
+        if (File.Exists(outputAbs))
+        {
+            try { File.Delete(outputAbs); }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"slangbuild: cannot remove existing disk image: {outputAbs} ({ex.Message})");
+                return 1;
+            }
+        }
+
+        // 1) -blank で空 D88 を生成
+        var blankArgs = new List<string> { "-blank", outputAbs };
+        if (!string.IsNullOrEmpty(_disk.Title))
+        {
+            blankArgs.Add("--title");
+            blankArgs.Add(_disk.Title!);
+        }
+        var rcBlank = RunTool(_mzd88, blankArgs.ToArray(), ignoreFailure: false);
+        if (rcBlank != 0)
+        {
+            Console.Error.WriteLine($"slangbuild: mzd88 -blank failed (exit {rcBlank})");
+            return rcBlank;
+        }
+
+        // 2) main bin を追加 (MainName で disk 内ファイル名を指定するためコピー)
+        if (string.IsNullOrEmpty(_disk.MainName))
+        {
+            Console.Error.WriteLine("slangbuild: disk.main_name is empty in env file");
+            return 1;
+        }
+        var stagingDir = outputAbs + ".staging";
+        try
+        {
+            if (Directory.Exists(stagingDir)) Directory.Delete(stagingDir, recursive: true);
+            Directory.CreateDirectory(stagingDir);
+
+            var stagedMain = Path.Combine(stagingDir, _disk.MainName);
+            File.Copy(mainBinPath, stagedMain, overwrite: true);
+
+            var addMainArgs = new List<string> { "-add", outputAbs, stagedMain, "--force" };
+            if (_disk.MainLoad.HasValue)
+            {
+                addMainArgs.Add("--load-addr");
+                addMainArgs.Add($"{_disk.MainLoad.Value:X}H");
+            }
+            if (_disk.MainExec.HasValue)
+            {
+                addMainArgs.Add("--exec-addr");
+                addMainArgs.Add($"{_disk.MainExec.Value:X}H");
+            }
+            var rcAddMain = RunTool(_mzd88, addMainArgs.ToArray(), ignoreFailure: false);
+            if (rcAddMain != 0)
+            {
+                Console.Error.WriteLine($"slangbuild: mzd88 -add main failed (exit {rcAddMain})");
+                return rcAddMain;
+            }
+
+            // 3) extra_files を追加 (= 起動用 BASIC ローダ等、load/exec 指定なし)
+            if (_disk.ExtraFiles != null)
+            {
+                foreach (var ef in _disk.ExtraFiles)
+                {
+                    if (string.IsNullOrEmpty(ef) || !File.Exists(ef))
+                    {
+                        Console.Error.WriteLine(
+                            $"slangbuild: disk.extra_files entry not found: {ef}");
+                        return 1;
+                    }
+                    var rcAddExtra = RunTool(_mzd88,
+                        new[] { "-add", outputAbs, ef, "--force" }, ignoreFailure: false);
+                    if (rcAddExtra != 0)
+                    {
+                        Console.Error.WriteLine(
+                            $"slangbuild: mzd88 -add {Path.GetFileName(ef)} failed (exit {rcAddExtra})");
+                        return rcAddExtra;
+                    }
+                }
             }
 
             if (_verbose)
