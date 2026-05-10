@@ -100,6 +100,12 @@
   - cross-build 手順: macOS は `cc -Os` + `clang -arch x86_64 -Os`、Linux/Windows は `zig cc -target x86_64-linux-musl|x86_64-windows-gnu -Os -Wl,-s`
   - source 改変なし。license 文 + 出典は `THIRD_PARTY_NOTICES.md` に記載
 
+- 配布版 `Makefile.dist` の MZ-2500 系対応 (= `make -f Makefile.dist ENV=mz25iocs|sosmz2500 disk_image` で D88 自動生成)
+  - sosmz2500: ENV ブロック追加 (`DISK_IMAGE = images/SOSPROG.D88`、sos / sosx1 と template 共用)、`disk_image` target で slangbuild + HuDisk 経路
+  - mz25iocs: ENV ブロック追加 (`DISK_IMAGE = $(dir $(TARGET))M25PROG.d88`、`BIN_EXT = .obj`)、`disk_image` target で slangbuild + mzd88 経路
+  - mzd88 path は `--mzd88` 明示せず `ResolveMzd88` の auto fallback に任せる (= 配布物では `tools/mzd88(.exe)`、dev 環境では `tools/mzd88-{rid}(.exe)` を発見、他 tool との非対称な唯一の例外)
+  - help target の ENV 一覧に sosmz2500 / mz25iocs 追加
+
 ## Version 0.23.0
 
 
