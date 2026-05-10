@@ -72,6 +72,19 @@
   - `--emit disk` を `disk:` セクション無し env で指定すると compile 前にエラー終了
   - overlay は `_m0.cmt` 別ファイルで出るのみで、main への結合 / loader 組み立てはユーザー側
 
+- MZ-2500 環境を追加 (#172)
+  - `sosmz2500`: S-OS 上で動作させる環境 (HuDisk 経由 D88 作成、既存 sos / sosx1 と同じフロー、MAGIC 系ライブラリは含めない)
+  - `mz25iocs`: MZ-2500 BASIC システム / IOCS 上で動作させる最小環境。`PRINT` / `INKEY` のみ IOCS 経由で実装、その他入力系 (`LINPUT` / `GETL` / `GETLIN` / `INPUT`) は ESC キャンセル相当の stub return
+  - 新ライブラリ: `runtime/libmz25iocs_print.asm` / `runtime/libmz25iocs_input.asm` (`libsos_print.asm` / `libsos_input.asm` を下敷きに、S-OS 呼び出しを IOCS 直叩きに置換)
+  - 新サンプル: `examples/MZ25IOCS.SL`
+  - `make run ENV=mz25iocs` で外部ツール `mzd88` 経由 D88 作成に対応 (= `mzd88` は外部依存、`make setup-tools` 対象外、`MZD88=/path/to/mzd88` で指定可)
+  - 起動用 BASIC ローダ `runtime/mz2500/J8000.bas.bsd` を同梱 (= `&H8000` にバイナリをロードして `CALL` する最小コード)
+  - `mz25iocs.env` に新 `env_type: 7` (MZ-2500 IOCS 系) 割り当て (`sosmz2500.env` は S-OS 系として `env_type: 2`)
+  - 新 `Makefile` 変数 `MZD88` (default `mzd88`)、`BIN_EXT = .obj` for mz25iocs
+  - `Makefile` の `OUTPROG = ...PROG.bin` ハードコードを `OUTPROG = ...PROG$(BIN_EXT)` に変更 (default `.bin` 維持、`BIN_EXT` を変える env で別拡張子に切替可能に)
+  - 配布版 (`Makefile.dist`) の MZ-2500 対応は別途対応予定 (= dev ビルド `Makefile` のみ対応)
+  - 詳細メモは `docs/MZ2500.md`
+
 ## Version 0.23.0
 
 
