@@ -167,7 +167,7 @@ else ifeq ($(ENV),mz25iocs)
 run: $(IMGPROG)
 	$(MZD88) -blank $(DISK_IMAGE) --title SLANG
 	$(MZD88) -add $(DISK_IMAGE) $(IMGPROG) --force --load-addr 8000H --exec-addr 8000H
-	$(MZD88) -add $(DISK_IMAGE) tools/J8000.bas.bsd --force
+	$(MZD88) -add $(DISK_IMAGE) runtime/mz2500/J8000.bas.bsd --force
 	$(EMU) $(DISK_IMAGE)
 else ifeq ($(ENV),$(filter $(ENV),x1 msx2 msxlsx))
 # X1/MSX: ndcでディスクイメージに格納

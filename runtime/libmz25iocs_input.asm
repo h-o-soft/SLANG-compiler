@@ -30,25 +30,28 @@ RET
 
 ; @name LINPUT
 ; @resident shared
-; Not implemented.
+; Not implemented. Return $FFFF (= ESC cancelled) like libsos_input LINPUT.
+LD HL,$FFFF
 RET
 
 
 ; @name GETL
 ; @resident shared
-; Not implemented.
+; Not implemented. Return $FFFF (= ESC cancelled) like libsos_input GETL.
+LD HL,$FFFF
 RET
 
 
 ; @name GETLIN
 ; @resident shared
-; Not implemented.
+; Not implemented. Return $FFFF (= ESC cancelled) like libsos_input GETLIN.
+LD HL,$FFFF
 RET
 
 
 ; @name INPUT
 ; @resident shared
-; Not implemented.
+; Not implemented. Set CARRY = 1 and return 0 like libsos_input INPUT failure path.
 LD BC,1
 LD (_CARRY),BC
 LD HL,0
