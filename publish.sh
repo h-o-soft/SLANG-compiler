@@ -29,14 +29,27 @@ createRelease() {
     fi
   done
 
+  # examples/zxn は ZX Spectrum Next 用 (= asset binary も配布対象)。
+  # NextDAW Runtime Player (= NextDAW_RuntimePlayer_E000.bin) は
+  # シェアウェアにつき配布不可、.gitignore で除外済 (whitelist 拡張子に
+  # 含まれないので自動的に対象外)。
+  if [ -d "../../examples/zxn" ]; then
+    mkdir -p examples/zxn
+    for ext in SL sl cfg nxp nxi spr til ndr nfx; do
+      cp ../../examples/zxn/*.$ext examples/zxn/ 2>/dev/null
+    done
+    cp ../../examples/zxn/Makefile examples/zxn/ 2>/dev/null
+  fi
+
   # assets: UILIB 用フォント / CHARMAP 再生成ソース (PNG, JSON)
   if [ -d "../../assets" ]; then
     cp -r ../../assets .
   fi
 
   # tools: ホストで動かす Python スクリプト (charmap-encode.py, png_to_asm.py,
-  # disk-add-overlays.py)。disk-add-overlays.py は make ENV=lsx|x1 disk_image で
-  # overlay バイナリ (M0.BIN..) を d88 へ書き込む際の helper。
+  # disk-add-overlays.py, mml2sound.py)。disk-add-overlays.py は make ENV=lsx|x1
+  # disk_image で overlay バイナリ (M0.BIN..) を d88 へ書き込む際の helper、
+  # mml2sound.py は MML テキストから libpc80mk2_sound 用の byte data を生成。
   # RunCPM 系は後段で追加するので、ここでは Python ツールだけ拾う。
   mkdir -p tools
   cp ../../tools/charmap-encode.py    tools/ 2>/dev/null
@@ -67,7 +80,7 @@ createRelease() {
   cp ../../THIRD_PARTY_NOTICES.md .
   cp ../../setupenv.bat .
   cp ../../setupenv.sh .
-  # Issue #160 短期案: install scripts (Makefile に依存しない install 経路)
+  # install scripts (Makefile に依存しない install 経路)
   cp ../../install.sh    .
   cp ../../install.bat   .
   cp ../../uninstall.sh  .
@@ -89,6 +102,17 @@ createRelease() {
   case "$1" in
     win-x64)     cp ../../tools/runcpm.bat tools/ ;;
     *)           cp ../../tools/runcpm.sh tools/ ;;
+  esac
+
+  # mzd88 (MZ-2500 D88 image 操作ツール、issaUt/mz2500-tools の C 実装、MIT)
+  # repo には platform 別 file 名 (mzd88-{rid}) で commit、配布物では現在 OS 用
+  # binary を `mzd88(.exe)` にリネームコピーする (= ToolResolver が両 file 名を
+  # fallback で探す)。license / 出典は THIRD_PARTY_NOTICES.md に記載。
+  case "$1" in
+    osx-arm64)   cp ../../tools/mzd88-osx-arm64    tools/mzd88     && chmod +x tools/mzd88 ;;
+    osx-x64)     cp ../../tools/mzd88-osx-x64      tools/mzd88     && chmod +x tools/mzd88 ;;
+    linux-x64)   cp ../../tools/mzd88-linux-x64    tools/mzd88     && chmod +x tools/mzd88 ;;
+    win-x64)     cp ../../tools/mzd88-win-x64.exe  tools/mzd88.exe ;;
   esac
 
   zip -r SLANG-compiler-$3-$1.zip * -x '*/.DS_Store'

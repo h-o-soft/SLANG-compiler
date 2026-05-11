@@ -13,7 +13,7 @@ namespace SLANGCompiler.Build;
 /// </summary>
 internal class Program
 {
-    private const string Version = "0.23.0";
+    private const string Version = "0.24.0";
 
     public static int Main(string[] args)
     {
@@ -55,6 +55,9 @@ internal class Program
                     break;
                 case "--udostool" when i + 1 < args.Length:
                     opts.UdostoolPath = args[++i];
+                    break;
+                case "--mzd88" when i + 1 < args.Length:
+                    opts.Mzd88Path = args[++i];
                     break;
                 case "--emit" when i + 1 < args.Length:
                     opts.EmitMode = args[++i];
@@ -147,6 +150,7 @@ internal class Program
         Console.Error.WriteLine("  --ndc <path>    ndc executable path (override resolution; --emit disk + tool=ndc)");
         Console.Error.WriteLine("  --hudisk <path> HuDisk executable path (override resolution; --emit disk + tool=hudisk)");
         Console.Error.WriteLine("  --udostool <p>  udostool executable path (override resolution; --emit disk + tool=udostool)");
+        Console.Error.WriteLine("  --mzd88 <path>  mzd88 executable path (override resolution; --emit disk + tool=mzd88)");
         Console.Error.WriteLine("  --emit <mode>   Output mode: 'bin' (default) or 'disk' (build d88)");
         Console.Error.WriteLine("  --disk-image <p> Output disk image path (default: <output_prefix>.d88)");
         Console.Error.WriteLine("  --disk-template <p> Override env's disk.template path (--emit disk)");
@@ -161,5 +165,6 @@ internal class Program
         Console.Error.WriteLine("  ndc:       --ndc → NDC_PATH env → bundled tools/ → PATH → repo root (dev)");
         Console.Error.WriteLine("  HuDisk:    --hudisk → HUDISK_PATH env → bundled tools/ → PATH → repo root (dev)");
         Console.Error.WriteLine("  udostool:  --udostool → UDOSTOOL_PATH env → bundled tools/ → install dir → PATH → repo root (dev)");
+        Console.Error.WriteLine("  mzd88:     --mzd88 → MZD88_PATH env → bundled tools/ → install dir → PATH → repo root (dev)");
     }
 }

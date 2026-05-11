@@ -1,6 +1,76 @@
 # 更新履歴
 
-## Unreleased (v0.24.0 候補)
+## Version 0.24.0
+
+- コンパイラ: BYTE 配列引数の型情報伝播 + 関数スコープ重複名検出 (#171)
+  - `F(BYTE T[]) ... T[i]` のような BYTE 配列引数が WORD として扱われ、1 byte step / byte load の代わりに 2 byte step / 2 byte load の wrong code を生成していたバグを修正 (`ParamDecl.IsArray` + `Size` を IR の `LocalVarInfo` と semantic の `PointerType` 両方に伝播)
+  - 関数引数とローカル/静的宣言が同名でも警告無しに silent overwrite され、IR と semantic で同一識別子の解決先が逆転する dangerous な状態を解消。`SemanticAnalyzer.VisitFuncDef` で param 同士 / param vs static decl / param vs local decl / static vs local decl の 4 ケースを明示エラー化 (case-insensitive default、`_caseSensitive` 尊重)
+  - **既存 SLANG コードへの behavior change**: BYTE 配列引数を使ってる既存 SL は wrong code が消えて意図通りに動くようになる。重複名を意図的に書いていた既存 SL は build エラーになる (= 修正対象、silent drop で動いていた挙動は本来未定義)
+
+- PCG ボード (PCG-8100 後期 / PCG-8200 / PCG-8800 + PSA3.0 等の互換) 搭載 8253 3 ch サウンド向けドライバ (`runtime/libpc80mk2_sound.asm`) の品質改善
+  - `SND_ISPLAYING()` の 3 ch 判定バグ修正 (CH1/CH2 の判定結果が捨てられて実質 CH3 のみで判定されていた)
+  - 休符サポート追加 — `TONE.REST = 0x7F` を MML データに置けば該当 length 分 silence
+  - `SND_PROC` 出力段の動的 KEYON マスク (= 休符 / 未使用 ch を 8253 の出力 gate で物理 mute)
+  - `SND_PROC` 出力段の shadow 最適化 (= 同 frequency を毎 VSYNC 書き直すと 8253 mode 3 が再ロードでガタつくため、変化時のみ書き込み)
+  - 音長カウンタ修正 — 旧版は length=N で内部 N+1 tick 占有していた (= silent end 1 tick が length 値に組込まれていなかった) ため ch ごとに音符数が違うと位相ズレが発生していた
+  - `examples/PC80mk2.SL` の SOUNDDATA を新 8 小節 verse (melody + bass + harmony 3 ch、octave doubling 廃止) に更新
+
+- MML → ASM コンバータ `tools/mml2sound.py` を追加
+  - 簡易 MML テキスト (note + sharp/flat、八度、長さ + dotted、休符) から `libpc80mk2_sound` 用の byte data (length / note / 0x7F rest / 0x80 end) を生成
+  - 出力モード: ASM `.db` 列 (既定、`#ASM` block 互換、length 圧縮済) / `--binary <prefix>` で per-channel raw bin
+  - 1..3 ch 制約 + 不足分は `.__empty: db 0x80` で自動 padding
+  - MML channel 順を物理 CH に対応 (= 1 番目 ch が物理 CH1、SE 多重化は CH3 = MML 3 番目)
+  - サンプル `examples/pc80mk2/chouchou.mml` (8 小節「ちょうちょ」、`PC80mk2.SL` の SOUNDDATA 出元) と `examples/pc80mk2/README.md` を同梱
+  - 配布 zip に `tools/mml2sound.py` も同梱
+
+- 配布 zip に `install.sh` / `install.bat` / `uninstall.sh` / `uninstall.bat` を同梱、Makefile に依存せず install / uninstall できるよう導線を切り出し
+  - オプション: `--prefix <path>` / `--config-dir <path>` / `--dry-run` / `--verbose` / `--force` / `--uninstall` / `--help`
+  - **危険 path guard**: uninstall 時に空 / `/` / `$HOME` / `/tmp` 単体 / `C:\` / `%USERPROFILE%` 等を refuse (絶対パス正規化してから完全一致判定、`/tmp/sub` 等は許可)
+  - **ghost file 対策**: install 時、サブディレクトリ (include / runtime / images / tools) は staging copy → 既存削除 → rename でサブディレクトリ単位置換 (= 古い env file 等が残らない)
+  - `make install` / `make uninstall` は scripts への薄い wrapper として残置 (`--force` 既定 ON で後方互換、Make 経由は uninstall も非対話)
+  - **Windows install default を `%LOCALAPPDATA%\Programs\SLANG` → `%USERPROFILE%\.local\bin` に変更** (= install.sh の `~/.local/bin` と対称、uv / pipx 等の CLI ツール慣習)
+
+- pc88mk2sr 環境を `slangbuild --emit disk` 経路に統合
+  - 新ツール `udostool` (Bookworm's Library 公開の汎用ディスクルーチン用、`tools/udostool.exe` 同梱、Linux/macOS は mono 経由起動)
+  - `slangbuild --emit disk -E pc88mk2sr` でテンプレート D88 から `PC88MK2SR.D88` を生成、IPL/SUB/SYS の書き込み + main (`$1A00.$$$`) + overlay (`M{index}.BIN`) の格納を 1 コマンドで実行
+  - overlay は `M{index}.BIN` として disk に格納される。`#MODULE` を使った SL では `libp88_file` の `Disk_Load` / `Disk_Load3` 系で読み込む (disk 内名は `Disk_Load("M0 BIN", addr)` の space 区切り形式)
+  - **ORG = $1A00 固定運用**。SL 側で `#ORG $XXXX` 上書きすると `main_name` (= `"$1A00.$$$"`) と loader 期待が不整合になり、build は通るが boot しない
+  - VRTC 割り込みでの `GAMEVSYNC` 呼び出しを SL 側 `CONST ASM USE_GAMEVSYNC = 1;` で有効化する仕組みに変更。`USE_GAMEVSYNC` 未定義の SL では `GAMEVSYNC` 関数を書かずに build 可能
+  - AILZ80ASM のアセンブル失敗時の詳細 (未定義 label 等) を `--verbose` 無しでも stderr に出力するよう修正
+  - 同梱物の出典を新規 `THIRD_PARTY_NOTICES.md` に記録
+
+- zxn 環境 (ZX Spectrum Next) を `slangbuild` に対応
+  - `make ENV=zxn build TARGET=examples/zxn/game` で `.bin` を生成可能。`Makefile.dist` に zxn ENV ブロック追加 (`SRC_EXT = .sl` で `examples/zxn/*.sl` 小文字に対応)
+  - `examples/zxn/Makefile` を slangbuild 経由に書き換え。`.nex` 形式 (CSpect 等で実行可能) への変換は外部ツール `nexcreator` を引き続き使用
+  - `examples/zxn` のサンプル (`game.sl` / `game_nomusic.sl` + asset) を配布 zip に同梱。`examples/zxn/Makefile` の default target を NextDAW 不要の `game_nomusic.nex` に変更 (`make build` で動作)。NextDAW を含む完全版 (`game.nex`) は `make music` で build 可能 (= 別途 NextDAW Runtime Player の配置が必要、`https://nextdaw.biasillo.com/`、2026-04-30 時点で公式サイト入手不可)
+
+- vgs0 環境 (VGS-Zero) を `slangbuild` に対応 — 8KB bank switching に合わせた bin padding
+  - env file 新フィールド `bin_pad_size:` (main 用、固定サイズで末尾 0 padding) と `overlay_pad_align:` (overlay 用、指定値の倍数に切り上げ末尾 0 padding) を追加
+  - `runtime/env/vgs0.env` で `bin_pad_size: 16384` + `overlay_pad_align: 8192` を設定 (= main を 16KB 固定 ROM、各 overlay を 8KB bank 単位に揃える)
+  - bin が `bin_pad_size` を超えた場合は明示エラーで build 失敗 (= 意図しない切り詰めを防ぐ)
+  - `make ENV=vgs0 build` 経路に対応
+
+- pc80mk2xsd 環境 (PC-8001mkII XBIOS 直接環境、SD カード経路) を `slangbuild` に対応
+  - env file 新フィールド `cmt_assets:` (output dir にコピーする static asset 群)、`overlay_name:` (overlay 出力ファイル名のテンプレート、`{index}` 展開)、`overlay_output_format:` (overlay 専用の出力フォーマット、`bin` / `cmt` 切替)
+  - pc80mk2xsd では main を CMT 形式 + overlay を raw binary で出し、`M{index}.BIN` 命名で output dir に配置。`XBIOS.CMT` も output dir にコピーされるので、output dir 全体を SD カードに移すだけで動作する
+
+- env file `defines:` フィールドを追加 — env 別の整数定数を SL / ASM の両側に自動定義
+  - env file `defines: { NAME: int_value }` 形式で定義した整数定数は、SL の `#IF NAME==VAL` と ASM の `#if exists NAME` の両方で参照できる
+  - pc80mk2xsd で `defines: { PC8001_SD: 1 }` を定義しているので、SL 側に `CONST ASM PC8001_SD = 1;` を書かなくても env 切替だけで SD 経路が有効化される
+  - 名前は識別子規則 (英数字 + アンダースコア、先頭は文字または `_`)、値は整数限定
+
+- pc80mk2x 環境 (PC-8001mkII XBIOS 直接環境) を `slangbuild` に対応 — XBIOS.CMT 結合 build
+  - `XBIOS.CMT` を `runtime/templates/` に同梱。slangbuild が pc80mk2x build 時に main.cmt + XBIOS.CMT + 各 overlay を 1 本に結合 (= 旧 `COPY /B` / `cat` の手動結合が不要)
+  - env file 新フィールド `cmt_concat:` (build 後の main bin 直後に concat する追加 .cmt ファイルの相対 path リスト)
+  - 結合元ファイルが見つからない場合は明示エラー
+  - 結合に消費された overlay は通常時クリーンアップ (`--keep-asm` 指定時は残る)
+  - `THIRD_PARTY_NOTICES.md` に XBIOS.CMT の出典を記載
+
+- pc80mk2 環境 (PC-8001mkII ROM 環境) を `slangbuild` に統合 — CMT (cassette tape) 出力対応
+  - env file 新フィールド `output: cmt` で AILZ80ASM の CMT 形式出力 (`-cmt -gap 0`) に切替、出力拡張子は `.cmt`。`bin` / `cmt` 以外を指定するとエラー
+  - `make ENV=pc80mk2 build / run / disk_image` のいずれでも `examples/PROG.cmt` が生成される。M88 等のエミュレータで `.cmt` をそのまま CLOAD 可能 (`EMU` 変数はユーザー側設定)
+  - `--emit disk` を `disk:` セクション無し env で指定すると compile 前にエラー終了
+  - overlay は `_m0.cmt` 別ファイルで出るのみで、main への結合 / loader 組み立てはユーザー側
 
 - MZ-2500 環境を追加 (#172)
   - `sosmz2500`: S-OS 上で動作させる環境 (HuDisk 経由 D88 作成、既存 sos / sosx1 と同じフロー、MAGIC 系ライブラリは含めない)
@@ -12,66 +82,31 @@
   - `mz25iocs.env` に新 `env_type: 7` (MZ-2500 IOCS 系) 割り当て (`sosmz2500.env` は S-OS 系として `env_type: 2`)
   - 新 `Makefile` 変数 `MZD88` (default `mzd88`)、`BIN_EXT = .obj` for mz25iocs
   - `Makefile` の `OUTPROG = ...PROG.bin` ハードコードを `OUTPROG = ...PROG$(BIN_EXT)` に変更 (default `.bin` 維持、`BIN_EXT` を変える env で別拡張子に切替可能に)
-  - **配布版 (`Makefile.dist`) の MZ-2500 対応は本 PR 範囲外 (= dev ビルド `Makefile` のみ対応、配布 zip での `make ENV=mz25iocs` / `make ENV=sosmz2500` は別途対応予定)**
+  - 配布版 (`Makefile.dist`) の MZ-2500 対応は別途対応予定 (= dev ビルド `Makefile` のみ対応)
   - 詳細メモは `docs/MZ2500.md`
 
-- 配布 zip に `install.sh` / `install.bat` / `uninstall.sh` / `uninstall.bat` を同梱、Makefile に依存せず install / uninstall できるよう導線を切り出し (#160 短期案)
-  - オプション: `--prefix <path>` / `--config-dir <path>` / `--dry-run` / `--verbose` / `--force` / `--uninstall` / `--help`
-  - **危険 path guard**: uninstall 時に空 / `/` / `$HOME` / `/tmp` 単体 / `C:\` / `%USERPROFILE%` 等を refuse (絶対パス正規化してから完全一致判定、`/tmp/sub` 等は許可)
-  - **ghost file 対策**: install 時、サブディレクトリ (include / runtime / images / tools) は staging copy → 既存削除 → rename でサブディレクトリ単位置換 (= 古い env file 等が残らない)
-  - `make install` / `make uninstall` は scripts への薄い wrapper として残置 (`--force` 既定 ON で後方互換、Make 経由は uninstall も非対話)
-  - **Windows install default を `%LOCALAPPDATA%\Programs\SLANG` → `%USERPROFILE%\.local\bin` に変更** (= install.sh の `~/.local/bin` と対称、uv / pipx 等の CLI ツール慣習)
+- slangbuild の MZ-2500 系環境 (sosmz2500 / mz25iocs) 対応 — `--emit disk` で D88 image 自動生成
+  - sosmz2500: 既存 HuDisk driver でそのまま動作 (env file の `disk:` セクションは sos / sosx1 と同形式)
+  - mz25iocs: 新規 mzd88 driver を追加。`mzd88 -blank` で空 D88 を生成し `mzd88 -add` で main + extra_files を格納
+  - env file `disk:` セクション拡張: `title` (mzd88 `--title` 用、optional) / `extra_files` (= mzd88 で main 後に追加格納するファイル群、起動用 BASIC ローダ等)
+  - 新 CLI option `--mzd88` + 環境変数 `MZD88_PATH` で path override 可能 (= ndc / hudisk と同パターンの解決順)
+  - mz25iocs では overlay (`#MODULE`) は当面 scope 外 (= overlay bin が渡されると明示エラーで終了)
+  - 配布版 (`Makefile.dist`) の `make ENV=mz25iocs disk_image` 統合は別途対応予定
 
-- pc88mk2sr 環境を `slangbuild --emit disk` 経路に統合
-  - 新 tool: `udostool` (.NET assembly、**Bookworm's Library 公開の汎用ディスクルーチン** `filesys_20141128` 系用、サイト記載の「改変含め自由に使ってください」を license として信用し repo 同梱)。`tools/udostool.exe` に commit、setup-tools 不要。Linux/macOS は mono 経由起動、Windows は .exe 直接起動
-  - 5 ステップ build: template (`images/templates/PC88MK2SR.D88`) を出力先 copy → `udostool` で IPL / SUB / SYS 書込 → main `$1A00.$$$` + overlay `M{index}.BIN` を staging dir に bulk copy → `udostool disk <staging>` で 1 回 flush
-  - 新 `DiskConfig.SystemFiles` フィールド (= IPL / SUB / SYS の path + flag、env file dir 基準で path 絶対化、flag は `-IPL`/`-SUB`/`-SYS` allowlist で大文字固定)
-  - **overlay 対応**: `#MODULE` 使った SL の overlay bin が `M{index}.BIN` として disk に格納される。pc88mk2sr では FOPEN/FREAD ではなく libp88_file の `Disk_Load` / `Disk_Load3` 系で読み込む想定、disk 内名は `Disk_Load("M0 BIN", addr)` のような space 区切り形式
-  - **ORG = $1A00 固定運用**。SL 側で `#ORG $XXXX` 上書きすると `main_name` (= `"$1A00.$$$"`) と loader 期待が不整合になり、build は通るが boot しない silent wrong になる
-  - 同梱物の出典 (provenance) を新規 `THIRD_PARTY_NOTICES.md` に記録 (= 配布物名 / 取得元 / 取得日 / 許諾文 / 改変有無 を表で明記)
-  - **VRTC 割り込みハンドラの GAMEVSYNC を条件化**: `libp88_base.asm` の `INTVRTC` で `CALL GAMEVSYNC` を `#if exists USE_GAMEVSYNC` で囲み、SL 側で `CONST ASM USE_GAMEVSYNC = 1;` を立てた場合のみ呼ぶ形に。`USE_GAMEVSYNC` 未定義の SL は GAMEVSYNC 関数を書かなくても build できる
-  - **AILZ80ASM エラー表示**: `--verbose` 無しでも `main assembly failed` の詳細 (= 未定義 label 等) が stderr に出るよう修正 (= AILZ80ASM がエラーを stdout に流す癖を吸収)
+- mzd88 (MZ-2500 D88 image 操作ツール、issaUt/mz2500-tools の C 実装、MIT) を 4 platform binary として同梱
+  - `tools/mzd88-{osx-arm64,osx-x64,linux-x64,win-x64.exe}` を repo に commit
+  - publish.sh が現在 OS 用の binary を `tools/mzd88(.exe)` にリネームコピー (= 配布 zip では 1 file)
+  - ToolResolver.ResolveMzd88 を platform suffix 付き file 名でも探すよう拡張 (dev 環境で repo の `tools/mzd88-{rid}` を発見可能)
+  - cross-build 手順: macOS は `cc -Os` + `clang -arch x86_64 -Os`、Linux/Windows は `zig cc -target x86_64-linux-musl|x86_64-windows-gnu -Os -Wl,-s`
+  - source 改変なし。license 文 + 出典は `THIRD_PARTY_NOTICES.md` に記載
 
-- zxn 環境 (ZX Spectrum Next、Z80 ターゲット) を `slangbuild` に対応 — Makefile 整理のみ
-  - `Makefile.dist` に zxn ENV ブロック追加 (`BIN_EXT/BIN_EXT_ENV = .bin`、`SRC_EXT = .sl` で `examples/zxn/*.sl` 小文字対応、`DISK_IMAGE = $(OUTPROG)`) + `disk_image` 分岐 + `help` ENV 一覧
-  - `examples/zxn/Makefile` を slangbuild 経由に書き換え (= 旧 `SLANGCompiler -E zxn --output-debug-symbol` + `AILZ80ASM` の 2 段を `slangbuild -E zxn` 1 段に統一)。`%.bin: %.sl` / `%.nex: %.bin %.cfg` の pattern rule 化 + `clean` target 整理
-  - 既存 `runtime/env/zxn.env` / runtime libs / Driver / EnvironmentConfig / EnvironmentLoader は変更なし (= lsx と同じ raw bin 経路で動く)
-  - `.nex` 形式変換は外部ツール `nexcreator` を引き続き使用 (= ユーザー側でインストール、CSpect 等で実行可能形式に変換)
+- 配布版 `Makefile.dist` の MZ-2500 系対応 (= `make -f Makefile.dist ENV=mz25iocs|sosmz2500 disk_image` で D88 自動生成)
+  - sosmz2500: ENV ブロック追加 (`DISK_IMAGE = images/SOSPROG.D88`、sos / sosx1 と template 共用)、`disk_image` target で slangbuild + HuDisk 経路
+  - mz25iocs: ENV ブロック追加 (`DISK_IMAGE = $(dir $(TARGET))M25PROG.d88`、`BIN_EXT = .obj`)、`disk_image` target で slangbuild + mzd88 経路
+  - mzd88 path は `--mzd88` 明示せず `ResolveMzd88` の auto fallback に任せる (= 配布物では `tools/mzd88(.exe)`、dev 環境では `tools/mzd88-{rid}(.exe)` を発見、他 tool との非対称な唯一の例外)
+  - help target の ENV 一覧に sosmz2500 / mz25iocs 追加
 
-- vgs0 環境 (VGS-Zero、Z80 ターゲット) を `slangbuild` に対応 — 8KB bank switching に合わせた bin padding
-  - 新 env file フィールド `bin_pad_size:` (= main 用、固定 byte サイズの末尾 0 padding) と `overlay_pad_align:` (= overlay 用、指定値の倍数に切り上げ末尾 0 padding) を追加
-  - `runtime/env/vgs0.env` に `bin_pad_size: 16384` + `overlay_pad_align: 8192` を設定 (= main を 16KB 固定 ROM、各 overlay を 8KB bank 単位に揃える)
-  - bin が `bin_pad_size` を超えた場合は silent truncation を防ぐため明示エラー (`slangbuild: bin_pad_size: bin size N byte exceeds target ...`)
-  - 両フィールドは `output: cmt` env で指定すると env load 時 `InvalidDataException` で reject (= cmt header 込み bin に padding は意味不明)
-  - `Makefile.dist` に vgs0 ENV ブロック (`BIN_EXT/BIN_EXT_ENV = .bin`、`DISK_IMAGE = $(OUTPROG)`) + `disk_image` 分岐 + help ENV 一覧追加
-
-- pc80mk2xsd 環境 (PC-8001mkII XBIOS 直接環境、SD カード経路) を `slangbuild` に対応
-  - 新 env file フィールド `cmt_assets:` (= output dir に copy する static asset の相対 path リスト)、`overlay_name:` (= overlay 出力 file 名 template、`{index}` 展開)、`overlay_output_format:` (= overlay 専用の出力 format、bin / cmt 切替)
-  - pc80mk2xsd では main を CMT 形式 + overlay を raw binary で出し、`M{index}.BIN` 命名で output dir に rename。`cmt_assets` で `XBIOS.CMT` を output dir にコピーするので、user は output dir 全体を SD カードに移すだけで揃う
-  - `cmt_concat` と `cmt_assets` は同 env で両方指定すると env load 時 reject (= build flow 排他)
-  - 全 CMT 系新フィールドは `output: cmt` 専用 (= 不一致は reject)
-  - `overlay_name` は `{index}` placeholder 必須、output dir 外書き禁止 (= absolute path / separator / `..` を loader と driver の二重で validate)
-
-- env file `defines:` フィールドを追加 — env 別の整数定数を slangc Preprocessor と AILZ80ASM に同時 inject
-  - env file `defines: { NAME: int_value }` 形式で、env 選択時に slangc が `Preprocessor.DefineConst()` 経由で SL の `#IF NAME==VAL` 判定に登録、slangbuild が AILZ80ASM 起動時に `-dl NAME=VAL` を main / overlay / prelink Pass 1/3 全段に pass (= ASM 側 `#IF exists NAME` も活きる)
-  - pc80mk2xsd で `defines: { PC8001_SD: 1 }` を定義しているので、ユーザー側 SL に `CONST ASM PC8001_SD = 1;` を書く必要なし (env 切替だけで SD 経路が自動活性化)
-  - 名前は `^[A-Za-z_][A-Za-z0-9_]*$` で validate、value は int 限定
-
-- pc80mk2x 環境 (PC-8001mkII XBIOS 直接環境) を `slangbuild` に対応 — XBIOS.CMT 結合 build
-  - `obsolete/lib/pc8001/XBIOS/XBIOS.CMT` を `runtime/templates/XBIOS.CMT` に移動。slangbuild が pc80mk2x build 時に main.cmt + XBIOS.CMT + overlay._mN.cmt を 1 本に結合 (= 旧 `COPY /B` / `cat` 手動結合を内製化)
-  - 新 `EnvironmentConfig.CmtConcat` (List<string>?) + env file `cmt_concat:` フィールド (= env file dir 基準の相対 path リスト、build 後 main bin 直後に concat される)
-  - 結合は同一 dir tmp file 経由 + `File.Move(.., overwrite: true)` で delete-then-move の中間状態を避けつつ main.cmt を置換、結合元欠落時は明示エラー、結合に消費された overlay は intermediate cleanup 対象 (= `--keep-asm` 指定時は残る)
-  - `cmt_concat` は `output: cmt` 専用、それ以外で指定すると env load 時 `InvalidDataException` で reject (= 壊れた出力 silent wrong 防止)
-  - `THIRD_PARTY_NOTICES.md` に XBIOS.CMT の出典を記載
-
-- pc80mk2 環境 (PC-8001mkII ROM 環境) を `slangbuild` に統合 — CMT (cassette tape) 出力対応
-  - env file (`runtime/env/pc80mk2.env`) に新フィールド `output: cmt` を追加。`slangbuild` が AILZ80ASM 起動時に `-bin` shortcut を `-cmt` に置換 + `-gap 0` を自動付与し、出力拡張子を `.bin` → `.cmt` に切替 (= 旧 dev `Makefile` の `BIN_EXT/ASM_OPT` 設定を `slangbuild` に移植、`Makefile.dist` 化で抜けていた CMT 対応を復元)
-  - 新 `EnvironmentConfig.OutputFormat` (string?)。null/未指定 = `.bin` default、`"cmt"` で AILZ80ASM CMT format。`output:` 値は `bin` / `cmt` のみ許可、それ以外は `InvalidDataException` で reject (= typo 早期検出)
-  - `AssemblerRunner.AssembleMain` / `AssembleOverlay` に `outputFlag` (`-bin` / `-cmt`) + `extraArgs: string[]?` 引数追加。`-bin` と `-cmt` を同時に渡すと両 format の file が出てしまうので、format ごとに 1 つに切替える設計。prelink Pass 1 / Pass 3 / 単段 / overlay 全段で同じ outputFlag/extraArgs を pass (= AILZ80ASM option 不一致でアドレス解決崩壊するのを防止)
-  - `Driver.Run()` 冒頭で `EnvironmentResolver` を 1 度だけ呼ぶ前倒しに変更、`BuildDiskImage()` 内の env 二重解決を排除。`--emit disk` + `disk:` 不在 env の組合せは compile 前に early reject
-  - `Makefile.dist`: `OUTPROG` を `$(BIN_EXT)` 経由で拡張子化 (`PROG.bin` 固定 → `PROG$(BIN_EXT)`)、pc80mk2 ENV ブロック追加 (`BIN_EXT/BIN_EXT_ENV = .cmt`、`DISK_IMAGE = $(OUTPROG)`)、`disk_image` 分岐に `pc80mk2: $(OUTPROG)` 明示追加 (= 旧 ELSE 分岐 ndc 経路に落ちないよう、cpm / msxrom と同じ pattern)、`clean` recipe / `help` ENV 一覧にも反映
-  - `make ENV=pc80mk2 build / run / disk_image` のいずれでも `examples/PROG.cmt` が生成される。M88 等のエミュレータで `.cmt` をそのまま CLOAD で読み込める想定 (`EMU` 変数はユーザー側設定)
-  - overlay は `_m0.cmt` 別ファイルで出るのみで、main への結合 / loader 組み立てはユーザー側
+- README / setupenv.sh に Linux/WSL 環境での mono CP932 対応 (`libmono-i18n4.0-all`) 注意書きを追加 (= HuDisk 経路の sos / sosx1 / sosmz2500 で `Encoding 932 data could not be found` を踏むため、Debian/Ubuntu では `sudo apt install libmono-i18n4.0-all` で別途インストール必要、macOS Homebrew mono にはデフォルトで含まれるため不要)
 
 ## Version 0.23.0
 

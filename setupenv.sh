@@ -55,6 +55,13 @@ if [ $? -ne 0 ]; then
   CmdError
 fi
 
+# Linux/WSL では mono デフォルト install に CP932 (日本語) コードページが
+# 含まれていない場合がある。HuDisk が CP932 を要求するため、
+# `Encoding 932 data could not be found` で失敗するなら、
+#   sudo apt install libmono-i18n4.0-all   (Debian/Ubuntu)
+# を実行してから setupenv.sh を再実行してください。
+# macOS の Homebrew mono にはデフォルトで含まれているため不要。
+
 TOOLPATH=$(cd $(dirname $0);pwd)/tools/
 mkdir images
 mkdir -p images/templates

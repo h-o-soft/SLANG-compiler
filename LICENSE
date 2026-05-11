@@ -367,11 +367,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-PC-8001 Sound Driver
+PCG ボード搭載 8253 用サウンドドライバ (PC-8001 系) — 旧称 "PC-8001 Sound Driver"
 https://codeknowledge.livedoor.blog/archives/12681476.html
 https://codeknowledge.livedoor.blog/archives/12668372.html
 ------
 Copyright (c) 2021- NAITO Tokihiro
+詳細は THIRD_PARTY_NOTICES.md 参照
 
 
 PC-8001 Kanji Library

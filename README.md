@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.23.0
+SLANG Compiler (Z80) 0.24.0
 
 # 概要
 
@@ -14,7 +14,7 @@ SLANG Compiler (Z80) 0.23.0
 # 使い方
 
 ```
-SLANG Compiler v0.23.0
+SLANG Compiler v0.24.0
 Usage: slangc [options] <input.sl>
 
 Options:
@@ -92,6 +92,12 @@ X1専用のグラフィックス（libx1_grp、libx1_sgl）、PSG、MAGIC、PCG�
 
 X1/X1turbo上のS-OSで動作させる場合はこちらを選択してください。なお、他機種のS-OSでは動作しません。
 
+## sosmz2500 ( S-OS for SHARP MZ-2500 )
+
+S-OSをMZ-2500上で動作させるための環境です。`sos` 環境をベースに標準の入出力・ファイル・SOROBAN ライブラリを使用します。MAGIC 系ライブラリは含まれません。
+
+D88 イメージ作成は X1 用 SOSPROG.D88 (= sos / sosx1 と同じ template) を流用します。MZ-2500 実機 (またはエミュレータ) では、このディスクを B ドライブに挿入し、別途 X1 用の SOSPROG ディスクから呼び出して実行する運用を想定しています。
+
 ## msx2 ( MSX / MSX2 )
 
 LSX-Dodgers環境をベースとし、ファイル関連のみMSX-DOS2に対応させた環境です。
@@ -142,6 +148,16 @@ PRINT文はテキストVRAMへの直接書き込みで実現しています。�
 
 現状、基本的な文字表示とディスクアクセス機能が実装されていますが、キー入力関連については未実装となります。
 
+## mz25iocs ( SHARP MZ-2500 BASIC / IOCS )
+
+MZ-2500 の BASIC システム / IOCS 上で動作させるための最小環境です。
+
+PRINT・INKEY のみ IOCS (`RST 18H`) 経由で実装しており、その他の入力系 (LINPUT / GETL / GETLIN / INPUT) は呼ばれた場合 ESC キャンセル相当の値を返す stub 実装になっています。グラフィック関連も未実装です。
+
+D88 イメージ作成には外部ツール `mzd88` (issaUt/mz2500-tools の C 実装、MIT、`tools/mzd88-{rid}` として 4 platform binary を同梱) を使用し、`mzd88 -blank` で空 D88 を都度生成して main bin (`PROG.OBJ`) と起動用 BASIC ローダ (`runtime/mz2500/J8000.bas.bsd`) を格納します。BASIC ローダは `&H8000` にバイナリをロードして `CALL` する最小のコードで、`mz25iocs.env` の `default_org: "$8000"` と整合しています。
+
+詳細は [docs/MZ2500.md](docs/MZ2500.md) を参照してください。
+
 ## vgs0 (VGS-Zero)
 
 VGS-Zero用の環境です。
@@ -156,9 +172,11 @@ ORGは$8000、ワーク領域は$D000からとなっています。
 
 Layer 2グラフィックス、タイルマップ、スプライト、パレット設定、Copperプロセッサなど、ZX Spectrum Next固有の機能に対応したライブラリが用意されています。
 
-サンプルは examples/zxn フォルダにあります。
+サンプルは examples/zxn フォルダにあります。`game.sl` (NextDAW を使う完全版) と `game_nomusic.sl` (NextDAW なし版) の 2 種類が含まれます。
 
-`slangbuild` (および `Makefile.dist build TARGET=examples/zxn/game ENV=zxn`) で `.bin` を出力できます (= 旧 `SLANGCompiler -E zxn` + `AILZ80ASM` の 2 段経路を内製化)。`.nex` 形式 (= CSpect 等の実行可能形式) への変換は外部ツール `nexcreator` を使い、`examples/zxn/Makefile` で flow が完結します。
+`slangbuild` (および `Makefile.dist build TARGET=examples/zxn/game ENV=zxn`) で `.bin` を出力できます。`.nex` 形式 (= CSpect 等の実行可能形式) への変換は外部ツール `nexcreator` を使い、`examples/zxn/Makefile` で flow が完結します。
+
+> **注**: `examples/zxn/Makefile` の `make build` (default) は NextDAW なし版 (`game_nomusic.nex`) を build します。NextDAW を含む完全版 (`game.nex`) を build するには `make music` を使い、`examples/zxn/NextDAW_RuntimePlayer_E000.bin` (= NextDAW Runtime Player) を `examples/zxn/` 配下に配置してください。NextDAW ([https://nextdaw.biasillo.com/](https://nextdaw.biasillo.com/)) は外部製品のため配布物には含まれません。**2026-04-30 時点で公式サイトでの入手はできない状態**で、再公開された場合も driver の仕様変更等により `examples/zxn/game.cfg` や `game.sl` の修正が必要となる可能性があります。
 
 # ランタイムについて
 
@@ -216,7 +234,7 @@ SLANG Compilerはランタイムライブラリとして、`runtime/` フォル�
 ## PC-8001mkII関連ライブラリ
 * libpc80mk2_base.asm — PC-8001mkII固有のライブラリ
 * libpc80mk2_print.asm — BIOS部を使ったPRINT関連処理
-* libpc80mk2_sound.asm — サウンド関連
+* libpc80mk2_sound.asm — サウンド関連 (PCG-8100 後期 / PCG-8200 / PCG-8800 系互換ボード = PSA3.0 等が搭載する 8253 PIT で 3 ch 矩形波同時発音、`SND_PLAY` / `SND_SEPLAY` で BGM + SE 同時再生に対応)。MML を ASM data に変換する `tools/mml2sound.py` と、サンプル MML `examples/pc80mk2/chouchou.mml` (+ 詳細は `examples/pc80mk2/README.md`) も同梱
 * libpc80mk2xbios_base.asm — 全RAM版XBIOS
 
 ## PC-8801mkIISR関連ライブラリ
@@ -313,9 +331,10 @@ default では Linux/macOS は `~/.local/bin` (binary) + `~/.config/SLANG/` (lib
   - これらを使わない通常のコンパイル / 単一バイナリ実行には不要
 - **mono** (Linux / macOS で .NET assembly な disk ツール `HuDisk.exe` / `udostool.exe` を起動する場合に必須)
   - `setupenv.sh` が S-OS template 生成のため `HuDisk.exe` を mono 経由で実行する。Windows は .NET Framework で直接実行されるため不要
-  - **sos / sosx1** 環境で `slangbuild --emit disk` を使う場合 (= HuDisk.exe 起動)
+  - **sos / sosx1 / sosmz2500** 環境で `slangbuild --emit disk` を使う場合 (= HuDisk.exe 起動)
   - **pc88mk2sr** 環境で `slangbuild --emit disk` を使う場合 (= udostool.exe 起動、Bookworm's Library 由来の汎用ディスクルーチン用ツール)
   - lsx / x1 の ndc 経路だけ使うなら mono 不要
+  - **Linux / WSL**: デフォルトの mono は日本語 (CP932) コードページを含まないため、HuDisk が `Encoding 932 data could not be found` で失敗します。Debian/Ubuntu では `sudo apt install libmono-i18n4.0-all` で別途インストールしてください。macOS の Homebrew mono にはデフォルトで含まれているため不要
 
 ### ビルドとインストール
 
@@ -344,8 +363,11 @@ make TARGET=examples/STARS ENV=x1 run
 | msxrom | MSX ROMカートリッジ |
 | msxlsx | MSX + LSX-Dodgers |
 | pc80mk2 | PC-8001mkII |
-| pc80mk2x | PC-8001mkII (全RAM版) |
+| pc80mk2x | PC-8001mkII (XBIOS 直接環境) |
+| pc80mk2xsd | PC-8001mkII (XBIOS 直接環境、SD カード経路) |
 | pc88mk2sr | PC-8801mkIISR |
+| sosmz2500 | S-OS for SHARP MZ-2500 (X1 SOSPROG 共用、HuDisk D88 作成) |
+| mz25iocs | MZ-2500 BASIC / IOCS 直接環境 (mzd88 で D88 作成) |
 | vgs0 | VGS-Zero |
 | zxn | ZX Spectrum Next |
 | cpm | CP/Mエミュレータ (RunCPM 同梱) |
@@ -368,9 +390,10 @@ template の入手:
 | 環境 | 出力先 (`DISK_IMAGE`) | template (`disk.template`) | 入手方法 |
 |------|----------------------|---------------------------|---------|
 | lsx / x1 | `images/LSXPROG.d88` | `images/templates/LSXPROG.D88` | repo 同梱 |
-| sos / sosx1 | `images/SOSPROG.D88` | `images/templates/SOSPROG.D88` | `make setup-tools` で取得 (S-OS 配布物 + AUTOEXEC.BAT 注入) |
+| sos / sosx1 / sosmz2500 | `images/SOSPROG.D88` | `images/templates/SOSPROG.D88` | `make setup-tools` で取得 (S-OS 配布物 + AUTOEXEC.BAT 注入)。MZ-2500 では本ディスクを B ドライブに挿入し X1 用 SOSPROG から呼び出す運用 |
 | pc88mk2sr | `images/PC88MK2SR.d88` | `images/templates/PC88MK2SR.D88` | repo 同梱 (Bookworm's Library 由来、`THIRD_PARTY_NOTICES.md` 参照) |
-| MSX-DOS 系 | `images/dosformsx.dsk` | (従来経路を維持、今後 `--emit disk` 経路へ移行予定) | `make setup-tools` で取得 |
+| mz25iocs | `<output dir>/M25PROG.d88` | (template 不要) | `mzd88 -blank` で都度生成、`runtime/mz2500/J8000.bas.bsd` を起動用 BASIC ローダとして格納 |
+| MSX-DOS 系 | `images/dosformsx.dsk` | `tools/disk-add-overlays.py` 経路 | `make setup-tools` で取得 |
 
 # LSX-Dodgersバージョン依存について
 
@@ -398,4 +421,6 @@ MIT License
 
 Copyright (c) 2022-2026 H.O SOFT / OGINO Hiroshi and contributors
 
-詳細は [LICENSE](LICENSE) ファイルを参照してください。利用しているサードパーティライブラリのライセンスについても同ファイルに記載されています。
+詳細は [LICENSE](LICENSE) ファイルを参照してください。
+
+配布物に同梱される第三者由来の成果物 (= Bookworm's Library / XBIOS / LSXPROG 等) の出典・許諾情報は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) に記載しています。RunCPM や UI フォントのように LICENSE 全文を別ファイルで同梱しているもの (= `tools/runcpm/LICENSE` / `assets/ui/LICENSE.font`) は各 LICENSE ファイルを参照してください。

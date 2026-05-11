@@ -1,5 +1,15 @@
 ; Converted from lib/libdef/libpc80mk2_sound.yml
 ; SLANG Runtime Library (new format)
+;
+; PCG-8100 後期 / PCG-8200 / PCG-8800 系互換ボード (PSA3.0 等) が搭載する
+; Intel 8253 PIT で 3 ch 矩形波サウンドを扱うドライバ。
+; 原典: 内藤 時浩 (Tokihiro Naito) 氏作「8253 簡易サウンドドライバ V2」
+;       (2020/11/27、obsolete/lib/pc8001/soundv2.z80 同梱)
+; 許諾: 著者より PD (Public Domain) 扱いでの利用許可を取得 (X 経由、2023/8/17)
+;       詳細は THIRD_PARTY_NOTICES.md 参照
+; 改変: SLANG ランタイム形式への移植 + KEYON 動的 mask + SNDOutput shadow
+;       最適化 + 音長カウンタ修正 + 休符 (TONE.REST=0x7F) サポート +
+;       SND_ISPLAYING 判定修正 等
 
 ; @name SND_COMMON
 ; @resident shared

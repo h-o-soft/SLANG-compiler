@@ -302,7 +302,7 @@ SUB(WORD A, FLOAT B, BYTE C)         (* 各引数の型を明示 *)
 
 - `WORD` (デフォルト): 2バイト、(IY+offset) に2バイト格納
 - `FLOAT` (`%%`): 3バイト、(IY+offset) に3バイト格納 (mantissa 2byte + exponent 1byte)
-- `BYTE` (`!`): 現状は WORD と同じ2バイト確保 (将来 1バイト化予定)
+- `BYTE` (`!`): 現状は WORD と同じ2バイト確保
 
 呼び出し側は仮引数の型に応じて値を渡す:
 ```
@@ -348,7 +348,7 @@ END;
 
 ### MACHINE 関数の戻り値型 (現状制限)
 MACHINE 関数 (`FOO:アドレス(N);` 形式) には戻り値型を指定できない (常に WORD)。
-`FOO:FLOAT(2);` のように書くとコンパイルエラーになる。将来対応予定。
+`FOO:FLOAT(2);` のように書くとコンパイルエラーになる。
 
 ### 関数の返値
 - `RETURN(式);` で返す
@@ -821,8 +821,7 @@ pc80mk2x / pc88mk2sr / vgs0 / zxn / cpm) の runtime ライブラリには
 `@resident shared|local` 属性が付与済 (= 共有 773 関数 / overlay-local
 14 関数)。`#MODULE $addr RESIDENT` を書けば即効果が出る。
 
-`SELFCONTAIN` / `AUTO` 識別子は enum 予約済み、現時点はコンパイルエラー
-(将来拡張用)。
+`SELFCONTAIN` / `AUTO` 識別子は enum 予約済み、現時点はコンパイルエラー。
 
 #### 実測効果 (`examples/MODTEST_RESIDENT.SL`)
 
@@ -945,7 +944,7 @@ overlay に渡すと compiler 内部ラベルとの衝突リスクがあるた�
 **現在の制約**: pc88mk2sr の `--emit disk` は **`#ORG $1A00` 固定運用**。SL 側
 で `#ORG $XXXX` 上書きすると main bin の disk 内ファイル名 (= env file の
 `main_name: "$1A00.$$$"` で literal 固定) と loader 期待値が不整合になり、
-build は通るが boot しない silent wrong になる。ORG 可変化は別 PR で対応予定。
+build は通るが boot しない状態になる。
 
 #### pc88mk2sr の `USE_GAMEVSYNC` 制約 (= VRTC 割り込みでの GAMEVSYNC 呼出し)
 
@@ -1042,9 +1041,8 @@ make ENV=cpm TARGET=examples/MODTEST_RESIDENT run
 の代替策 + 実験用)。
 
 旧 `tools/disk-add-overlays.py` は legacy helper として残置 (新規利用は非推奨)。
-msx2 / msxlsx / pc80mk2x 等の d88 系 env は従来の `tools/disk-add-overlays.py`
-経路を維持しており、今後 env ごとに `--emit disk` 経路へ移行予定 (= pc88mk2sr は
-udostool 経路、pc80mk2 は CMT 出力経路で移行済)。
+msx2 / msxlsx 等の d88 系 env は従来の `tools/disk-add-overlays.py` 経路を
+維持している。
 
 #### CMT (cassette tape) 出力 env (= pc80mk2)
 
@@ -1105,7 +1103,7 @@ overlay も CMT 形式 (= main と同じ) で出力されて結合される (= �
 結合の semantics:
 - 結合先 = main.cmt 上書き (= 同一 dir tmp file + overwrite move で
   delete-then-move の中間状態を回避)
-- cmt_concat の path が存在しない場合は明示エラー (= silent wrong 防止)
+- cmt_concat の path が存在しない場合は明示エラー
 - 結合に消費された overlay._mN.cmt は intermediate cleanup 対象 (=
   `--keep-asm` 指定時のみ残る)
 - `cmt_concat` は `output: cmt` 専用 (= bin / null env で指定すると
@@ -1165,7 +1163,7 @@ defines:
   (例: `libpc80mk2xbios_base.asm` の SD ROM/RAM 切替経路)
 
 仕様:
-- value は int 限定 (= hex / 式は未対応、後続で検討)
+- value は int 限定 (= hex / 式は未対応)
 - 名前は `^[A-Za-z_][A-Za-z0-9_]*$` (= C/asm 識別子規則と同等) で validate、
   違反は env load 時 `InvalidDataException` で reject
 - `ENV_TYPE` / `OS_TYPE` は env file `env_type:` / `os_type:` から
@@ -1213,10 +1211,4 @@ slangbuild 経由 build が可能。
 
 `.nex` 形式 (= CSpect 等で実行可能形式) への変換は外部ツール
 `nexcreator` を使う運用 (= `examples/zxn/Makefile` 参照)。slangbuild は
-raw `.bin` の生成までを責務とし、`.nex` 化は scope 外。
-
----
-
-サンプル限定の最小実装で、overlay 命名は `M<N>.BIN` 固定、各 overlay は
-128 byte 以内であることを前提としている (より大きい overlay は loader 拡張
-が必要)。
+raw `.bin` の生成までを担当し、`.nex` 化は外部ツールに委ねている。
