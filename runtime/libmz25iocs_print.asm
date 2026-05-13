@@ -29,7 +29,10 @@ RET
 ; @name LOCATE
 ; @resident shared
 ; @param_count 2
-; Text cursor positioning is not implemented yet.
+; Move text cursor. IOCS CMOV expects L=X and H=Y.
+LD H,E
+RST 18H
+DB  6FH
 RET
 
 
