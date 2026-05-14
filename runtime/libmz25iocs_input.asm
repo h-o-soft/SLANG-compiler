@@ -35,7 +35,7 @@ RET
 ; @name LINPUT
 ; @resident shared
 ; @param_count 2
-; @calls MZ25_IOCS_GETL
+; @calls GETLIN
 ; LINPUT(buffer, length). Read one line from the current cursor position.
 ; IOCS GETL returns from column 0, so D keeps the pre-call cursor X skip count.
 LD A,($05E2)
