@@ -1,7 +1,25 @@
 MAIN()
+VAR V;
+VAR BYTE BUF[256];
 {
     PRINT("MZ-2500 IOCS", /);
     PRINT("PRESS ANY KEY", /);
     WHILE INKEY(0)==0;
     PRINT("OK", /);
+
+    PRINT("INPUT:");
+    V=INPUT();
+    PRINT("INPUT RESULT:", V, /);
+
+    PRINT("GETL:");
+    GETL(BUF);
+    PRINT("GETL RESULT:", MSX$(BUF),/);
+
+    PRINT("GETLIN:");
+    GETLIN(BUF,10);
+    PRINT("GETLIN RESULT:", MSX$(BUF),/);
+
+    PRINT("LINPUT:");
+    LINPUT(BUF,10);
+    PRINT("LINPUT RESULT:", MSX$(BUF),/);
 }
