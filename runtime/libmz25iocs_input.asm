@@ -68,7 +68,6 @@ JR C,.getl_cancel
 LD A,(DE)
 CP $1B
 JR NZ,.getlin1
-LD (HL),A
 .getl_cancel
 LD HL,$FFFF
 RET
@@ -159,7 +158,7 @@ LD HL,0
 RET
 
 MZ25_INPUT_BUF:
-DS 256
+DS 257
 
 ; @name MZ25_HLHEX
 ; @resident shared

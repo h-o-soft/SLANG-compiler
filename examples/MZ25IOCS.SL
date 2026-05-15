@@ -1,6 +1,6 @@
 MAIN()
 VAR V;
-VAR BYTE BUF[255];
+VAR BYTE BUF[256];
 {
     PRINT("MZ-2500 IOCS", /);
     PRINT("PRESS ANY KEY", /);
