@@ -1,5 +1,15 @@
 # 更新履歴
 
+## Version 0.24.1
+
+- MZ-2500 環境の MAGIC ライブラリ対応と IOCS 入力ランタイム拡充 (#175)
+  - `sosmz2500` 環境に MZ-2500 用 MAGIC ライブラリ (`runtime/libmz2500_magic.asm`) をリンクするよう追加。これにより S-OS / MZ-2500 上で MAGIC を使う SLANG コードがビルド可能 (`examples/MAGICSMPL.SL` がそのまま動作)
+  - `mz25iocs` 環境の入力ランタイム (`runtime/libmz25iocs_input.asm`) に `GETL` / `GETLIN` / `LINPUT` / `INPUT` を実装。IOCS `SVC_GETL` (call 0Ch) をベースに、`GETL` / `GETLIN` はカラム 0 から、`LINPUT` / `INPUT` は IOCS ワーク `$05E2` の現在カーソル X を読み飛ばして S-OS 版と同じ "プロンプト除去" 挙動に揃えた
+  - `INPUT` は `$` プレフィックスで 16 進数を、それ以外で 10 進数をパース。ESC / SHIFT+BREAK で `_CARRY=1` をセットして 0 を返す
+  - `mz25iocs` 環境に `LOCATE(x, y)` を実装 (`libmz25iocs_print.asm`) — IOCS `SVC_CMOV` (call 6Fh) を使用、`L=X` / `H=Y` で呼び出す
+  - 新サンプル: `examples/MZ25IOCS.SL` に `INPUT` / `GETL` / `GETLIN` / `LINPUT` の動作確認コードを追加
+  - `docs/MZ2500.md` に入力ランタイムの挙動 (`SVC_GETL` 仕様、`length` の下位 8bit 制約 / `0` = 256 文字扱い、推奨バッファサイズ、`LOCATE` の引数渡し) を追記
+
 ## Version 0.24.0
 
 - コンパイラ: BYTE 配列引数の型情報伝播 + 関数スコープ重複名検出 (#171)
