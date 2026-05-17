@@ -113,10 +113,14 @@ public class CEmitter : IAstVisitor<EmitResult>
         // ヘッダ: slang_runtime.h を include (oscar64 -i= で path 解決される前提)
         sb.Append("#include \"slang_runtime.h\"\n\n");
 
+        // Parser は複数宣言 (`VAR X, Y;`) を Block にラップして返すため、
+        // 全 pass で flatten してから種別判定する。
+        var flatDefs = FlattenDecls(node.Definitions).ToList();
+
         // 第 1 pass: ConstDecl (= #define で先頭に集める)
-        foreach (var def in node.Definitions)
+        foreach (var def in flatDefs)
         {
-            if (def is ConstDecl cd)
+            if (def is ConstDecl)
             {
                 sb.Append(def.Accept(this).Text);
             }
@@ -124,7 +128,7 @@ public class CEmitter : IAstVisitor<EmitResult>
 
         // 第 2 pass: グローバル VarDecl / ArrayDecl
         bool anyGlobalVar = false;
-        foreach (var def in node.Definitions)
+        foreach (var def in flatDefs)
         {
             if (def is VarDecl || def is ArrayDecl)
             {
@@ -136,7 +140,7 @@ public class CEmitter : IAstVisitor<EmitResult>
 
         // 第 3 pass: 関数 prototype を全て先に出す (前方参照対応、SLANG 仕様)
         bool anyFunc = false;
-        foreach (var def in node.Definitions)
+        foreach (var def in flatDefs)
         {
             if (def is FuncDef fd)
             {
@@ -148,7 +152,7 @@ public class CEmitter : IAstVisitor<EmitResult>
 
         // 第 4 pass: 関数本体
         FuncDef? mainFunc = null;
-        foreach (var def in node.Definitions)
+        foreach (var def in flatDefs)
         {
             if (def is FuncDef fd)
             {
@@ -362,8 +366,12 @@ public class CEmitter : IAstVisitor<EmitResult>
             _scope.DeclareLocal(p.Name, paramType);
         }
 
+        // parser が `VAR X, Y;` を Block にラップするため flatten してから処理。
+        var flatStatic = FlattenDecls(node.StaticDeclarations).ToList();
+        var flatLocal = FlattenDecls(node.LocalDeclarations).ToList();
+
         // static decl の名前を先に集約 (= body 内識別子参照で StaticVarIdent を引くために)
-        foreach (var stat in node.StaticDeclarations)
+        foreach (var stat in flatStatic)
         {
             string? name = stat switch
             {
@@ -380,12 +388,12 @@ public class CEmitter : IAstVisitor<EmitResult>
         _indent++;
 
         // static decl (BEGIN 前) → C の関数内 static 変数
-        foreach (var stat in node.StaticDeclarations)
+        foreach (var stat in flatStatic)
         {
             sb.Append(EmitStaticDecl(stat));
         }
         // local decl (BEGIN 後) → 関数冒頭の通常変数
-        foreach (var local in node.LocalDeclarations)
+        foreach (var local in flatLocal)
         {
             sb.Append(local.Accept(this).Text);
         }
@@ -414,8 +422,9 @@ public class CEmitter : IAstVisitor<EmitResult>
             // Void 以外は暗黙 0 return を補う (SLANG の慣行 + oscar64 warning 抑制)。
             // MAIN も F_MAIN 自体は unsigned int 戻り型なので return を入れる。
             // (= 外側 int main(void) wrapper が return 0; 出すのとは別)。
+            // oscar64 は float リテラル `0.0f` を受け付けないため `0.0` を使う。
             if (node.ReturnSize == DataSize.Float)
-                sb.Append(Line("return 0.0f;"));
+                sb.Append(Line("return 0.0;"));
             else
                 sb.Append(Line("return 0;"));
         }
@@ -587,32 +596,47 @@ public class CEmitter : IAstVisitor<EmitResult>
 
     public EmitResult VisitForStmt(ForStmt node)
     {
-        // wrap-safe 形式: end 値が 0xFFFF (or 0) でも無限化しない。
-        //   for (v=from; ; ++v) { body; if (v == to) break; }
-        // SLANG 仕様: 1 回目は from <= to (downto なら from >= to) なら必ず実行。
-        // この形式は最低 1 回 body を実行するため、SLANG のセマンティクスと若干差異。
-        // 厳密に「from > to なら body skip」を再現するため、外側で if (from <= to) {...} で囲む。
+        // SLANG FOR semantics:
+        //   - body 終了後に loop var を step、超えたら exit
+        //   - 自然終了後 (EXIT 無し) は loop var = end + step (= `FOR I=0 TO 15` → I=16)
+        //     post-loop で `IF I<=15` 判定でループが自然完走したかどうか区別できる
+        //   - from > to (downto なら from < to) なら body 1 回も実行されない
+        //
+        // wrap-safe 形:
+        //   {
+        //       T _for_end_0 = (to);
+        //       loopVar = (from);
+        //       if (loopVar {<=,>=} _for_end_0) for (;;) {
+        //           body
+        //           if (loopVar == _for_end_0) { ++/--loopVar; break; }
+        //           ++/--loopVar;
+        //       }
+        //   }
+        // ポイント: 自然終了時に loopVar を end+step に進めてから break する。
+        // これで SLANG 仕様 (`I=16` after `FOR I=0 TO 15`) と一致。
+        // end 値が WORD の MAX (0xFFFF) のときは increment が wrap して 0 になるが、
+        // 標準 C for loop も同じ挙動なので妥協範囲。
         var varType = _scope.Resolve(node.Variable) ?? SlangType.Word;
         var loopVar = VarIdent(node.Variable);
         var fromText = CastTo(ExprFull(node.From), varType);
         var toText = CastTo(ExprFull(node.To), varType);
 
         var sb = new StringBuilder();
-        // 一時的に to 値を保存 (= 副作用がある式の重複評価を防ぐ + wrap-safe)
         var endIdent = NewTempIdent("_for_end");
         var cType = CTypeMapper.MapDeclType(varType);
+        var stepOp = node.IsDownTo ? "--" : "++";
+        var cmpOp = node.IsDownTo ? ">=" : "<=";
+
         sb.Append(Line("{"));
         _indent++;
         sb.Append(Line($"{cType} {endIdent} = {toText};"));
         sb.Append(Line($"{loopVar} = {fromText};"));
-        var cmpOp = node.IsDownTo ? ">=" : "<=";
         sb.Append(Line($"if ({loopVar} {cmpOp} {endIdent}) for (;;) {{"));
         _indent++;
-        // body を block 化して出す
         sb.Append(EmitStmtInner(node.Body));
-        // post-body: if (var == end) break; then step
-        sb.Append(Line($"if ({loopVar} == {endIdent}) break;"));
-        sb.Append(Line(node.IsDownTo ? $"--{loopVar};" : $"++{loopVar};"));
+        // post-body: 自然終了でも end+step に進めてから break する (= SLANG 仕様)
+        sb.Append(Line($"if ({loopVar} == {endIdent}) {{ {stepOp}{loopVar}; break; }}"));
+        sb.Append(Line($"{stepOp}{loopVar};"));
         _indent--;
         sb.Append(Line("}"));
         _indent--;
@@ -874,9 +898,11 @@ public class CEmitter : IAstVisitor<EmitResult>
 
     public EmitResult VisitFloatLiteral(FloatLiteral node)
     {
+        // oscar64 は float リテラルの `f` suffix を受け付けない (ANSI C と差異)。
+        // 整数表記 (`1`) は int になるため、必ず `.` を含める形にする。
         var s = node.Value.ToString("R", CultureInfo.InvariantCulture);
         if (!s.Contains('.') && !s.Contains('e') && !s.Contains('E')) s += ".0";
-        return new($"{s}f", SlangType.Float);
+        return new(s, SlangType.Float);
     }
 
     public EmitResult VisitStringLiteral(StringLiteral node)
@@ -967,14 +993,27 @@ public class CEmitter : IAstVisitor<EmitResult>
 
         // 算術/ビット系
         var result = PromoteArith(lType, rType);
+
+        // FLOAT 混在の場合、整数側を signed cast 経由で float に promote する
+        // (Z80 backend の i16tof24 と同じセマンティクス)。
+        // この変換をしないと unsigned int の値が wrap した状態 (例: -39 → 0xFFD9)
+        // で float に上がってしまい、計算結果が壊れる。
+        string leftText = left.Text;
+        string rightText = right.Text;
+        if (result is PrimitiveType { Kind: PrimitiveKind.Float })
+        {
+            leftText = PromoteToFloatSigned(leftText, lType);
+            rightText = PromoteToFloatSigned(rightText, rType);
+        }
+
         string text;
         switch (node.Op)
         {
-            case BinaryOp.Add: text = $"({left.Text}) + ({right.Text})"; break;
-            case BinaryOp.Sub: text = $"({left.Text}) - ({right.Text})"; break;
-            case BinaryOp.Mul: text = $"({left.Text}) * ({right.Text})"; break;
-            case BinaryOp.Div: text = $"({left.Text}) / ({right.Text})"; break;
-            case BinaryOp.Mod: text = $"({left.Text}) % ({right.Text})"; break;
+            case BinaryOp.Add: text = $"({leftText}) + ({rightText})"; break;
+            case BinaryOp.Sub: text = $"({leftText}) - ({rightText})"; break;
+            case BinaryOp.Mul: text = $"({leftText}) * ({rightText})"; break;
+            case BinaryOp.Div: text = $"({leftText}) / ({rightText})"; break;
+            case BinaryOp.Mod: text = $"({leftText}) % ({rightText})"; break;
             case BinaryOp.SMul:
                 text = $"(short)({left.Text}) * (short)({right.Text})";
                 break;
@@ -1223,8 +1262,54 @@ public class CEmitter : IAstVisitor<EmitResult>
     {
         var srcType = expr.Type;
         if (srcType == null || srcType.Equals(targetType)) return expr.Text;
+
+        // 整数 → Float 変換は signed 解釈 (Z80 backend の i16tof24 と同じセマンティクス)。
+        // SLANG WORD は unsigned int としてマップしているが、FLOAT に変換するときは
+        // ビット列を signed 16-bit として解釈する慣行 (= `Y - 39` が 0xFFD9 ではなく -39
+        // として浮動小数演算に入る)。
+        if (targetType is PrimitiveType { Kind: PrimitiveKind.Float })
+        {
+            if (srcType is PrimitiveType { Kind: PrimitiveKind.Word })
+                return $"((float)(short)({expr.Text}))";
+            if (srcType is PrimitiveType { Kind: PrimitiveKind.Byte })
+                return $"((float)(signed char)({expr.Text}))";
+        }
+
         var cTarget = CTypeMapper.MapDeclType(targetType);
         return $"(({cTarget})({expr.Text}))";
+    }
+
+    /// <summary>
+    /// 整数式を signed cast 経由で float キャスト (= Z80 backend の i16tof24 相当)。
+    /// VisitBinaryExpr / VisitCastExpr 等から float promote の際に呼ぶ。
+    /// 既に float / 非数値型ならそのまま返す。
+    /// </summary>
+    private static string PromoteToFloatSigned(string text, SlangType? type) => type switch
+    {
+        PrimitiveType { Kind: PrimitiveKind.Word } => $"((float)(short)({text}))",
+        PrimitiveType { Kind: PrimitiveKind.Byte } => $"((float)(signed char)({text}))",
+        _ => text,
+    };
+
+    /// <summary>
+    /// 宣言リストを flatten。SLANG parser は `VAR X, Y, Z;` を <c>Block(VarDecl X, VarDecl Y, VarDecl Z)</c>
+    /// にラップして返すため、宣言処理側で 1 段解体する必要がある (= 中身の VarDecl/ArrayDecl/ConstDecl 等を
+    /// そのまま yield)。Block は再帰的に解体 (= ネスト Block 防御)。
+    /// </summary>
+    private static IEnumerable<AstNode> FlattenDecls(IEnumerable<AstNode> nodes)
+    {
+        foreach (var n in nodes)
+        {
+            if (n is Block b)
+            {
+                foreach (var inner in FlattenDecls(b.Statements))
+                    yield return inner;
+            }
+            else
+            {
+                yield return n;
+            }
+        }
     }
 
     private static bool TryEvalIntLiteral(Expression? e, out long value)

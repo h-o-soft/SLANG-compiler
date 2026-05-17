@@ -117,11 +117,13 @@ $@"MAIN()
     }
 
     [Fact]
-    public void FloatLiteral_HasFSuffix()
+    public void FloatLiteral_NoFSuffix()
     {
+        // oscar64 は `1.5f` を受け付けないため、suffix なしで出す (Z80 backend と
+        // 差異あり)。`.` を必ず含めることで float リテラルとして認識される。
         var (src, _) = Transpile("VAR F;\n" + MinimalProgram("    F = 1.5;"));
-        // FloatLiteral は 1.5f になる
-        Assert.Contains("1.5f", src);
+        Assert.Contains("1.5", src);
+        Assert.DoesNotContain("1.5f", src);
     }
 
     [Fact]
@@ -193,11 +195,14 @@ $@"MAIN()
     {
         var (src, _) = Transpile("VAR BYTE I;\n" + MinimalProgram(
             "    FOR I=0 TO 9\n    {\n        PRINT(I);\n    }"));
-        // wrap-safe: end 変数に bind → for(;;) { body; if (v==end) break; ++v; }
+        // wrap-safe + SLANG 自然終了仕様: end 変数 bind、自然終了でも step 1 回後に break
+        // (= `FOR I=0 TO 9` 自然終了で I=10、`IF I<=9` で EXIT 経路と区別可能)
         Assert.Contains("_for_end_", src);
         Assert.Contains("for (;;)", src);
         Assert.Contains("break;", src);
         Assert.Contains("++V_I;", src);
+        // 自然終了経路で `++loopVar; break;` のセットになっていること
+        Assert.Contains("{ ++V_I; break; }", src);
     }
 
     [Fact]

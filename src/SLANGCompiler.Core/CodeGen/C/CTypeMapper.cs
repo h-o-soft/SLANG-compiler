@@ -36,7 +36,9 @@ public static class CTypeMapper
     /// </summary>
     public static string ZeroInitializer(SlangType type) => type switch
     {
-        PrimitiveType { Kind: PrimitiveKind.Float } => "0.0f",
+        // oscar64 は float リテラルの `f` suffix を受け付けない (= ANSI C と差異)。
+        // `0.0` で float リテラルになる。
+        PrimitiveType { Kind: PrimitiveKind.Float } => "0.0",
         PointerType => "0",
         ArrayType => "{0}",
         _ => "0",

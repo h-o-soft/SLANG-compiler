@@ -61,7 +61,8 @@ public class CTypeMapperTests
     {
         Assert.Equal("0", CTypeMapper.ZeroInitializer(SlangType.Byte));
         Assert.Equal("0", CTypeMapper.ZeroInitializer(SlangType.Word));
-        Assert.Equal("0.0f", CTypeMapper.ZeroInitializer(SlangType.Float));
+        // oscar64 は `0.0f` を受け付けないため `0.0` を出す
+        Assert.Equal("0.0", CTypeMapper.ZeroInitializer(SlangType.Float));
         Assert.Equal("0", CTypeMapper.ZeroInitializer(new PointerType(SlangType.Byte)));
         Assert.Equal("{0}", CTypeMapper.ZeroInitializer(
             new ArrayType(SlangType.Byte, new List<int> { 10 })));
