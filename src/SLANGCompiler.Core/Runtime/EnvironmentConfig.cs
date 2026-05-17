@@ -1,6 +1,22 @@
 namespace SLANGCompiler.Runtime;
 
 /// <summary>
+/// コンパイラの backend 種別。env file の <c>backend:</c> field で切替。
+/// 既定 = <see cref="Z80"/> (= 既存の Z80 ASM 出力経路)。
+/// </summary>
+public enum BackendKind
+{
+    /// <summary>Z80 アセンブリ出力 (= AILZ80ASM を slangbuild が呼ぶ)</summary>
+    Z80 = 0,
+
+    /// <summary>
+    /// C ソース出力 (oscar64 経由で 6502 / Commodore 64 等を target にする)。
+    /// slangc は <c>.c</c> ファイルまで、slangbuild が oscar64 を invoke して <c>.prg</c> 等を生成。
+    /// </summary>
+    OscarC = 1,
+}
+
+/// <summary>
 /// ターゲット環境の設定
 /// </summary>
 public class EnvironmentConfig
@@ -13,6 +29,66 @@ public class EnvironmentConfig
     public List<string> Libraries { get; set; } = new();
     public string? OptimizeRules { get; set; }
     public bool CodeReadonly { get; set; }
+
+    /// <summary>
+    /// この env が使う backend。既定は <see cref="BackendKind.Z80"/>。
+    /// <see cref="BackendKind.OscarC"/> 指定時:
+    ///   - <see cref="OutputFormat"/> は <c>"c_source"</c> 必須
+    ///   - <see cref="Libraries"/> / <see cref="Disk"/> / <see cref="BinPadSize"/> /
+    ///     <see cref="OverlayPadAlign"/> / <see cref="CmtConcat"/> / <see cref="CmtAssets"/> /
+    ///     <see cref="OverlayName"/> / <see cref="OverlayOutputFormat"/> 指定不可 (Loader で reject)
+    ///   - <see cref="CRuntimeFiles"/> 最低 1 件必須
+    /// <see cref="BackendKind.Z80"/> 指定時:
+    ///   - <see cref="OscarPath"/> / <see cref="OscarMachine"/> / <see cref="OscarFormat"/> /
+    ///     <see cref="OscarOptimize"/> / <see cref="CRuntimeFiles"/> / <see cref="CRuntimeIncludes"/>
+    ///     指定不可 (typo 早期検出のため reject)
+    /// </summary>
+    public BackendKind Backend { get; set; } = BackendKind.Z80;
+
+    /// <summary>
+    /// oscar64 binary の path。null / 未指定 = 環境変数 <c>$OSCAR64</c> → PATH 上の
+    /// <c>oscar64</c> の順で探索 (slangbuild が解決、slangc 側は使わない)。
+    /// <see cref="Backend"/> == <see cref="BackendKind.OscarC"/> でのみ有効。
+    /// </summary>
+    public string? OscarPath { get; set; }
+
+    /// <summary>
+    /// oscar64 の target machine (oscar64 <c>-tm=&lt;v&gt;</c> 引数)。
+    /// null / 未指定 = <c>"c64"</c>。oscar64 は <c>c64</c>/<c>c128</c>/<c>vic20</c>/
+    /// <c>plus4</c>/<c>pet</c>/<c>nes</c>/<c>atari</c>/<c>x16</c>/<c>mega65</c> を受ける。
+    /// </summary>
+    public string? OscarMachine { get; set; }
+
+    /// <summary>
+    /// oscar64 の output format (oscar64 <c>-tf=&lt;v&gt;</c> 引数)。
+    /// null / 未指定 = <c>"prg"</c>。<c>prg</c>/<c>crt</c>/<c>bin</c> を受ける。
+    /// </summary>
+    public string? OscarFormat { get; set; }
+
+    /// <summary>
+    /// oscar64 の optimization level (例: <c>"O3"</c> / <c>"Os"</c>)。
+    /// null = oscar64 既定 (<c>-O</c> 相当) に任せる。指定時は <c>-&lt;v&gt;</c> 形式で pass。
+    /// </summary>
+    public string? OscarOptimize { get; set; }
+
+    /// <summary>
+    /// oscar64 の <c>-psci</c> (= unprefixed string literal を PETSCII で encode) を
+    /// 付与するか。既定 = true (C64 backend の前提)。
+    /// </summary>
+    public bool OscarPetscii { get; set; } = true;
+
+    /// <summary>
+    /// oscar64 が input として positional に受け取る C runtime source の path リスト
+    /// (= env file dir 起点の相対 path → 絶対化済み)。<see cref="BackendKind.OscarC"/>
+    /// で最低 1 件必須。例: <c>["c64/slang_runtime.c"]</c>。
+    /// </summary>
+    public List<string>? CRuntimeFiles { get; set; }
+
+    /// <summary>
+    /// oscar64 の include path (<c>-i=&lt;path&gt;</c>、複数可)。env file dir 起点の
+    /// 相対 path → 絶対化済み。例: <c>["c64"]</c>。
+    /// </summary>
+    public List<string>? CRuntimeIncludes { get; set; }
 
     /// <summary>
     /// AILZ80ASM の出力 format。null/未指定 = bin (= `.bin` 拡張子、追加

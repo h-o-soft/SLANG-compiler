@@ -3,6 +3,7 @@ using SLANGCompiler.Lexer;
 using SLANGCompiler.Parser;
 using SLANGCompiler.IR;
 using SLANGCompiler.CodeGen;
+using SLANGCompiler.CodeGen.C;
 using SLANGCompiler.Runtime;
 
 namespace SLANGCompiler.CLI;
@@ -125,6 +126,10 @@ class Program
             // 前段で解決済みの envConfig をそのまま使用（二重解決を回避）
             preprocessor.DefineConst("ENV_TYPE", envConfig.EnvType);
             preprocessor.DefineConst("OS_TYPE", envConfig.OsType);
+            // BACKEND: SLANG コードが Z80 / OscarC 別の実装を gate できるようにする
+            // (= MACHINE / inline #ASM を含むファイルは BACKEND==1 で除外する想定)。
+            // 値は <see cref="BackendKind"/>: 0=Z80, 1=OscarC。
+            preprocessor.DefineConst("BACKEND", (int)envConfig.Backend);
 
             // env file の `defines:` で定義された名前を Preprocessor に注入
             // (= 例: pc80mk2xsd で PC8001_SD=1 が定義されると、SL 側の
@@ -170,6 +175,28 @@ class Program
             {
                 diagnostics.WriteTo(Console.Error);
                 return 1;
+            }
+
+            // === Phase 3.5: Backend dispatch ===
+            // OscarC backend は IR / RuntimeManager (Z80 専用) を通らず、
+            // CTranspiler が AST 直接 → C source を生成する。
+            // oscar64 invoke は slangc では行わない (= slangbuild 側の責務、
+            // memory: slangc-vs-slangbuild-responsibility 参照)。
+            if (envConfig.Backend == BackendKind.OscarC)
+            {
+                var transpiler = new CTranspiler(analyzer.Symbols, envConfig, diagnostics);
+                var cSource = transpiler.Transpile(ast);
+
+                if (diagnostics.HasErrors)
+                {
+                    diagnostics.WriteTo(Console.Error);
+                    return 1;
+                }
+
+                var cOutPath = outputPath ?? Path.ChangeExtension(filePath, ".c");
+                File.WriteAllText(cOutPath, cSource);
+                Console.Error.WriteLine($"; Output: {cOutPath}");
+                continue;  // OscarC では overlay / RuntimePlan は使わない
             }
 
             // Load runtime (needed for IR generation to know function return types)
