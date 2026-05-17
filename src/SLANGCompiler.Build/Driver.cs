@@ -26,6 +26,10 @@ public class Driver
         public string? HudiskPath { get; set; }
         public string? UdostoolPath { get; set; }
         public string? Mzd88Path { get; set; }
+        /// <summary>`--oscar-path &lt;path&gt;`。BackendKind.OscarC env のとき
+        /// oscar64 binary を上書き指定する。null なら env file の
+        /// <c>oscar_path:</c> → <c>$OSCAR64</c> → PATH の順で探索。</summary>
+        public string? OscarPath { get; set; }
         public bool KeepAsm { get; set; }
         public bool Verbose { get; set; }
         /// <summary>slangc に pass-through する `-I &lt;path&gt;` の値リスト</summary>
@@ -81,6 +85,15 @@ public class Driver
             return 1;
         }
         var (envConfig, envPath) = resolved.Value;
+
+        // === Backend dispatch ===
+        // OscarC backend は AILZ80ASM 前提の組み立てを通らない。Z80 とは
+        // 出力 format / overlay / disk が全く別物なので、Run() 冒頭で早期に
+        // 別 method に逃がす設計 (= レビュー指摘の RunOscarC 案)。
+        if (envConfig.Backend == BackendKind.OscarC)
+        {
+            return RunOscarC(envConfig, envPath);
+        }
 
         // --emit disk + disk: セクション無しは早期 reject (= 無駄な compile/asm 回避)
         if (_opts.EmitMode == "disk" && envConfig.Disk == null)
@@ -701,6 +714,112 @@ public class Driver
             fs.Write(zeros, 0, chunk);
             written += chunk;
         }
+    }
+
+    /// <summary>
+    /// BackendKind.OscarC 用のフロー (= 完全別経路、AILZ80ASM / overlay /
+    /// disk / cmt の組み立てロジックを通らない)。
+    ///
+    /// Flow:
+    ///   1) slangc -E &lt;env&gt; -o &lt;prefix&gt;.c &lt;input.SL&gt;
+    ///   2) oscar64 -tm=&lt;machine&gt; -tf=&lt;format&gt; [-psci] {-i=...}
+    ///      &lt;prefix&gt;.c {runtime/c64/slang_runtime.c} -o=&lt;prefix&gt;.prg
+    ///   3) cleanup (--keep-asm 指定時は .c も残す、それ以外は削除)
+    ///
+    /// envConfig は Run() 冒頭で解決済み (envConfig.Backend == OscarC が確定)。
+    /// EmitMode は使わない (`--emit disk` は OscarC backend で意味を持たない、
+    /// 必要なら別途エラー化を検討)。
+    /// </summary>
+    private int RunOscarC(EnvironmentConfig envConfig, string envPath)
+    {
+        // 出力 path: -o は prefix としても完全 path としても受ける。slangbuild は
+        // prefix 運用 (= <prefix>.c と <prefix>.prg を生成)。
+        // slangc 単体は -o を完全 path として扱うので、ここでは .c を明示付与。
+        string outputBase = _opts.OutputPrefix != null
+            ? Path.GetFullPath(_opts.OutputPrefix)
+            : Path.Combine(
+                Path.GetDirectoryName(Path.GetFullPath(_opts.InputPath))!,
+                DerivePrefix(_opts.InputPath));
+        var cPath = outputBase + ".c";
+        var prgPath = outputBase + ".prg";
+
+        var intermediates = new List<string>();
+
+        // === Step 1: slangc spawn → <prefix>.c ===
+        var slangc = _resolver.ResolveSlangc(_opts.SlangcPath);
+        if (_opts.Verbose) Console.Error.WriteLine($"slangbuild: using slangc: {slangc.Path}");
+        var slangcResult = SpawnSlangc(slangc, _opts.InputPath, cPath, _opts.Environment);
+        if (slangcResult != 0)
+        {
+            Console.Error.WriteLine($"slangbuild: slangc failed (exit {slangcResult})");
+            return slangcResult;
+        }
+        if (!File.Exists(cPath))
+        {
+            Console.Error.WriteLine($"slangbuild: slangc did not produce expected output: {cPath}");
+            return 1;
+        }
+        intermediates.Add(cPath);
+
+        // === Step 2: oscar64 invoke ===
+        var oscarBin = OscarInvoker.FindOscarBinary(_opts.OscarPath, envConfig);
+        if (oscarBin == null)
+        {
+            Console.Error.WriteLine(
+                "slangbuild: oscar64 binary not found. Install oscar64 and either "
+                + "(1) put it on PATH, (2) set $OSCAR64, "
+                + "(3) set `oscar_path:` in env file, or "
+                + "(4) pass --oscar-path <path>.");
+            return 1;
+        }
+        if (_opts.Verbose) Console.Error.WriteLine($"slangbuild: using oscar64: {oscarBin}");
+
+        // CRuntimeFiles の存在 check (= 後段で oscar64 が file not found を出すよりも
+        // 早く分かりやすいメッセージを出す)
+        if (envConfig.CRuntimeFiles != null)
+        {
+            foreach (var rt in envConfig.CRuntimeFiles)
+            {
+                if (!File.Exists(rt))
+                {
+                    Console.Error.WriteLine($"slangbuild: c_runtime_files not found: {rt}");
+                    return 1;
+                }
+            }
+        }
+
+        var invoker = new OscarInvoker(oscarBin, _opts.Verbose);
+        var result = invoker.Compile(cPath, prgPath, envConfig);
+        if (!result.Success)
+        {
+            if (!string.IsNullOrEmpty(result.Stdout)) Console.Error.Write(result.Stdout);
+            if (!string.IsNullOrEmpty(result.Stderr)) Console.Error.Write(result.Stderr);
+            Console.Error.WriteLine($"slangbuild: oscar64 failed (exit {result.ExitCode})");
+            return result.ExitCode == 0 ? 1 : result.ExitCode;
+        }
+        if (_opts.Verbose && !string.IsNullOrEmpty(result.Stdout))
+            Console.Error.Write(result.Stdout);
+
+        if (!File.Exists(prgPath))
+        {
+            Console.Error.WriteLine($"slangbuild: oscar64 did not produce expected output: {prgPath}");
+            return 1;
+        }
+
+        // === Step 3: cleanup ===
+        // oscar64 は副産物として .asm / .map / .int / .lbl / .dbj を吐く。
+        // --keep-asm 指定時は全て残す。デフォルトは intermediates (= .c) のみ削除し、
+        // oscar64 副産物は user の debug 用に残す (= 既存 AILZ80ASM 経路は .ASM を
+        // intermediates として管理するのと同じ慣行で .c は管理する)。
+        if (!_opts.KeepAsm)
+        {
+            foreach (var p in intermediates)
+            {
+                try { File.Delete(p); } catch { }
+            }
+        }
+
+        return 0;
     }
 
     /// <summary>
