@@ -1,7 +1,7 @@
 // Commodore 64 sprite bounce demo (oscar64 backend, env c_bindings: 経由)
 //
 // Build:
-//   slangbuild -E c64 examples/c64_sprite_demo.SL -o examples/c64_sprite_demo
+//   slangbuild -E c64 examples/c64/SPRITE.SL -o examples/c64/SPRITE
 //
 // 期待動作: 白い四角スプライト 1 個が画面内を斜め移動して端でバウンス。
 

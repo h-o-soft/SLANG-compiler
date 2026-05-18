@@ -432,14 +432,24 @@ public class Parser
 
             Expect(TokenKind.Colon, "Expected ':' before C function name");
 
-            // C 関数名 (= identifier、case preserve)
-            var cNameTok = Expect(TokenKind.Identifier, "Expected C function name (identifier) after ':'");
-            var cName = cNameTok.StringValue;
-            if (!_cIdentRegex.IsMatch(cName))
+            // C 関数名 (= case preserve)。SLANG keyword と衝突する有効な C ident
+            // (例: `print`, `void`, `if` 等) を bridge 名として指定できるよう、
+            // TokenKind.Identifier 限定ではなく Current.Text に対して直接
+            // C ident regex で validate する (= codex review 反映)。
+            // SLANG 識別子規則と C 識別子規則は同形 (^[A-Za-z_][A-Za-z0-9_]*$)
+            // なので、SLANG keyword token (= 上記 regex を満たす) もそのまま
+            // 受け付ける。EOF や記号 token は regex で reject される。
+            var cNameTok = Current;
+            var cName = cNameTok.Text;
+            if (string.IsNullOrEmpty(cName) || !_cIdentRegex.IsMatch(cName))
             {
                 _diagnostics.Error(
-                    $"Invalid C function name '{cName}'; must match ^[A-Za-z_][A-Za-z0-9_]*$",
+                    $"Expected C function name (identifier) after ':', got {cNameTok.Kind} '{cNameTok.Text}'",
                     cNameTok.Span);
+            }
+            else
+            {
+                Advance();
             }
 
             decls.Add(new CFuncDecl(name, cName, paramCount, typedParams,

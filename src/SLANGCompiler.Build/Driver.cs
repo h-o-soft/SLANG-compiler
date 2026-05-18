@@ -99,6 +99,29 @@ public class Driver
         // 別 method に逃がす設計 (= レビュー指摘の RunOscarC 案)。
         if (envConfig.Backend == BackendKind.OscarC)
         {
+            // OscarC backend で disk 系オプション (--emit disk / --disk-image /
+            // --disk-template) を指定したら early reject。silent ignore で
+            // .prg だけ生成され disk image は作られない silent wrong 事故を防ぐ
+            // (codex review 反映)。
+            if (_opts.EmitMode != "bin")
+            {
+                Console.Error.WriteLine(
+                    $"slangbuild: --emit {_opts.EmitMode} is not supported by `backend: oscar_c` env "
+                    + "(only `--emit bin` / default for OscarC).");
+                return 1;
+            }
+            if (!string.IsNullOrEmpty(_opts.DiskImagePath))
+            {
+                Console.Error.WriteLine(
+                    "slangbuild: --disk-image is not supported by `backend: oscar_c` env.");
+                return 1;
+            }
+            if (!string.IsNullOrEmpty(_opts.DiskTemplatePath))
+            {
+                Console.Error.WriteLine(
+                    "slangbuild: --disk-template is not supported by `backend: oscar_c` env.");
+                return 1;
+            }
             return RunOscarC(envConfig, envPath);
         }
 

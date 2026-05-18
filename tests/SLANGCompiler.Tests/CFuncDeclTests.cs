@@ -251,4 +251,43 @@ public class CFuncDeclTests
         var ft = Assert.IsType<FunctionType>(sym!.Type);
         Assert.IsType<PointerType>(ft.ParameterTypes[0]);
     }
+
+    // === C17: c_name に SLANG keyword と衝突する有効な C ident を許可 ===
+    // codex review 反映: 旧実装は TokenKind.Identifier 限定だったので `print` /
+    // `void` / `if` 等の SLANG keyword 名を bridge 名にできなかった。
+    // C 識別子規則を満たす SLANG keyword は受け付ける。
+
+    [Fact]
+    public void C17_CName_SlangKeyword_Accepted()
+    {
+        // `print` は SLANG keyword (= TokenKind.Print) だが、C 識別子としては有効
+        var (_, diag, syms) = ParseAndAnalyze(
+            "CFUNC MY_PRINT(BYTE c) VOID :print;\nMAIN() {}\n");
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+
+        var sym = syms.GlobalScope.Resolve("MY_PRINT");
+        Assert.NotNull(sym);
+        Assert.Equal("print", sym!.CName);
+    }
+
+    [Fact]
+    public void C18_CName_VoidKeyword_Accepted()
+    {
+        // VOID 自体も c_name として使えるよう regex check のみ
+        var (_, diag, syms) = ParseAndAnalyze(
+            "CFUNC NULLOP() VOID :void_func;\nMAIN() {}\n");
+        Assert.False(diag.HasErrors);
+        var sym = syms.GlobalScope.Resolve("NULLOP");
+        Assert.Equal("void_func", sym!.CName);
+    }
+
+    [Fact]
+    public void C19_CName_SymbolToken_Rejected()
+    {
+        // 記号 token (例: `$1234`) は C ident regex で reject
+        var (_, diag, _) = ParseAndAnalyze("CFUNC FOO():$1234;\nMAIN() {}\n");
+        Assert.True(diag.HasErrors);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("C function name"));
+    }
 }
