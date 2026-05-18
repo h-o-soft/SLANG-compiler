@@ -35,11 +35,10 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 - `MEM[addr]` / `MEMW[addr]` (= memory-mapped 配列) は `SLANG_MEM(addr)` / `SLANG_MEMW(addr)` マクロに展開
 
 **動作確認済サンプル** (実機 VICE):
-- `examples/INDTEST.SL` (関数内 static 配列 / 間接配列アクセス)
 - `examples/FMANDEL.SL` (テキストマンデルブロ、FLOAT 演算、oscar64 最適化で Z80 backend より高速動作)
 - `examples/FURUI.SL` (エラトステネス素数判定 1〜10000)
 - `examples/STARS.SL` (リアルタイム key 入力でアニメーション、A/D で星数増減)
-- `examples/c64_sprite_demo.SL` (VIC sprite 1 個 + VSYNC 同期で画面端バウンス)
+- `examples/c64/SPRITE.SL` (VIC sprite 1 個 + VSYNC 同期で画面端バウンス、c64 専用 sample 用ディレクトリ)
 
 **v1 制約**:
 - 文字列は ASCII printable (0x20-0x7E) のみサポート。日本語・カナ・SJIS は未対応 (今後 oscar64 `p"..."` 拡張等で検討)
