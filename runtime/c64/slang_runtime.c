@@ -243,7 +243,10 @@ static unsigned int slang_readline(unsigned char *buf, unsigned int max, unsigne
             buf[0] = 0;
             return 0xFFFFu;
         }
-        if (c == 13)  /* CR (Return) */
+        /* Return キー: oscar64 conio はデフォルト giocharmap=IOCHM_ASCII で
+         * CR(13) → LF(10) に変換するため、両方を受け付ける (= getch()
+         * の戻り値が 10 になるケースが実機 / VICE で発生)。 */
+        if (c == 13 || c == 10)
             break;
         if (c == 20)  /* DEL */
         {
