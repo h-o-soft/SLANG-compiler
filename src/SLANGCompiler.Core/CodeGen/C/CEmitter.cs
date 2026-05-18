@@ -1213,15 +1213,19 @@ public class CEmitter : IAstVisitor<EmitResult>
             return new("/* unsupported indirect call */0", SlangType.Word);
         }
 
-        // 解決順 (= plan の 4 階層):
-        //   1. RuntimeBinding (builtin: WIDTH / LOCATE / HEX2$ 等)
-        //   2. SymbolTable (SLANG 宣言: Function / CFunction / MachineFunction)
-        //   3. CBindingRegistry (= env c_bindings)  ← Commit 4 で追加
-        //   4. undeclared → error
+        // 解決順:
+        //   1. RuntimeBinding (static builtin: WIDTH / LOCATE / HEX2$ 等)
+        //   2. SymbolTable (SLANG CFUNC 宣言 / user Function) — SLANG ソース起源を優先
+        //   3. CBindingRegistry (= env c_bindings) — SemanticAnalyzer が builtin として
+        //      MachineFunction 登録する SLANG 仕様関数 (INPUT / LOCATE 等) を env binding で
+        //      override する。MachineFunction error の前に env binding を試すことで、
+        //      Z80 backend と同じ SLANG 仕様関数名を c64 で使えるようにする
+        //   4. MachineFunction → error (env binding がない場合のみ)
+        //   5. undeclared → error
         var binding = RuntimeBinding.Lookup(funcName);
         string cName;
         SlangType retType;
-        FunctionType? cfuncSig = null;   // CFUNC で param 型キャストするとき参照
+        FunctionType? cfuncSig = null;   // CFUNC / env binding で param 型キャストするとき参照
 
         if (binding != null)
         {
@@ -1233,23 +1237,23 @@ public class CEmitter : IAstVisitor<EmitResult>
             var sym = _globals?.GlobalScope.Resolve(funcName);
             if (sym?.Kind == SymbolKind.CFunction)
             {
-                // CFUNC: SLANG 宣言で SymbolKind.CFunction として登録された関数。
+                // SLANG CFUNC 宣言: SymbolKind.CFunction として登録された関数。
                 // c_name は Symbol.CName に case preserve で保存されている。
-                // 引数は CFuncDecl の Parameters 型に合わせて CastTo する。
                 cName = sym.CName ?? IdentifierMap.Sanitize(funcName);
                 cfuncSig = sym.Type as FunctionType;
                 retType = cfuncSig?.ReturnType ?? SlangType.Word;
             }
-            else if (sym?.Kind == SymbolKind.MachineFunction)
+            else if (sym?.Kind == SymbolKind.Function)
             {
-                Error($"MACHINE function `{funcName}` is not supported by oscar_c backend; gate the call with `#IF ENV_TYPE==7` or `#IF BACKEND==1`", node.Span);
-                return new("/* unsupported MACHINE call */0", SlangType.Word);
+                // user 定義関数 (= SLANG ソース内 FuncDef)
+                cName = FuncIdent(funcName);
+                retType = sym.Type is FunctionType uft ? uft.ReturnType : SlangType.Word;
             }
-            else if (sym == null)
+            else
             {
-                // 未宣言関数: env c_bindings: で提供された binding を試す。
-                // SLANG 側 CFUNC 宣言と同名なら #2 で先に hit するので、ここに来るのは
-                // env binding 限定 (= ユーザー override の規律に合う)。
+                // MachineFunction or undeclared 両方とも env c_bindings: で
+                // override する余地を与える。env binding hit なら使用、なければ
+                // MachineFunction error or undeclared error。
                 var envBinding = _cBindings.Lookup(funcName);
                 if (envBinding != null)
                 {
@@ -1258,19 +1262,16 @@ public class CEmitter : IAstVisitor<EmitResult>
                     cfuncSig = new FunctionType(CBindingRegistry.MapType(envBinding.Return), paramTypes);
                     retType = cfuncSig.ReturnType;
                 }
+                else if (sym?.Kind == SymbolKind.MachineFunction)
+                {
+                    Error($"MACHINE function `{funcName}` is not supported by oscar_c backend; gate the call with `#IF ENV_TYPE==7` or `#IF BACKEND==1`, or provide it via env c_bindings: / CFUNC", node.Span);
+                    return new("/* unsupported MACHINE call */0", SlangType.Word);
+                }
                 else
                 {
-                    // SLANG では Z80 backend で「未宣言関数 = address に JSR する MACHINE 風」
-                    // 扱いを許す慣行があるが、oscar_c backend ではどの関数を呼ぶか決定不能なので
-                    // 診断 error にする (v1)。
-                    Error($"undeclared function `{funcName}` cannot be called from oscar_c backend (v1); declare it as a function, CFUNC, or env c_bindings entry, or gate with `#IF ENV_TYPE==7`", node.Span);
+                    Error($"undeclared function `{funcName}` cannot be called from oscar_c backend; declare it as a function, CFUNC, or env c_bindings entry", node.Span);
                     return new($"/* undeclared {funcName} */0", SlangType.Word);
                 }
-            }
-            else
-            {
-                cName = FuncIdent(funcName);
-                retType = sym.Type is FunctionType ft ? ft.ReturnType : SlangType.Word;
             }
         }
 
@@ -1515,13 +1516,15 @@ public class CEmitter : IAstVisitor<EmitResult>
         }
 
         // === Phase 2: CBindingRegistry (env file c_bindings:) ===
-        // SLANG 側で同名 CFUNC 宣言があれば override により Phase 1 で先に emit
-        // 済み (= signature 一致なら skip、不一致なら error)。
+        // SLANG 起源 (CFUNC / user Function) が同名なら Phase 1 で先に emit 済 → skip。
+        // SemanticAnalyzer が自動登録する builtin (= SymbolKind.MachineFunction、
+        // INPUT / LOCATE / INKEY 等) は env binding が override する想定なので skip しない
+        // (= env binding の extern を必ず emit、VisitCallExpr の resolve も env を優先)。
         foreach (var b in _cBindings.All)
         {
-            // SLANG 側 CFUNC が既に同名 Symbol を登録している場合は skip
-            // (= info diagnostics は CTranspiler 側で出す)
-            if (_globals?.GlobalScope.ResolveLocal(b.Name) != null) continue;
+            var existing = _globals?.GlobalScope.ResolveLocal(b.Name);
+            if (existing?.Kind == SymbolKind.CFunction || existing?.Kind == SymbolKind.Function)
+                continue;
 
             var paramTypes = b.Params.Select(CBindingRegistry.MapType).ToList();
             var ft = new FunctionType(CBindingRegistry.MapType(b.Return), paramTypes);

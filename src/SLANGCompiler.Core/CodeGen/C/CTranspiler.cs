@@ -46,6 +46,8 @@ public class CTranspiler
 
         // SLANG 側 CFUNC 宣言 (= SymbolKind.CFunction) が env binding を override
         // していたら info diagnostics で警告 (= silent override 防止)。
+        // SymbolKind.MachineFunction (= SemanticAnalyzer builtin 自動登録、INPUT /
+        // LOCATE 等) は env binding が override する正常パターンなので info 不要。
         if (_symbols != null)
         {
             foreach (var b in registry.All)

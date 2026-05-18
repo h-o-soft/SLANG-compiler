@@ -44,10 +44,25 @@ unsigned int slang_inkey(unsigned int mode);  /* INKEY(mode): non-blocking key r
 unsigned int slang_screen(unsigned int x, unsigned int y);  /* SCREEN(x, y): 画面文字読み */
 void slang_prmode(unsigned int m);            /* PRMODE(m): C64 では切替先なし = no-op */
 
-/* === INPUT === */
+/* === INPUT (SLANG 互換 bridge、env c_bindings: で SLANG → C 関数として公開) === */
 
-int  slang_input_int(void);
-void slang_input_str(char *buf, unsigned int max);
+/* GETLIN(buf_addr, x): カーソルを x 列に移動してから 1 行入力。
+ * 戻り値: 入力文字数 (NUL terminate 除く)、ESC キーで 0xFFFF。
+ * buf_addr は SLANG WORD で受け取り bridge 内で (unsigned char *) 化。 */
+unsigned int slang_getlin(unsigned int buf_addr, unsigned int x);
+
+/* GETL(buf_addr) = GETLIN(buf_addr, 0) */
+unsigned int slang_getl(unsigned int buf_addr);
+
+/* LINPUT(buf_addr, x) = GETLIN と同等 (Z80 backend 互換、内部実装は同じ)。
+ * Z80 では sCSR でカーソル位置を保存する違いがあるが、C backend では
+ * 単純化して GETLIN と同じ挙動。 */
+unsigned int slang_linput(unsigned int buf_addr, unsigned int x);
+
+/* INPUT(): 1 行入力 → 数値 parse (10進、または $hex)。
+ * 戻り値: 数値、ESC キーで 0xFFFF。Z80 backend が使う `_CARRY` 機構は v1
+ * では未対応のため、SLANG コード側で戻り値 $FFFF を ESC として判定する。 */
+unsigned int slang_input(void);
 
 /* === String helpers (SLANG static-buffer semantics; 連続呼び出しで上書き) === */
 

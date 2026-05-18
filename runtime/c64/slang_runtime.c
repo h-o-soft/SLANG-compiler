@@ -220,35 +220,90 @@ void slang_prmode(unsigned int m)
 }
 
 /* ============================================================
- * INPUT
+ * INPUT (SLANG INPUT / LINPUT / GETL / GETLIN bridge)
  * ============================================================ */
 
-int slang_input_int(void)
+/* 1 行入力の coreloop。buf に最大 max-1 文字 + NUL を書く。
+ * ESC (= STOP, PETSCII 3) で 0xFFFF を返す、CR (13) で len を返す。
+ * x > 0 ならカーソル位置を (x, current_y) に移動してから読み始める。 */
+static unsigned int slang_readline(unsigned char *buf, unsigned int max, unsigned int x)
 {
-    char buf[8];
-    slang_input_str(buf, sizeof(buf));
-    return atoi(buf);
-}
-
-void slang_input_str(char *buf, unsigned int max)
-{
-    /* Naive line input: read until CR, up to max-1 chars. */
     unsigned int n = 0;
     char c;
+
+    if (x > 0)
+        gotoxy((unsigned char)x, wherey());
+
     while (n + 1 < max)
     {
         c = getch();
-        if (c == 13) break;
+        /* C64 STOP = $03、その他 OS で ESC が来ても escape 扱い */
+        if (c == 3 || c == 27)
+        {
+            buf[0] = 0;
+            return 0xFFFFu;
+        }
+        if (c == 13)  /* CR (Return) */
+            break;
         if (c == 20)  /* DEL */
         {
             if (n > 0) { --n; putch(20); }
             continue;
         }
-        buf[n++] = c;
+        buf[n++] = (unsigned char)c;
         putch(c);
     }
     buf[n] = 0;
     putch(13);
+    return n;
+}
+
+unsigned int slang_getlin(unsigned int buf_addr, unsigned int x)
+{
+    /* buffer size は呼び出し側 SLANG コードが ARRAY BYTE で確保する。
+     * 80 桁固定で打ち切り (= C64 画面幅相当、Z80 backend の sKBFAD と
+     * 同等の上限)。 */
+    return slang_readline((unsigned char *)buf_addr, 81u, x);
+}
+
+unsigned int slang_getl(unsigned int buf_addr)
+{
+    return slang_getlin(buf_addr, 0);
+}
+
+unsigned int slang_linput(unsigned int buf_addr, unsigned int x)
+{
+    /* Z80 backend では sCSR でカーソル状態を一旦保存する違いがあるが、
+     * C backend では gotoxy で十分なので GETLIN と同じ挙動に統一。 */
+    return slang_getlin(buf_addr, x);
+}
+
+unsigned int slang_input(void)
+{
+    /* 1 行入力 → 先頭スペース skip → $hex or 10進 parse。
+     * ESC は 0xFFFF を返す (= Z80 backend の _CARRY 機構は v1 未対応)。 */
+    unsigned char buf[16];
+    unsigned int len = slang_readline(buf, sizeof(buf), 0);
+    if (len == 0xFFFFu) return 0xFFFFu;
+
+    unsigned char *p = buf;
+    while (*p == ' ') ++p;
+
+    if (*p == '$')
+    {
+        ++p;
+        unsigned int v = 0;
+        unsigned char c;
+        while ((c = *p++) != 0)
+        {
+            if (c >= '0' && c <= '9')      v = (v << 4) | (unsigned int)(c - '0');
+            else if (c >= 'A' && c <= 'F') v = (v << 4) | (unsigned int)(c - 'A' + 10);
+            else if (c >= 'a' && c <= 'f') v = (v << 4) | (unsigned int)(c - 'a' + 10);
+            else break;
+        }
+        return v;
+    }
+    return (unsigned int)(int)atoi((const char *)p);
 }
 
 /* ============================================================

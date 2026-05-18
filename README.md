@@ -217,7 +217,7 @@ env file `c64.env` が以下を C backend builtin として公開しているた
 | 種別 | API |
 |---|---|
 | I/O | `PRINT` 全構文 (`"..."` / `/` / `%(v)` / `!(s)` / `HEX2$(v)` / `HEX4$(v)` / `DECI$(v)` / `FORM$(v,n)` / `MSG$(p)` / `MSX$(p)` / `STR$(c,n)` / `CHR$(n)` / `SPC$(n)` / `CR$(n)` / `TAB$(n)` / `FL$(f)` / `PN$(v)`) |
-| 入力 | `INKEY(mode)` (即時状態取得、押下中=値、離した瞬間=0)、`INPUT` 系 |
+| 入力 | `INKEY(mode)` (即時状態取得、押下中=値、離した瞬間=0)、`INPUT()` (1 行入力 → 数値 parse、ESC=`$FFFF`)、`GETL(buf)` / `GETLIN(buf, x)` / `LINPUT(buf, x)` (1 行文字列入力、戻り値=入力文字数、ESC=`$FFFF`)。Z80 backend の `_CARRY` 機構は v1 未対応 |
 | 端末 | `WIDTH(w)` (no-op = C64 は 40 桁固定)、`LOCATE(x, y)`、`SCREEN(x, y)`、`PRMODE(m)` |
 | 数学 | `ABS / SQR / SIN / COS / TAN / LOG / EXP / ATN / RND / SRND` |
 | メモリ | `MEM[addr]` / `MEMW[addr]` (= 絶対アドレス access、`SLANG_MEM` / `SLANG_MEMW` マクロに展開) |

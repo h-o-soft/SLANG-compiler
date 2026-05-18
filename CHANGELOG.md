@@ -26,7 +26,7 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 - `--c-source <p>`: ユーザー C ファイルを oscar64 build に追加 (repeatable、CFUNC 実体を置く)。Z80 env で指定すると early reject
 
 **実装 (oscar64 backend)**:
-- `runtime/c64/slang_runtime.{h,c}`: PRINT 13 構文 (`!` / `%` / `FORM$` / `DECI$` / `HEX2$` / `HEX4$` / `MSG$` / `STR$` / `CHR$` / `SPC$` / `CR$` / `TAB$` / `FL$` / `MSX$` / `PN$` / `/`) + INPUT + RND + BIT + LOCATE + INKEY (= KERNAL $C5 直読みで押下中=値・離した瞬間=0 の即時状態取得) + SCREEN ($0400 screen RAM 直読み) + WIDTH (C64 は 40 桁固定なので no-op)
+- `runtime/c64/slang_runtime.{h,c}`: PRINT 13 構文 (`!` / `%` / `FORM$` / `DECI$` / `HEX2$` / `HEX4$` / `MSG$` / `STR$` / `CHR$` / `SPC$` / `CR$` / `TAB$` / `FL$` / `MSX$` / `PN$` / `/`) + INPUT 系 (`INPUT()` 数値入力、`GETL(buf)` / `GETLIN(buf, x)` / `LINPUT(buf, x)` 文字列入力、ESC で `$FFFF` 返却、`_CARRY` 機構は v1 未対応) + RND + BIT + LOCATE + INKEY (= KERNAL $C5 直読みで押下中=値・離した瞬間=0 の即時状態取得) + SCREEN ($0400 screen RAM 直読み) + WIDTH (C64 は 40 桁固定なので no-op)
 - `runtime/c64/slang_sprite.{h,c}`: VIC sprite bridge 9 関数 (`SPR_INIT` / `SPR_SET` / `SPR_MOVE` / `SPR_SHOW` / `SPR_POSX` / `SPR_POSY` / `SPR_COLOR` / `SPR_IMAGE` / `VIC_WAIT`)。oscar64 sprites.h を直接 binding せず bridge 経由で型整合と pointer table 管理を吸収。slang_runtime.h ← slang_sprite.h chain include で生成 C 側 extern と bridge 実装の signature drift を防ぐ
 - `include/C64_VIC.LIB`: VIC-II 色定数 16 個 (`VCOL_BLACK..VCOL_LT_GREY`)、`#INCLUDE` で取り込み
 - 生成 C は `unsigned int` (16-bit) で WORD wrap を保持、整数 → FLOAT 変換は signed cast 経由 (= Z80 backend の `i16tof24` と同じセマンティクス)

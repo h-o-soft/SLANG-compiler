@@ -271,6 +271,57 @@ MAIN() { SPR_INIT(0); }
     // === 追加: env binding 経由の呼出が正しく C extern + call になる ===
 
     [Fact]
+    public void E10_EnvBinding_OverridesBuiltinMachineFunction()
+    {
+        // SemanticAnalyzer は INPUT / LOCATE 等の SLANG 仕様関数を自動で
+        // SymbolKind.MachineFunction 登録する (= Z80 backend 前提)。
+        // c64 では env c_bindings: でこれらを override して C 呼出に
+        // 変換できるべき (= 旧実装は MachineFunction が先に hit して error
+        // になっていたバグの修正確認)。
+        var diag = new DiagnosticBag();
+        var source = """
+MAIN() {
+    INPUT();
+}
+""";
+        var lexer = new Lexer.Lexer(source, "<test>");
+        var tokens = lexer.Tokenize();
+        var preproc = new Preprocessor(diag, new List<string>());
+        preproc.DefineConst("BACKEND", 1);
+        preproc.DefineConst("ENV_TYPE", 7);
+        tokens = preproc.Process(tokens, ".");
+        var parser = new Parser.Parser(tokens, diag);
+        var ast = parser.ParseCompilationUnit();
+        var analyzer = new SemanticAnalyzer(diag);
+        analyzer.Analyze(ast);
+        Assert.False(diag.HasErrors);
+
+        // SemanticAnalyzer が INPUT を MachineFunction として登録していることを確認
+        var inputSym = analyzer.Symbols.GlobalScope.Resolve("INPUT");
+        Assert.Equal(SymbolKind.MachineFunction, inputSym!.Kind);
+
+        var env = new EnvironmentConfig
+        {
+            Name = "c64",
+            Backend = BackendKind.OscarC,
+            OutputFormat = "c_source",
+            CBindings = new List<CBindingDef>
+            {
+                new() { Name = "INPUT", CName = "slang_input",
+                        Params = new List<CBindingType>(), Return = CBindingType.Word },
+            },
+        };
+        var transpiler = new CTranspiler(analyzer.Symbols, env, diag);
+        var cSrc = transpiler.Transpile(ast);
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+
+        // env binding が extern + 呼出に展開される (= MachineFunction error にならない)
+        Assert.Contains("extern unsigned int slang_input(void);", cSrc);
+        Assert.Contains("slang_input(", cSrc);
+    }
+
+    [Fact]
     public void E9_EnvBinding_EmitsExternAndCall_NoUserCFunc()
     {
         var diag = new DiagnosticBag();
