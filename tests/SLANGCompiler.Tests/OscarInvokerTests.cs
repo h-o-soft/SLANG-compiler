@@ -120,6 +120,31 @@ public class OscarInvokerTests : IDisposable
         Assert.Contains("-tf=prg", args);
     }
 
+    [Fact]
+    public void BuildArgs_ExtraCSources_AppendedAfterRuntime()
+    {
+        var env = MakeC64Env(runtimeFiles: new List<string> { "/rt.c" });
+        var extras = new List<string> { "/user/mylib.c", "/user/other.c" };
+        var args = OscarInvoker.BuildArgs("/in.c", "/out.prg", env, extras);
+
+        var inIdx = args.IndexOf("/in.c");
+        var rtIdx = args.IndexOf("/rt.c");
+        var u1Idx = args.IndexOf("/user/mylib.c");
+        var u2Idx = args.IndexOf("/user/other.c");
+        var outIdx = args.IndexOf("-o=/out.prg");
+        Assert.True(inIdx < rtIdx && rtIdx < u1Idx && u1Idx < u2Idx && u2Idx < outIdx,
+            $"Expected order: in < rt < user1 < user2 < -o=, got {string.Join(" ", args)}");
+    }
+
+    [Fact]
+    public void BuildArgs_ExtraCSourcesNull_BehavesLikeNoExtras()
+    {
+        var env = MakeC64Env(runtimeFiles: new List<string> { "/rt.c" });
+        var argsNoExtra = OscarInvoker.BuildArgs("/in.c", "/out.prg", env);
+        var argsNullExtra = OscarInvoker.BuildArgs("/in.c", "/out.prg", env, null);
+        Assert.Equal(argsNoExtra, argsNullExtra);
+    }
+
     // === FindOscarBinary ===
 
     [Fact]

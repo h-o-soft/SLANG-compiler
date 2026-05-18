@@ -62,7 +62,8 @@ public class OscarInvoker
     ///   oscar64 [-tm=...] [-tf=...] [-psci] [-OX] {-i=...} &lt;sources...&gt; -o=&lt;out.prg&gt;
     /// </summary>
     public static List<string> BuildArgs(
-        string cInputPath, string prgOutPath, EnvironmentConfig envConfig)
+        string cInputPath, string prgOutPath, EnvironmentConfig envConfig,
+        IReadOnlyList<string>? extraCSources = null)
     {
         var args = new List<string>();
         // target machine / format は env で override 可能、default は c64 / prg
@@ -92,6 +93,12 @@ public class OscarInvoker
             foreach (var rt in envConfig.CRuntimeFiles)
                 args.Add(rt);
         }
+        // ユーザー追加 C (= --c-source 経由)。env runtime の後ろ、output flag の前。
+        if (extraCSources != null)
+        {
+            foreach (var src in extraCSources)
+                args.Add(src);
+        }
 
         // 出力ファイル (= `-o=path` 形式、`-o path` ではない)
         args.Add($"-o={prgOutPath}");
@@ -103,9 +110,10 @@ public class OscarInvoker
     /// oscar64 を spawn して .prg を生成する。
     /// 失敗時は stdout / stderr を Console.Error に流して exit code != 0 を返す。
     /// </summary>
-    public OscarResult Compile(string cInputPath, string prgOutPath, EnvironmentConfig envConfig)
+    public OscarResult Compile(string cInputPath, string prgOutPath, EnvironmentConfig envConfig,
+                                IReadOnlyList<string>? extraCSources = null)
     {
-        var args = BuildArgs(cInputPath, prgOutPath, envConfig);
+        var args = BuildArgs(cInputPath, prgOutPath, envConfig, extraCSources);
 
         if (_verbose)
         {

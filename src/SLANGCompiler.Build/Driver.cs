@@ -30,6 +30,13 @@ public class Driver
         /// oscar64 binary を上書き指定する。null なら env file の
         /// <c>oscar_path:</c> → <c>$OSCAR64</c> → PATH の順で探索。</summary>
         public string? OscarPath { get; set; }
+
+        /// <summary>`--c-source &lt;path&gt;` repeatable。BackendKind.OscarC 専用、
+        /// oscar64 invoke の source list 末尾 (env.CRuntimeFiles の後) に
+        /// ユーザー C ファイルを追加する。CFUNC 宣言で参照する関数の実体や、
+        /// SLANG では書けない C コード片を混ぜるために使う。Z80 backend で
+        /// 非空なら early reject。</summary>
+        public List<string> CSourceFiles { get; } = new();
         public bool KeepAsm { get; set; }
         public bool Verbose { get; set; }
         /// <summary>slangc に pass-through する `-I &lt;path&gt;` の値リスト</summary>
@@ -93,6 +100,15 @@ public class Driver
         if (envConfig.Backend == BackendKind.OscarC)
         {
             return RunOscarC(envConfig, envPath);
+        }
+
+        // Z80 backend で --c-source 指定 → early reject
+        // (env file の oscar_*/c_runtime_* と同じ排他検証の規律)
+        if (_opts.CSourceFiles.Count > 0)
+        {
+            Console.Error.WriteLine(
+                "slangbuild: --c-source requires `backend: oscar_c` env (current env is Z80)");
+            return 1;
         }
 
         // --emit disk + disk: セクション無しは早期 reject (= 無駄な compile/asm 回避)
@@ -788,8 +804,23 @@ public class Driver
             }
         }
 
+        // --c-source で指定されたユーザー C ファイルを検証 + 絶対化。
+        // cwd 起点で絶対化 (= 既存 InputPath と同じ流儀)。
+        var extraCSources = new List<string>();
+        foreach (var src in _opts.CSourceFiles)
+        {
+            var abs = Path.GetFullPath(src);
+            if (!File.Exists(abs))
+            {
+                Console.Error.WriteLine($"slangbuild: --c-source file not found: {abs}");
+                return 1;
+            }
+            extraCSources.Add(abs);
+            if (_opts.Verbose) Console.Error.WriteLine($"slangbuild: extra C source: {abs}");
+        }
+
         var invoker = new OscarInvoker(oscarBin, _opts.Verbose);
-        var result = invoker.Compile(cPath, prgPath, envConfig);
+        var result = invoker.Compile(cPath, prgPath, envConfig, extraCSources);
         if (!result.Success)
         {
             if (!string.IsNullOrEmpty(result.Stdout)) Console.Error.Write(result.Stdout);

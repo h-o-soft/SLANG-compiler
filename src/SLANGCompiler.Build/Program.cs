@@ -62,6 +62,9 @@ internal class Program
                 case "--oscar-path" when i + 1 < args.Length:
                     opts.OscarPath = args[++i];
                     break;
+                case "--c-source" when i + 1 < args.Length:
+                    opts.CSourceFiles.Add(args[++i]);
+                    break;
                 case "--emit" when i + 1 < args.Length:
                     opts.EmitMode = args[++i];
                     break;
@@ -155,6 +158,7 @@ internal class Program
         Console.Error.WriteLine("  --udostool <p>  udostool executable path (override resolution; --emit disk + tool=udostool)");
         Console.Error.WriteLine("  --mzd88 <path>  mzd88 executable path (override resolution; --emit disk + tool=mzd88)");
         Console.Error.WriteLine("  --oscar-path <p> oscar64 executable path (override resolution; backend=oscar_c env)");
+        Console.Error.WriteLine("  --c-source <p>  Extra C source file passed to oscar64 (repeatable; backend=oscar_c only)");
         Console.Error.WriteLine("  --emit <mode>   Output mode: 'bin' (default) or 'disk' (build d88)");
         Console.Error.WriteLine("  --disk-image <p> Output disk image path (default: <output_prefix>.d88)");
         Console.Error.WriteLine("  --disk-template <p> Override env's disk.template path (--emit disk)");
