@@ -11,6 +11,11 @@
 #ifndef SLANG_RUNTIME_H
 #define SLANG_RUNTIME_H
 
+/* sprite bridge API (= env c_bindings: で公開、SLANG 側 CFUNC 宣言不要)。
+ * 同一 header chain で生成 C 側 extern と bridge 実装の signature drift を防ぐ。
+ * sprite を使わない SLANG プログラムでも include コスト微小。 */
+#include "slang_sprite.h"
+
 /* === PRINT === */
 
 void slang_print_str(const char *s);          /* NUL-terminated 文字列 */

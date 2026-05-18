@@ -1299,6 +1299,28 @@ public class CEmitter : IAstVisitor<EmitResult>
 
     public EmitResult VisitArrayAccessExpr(ArrayAccessExpr node)
     {
+        // memory-mapped 配列 (MEM[]/MEMW[]) は SLANG_MEM/SLANG_MEMW マクロ展開。
+        // SemanticAnalyzer.DefineSystemArray が MEM/MEMW を MemoryArrayType として
+        // global 登録する (SemanticAnalyzer.cs:113)。CEmitter は通常の VisitIdentifier
+        // で V_MEM/V_MEMW という存在しない C ident を出してしまうので、ここで先に
+        // 識別子由来の MemoryArrayType を判定して SLANG_MEM / SLANG_MEMW へ。
+        if (node.Array is IdentifierExpr memId)
+        {
+            var memSym = _globals?.GlobalScope.Resolve(memId.Name);
+            if (memSym?.Type is MemoryArrayType mat)
+            {
+                if (node.Indices.Count != 1)
+                {
+                    Error($"`{memId.Name}` takes a single index (= absolute address)", node.Span);
+                    return new("0", mat.ElementType);
+                }
+                var addr = Expr(node.Indices[0]);
+                var macro = mat.ElementType is PrimitiveType { Kind: PrimitiveKind.Word }
+                    ? "SLANG_MEMW" : "SLANG_MEM";
+                return new($"{macro}({addr})", mat.ElementType);
+            }
+        }
+
         var arr = ExprFull(node.Array);
         var arrType = arr.Type;
         var idxParts = new StringBuilder();

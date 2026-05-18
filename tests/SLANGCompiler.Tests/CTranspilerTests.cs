@@ -300,6 +300,24 @@ MAIN()
     }
 
     [Fact]
+    public void MemMacro_ByteAccess_ExpandsToSlangMem()
+    {
+        // MEM[addr] (= MemoryArrayType Byte) は V_MEM[...] ではなく
+        // SLANG_MEM(addr) マクロに展開される (= slang_runtime.h で定義)
+        var (src, _) = Transpile(MinimalProgram("    MEM[$3000] = $FF;"));
+        Assert.Contains("SLANG_MEM(", src);
+        Assert.DoesNotContain("V_MEM", src);
+    }
+
+    [Fact]
+    public void MemMacro_WordAccess_ExpandsToSlangMemw()
+    {
+        var (src, _) = Transpile(MinimalProgram("    MEMW[$D000] = 1234;"));
+        Assert.Contains("SLANG_MEMW(", src);
+        Assert.DoesNotContain("V_MEMW", src);
+    }
+
+    [Fact]
     public void OrgDirective_Ignored_NoError()
     {
         // SLANG syntax: `ORG $0801` (no `#`)
