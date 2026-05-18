@@ -91,6 +91,17 @@ public class EnvironmentConfig
     public List<string>? CRuntimeIncludes { get; set; }
 
     /// <summary>
+    /// env が提供する C 関数 binding 表 (BackendKind.OscarC 専用)。
+    /// SLANG ソース側で改めて CFUNC 宣言を書かなくても、env が用意した
+    /// API として呼び出せる (= sprite / vic / sid / kernalio 等の標準 binding
+    /// を env file 1 つで一括提供できる)。
+    /// CTranspiler 起動時に <see cref="CodeGen.C.CBindingRegistry"/> に load
+    /// される (= SymbolTable には注入せず lookup layer 分離)。
+    /// Z80 backend で指定すると Loader が reject。
+    /// </summary>
+    public List<CBindingDef>? CBindings { get; set; }
+
+    /// <summary>
     /// AILZ80ASM の出力 format。null/未指定 = bin (= `.bin` 拡張子、追加
     /// オプションなし)。"cmt" = cassette tape image (= `.cmt` 拡張子 +
     /// AILZ80ASM に `-cmt -gap 0` を pass)。
@@ -177,6 +188,42 @@ public class EnvironmentConfig
     /// 上限なし (= overlay サイズに応じて切り上げ、empty overlay は no-op)。
     /// </summary>
     public int? OverlayPadAlign { get; set; }
+}
+
+/// <summary>
+/// env file <c>c_bindings:</c> エントリ。SLANG 名前 → C 関数の直接マッピング。
+/// SLANG ソース内 <c>CFUNC</c> 宣言と同等の役割を env file から提供する。
+/// </summary>
+public class CBindingDef
+{
+    /// <summary>SLANG 側名前 (識別子規則、case-insensitive で重複 reject)</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>C 側 ident (^[A-Za-z_][A-Za-z0-9_]*$、case preserve)</summary>
+    public string CName { get; set; } = "";
+
+    /// <summary>引数型列。<see cref="CBindingType.Void"/> は不許可。</summary>
+    public List<CBindingType> Params { get; set; } = new();
+
+    /// <summary>戻り型 (<see cref="CBindingType.Void"/> 含む)</summary>
+    public CBindingType Return { get; set; }
+}
+
+/// <summary>
+/// CBindingDef で扱う型表記。SLANG 側 SlangType と oscar64 C 型の対応:
+///   Byte/Word/Float → unsigned char / unsigned int / float
+///   BytePtr/WordPtr/FloatPtr → 各 PointerType
+///   Void → 戻り型専用
+/// </summary>
+public enum CBindingType
+{
+    Byte,
+    Word,
+    Float,
+    BytePtr,
+    WordPtr,
+    FloatPtr,
+    Void,
 }
 
 /// <summary>

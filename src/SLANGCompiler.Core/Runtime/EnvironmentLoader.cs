@@ -230,14 +230,16 @@ public class EnvironmentLoader
         bool hasOscarPetscii = raw.OscarPetscii.HasValue;
         bool hasCRuntimeFiles = raw.CRuntimeFiles != null && raw.CRuntimeFiles.Count > 0;
         bool hasCRuntimeIncludes = raw.CRuntimeIncludes != null && raw.CRuntimeIncludes.Count > 0;
+        bool hasCBindings = raw.CBindings != null && raw.CBindings.Count > 0;
         bool hasAnyOscarField = hasOscarPath || hasOscarMachine || hasOscarFormat
                               || hasOscarOptimize || hasOscarPetscii
-                              || hasCRuntimeFiles || hasCRuntimeIncludes;
+                              || hasCRuntimeFiles || hasCRuntimeIncludes
+                              || hasCBindings;
 
         if (config.Backend == BackendKind.Z80 && hasAnyOscarField)
         {
             throw new InvalidDataException(
-                $"`oscar_*` / `c_runtime_*` fields require `backend: oscar_c` in {envFilePath}.");
+                $"`oscar_*` / `c_runtime_*` / `c_bindings` fields require `backend: oscar_c` in {envFilePath}.");
         }
 
         if (config.Backend == BackendKind.OscarC)
@@ -280,6 +282,13 @@ public class EnvironmentLoader
                 config.CRuntimeIncludes = raw.CRuntimeIncludes!
                     .Select(p => Path.GetFullPath(Path.Combine(envDir, p)))
                     .ToList();
+            }
+
+            // c_bindings: env file が提供する C 関数 binding 表 (OscarC 専用)。
+            // SLANG ソース側 CFUNC 宣言と同じ意味を YAML 経由で env が用意できる。
+            if (raw.CBindings != null && raw.CBindings.Count > 0)
+            {
+                config.CBindings = ParseCBindings(raw.CBindings, envFilePath);
             }
         }
 
@@ -341,6 +350,110 @@ public class EnvironmentLoader
         }
 
         return config;
+    }
+
+    /// <summary>
+    /// env file の c_bindings: YAML 配列を <see cref="CBindingDef"/> リストに変換 + validate。
+    /// 失敗 case はすべて InvalidDataException で reject (silent wrong 防止)。
+    /// </summary>
+    private static List<CBindingDef> ParseCBindings(
+        List<EnvFileCBinding> raw, string envFilePath)
+    {
+        var slangIdentRe = new System.Text.RegularExpressions.Regex(@"^[A-Za-z_][A-Za-z0-9_]*$");
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenCNamesSig = new Dictionary<string, CBindingDef>(StringComparer.Ordinal);
+        var result = new List<CBindingDef>();
+
+        foreach (var entry in raw)
+        {
+            if (string.IsNullOrWhiteSpace(entry.Name))
+                throw new InvalidDataException(
+                    $"`c_bindings:` entry missing `name:` in {envFilePath}.");
+            if (string.IsNullOrWhiteSpace(entry.CName))
+                throw new InvalidDataException(
+                    $"`c_bindings:` entry `{entry.Name}` missing `c_name:` in {envFilePath}.");
+
+            var name = entry.Name.Trim();
+            var cName = entry.CName.Trim();
+
+            if (!slangIdentRe.IsMatch(name))
+                throw new InvalidDataException(
+                    $"`c_bindings:` invalid `name:` '{name}' in {envFilePath}; must match ^[A-Za-z_][A-Za-z0-9_]*$.");
+            if (!slangIdentRe.IsMatch(cName))
+                throw new InvalidDataException(
+                    $"`c_bindings:` invalid `c_name:` '{cName}' in {envFilePath}; must match ^[A-Za-z_][A-Za-z0-9_]*$.");
+
+            // name 重複は case-insensitive で reject (= "Spr_Set" と "spr_set" が
+            // registry overwrite で silent に消えるのを防ぐ、レビュー L 反映)
+            if (!seenNames.Add(name))
+                throw new InvalidDataException(
+                    $"`c_bindings:` duplicate `name:` '{name}' (case-insensitive) in {envFilePath}.");
+
+            var paramTypes = new List<CBindingType>();
+            if (entry.Params != null)
+            {
+                foreach (var t in entry.Params)
+                {
+                    var parsed = ParseCBindingType(t, envFilePath, $"`c_bindings:` entry `{name}` params");
+                    if (parsed == CBindingType.Void)
+                        throw new InvalidDataException(
+                            $"`c_bindings:` entry `{name}` params cannot include `void` in {envFilePath}.");
+                    paramTypes.Add(parsed);
+                }
+            }
+            var retType = string.IsNullOrWhiteSpace(entry.Return)
+                ? CBindingType.Word    // 省略 = WORD 仮定 (= 略式 CFUNC と揃える)
+                : ParseCBindingType(entry.Return!, envFilePath, $"`c_bindings:` entry `{name}` return");
+
+            var def = new CBindingDef
+            {
+                Name = name,
+                CName = cName,
+                Params = paramTypes,
+                Return = retType,
+            };
+
+            // c_name 重複: signature 一致なら alias OK、不一致 (= 同じ C 関数を
+            // 異なる prototype で呼び出す) は error (= 後段で C extern が衝突する)
+            if (seenCNamesSig.TryGetValue(cName, out var prev))
+            {
+                if (!CBindingSignatureEqual(prev, def))
+                    throw new InvalidDataException(
+                        $"`c_bindings:` entry `{name}` aliases C function `{cName}` with a different signature than previous binding `{prev.Name}` in {envFilePath}.");
+            }
+            else
+            {
+                seenCNamesSig[cName] = def;
+            }
+            result.Add(def);
+        }
+        return result;
+    }
+
+    private static CBindingType ParseCBindingType(string token, string envFilePath, string contextMsg)
+    {
+        return token.Trim().ToLowerInvariant() switch
+        {
+            "byte"      => CBindingType.Byte,
+            "word"      => CBindingType.Word,
+            "float"     => CBindingType.Float,
+            "byte_ptr"  => CBindingType.BytePtr,
+            "word_ptr"  => CBindingType.WordPtr,
+            "float_ptr" => CBindingType.FloatPtr,
+            "void"      => CBindingType.Void,
+            _ => throw new InvalidDataException(
+                $"{contextMsg}: invalid type token '{token}' in {envFilePath}. "
+                + "Allowed: byte / word / float / byte_ptr / word_ptr / float_ptr / void (return only)."),
+        };
+    }
+
+    private static bool CBindingSignatureEqual(CBindingDef a, CBindingDef b)
+    {
+        if (a.Return != b.Return) return false;
+        if (a.Params.Count != b.Params.Count) return false;
+        for (int i = 0; i < a.Params.Count; i++)
+            if (a.Params[i] != b.Params[i]) return false;
+        return true;
     }
 
     private static int ParseAddress(string s)
@@ -428,6 +541,28 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "c_runtime_includes")]
         public List<string>? CRuntimeIncludes { get; set; }
+
+        [YamlMember(Alias = "c_bindings")]
+        public List<EnvFileCBinding>? CBindings { get; set; }
+    }
+
+    /// <summary>
+    /// c_bindings: 1 entry の YAML 構造。
+    ///   - name: SLANG 側名前
+    ///   - c_name: C 側 ident (case preserve)
+    ///   - params: 型 token のリスト (byte/word/float/byte_ptr/word_ptr/float_ptr)
+    ///   - return: 戻り型 token (上記 + void)
+    /// </summary>
+    private class EnvFileCBinding
+    {
+        [YamlMember(Alias = "name")]
+        public string? Name { get; set; }
+        [YamlMember(Alias = "c_name")]
+        public string? CName { get; set; }
+        [YamlMember(Alias = "params")]
+        public List<string>? Params { get; set; }
+        [YamlMember(Alias = "return")]
+        public string? Return { get; set; }
     }
 
     private class EnvFileDiskData

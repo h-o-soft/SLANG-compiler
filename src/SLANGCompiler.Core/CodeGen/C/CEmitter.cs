@@ -38,6 +38,7 @@ public class CEmitter : IAstVisitor<EmitResult>
     private readonly CScopeTracker _scope;
     private readonly DiagnosticBag _diagnostics;
     private readonly ConstEvaluator _constEval;
+    private readonly CBindingRegistry _cBindings;
     private int _indent;
     // current 関数名 (= FuncDef 進入中なら名前、関数外 / global なら null)。
     // SLANG の関数内 static var (= BEGIN 前の VarDecl) の C 側 ident 衝突を
@@ -48,7 +49,8 @@ public class CEmitter : IAstVisitor<EmitResult>
     // 引けるようにする。FuncDef enter/leave で push/pop。
     private readonly HashSet<string> _currentStaticDecls = new(StringComparer.OrdinalIgnoreCase);
 
-    public CEmitter(SymbolTable? globals, CScopeTracker scope, DiagnosticBag diagnostics)
+    public CEmitter(SymbolTable? globals, CScopeTracker scope, DiagnosticBag diagnostics,
+                    CBindingRegistry? cBindings = null)
     {
         _globals = globals;
         _scope = scope;
@@ -56,6 +58,8 @@ public class CEmitter : IAstVisitor<EmitResult>
         // ARRAY 次元 / `#define` 値の compile-time 評価。CONST 識別子 + 算術式の解決
         // をしてくれる (= TryEvalIntLiteral の上位互換)。
         _constEval = new ConstEvaluator(globals);
+        // env file `c_bindings:` 経由の binding lookup layer。null なら空 registry。
+        _cBindings = cBindings ?? new CBindingRegistry();
     }
 
     // === ヘルパ ===
@@ -1243,11 +1247,25 @@ public class CEmitter : IAstVisitor<EmitResult>
             }
             else if (sym == null)
             {
-                // 未宣言関数呼び出し: SLANG では Z80 backend で「未宣言関数 = address に
-                // JSR する MACHINE 風」扱いを許す慣行があるが、oscar_c backend では
-                // どの関数を呼ぶか決定不能なので診断 error にする (v1)。
-                Error($"undeclared function `{funcName}` cannot be called from oscar_c backend (v1); declare it as a function or gate with `#IF ENV_TYPE==7`", node.Span);
-                return new($"/* undeclared {funcName} */0", SlangType.Word);
+                // 未宣言関数: env c_bindings: で提供された binding を試す。
+                // SLANG 側 CFUNC 宣言と同名なら #2 で先に hit するので、ここに来るのは
+                // env binding 限定 (= ユーザー override の規律に合う)。
+                var envBinding = _cBindings.Lookup(funcName);
+                if (envBinding != null)
+                {
+                    cName = envBinding.CName;
+                    var paramTypes = envBinding.Params.Select(CBindingRegistry.MapType).ToList();
+                    cfuncSig = new FunctionType(CBindingRegistry.MapType(envBinding.Return), paramTypes);
+                    retType = cfuncSig.ReturnType;
+                }
+                else
+                {
+                    // SLANG では Z80 backend で「未宣言関数 = address に JSR する MACHINE 風」
+                    // 扱いを許す慣行があるが、oscar_c backend ではどの関数を呼ぶか決定不能なので
+                    // 診断 error にする (v1)。
+                    Error($"undeclared function `{funcName}` cannot be called from oscar_c backend (v1); declare it as a function, CFUNC, or env c_bindings entry, or gate with `#IF ENV_TYPE==7`", node.Span);
+                    return new($"/* undeclared {funcName} */0", SlangType.Word);
+                }
             }
             else
             {
@@ -1456,40 +1474,59 @@ public class CEmitter : IAstVisitor<EmitResult>
     /// </summary>
     private string BuildCFuncExterns()
     {
-        if (_globals == null) return "";
         var sb = new StringBuilder();
         // c_name → 既に emit した extern の signature (= FunctionType)
         // signature 一致なら skip、不一致なら error
         var emitted = new Dictionary<string, FunctionType>(StringComparer.Ordinal);
 
-        foreach (var s in _globals.GlobalScope.Symbols.Values)
+        // === Phase 1: SymbolTable.CFunction (SLANG ソース内 CFUNC 宣言) ===
+        if (_globals != null)
         {
-            if (s.Kind != SymbolKind.CFunction) continue;
-            var cName = s.CName ?? IdentifierMap.Sanitize(s.Name);
-            var ft = s.Type as FunctionType;
-            if (ft == null) continue;
-
-            if (emitted.TryGetValue(cName, out var prevSig))
+            foreach (var s in _globals.GlobalScope.Symbols.Values)
             {
-                // signature 一致なら 1 個目で emit 済 → skip (alias)
-                // 不一致なら error
-                if (!SignatureEqual(prevSig, ft))
-                {
-                    Error(
-                        $"CFUNC `{s.Name}` aliases C function `{cName}` with a signature different from a previous binding (= C prototype 衝突)",
-                        s.AddressAst?.Span ?? new Lexer.SourceSpan());
-                }
-                continue;
+                if (s.Kind != SymbolKind.CFunction) continue;
+                var cName = s.CName ?? IdentifierMap.Sanitize(s.Name);
+                var ft = s.Type as FunctionType;
+                if (ft == null) continue;
+                AppendOrCheckExtern(sb, emitted, cName, ft, s.Name);
             }
-            emitted[cName] = ft;
+        }
 
-            var retC = CTypeMapper.MapDeclType(ft.ReturnType);
-            string paramsC = ft.ParameterTypes.Count == 0
-                ? "void"
-                : string.Join(", ", ft.ParameterTypes.Select(t => CTypeMapper.MapDeclType(t)));
-            sb.Append($"extern {retC} {cName}({paramsC});\n");
+        // === Phase 2: CBindingRegistry (env file c_bindings:) ===
+        // SLANG 側で同名 CFUNC 宣言があれば override により Phase 1 で先に emit
+        // 済み (= signature 一致なら skip、不一致なら error)。
+        foreach (var b in _cBindings.All)
+        {
+            // SLANG 側 CFUNC が既に同名 Symbol を登録している場合は skip
+            // (= info diagnostics は CTranspiler 側で出す)
+            if (_globals?.GlobalScope.ResolveLocal(b.Name) != null) continue;
+
+            var paramTypes = b.Params.Select(CBindingRegistry.MapType).ToList();
+            var ft = new FunctionType(CBindingRegistry.MapType(b.Return), paramTypes);
+            AppendOrCheckExtern(sb, emitted, b.CName, ft, b.Name);
         }
         return sb.ToString();
+    }
+
+    private void AppendOrCheckExtern(StringBuilder sb, Dictionary<string, FunctionType> emitted,
+                                      string cName, FunctionType ft, string slangName)
+    {
+        if (emitted.TryGetValue(cName, out var prevSig))
+        {
+            if (!SignatureEqual(prevSig, ft))
+            {
+                Error(
+                    $"CFUNC `{slangName}` aliases C function `{cName}` with a signature different from a previous binding (= C prototype 衝突)",
+                    new Lexer.SourceSpan());
+            }
+            return;
+        }
+        emitted[cName] = ft;
+        var retC = CTypeMapper.MapDeclType(ft.ReturnType);
+        string paramsC = ft.ParameterTypes.Count == 0
+            ? "void"
+            : string.Join(", ", ft.ParameterTypes.Select(t => CTypeMapper.MapDeclType(t)));
+        sb.Append($"extern {retC} {cName}({paramsC});\n");
     }
 
     /// <summary>FunctionType の signature 同一性 (ReturnType + ParameterTypes 全て一致)</summary>

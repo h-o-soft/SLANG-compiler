@@ -34,8 +34,34 @@ public class CTranspiler
     /// </summary>
     public string Transpile(CompilationUnit unit)
     {
+        // env file `c_bindings:` を lookup layer (CBindingRegistry) に load。
+        // SymbolTable には注入しない (= レビュー M3 反映、SLANG 起源シンボルと
+        // env 起源 binding の責務分離)。
+        var registry = new CBindingRegistry();
+        if (_envConfig.CBindings != null)
+        {
+            foreach (var b in _envConfig.CBindings)
+                registry.Add(b);
+        }
+
+        // SLANG 側 CFUNC 宣言 (= SymbolKind.CFunction) が env binding を override
+        // していたら info diagnostics で警告 (= silent override 防止)。
+        if (_symbols != null)
+        {
+            foreach (var b in registry.All)
+            {
+                var sym = _symbols.GlobalScope.ResolveLocal(b.Name);
+                if (sym != null && sym.Kind == SymbolKind.CFunction)
+                {
+                    _diagnostics.Info(
+                        $"env c_bindings entry `{b.Name}` is overridden by user CFUNC declaration",
+                        new Lexer.SourceSpan());
+                }
+            }
+        }
+
         var scope = new CScopeTracker(_symbols);
-        var emitter = new CEmitter(_symbols, scope, _diagnostics);
+        var emitter = new CEmitter(_symbols, scope, _diagnostics, registry);
         return unit.Accept(emitter).Text;
     }
 }
