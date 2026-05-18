@@ -278,6 +278,39 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         return null;
     }
 
+    public object? VisitCFuncDecl(CFuncDecl node)
+    {
+        // SLANG 型 → SlangType list 変換
+        var paramTypes = new List<SlangType>();
+        if (node.Parameters != null)
+        {
+            foreach (var p in node.Parameters)
+            {
+                SlangType t = DataSizeToType(p.Size);
+                if (p.IsArray) t = new PointerType(t);
+                paramTypes.Add(t);
+            }
+        }
+        else
+        {
+            // 略式: 全部 WORD 仮定
+            for (int i = 0; i < node.ParamCount; i++)
+                paramTypes.Add(SlangType.Word);
+        }
+        SlangType retType = node.IsVoidReturn
+            ? SlangType.Void
+            : (node.ReturnSize.HasValue ? DataSizeToType(node.ReturnSize.Value) : SlangType.Word);
+        var funcType = new FunctionType(retType, paramTypes);
+
+        // 既存 MACHINE 宣言と同じく、overlay 配下でも main から参照可能なよう global に登録。
+        var sym = _currentOverlayIndex.HasValue
+            ? _symbols.DefineInGlobal(node.Name, SymbolKind.CFunction, funcType)
+            : _symbols.Define(node.Name, SymbolKind.CFunction, funcType);
+        sym.IsGlobal = true;
+        sym.CName = node.CName;
+        return null;
+    }
+
     public object? VisitMachineDecl(MachineDecl node)
     {
         if (node.Address != null && node.CodeBody != null)

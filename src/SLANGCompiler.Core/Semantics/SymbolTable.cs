@@ -11,6 +11,12 @@ public enum SymbolKind
     Parameter,
     Function,
     MachineFunction,
+    /// <summary>
+    /// CFUNC 宣言由来。C backend (= oscar_c) で SLANG → C 関数の直接マッピング
+    /// として扱われる。Z80 backend では IrGenerator が診断 error。
+    /// CName field に C 側 ident (case preserve) を持つ。
+    /// </summary>
+    CFunction,
     Constant,
     Label,
 }
@@ -30,6 +36,7 @@ public class Symbol
     public bool IsGlobal { get; set; }
     public bool IsCodeBlock { get; set; }    // CODEブロック定数（アドレス参照）
     public string? AsmLabel { get; set; }    // アセンブリラベル名
+    public string? CName { get; set; }       // CFUNC 宣言由来の C 側 ident (case preserve、Kind==CFunction で使用)
     public bool IsArrayDecl { get; set; }   // ARRAY宣言由来（PointerTypeでもアドレス参照）
 
     // AST保持（semantic段階で設定、IR段階で文字列化）

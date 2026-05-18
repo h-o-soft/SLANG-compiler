@@ -35,6 +35,7 @@ public interface IAstVisitor<T>
     T VisitArrayDecl(ArrayDecl node);
     T VisitConstDecl(ConstDecl node);
     T VisitMachineDecl(MachineDecl node);
+    T VisitCFuncDecl(CFuncDecl node);
     T VisitFuncDef(FuncDef node);
     T VisitParamDecl(ParamDecl node);
 

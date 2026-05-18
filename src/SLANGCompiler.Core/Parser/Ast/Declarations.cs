@@ -237,3 +237,59 @@ public class ParamDecl : AstNode
 
     public override T Accept<T>(IAstVisitor<T> visitor) => visitor.VisitParamDecl(this);
 }
+
+// -- CFUNC declaration --
+
+/// <summary>
+/// CFUNC 引数 (型あり形式) の 1 entry。
+/// 略式 (= <c>CFUNC FOO(2):foo</c>) では <see cref="CFuncDecl.Parameters"/> が
+/// null、ParamCount のみが意味を持つ。
+/// </summary>
+public readonly record struct CFuncParam(DataSize Size, bool IsArray);
+
+/// <summary>
+/// CFUNC 宣言。SLANG 名前 → C 関数 (oscar64 build 時に link される) への
+/// 直接マッピング。
+///
+/// 文法:
+///   CFUNC NAME(PARAMS) [RET] : C_NAME;
+///
+/// 略式 (= 後方互換 + interop 用):
+///   <c>CFUNC FOO(2):foo;</c>  → Parameters=null, ParamCount=2, ReturnSize=null
+///   (= 引数 2 個全て WORD、戻り値 WORD 仮定)
+///
+/// 型あり (= 標準 binding 推奨):
+///   <c>CFUNC SPR_SET(BYTE id, WORD x, WORD y) VOID :spr_set;</c>
+///   → Parameters=[(Byte,false),(Word,false),(Word,false)], ReturnSize=null + IsVoidReturn=true
+///
+/// 型あり VOID 引数 + BYTE return:
+///   <c>CFUNC PEEK(WORD addr) BYTE :peek;</c>
+///   → Parameters=[(Word,false)], ReturnSize=Byte
+/// </summary>
+public class CFuncDecl : AstNode
+{
+    public string Name { get; }                    // SLANG 側名前
+    public string CName { get; }                   // C 側 ident、case preserve
+    /// <summary>略式 = ParamCount のみ意味あり (Parameters は null)。型あり = Parameters.Count と一致。</summary>
+    public int ParamCount { get; }
+    /// <summary>型あり時の引数列。null = 略式 (= 全 WORD)。</summary>
+    public List<CFuncParam>? Parameters { get; }
+    /// <summary>戻り型。null = 略式 (= WORD 仮定) または IsVoidReturn=true。</summary>
+    public DataSize? ReturnSize { get; }
+    public bool IsVoidReturn { get; }
+
+    public CFuncDecl(string name, string cName, int paramCount,
+                     List<CFuncParam>? parameters,
+                     DataSize? returnSize, bool isVoidReturn,
+                     SourceSpan span) : base(span)
+    {
+        Name = name;
+        CName = cName;
+        ParamCount = paramCount;
+        Parameters = parameters;
+        ReturnSize = returnSize;
+        IsVoidReturn = isVoidReturn;
+    }
+
+    public override T Accept<T>(IAstVisitor<T> visitor) => visitor.VisitCFuncDecl(this);
+}

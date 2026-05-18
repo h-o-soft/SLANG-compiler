@@ -348,6 +348,14 @@ public class CEmitter : IAstVisitor<EmitResult>
         return new(Line($"#define {ident} ({valText})"), null);
     }
 
+    public EmitResult VisitCFuncDecl(CFuncDecl node)
+    {
+        // CFUNC 宣言自体は emit なし。extern 宣言の集約 emit は Commit 2 で
+        // VisitCompilationUnit に BuildCFuncExterns pass を追加するときに行う。
+        // 呼び出しは VisitCallExpr の SymbolKind.CFunction 経路で resolve (Commit 2 実装)。
+        return new("", null);
+    }
+
     public EmitResult VisitMachineDecl(MachineDecl node)
     {
         Error($"MACHINE declaration `{node.Name}` is not supported by oscar_c backend; gate it with `#IF ENV_TYPE==7` or `#IF BACKEND==1`", node.Span);

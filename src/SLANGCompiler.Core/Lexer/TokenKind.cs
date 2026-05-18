@@ -26,6 +26,8 @@ public enum TokenKind
     Array,
     Const,
     Machine,
+    Cfunc,              // CFUNC (C backend で C 関数への direct mapping 宣言)
+    Void,               // VOID (CFUNC の return type 表記)
     Asm,                // ASM (CONST ASM等で使用)
 
     // Keywords - control flow
