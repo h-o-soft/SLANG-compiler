@@ -37,6 +37,7 @@ public class CEmitter : IAstVisitor<EmitResult>
     private readonly SymbolTable? _globals;
     private readonly CScopeTracker _scope;
     private readonly DiagnosticBag _diagnostics;
+    private readonly ConstEvaluator _constEval;
     private int _indent;
     // current 関数名 (= FuncDef 進入中なら名前、関数外 / global なら null)。
     // SLANG の関数内 static var (= BEGIN 前の VarDecl) の C 側 ident 衝突を
@@ -52,6 +53,9 @@ public class CEmitter : IAstVisitor<EmitResult>
         _globals = globals;
         _scope = scope;
         _diagnostics = diagnostics;
+        // ARRAY 次元 / `#define` 値の compile-time 評価。CONST 識別子 + 算術式の解決
+        // をしてくれる (= TryEvalIntLiteral の上位互換)。
+        _constEval = new ConstEvaluator(globals);
     }
 
     // === ヘルパ ===
@@ -299,19 +303,22 @@ public class CEmitter : IAstVisitor<EmitResult>
         }
 
         // 固定サイズ配列。各 dim は static const literal 想定 (SLANG semantic で保証)。
-        // 整数リテラルに評価して plain 数字を出す (= C 配列宣言で必要)。
+        // SLANG 仕様: `ARRAY A[N]` は要素数 **N+1** (index 0..N 有効、C と異なる)。
+        // SemanticAnalyzer.cs:194 / IrGenerator.cs:397/404 と同じく `+1` する。
         var dimsSb = new StringBuilder();
         var dimList = new List<int>();
         foreach (var dim in node.Dimensions)
         {
             // null は isIndirect で先に処理済み
-            if (!TryEvalIntLiteral(dim, out var dimVal))
+            var evaluated = _constEval.Evaluate(dim!);
+            if (evaluated == null)
             {
-                Error("ARRAY dimension must be a compile-time integer literal", dim!.Span);
-                dimVal = 1;
+                Error("ARRAY dimension must be a compile-time constant expression", dim!.Span);
+                evaluated = 0;
             }
-            dimsSb.Append('[').Append(dimVal).Append(']');
-            dimList.Add((int)dimVal);
+            int allocSize = evaluated.Value + 1;
+            dimsSb.Append('[').Append(allocSize).Append(']');
+            dimList.Add(allocSize);
         }
 
         string init = "";
@@ -503,18 +510,20 @@ public class CEmitter : IAstVisitor<EmitResult>
                 return Line($"static {cType} *{ident};");
             }
 
-            // 固定サイズ配列。
+            // 固定サイズ配列。SLANG 仕様: `ARRAY A[N]` は要素数 N+1 (index 0..N 有効)。
             var dimsSb = new StringBuilder();
             var dimList = new List<int>();
             foreach (var dim in ad.Dimensions)
             {
-                if (!TryEvalIntLiteral(dim, out var dimVal))
+                var evaluated = _constEval.Evaluate(dim!);
+                if (evaluated == null)
                 {
-                    Error("ARRAY dimension must be a compile-time integer literal", dim!.Span);
-                    dimVal = 1;
+                    Error("ARRAY dimension must be a compile-time constant expression", dim!.Span);
+                    evaluated = 0;
                 }
-                dimsSb.Append('[').Append(dimVal).Append(']');
-                dimList.Add((int)dimVal);
+                int allocSize = evaluated.Value + 1;
+                dimsSb.Append('[').Append(allocSize).Append(']');
+                dimList.Add(allocSize);
             }
             _scope.DeclareLocal(ad.Name, new ArrayType(slangType, dimList));
             string init = ad.InitialValue != null ? " = " + Expr(ad.InitialValue) : "";
@@ -597,25 +606,30 @@ public class CEmitter : IAstVisitor<EmitResult>
     public EmitResult VisitForStmt(ForStmt node)
     {
         // SLANG FOR semantics:
-        //   - body 終了後に loop var を step、超えたら exit
-        //   - 自然終了後 (EXIT 無し) は loop var = end + step (= `FOR I=0 TO 15` → I=16)
-        //     post-loop で `IF I<=15` 判定でループが自然完走したかどうか区別できる
-        //   - from > to (downto なら from < to) なら body 1 回も実行されない
+        //   1. body 開始前に I を比較 (TO なら I<=end、DOWNTO なら I>=end)、満たさなければ skip
+        //   2. body 実行 (body 内で I を書き換えても OK)
+        //   3. body 後に I を step (++/--)
+        //   4. 1 へ戻る
+        //   - 自然終了 (EXIT 無し) で I=end+step (= `FOR I=0 TO 15` → I=16)、
+        //     post-loop の `IF I<=15` で natural / EXIT を区別できる
+        //   - body 内で I++ している場合は実質 step=2 で正しく end まで進む
+        //   - from > to (downto なら from < to) なら body 0 回 (skip)
         //
-        // wrap-safe 形:
+        // 生成 form (= 標準的 while ループ):
         //   {
         //       T _for_end_0 = (to);
         //       loopVar = (from);
-        //       if (loopVar {<=,>=} _for_end_0) for (;;) {
+        //       while (loopVar {<=,>=} _for_end_0) {
         //           body
-        //           if (loopVar == _for_end_0) { ++/--loopVar; break; }
-        //           ++/--loopVar;
+        //           {step};
+        //           // wrap 防御: TO で 0xFFFF→0、DOWNTO で 0→0xFFFF した瞬間に break
+        //           if (loopVar == {wrap_sentinel}) break;
         //       }
         //   }
-        // ポイント: 自然終了時に loopVar を end+step に進めてから break する。
-        // これで SLANG 仕様 (`I=16` after `FOR I=0 TO 15`) と一致。
-        // end 値が WORD の MAX (0xFFFF) のときは increment が wrap して 0 になるが、
-        // 標準 C for loop も同じ挙動なので妥協範囲。
+        // wrap_sentinel: TO は 0、DOWNTO は 0xFFFF。SLANG WORD 範囲全体を覆う FOR で
+        // 標準 C `for` が無限ループになる端ケースを救う (= `FOR I=0 TO 0xFFFF` 等)。
+        // `==` 比較 + step ジャンプ越えの旧 form は manual `I++` 等の body 内 step
+        // 変化に弱かったため、`<=` 比較ベースに揃える。
         var varType = _scope.Resolve(node.Variable) ?? SlangType.Word;
         var loopVar = VarIdent(node.Variable);
         var fromText = CastTo(ExprFull(node.From), varType);
@@ -626,17 +640,22 @@ public class CEmitter : IAstVisitor<EmitResult>
         var cType = CTypeMapper.MapDeclType(varType);
         var stepOp = node.IsDownTo ? "--" : "++";
         var cmpOp = node.IsDownTo ? ">=" : "<=";
+        // wrap sentinel: BYTE は 0xFF / 0、WORD は 0xFFFF / 0
+        string wrapSentinel;
+        if (varType is PrimitiveType { Kind: PrimitiveKind.Byte })
+            wrapSentinel = node.IsDownTo ? "0xFFu" : "0u";
+        else
+            wrapSentinel = node.IsDownTo ? "0xFFFFu" : "0u";
 
         sb.Append(Line("{"));
         _indent++;
         sb.Append(Line($"{cType} {endIdent} = {toText};"));
         sb.Append(Line($"{loopVar} = {fromText};"));
-        sb.Append(Line($"if ({loopVar} {cmpOp} {endIdent}) for (;;) {{"));
+        sb.Append(Line($"while ({loopVar} {cmpOp} {endIdent}) {{"));
         _indent++;
         sb.Append(EmitStmtInner(node.Body));
-        // post-body: 自然終了でも end+step に進めてから break する (= SLANG 仕様)
-        sb.Append(Line($"if ({loopVar} == {endIdent}) {{ {stepOp}{loopVar}; break; }}"));
         sb.Append(Line($"{stepOp}{loopVar};"));
+        sb.Append(Line($"if ({loopVar} == {wrapSentinel}) break;"));
         _indent--;
         sb.Append(Line("}"));
         _indent--;
@@ -827,42 +846,117 @@ public class CEmitter : IAstVisitor<EmitResult>
 
     private string EmitPrintArg(Expression arg)
     {
-        // SLANG PRINT 仕様:
-        //   "..."  → 文字列出力
-        //   /      → 改行
-        //   !      → 改ページ (oscar_c では未対応 = warn のみ、無視)
-        //   ;      → セパレータ (oscar_c では no-op)
-        //   ,      → tab (oscar_c では no-op)
-        //   式     → 数値出力 (型で dispatch)
+        // SLANG PRINT 仕様 (docs/SLANG-spec.md より):
+        //   "..."        → 文字列出力 (literal は slang_print_str)
+        //   /            → 改行
+        //   値           → 10進左詰め出力 (= unsigned int + 改行なし)
+        //   !(s) / MSX$(s) → NUL-terminated 文字列をそのまま出力
+        //   %(v) / PN$(v)  → 符号付き10進左詰め出力
+        //   FORM$(v,n)   → 10進 n 桁右詰め
+        //   DECI$(v)     → 10進 5 桁右詰め
+        //   HEX2$(v)     → 16進 2 桁
+        //   HEX4$(v)     → 16進 4 桁
+        //   MSG$(addr)   → CR-terminated 文字列出力
+        //   STR$(c,n)    → 1 文字 c を n 回出力
+        //   CHR$(n)      → 上位・下位 byte の順に ASCII 出力 (2 byte)
+        //   SPC$(n)      → 空白を n 個
+        //   CR$(n)       → 改行を n 個
+        //   TAB$(n)      → カーソルを n 回右移動 (相対)
+        //
+        // 副作用専用構文 (戻り値なし) は print 系 C 関数に直接 dispatch する。
+        // 戻り値あり (char* return) で式コンテキストでも使われるものは
+        // <c>slang_print_str(slang_xxx(...))</c> パターンで wrap する。
         if (arg is StringFuncExpr sfx)
         {
             switch (sfx.FuncName)
             {
                 case "/":
                     return Line("slang_println();");
+
                 case "!":
-                    // 改ページは C64 では未対応 — clear screen にマップ
-                    return Line("slang_print_char(0x93);  /* CLS (PETSCII) */");
-                case "FORM$":
-                    // PRINT FORM$(n, expr) → tab + 数値、v1 では未対応
-                    Error("PRINT FORM$(...) is not yet supported by oscar_c backend (v1)", sfx.Span);
-                    return "";
-                case "CHR$":
+                case "MSX$":
+                    // NUL-terminated 文字列: 引数は const char* (StringLiteral / address)
                     if (sfx.Arguments.Count == 1)
                     {
-                        var inner = Expr(sfx.Arguments[0]);
-                        return Line($"slang_print_char((unsigned char)({inner}));");
+                        var s = Expr(sfx.Arguments[0]);
+                        return Line($"slang_print_str((const char *)({s}));");
                     }
                     break;
-                case "DECI$":
+
+                case "%":
+                case "PN$":
+                    // 符号付き10進。WORD は signed 化して slang_print_sint。
                     if (sfx.Arguments.Count == 1)
                     {
-                        var inner = Expr(sfx.Arguments[0]);
-                        return Line($"slang_print_str(slang_deci((int)({inner})));");
+                        var v = Expr(sfx.Arguments[0]);
+                        return Line($"slang_print_sint((int)(short)({v}));");
                     }
+                    break;
+
+                case "FORM$":
+                    // PRINT FORM$(v, n) → 10進 n 桁右詰め
+                    if (sfx.Arguments.Count == 2)
+                    {
+                        var v = Expr(sfx.Arguments[0]);
+                        var w = Expr(sfx.Arguments[1]);
+                        return Line($"slang_print_form((int)(short)({v}), (unsigned char)({w}));");
+                    }
+                    break;
+
+                case "DECI$":
+                    // 5 桁右詰め (Z80 backend 仕様)。slang_print_deci に wrap。
+                    if (sfx.Arguments.Count == 1)
+                    {
+                        var v = Expr(sfx.Arguments[0]);
+                        return Line($"slang_print_deci((int)(short)({v}));");
+                    }
+                    break;
+
+                case "HEX2$":
+                    if (sfx.Arguments.Count == 1)
+                        return Line($"slang_print_hex_b((unsigned char)({Expr(sfx.Arguments[0])}));");
+                    break;
+                case "HEX4$":
+                    if (sfx.Arguments.Count == 1)
+                        return Line($"slang_print_hex_w((unsigned int)({Expr(sfx.Arguments[0])}));");
+                    break;
+
+                case "MSG$":
+                    // CR-terminated 文字列出力
+                    if (sfx.Arguments.Count == 1)
+                        return Line($"slang_print_msg((const char *)({Expr(sfx.Arguments[0])}));");
+                    break;
+
+                case "STR$":
+                    // 1 文字 c を n 回
+                    if (sfx.Arguments.Count == 2)
+                        return Line($"slang_print_str_n((unsigned char)({Expr(sfx.Arguments[0])}), (unsigned int)({Expr(sfx.Arguments[1])}));");
+                    break;
+
+                case "CHR$":
+                    // 上位・下位 byte の順に出力 (= 2 byte) ← Z80 仕様
+                    if (sfx.Arguments.Count == 1)
+                        return Line($"slang_print_chr_w((unsigned int)({Expr(sfx.Arguments[0])}));");
+                    break;
+
+                case "SPC$":
+                    if (sfx.Arguments.Count == 1)
+                        return Line($"slang_print_spc((unsigned int)({Expr(sfx.Arguments[0])}));");
+                    break;
+                case "CR$":
+                    if (sfx.Arguments.Count == 1)
+                        return Line($"slang_print_cr((unsigned int)({Expr(sfx.Arguments[0])}));");
+                    break;
+                case "TAB$":
+                    if (sfx.Arguments.Count == 1)
+                        return Line($"slang_print_tab_n((unsigned int)({Expr(sfx.Arguments[0])}));");
+                    break;
+                case "FL$":
+                    if (sfx.Arguments.Count == 1)
+                        return Line($"slang_print_float((float)({Expr(sfx.Arguments[0])}));");
                     break;
             }
-            // 上記以外は通常 expr として fall through
+            // 上記 case に該当しないか引数数不一致 → fall through (= 通常 expr 経路)
         }
 
         var r = ExprFull(arg);
@@ -870,7 +964,7 @@ public class CEmitter : IAstVisitor<EmitResult>
             return Line($"slang_print_float({r.Text});");
         if (r.Type is PointerType || arg is StringLiteral)
             return Line($"slang_print_str({r.Text});");
-        // 既定: WORD として 10 進 unsigned 出力
+        // 既定: WORD として 10 進 unsigned 出力 (= SLANG `PRINT(値)` の挙動)
         return Line($"slang_print_int((unsigned int)({r.Text}));");
     }
 

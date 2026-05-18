@@ -86,10 +86,12 @@ $@"MAIN()
     }
 
     [Fact]
-    public void GlobalArray_EmitsStatic_WithDims()
+    public void GlobalArray_AllocatesNPlusOneElements()
     {
+        // SLANG 仕様: ARRAY A[N] は要素数 N+1 (index 0..N 有効)。
+        // SemanticAnalyzer.cs:194 / IrGenerator.cs:397 と同じく N+1 確保する。
         var (src, _) = Transpile("VAR BYTE A[10];\n" + MinimalProgram("    A[0] = 1;"));
-        Assert.Contains("static unsigned char V_A[10];", src);
+        Assert.Contains("static unsigned char V_A[11];", src);
     }
 
     [Fact]
@@ -191,18 +193,18 @@ $@"MAIN()
     // === Control flow ===
 
     [Fact]
-    public void ForLoop_UsesWrapSafeForm()
+    public void ForLoop_UsesWrapSafeWhileForm()
     {
         var (src, _) = Transpile("VAR BYTE I;\n" + MinimalProgram(
             "    FOR I=0 TO 9\n    {\n        PRINT(I);\n    }"));
-        // wrap-safe + SLANG 自然終了仕様: end 変数 bind、自然終了でも step 1 回後に break
-        // (= `FOR I=0 TO 9` 自然終了で I=10、`IF I<=9` で EXIT 経路と区別可能)
+        // SLANG FOR semantics: body 前比較 + body 後 step + wrap sentinel で break。
+        // この形なら body 内で `I++` する step=2 ケースでも end 越えで停止する。
+        // 自然終了で I=end+step (= 10) も保たれる。
         Assert.Contains("_for_end_", src);
-        Assert.Contains("for (;;)", src);
-        Assert.Contains("break;", src);
+        Assert.Contains("while (V_I <= _for_end_", src);
         Assert.Contains("++V_I;", src);
-        // 自然終了経路で `++loopVar; break;` のセットになっていること
-        Assert.Contains("{ ++V_I; break; }", src);
+        // BYTE は wrap sentinel = 0u (TO の場合)
+        Assert.Contains("if (V_I == 0u) break;", src);
     }
 
     [Fact]
