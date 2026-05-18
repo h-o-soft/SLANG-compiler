@@ -228,10 +228,11 @@ env file `c64.env` が以下を C backend builtin として公開しているた
 
 VIC 色定数 (`VCOL_BLACK..VCOL_LT_GREY`、16 色) は `#INCLUDE "C64_VIC.LIB"` で取り込めます。
 
-サンプル: `examples/c64/SPRITE.SL` (sprite 1 個を VSYNC 同期で画面端バウンス):
+サンプル: `examples/c64/SPRITE.SL` (sprite 1 個を VSYNC 同期で画面端バウンス) + `examples/c64/FMANDEL.SL` (40 桁テキストマンデルブロ、`examples/FMANDEL.SL` の 80 桁版を C64 画面用に縮めた版):
 
 ```sh
-slangbuild -E c64 examples/c64/SPRITE.SL -o examples/c64/SPRITE
+slangbuild -E c64 examples/c64/SPRITE.SL  -o examples/c64/SPRITE
+slangbuild -E c64 examples/c64/FMANDEL.SL -o examples/c64/FMANDEL
 x64sc -autostart examples/c64/SPRITE.prg   # VICE
 ```
 
@@ -282,7 +283,7 @@ slangbuild -E c64 myapp.SL --c-source mylib.c -o myapp
 
 ### v1 スコープと制約
 
-**動作確認済**: PRINT / INPUT / 整数算術 / FLOAT 演算 / リアルタイム key 入力 / sprite (1 個アニメ、VSYNC 同期) + ユーザー C 任意関数 (= CFUNC + `--c-source`)。`examples/FMANDEL.SL` / `examples/FURUI.SL` / `examples/STARS.SL` / `examples/c64/SPRITE.SL` が実機 (VICE) で動作。
+**動作確認済**: PRINT / INPUT / 整数算術 / FLOAT 演算 / リアルタイム key 入力 / sprite (1 個アニメ、VSYNC 同期) + ユーザー C 任意関数 (= CFUNC + `--c-source`)。`examples/FMANDEL.SL` / `examples/FURUI.SL` / `examples/STARS.SL` / `examples/c64/SPRITE.SL` / `examples/c64/FMANDEL.SL` (= 40 桁版) が実機 (VICE) で動作。
 
 **未対応 / 今後の拡張**: sprite multiplex / VIC bitmap mode / SID sound / KERNAL file I/O / CRT / overlay (`#MODULE`)。これらは bridge 関数を追加する形で順次対応予定。
 
