@@ -117,6 +117,18 @@ public class CEmitter : IAstVisitor<EmitResult>
         // ヘッダ: slang_runtime.h を include (oscar64 -i= で path 解決される前提)
         sb.Append("#include \"slang_runtime.h\"\n\n");
 
+        // 第 0 pass: CFUNC 宣言由来 (SymbolKind.CFunction) を extern 集約。
+        // SLANG ソース全体を走査してから C 関数 prototype を出すため、
+        // SymbolTable.GlobalScope の Resolve 結果を活用する。
+        // 同じ c_name の重複は signature 一致なら 1 個に集約、不一致は error。
+        var externs = BuildCFuncExterns();
+        if (externs.Length > 0)
+        {
+            sb.Append("/* CFUNC declarations (slangc-generated) */\n");
+            sb.Append(externs);
+            sb.Append('\n');
+        }
+
         // Parser は複数宣言 (`VAR X, Y;`) を Block にラップして返すため、
         // 全 pass で flatten してから種別判定する。
         var flatDefs = FlattenDecls(node.Definitions).ToList();
@@ -1197,9 +1209,16 @@ public class CEmitter : IAstVisitor<EmitResult>
             return new("/* unsupported indirect call */0", SlangType.Word);
         }
 
+        // 解決順 (= plan の 4 階層):
+        //   1. RuntimeBinding (builtin: WIDTH / LOCATE / HEX2$ 等)
+        //   2. SymbolTable (SLANG 宣言: Function / CFunction / MachineFunction)
+        //   3. CBindingRegistry (= env c_bindings)  ← Commit 4 で追加
+        //   4. undeclared → error
         var binding = RuntimeBinding.Lookup(funcName);
         string cName;
         SlangType retType;
+        FunctionType? cfuncSig = null;   // CFUNC で param 型キャストするとき参照
+
         if (binding != null)
         {
             cName = binding.CName;
@@ -1208,12 +1227,21 @@ public class CEmitter : IAstVisitor<EmitResult>
         else
         {
             var sym = _globals?.GlobalScope.Resolve(funcName);
-            if (sym?.Kind == SymbolKind.MachineFunction)
+            if (sym?.Kind == SymbolKind.CFunction)
+            {
+                // CFUNC: SLANG 宣言で SymbolKind.CFunction として登録された関数。
+                // c_name は Symbol.CName に case preserve で保存されている。
+                // 引数は CFuncDecl の Parameters 型に合わせて CastTo する。
+                cName = sym.CName ?? IdentifierMap.Sanitize(funcName);
+                cfuncSig = sym.Type as FunctionType;
+                retType = cfuncSig?.ReturnType ?? SlangType.Word;
+            }
+            else if (sym?.Kind == SymbolKind.MachineFunction)
             {
                 Error($"MACHINE function `{funcName}` is not supported by oscar_c backend; gate the call with `#IF ENV_TYPE==7` or `#IF BACKEND==1`", node.Span);
                 return new("/* unsupported MACHINE call */0", SlangType.Word);
             }
-            if (sym == null)
+            else if (sym == null)
             {
                 // 未宣言関数呼び出し: SLANG では Z80 backend で「未宣言関数 = address に
                 // JSR する MACHINE 風」扱いを許す慣行があるが、oscar_c backend では
@@ -1221,11 +1249,33 @@ public class CEmitter : IAstVisitor<EmitResult>
                 Error($"undeclared function `{funcName}` cannot be called from oscar_c backend (v1); declare it as a function or gate with `#IF ENV_TYPE==7`", node.Span);
                 return new($"/* undeclared {funcName} */0", SlangType.Word);
             }
-            cName = FuncIdent(funcName);
-            retType = sym.Type is FunctionType ft ? ft.ReturnType : SlangType.Word;
+            else
+            {
+                cName = FuncIdent(funcName);
+                retType = sym.Type is FunctionType ft ? ft.ReturnType : SlangType.Word;
+            }
         }
 
-        var args = node.Arguments.Select(a => Expr(a));
+        // CFUNC は param 型に合わせて CastTo (= 型あり CFUNC の WORD vs BYTE 差を吸収)。
+        // それ以外は ExprFull で型情報を捨てる従来挙動。
+        IEnumerable<string> args;
+        if (cfuncSig != null)
+        {
+            var castedArgs = new List<string>();
+            for (int i = 0; i < node.Arguments.Count; i++)
+            {
+                var r = ExprFull(node.Arguments[i]);
+                var target = i < cfuncSig.ParameterTypes.Count
+                    ? cfuncSig.ParameterTypes[i]
+                    : SlangType.Word;
+                castedArgs.Add(CastTo(r, target));
+            }
+            args = castedArgs;
+        }
+        else
+        {
+            args = node.Arguments.Select(a => Expr(a));
+        }
         return new($"({cName}({string.Join(", ", args)}))", retType);
     }
 
@@ -1398,6 +1448,60 @@ public class CEmitter : IAstVisitor<EmitResult>
     /// にラップして返すため、宣言処理側で 1 段解体する必要がある (= 中身の VarDecl/ArrayDecl/ConstDecl 等を
     /// そのまま yield)。Block は再帰的に解体 (= ネスト Block 防御)。
     /// </summary>
+    /// <summary>
+    /// SymbolTable から CFunction を全列挙して C 側 extern 宣言文字列を作る。
+    /// 同じ c_name の重複は signature 一致なら 1 個に集約 (alias)、不一致は error。
+    /// 略式 CFUNC (= Parameters null) は SemanticAnalyzer.VisitCFuncDecl で全 WORD として
+    /// SymbolTable に登録済 (= 同じ FunctionType を辿る)。
+    /// </summary>
+    private string BuildCFuncExterns()
+    {
+        if (_globals == null) return "";
+        var sb = new StringBuilder();
+        // c_name → 既に emit した extern の signature (= FunctionType)
+        // signature 一致なら skip、不一致なら error
+        var emitted = new Dictionary<string, FunctionType>(StringComparer.Ordinal);
+
+        foreach (var s in _globals.GlobalScope.Symbols.Values)
+        {
+            if (s.Kind != SymbolKind.CFunction) continue;
+            var cName = s.CName ?? IdentifierMap.Sanitize(s.Name);
+            var ft = s.Type as FunctionType;
+            if (ft == null) continue;
+
+            if (emitted.TryGetValue(cName, out var prevSig))
+            {
+                // signature 一致なら 1 個目で emit 済 → skip (alias)
+                // 不一致なら error
+                if (!SignatureEqual(prevSig, ft))
+                {
+                    Error(
+                        $"CFUNC `{s.Name}` aliases C function `{cName}` with a signature different from a previous binding (= C prototype 衝突)",
+                        s.AddressAst?.Span ?? new Lexer.SourceSpan());
+                }
+                continue;
+            }
+            emitted[cName] = ft;
+
+            var retC = CTypeMapper.MapDeclType(ft.ReturnType);
+            string paramsC = ft.ParameterTypes.Count == 0
+                ? "void"
+                : string.Join(", ", ft.ParameterTypes.Select(t => CTypeMapper.MapDeclType(t)));
+            sb.Append($"extern {retC} {cName}({paramsC});\n");
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>FunctionType の signature 同一性 (ReturnType + ParameterTypes 全て一致)</summary>
+    private static bool SignatureEqual(FunctionType a, FunctionType b)
+    {
+        if (!a.ReturnType.Equals(b.ReturnType)) return false;
+        if (a.ParameterTypes.Count != b.ParameterTypes.Count) return false;
+        for (int i = 0; i < a.ParameterTypes.Count; i++)
+            if (!a.ParameterTypes[i].Equals(b.ParameterTypes[i])) return false;
+        return true;
+    }
+
     private static IEnumerable<AstNode> FlattenDecls(IEnumerable<AstNode> nodes)
     {
         foreach (var n in nodes)
