@@ -1,5 +1,17 @@
 # 更新履歴
 
+## Unreleased
+
+- Commodore 64 (oscar64) C transpile backend (experimental, v1) を追加
+  - `slangc -E c64` で SLANG → C ソース、`slangbuild -E c64` で `.c` → oscar64 invoke → `.prg` まで一括生成。oscar64 ([https://github.com/drmortalwombat/oscar64](https://github.com/drmortalwombat/oscar64)) は別途インストール必要
+  - 新規 env file `runtime/env/c64.env` (`backend: oscar_c` / `output: c_source` / `oscar_machine: c64` / `oscar_format: prg` / `oscar_petscii: true`)
+  - 新規 runtime `runtime/c64/slang_runtime.{h,c}` (PRINT / INPUT / RND / BIT 等の oscar64 wrapper、stdio.h / conio.h / stdlib.h 経由)
+  - oscar64 binary の解決順: `--oscar-path` → env file `oscar_path:` → `$OSCAR64` → PATH
+  - SLANG 文字列は oscar64 `-psci` 経由で PETSCII 出力。ASCII printable (0x20-0x7E) 範囲のみサポート
+  - SLANG FLOAT は oscar64 `float` (32-bit IEEE) にマップ。整数 → FLOAT 変換は Z80 backend の `i16tof24` と同じ signed 解釈 (`((float)(short)(...))` 経由)
+  - `MACHINE` 宣言 / inline `#ASM` / `PORT IN/OUT` / `#MODULE` / 未宣言関数呼び出し は診断エラー。`#IF BACKEND==1` (= OscarC) または `#IF ENV_TYPE==7` (= c64) で gate 可
+  - Z80 backend 側 (`IrGenerator` / `CodeGenerator` / `RuntimeManager`) は無変更、既存 env (16 個) の挙動も変わらず
+
 ## Version 0.24.1
 
 - MZ-2500 環境の MAGIC ライブラリ対応と IOCS 入力ランタイム拡充 (#175)

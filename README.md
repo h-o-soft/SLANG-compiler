@@ -178,6 +178,44 @@ Layer 2グラフィックス、タイルマップ、スプライト、パレッ�
 
 > **注**: `examples/zxn/Makefile` の `make build` (default) は NextDAW なし版 (`game_nomusic.nex`) を build します。NextDAW を含む完全版 (`game.nex`) を build するには `make music` を使い、`examples/zxn/NextDAW_RuntimePlayer_E000.bin` (= NextDAW Runtime Player) を `examples/zxn/` 配下に配置してください。NextDAW ([https://nextdaw.biasillo.com/](https://nextdaw.biasillo.com/)) は外部製品のため配布物には含まれません。**2026-04-30 時点で公式サイトでの入手はできない状態**で、再公開された場合も driver の仕様変更等により `examples/zxn/game.cfg` や `game.sl` の修正が必要となる可能性があります。
 
+## c64 (Commodore 64 / oscar64) — experimental, v1
+
+Commodore 64 (6502) 用の環境です。SLANG コンパイラは 6502 アセンブラを直接出力する代わりに、**SLANG → C ソース → oscar64 → .prg** という二段変換で 6502 バイナリを生成します。
+
+> **謝辞**: 本 backend は drmortalwombat 氏による 6502 C コンパイラ **oscar64** ([https://github.com/drmortalwombat/oscar64](https://github.com/drmortalwombat/oscar64)) の最適化に依存しています。高品質な C → 6502 コンパイラを公開してくださっている oscar64 プロジェクトに感謝します。oscar64 は本配布物には含まれないため、別途インストールが必要です。
+
+**事前準備**: oscar64 をインストールし、以下のいずれかの方法で発見可能な状態にしてください:
+
+- PATH を通す (例: `/usr/local/bin/oscar64` 等、`which oscar64` で見える状態)
+- 環境変数 `$OSCAR64` に絶対パスを設定
+- env file (`runtime/env/c64.env`) の `oscar_path:` に絶対パスを記述
+- `slangbuild --oscar-path <path>` で明示指定 (CLI override)
+
+解決順は上記の逆 (`--oscar-path` → `oscar_path:` → `$OSCAR64` → PATH) で、見つかった時点で確定します。
+
+`slangc -E c64` は `.c` ファイルを出力し、`slangbuild -E c64` は内部で `slangc` → `oscar64` を順に呼んで `.prg` を生成します。
+
+build 例:
+
+```sh
+# .c のみ生成 (oscar64 invoke なし)
+slangc -E c64 -o examples/FMANDEL.c examples/FMANDEL.SL
+
+# 一発で .prg まで生成
+slangbuild -E c64 -o examples/FMANDEL examples/FMANDEL.SL
+# → examples/FMANDEL.prg (+ oscar64 副産物 .asm/.map/.int/.lbl)
+```
+
+**`-o` のセマンティクス**: `slangc -o <path>` は完全パス (`.c` 拡張子込み)、`slangbuild -o <prefix>` は prefix (`<prefix>.c` と `<prefix>.prg` を生成) という Z80 経路と同じ慣行です。
+
+**v1 スコープ**: I/O (PRINT / INPUT) + 整数算術 + FLOAT 演算のみ。グラフィックス / サウンド (SID) / disk / CMT / overlay (`#MODULE`) は未対応です。`MACHINE` 宣言・inline `#ASM` ブロック・`PORT IN/OUT` 等の Z80 固有機能を含む SLANG コードはエラーになります。`#IF BACKEND==1` または `#IF ENV_TYPE==7` で C backend 専用パスを gate できます (`BACKEND` は env で自動定義: 0=Z80、1=OscarC)。
+
+**文字列・PETSCII**: SLANG の文字列リテラルは oscar64 の `-psci` オプション (env file default で有効) により PETSCII エンコーディングで出力されます。**ASCII printable (0x20-0x7E) のみサポート**し、日本語・カナ・SJIS は v1 では未対応です (高位バイトは `\xNN` で出るが画面表示は崩れる)。
+
+**FLOAT 精度**: SLANG FLOAT (24-bit f24) は oscar64 の `float` (32-bit IEEE 754) にマップされるため、Z80 backend と完全に同一の結果ではなくほぼ等価な精度になります。
+
+**runtime**: `runtime/c64/slang_runtime.{h,c}` が oscar64 同梱の `stdio.h` / `conio.h` / `stdlib.h` 経由で `slang_print_*` / `slang_input_*` / `slang_rnd` 等を提供します。
+
 # ランタイムについて
 
 SLANG Compilerはランタイムライブラリとして、`runtime/` フォルダ内の `.asm` ファイルを読み込みます。
