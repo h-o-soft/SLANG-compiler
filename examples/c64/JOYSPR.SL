@@ -8,9 +8,10 @@
 // 補助 API JOY_X(port) は signed -1 を SLANG WORD では $FFFF として返すので、
 // 直接使う場合は IF JOY_X(JOY_PORT2) == $FFFF THEN ... の判定パターン。
 //
-// Build:
-//   slangbuild -E c64 examples/c64/JOYSPR.SL -o examples/c64/JOYSPR
+// Build (= checkout 状態 / repo root から実行):
+//   slangbuild -E c64 -I include examples/c64/JOYSPR.SL -o examples/c64/JOYSPR
 //   x64sc -autostart examples/c64/JOYSPR.prg
+// 配布物 install 後 (= SLANG_HOME 設定済) は -I include 省略可。
 
 #INCLUDE "C64_VIC.LIB"
 #INCLUDE "C64_JOY.LIB"

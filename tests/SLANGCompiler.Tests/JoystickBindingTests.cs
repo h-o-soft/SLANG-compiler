@@ -110,4 +110,59 @@ public class JoystickBindingTests
         Assert.False(diag.HasErrors);
         Assert.Contains("0xFFFFu", src);
     }
+
+    [Fact]
+    public void RealC64Env_HasAllJoyBindings()
+    {
+        // 実 runtime/env/c64.env を EnvironmentLoader でパースして JOY_* 5 entries
+        // と c_runtime_files に slang_joystick.c が含まれていることを確認。
+        // 手組み env では捕捉できない drift (= env file 編集忘れや typo) を防ぐ。
+        var repoRoot = FindRepoRoot();
+        var envPath = Path.Combine(repoRoot, "runtime", "env", "c64.env");
+        Assert.True(File.Exists(envPath), $"runtime/env/c64.env not found at {envPath}");
+
+        var config = EnvironmentLoader.Load(envPath);
+        Assert.Equal(BackendKind.OscarC, config.Backend);
+
+        // c_runtime_files に slang_joystick.c
+        Assert.NotNull(config.CRuntimeFiles);
+        Assert.Contains(config.CRuntimeFiles!,
+            p => Path.GetFileName(p).Equals("slang_joystick.c", StringComparison.OrdinalIgnoreCase));
+
+        // c_bindings に JOY_* 5 entry がすべて含まれる
+        Assert.NotNull(config.CBindings);
+        var bindingNames = config.CBindings!.Select(b => b.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("JOY_POLL", bindingNames);
+        Assert.Contains("JOY_X",    bindingNames);
+        Assert.Contains("JOY_Y",    bindingNames);
+        Assert.Contains("JOY_B",    bindingNames);
+        Assert.Contains("JOY_DIR",  bindingNames);
+
+        // signature (= c_name + 型) も期待値と一致
+        var joyDir = config.CBindings!.First(b => b.Name == "JOY_DIR");
+        Assert.Equal("slang_joy_dir", joyDir.CName);
+        Assert.Single(joyDir.Params);
+        Assert.Equal(CBindingType.Byte, joyDir.Params[0]);
+        Assert.Equal(CBindingType.Word, joyDir.Return);
+
+        var joyPoll = config.CBindings!.First(b => b.Name == "JOY_POLL");
+        Assert.Equal("slang_joy_poll", joyPoll.CName);
+        Assert.Equal(CBindingType.Void, joyPoll.Return);
+    }
+
+    /// <summary>
+    /// テスト実行 cwd から SLANG-compiler repo root を遡って探す。bin/Debug/net8.0
+    /// から実行されるため複数階層上に上がる必要あり。
+    /// </summary>
+    private static string FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "runtime", "env", "c64.env")))
+                return dir.FullName;
+            dir = dir.Parent;
+        }
+        throw new InvalidOperationException("Could not locate SLANG-compiler repo root containing runtime/env/c64.env");
+    }
 }

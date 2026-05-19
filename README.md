@@ -208,6 +208,8 @@ slangbuild -E c64 -o examples/FMANDEL examples/FMANDEL.SL
 # → examples/FMANDEL.prg (+ oscar64 副産物 .asm/.map/.int/.lbl)
 ```
 
+**checkout 状態 (= repo root) からのビルド**: `#INCLUDE "C64_JOY.LIB"` 等の SLANG ライブラリを取り込むサンプルは `-I include` の追加が必要 (例: `slangbuild -E c64 -I include examples/c64/JOYSPR.SL -o examples/c64/JOYSPR`)。配布物 install 後 (= SLANG_HOME 設定済) は `-I include` 省略可。
+
 **`-o` のセマンティクス**: `slangc -o <path>` は完全パス (`.c` 拡張子込み)、`slangbuild -o <prefix>` は prefix (`<prefix>.c` と `<prefix>.prg` を生成) という Z80 経路と同じ慣行です。
 
 ### 提供 API
@@ -218,7 +220,7 @@ env file `c64.env` が以下を C backend builtin として公開しているた
 |---|---|
 | I/O | `PRINT` 全構文 (`"..."` / `/` / `%(v)` / `!(s)` / `HEX2$(v)` / `HEX4$(v)` / `DECI$(v)` / `FORM$(v,n)` / `MSG$(p)` / `MSX$(p)` / `STR$(c,n)` / `CHR$(n)` / `SPC$(n)` / `CR$(n)` / `TAB$(n)` / `FL$(f)` / `PN$(v)`) |
 | 入力 | `INKEY(mode)` (即時状態取得、押下中=値、離した瞬間=0)、`INPUT()` (1 行入力 → 数値 parse、ESC=`$FFFF`)、`GETL(buf)` / `GETLIN(buf, x)` / `LINPUT(buf, x)` (1 行文字列入力、戻り値=入力文字数、ESC=`$FFFF`)。Z80 backend の `_CARRY` 機構は v1 未対応 |
-| ジョイスティック | `JOY_POLL(port)` (1 frame 1 回呼ぶ) + `JOY_DIR(port)` (5 bit bitmask) + `JOY_X(port)` / `JOY_Y(port)` (signed、-1=`$FFFF`) + `JOY_B(port)` (0/1 fire)。色定数 + bitmask 定数は `#INCLUDE "C64_JOY.LIB"` で取得 (`JOY_UP/DOWN/LEFT/RIGHT/FIRE/PORT1/PORT2`) |
+| ジョイスティック | `JOY_POLL(port)` (1 frame 1 回呼ぶ) + `JOY_DIR(port)` (5 bit bitmask) + `JOY_X(port)` / `JOY_Y(port)` (signed、-1=`$FFFF`) + `JOY_B(port)` (0/1 fire)。bitmask + port 定数は `#INCLUDE "C64_JOY.LIB"` で取得 (`JOY_UP/DOWN/LEFT/RIGHT/FIRE/PORT1/PORT2`)。色定数は別途 `C64_VIC.LIB` |
 | 端末 | `WIDTH(w)` (no-op = C64 は 40 桁固定)、`LOCATE(x, y)`、`SCREEN(x, y)`、`PRMODE(m)` |
 | 数学 | `ABS / SQR / SIN / COS / TAN / LOG / EXP / ATN / RND / SRND` |
 | メモリ | `MEM[addr]` / `MEMW[addr]` (= 絶対アドレス access、`SLANG_MEM` / `SLANG_MEMW` マクロに展開) |
@@ -232,8 +234,10 @@ VIC 色定数 (`VCOL_BLACK..VCOL_LT_GREY`、16 色) は `#INCLUDE "C64_VIC.LIB"`
 サンプル: `examples/c64/SPRITE.SL` (sprite 1 個を VSYNC 同期で画面端バウンス) + `examples/c64/FMANDEL.SL` (40 桁テキストマンデルブロ、`examples/FMANDEL.SL` の 80 桁版を C64 画面用に縮めた版):
 
 ```sh
-slangbuild -E c64 examples/c64/SPRITE.SL  -o examples/c64/SPRITE
-slangbuild -E c64 examples/c64/FMANDEL.SL -o examples/c64/FMANDEL
+# checkout 状態: -I include 必須 (= C64_VIC.LIB / C64_JOY.LIB 取り込み用)
+slangbuild -E c64 -I include examples/c64/SPRITE.SL  -o examples/c64/SPRITE
+slangbuild -E c64 -I include examples/c64/FMANDEL.SL -o examples/c64/FMANDEL
+slangbuild -E c64 -I include examples/c64/JOYSPR.SL  -o examples/c64/JOYSPR
 x64sc -autostart examples/c64/SPRITE.prg   # VICE
 ```
 
@@ -294,7 +298,7 @@ slangbuild -E c64 myapp.SL --c-source mylib.c -o myapp
 
 **FLOAT 精度**: SLANG FLOAT (24-bit f24) は oscar64 の `float` (32-bit IEEE 754) にマップされるため、Z80 backend と完全に同一の結果ではなくほぼ等価な精度になります。整数→FLOAT 変換は Z80 backend の `i16tof24` と同じ signed 解釈 (`(float)(short)(...)` 経由)。
 
-**runtime 構成**: `runtime/c64/slang_runtime.{h,c}` (I/O + 数学 + ビット) + `runtime/c64/slang_sprite.{h,c}` (VIC sprite bridge + VSYNC)。slang_runtime.h は slang_sprite.h を chain include しているため、生成 C 側 extern と bridge 実装の signature drift が発生しません。
+**runtime 構成**: `runtime/c64/slang_runtime.{h,c}` (I/O + 数学 + ビット) + `runtime/c64/slang_sprite.{h,c}` (VIC sprite bridge + VSYNC) + `runtime/c64/slang_joystick.{h,c}` (joystick bridge)。slang_runtime.h は slang_sprite.h / slang_joystick.h を chain include しているため、生成 C 側 extern と bridge 実装の signature drift が発生しません。
 
 # ランタイムについて
 
