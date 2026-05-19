@@ -1,0 +1,32 @@
+// C64 KERNAL file I/O 定数 (SLANG c64 backend、env c_bindings: KIO_* と組み合わせて使う)
+// `#INCLUDE "C64_KIO.LIB"` で SLANG コードに取り込み。Z80 backend で
+// include しても CONST 定義のみで害なし。
+
+// === krnioerr enum (= oscar64 c64/kernalio.h の同名 enum と整合) ===
+// KIO_STATUS() が返す値。bit mask で 0 = KRNIO_OK、各 bit が個別エラー。
+CONST KRNIO_OK        = $00;
+CONST KRNIO_DIR       = $01;   // directory listing 中など
+CONST KRNIO_TIMEOUT   = $02;
+CONST KRNIO_SHORT     = $04;   // 期待より少ない byte が読めた
+CONST KRNIO_LONG      = $08;   // 期待より多い byte が来た
+CONST KRNIO_VERIFY    = $10;   // verify mismatch
+CONST KRNIO_CHKSUM    = $20;   // checksum error
+CONST KRNIO_EOF       = $40;
+CONST KRNIO_NODEVICE  = $80;   // device 応答なし
+
+// === device 定数 (= 1541/1571 等の disk drive、tape は 1) ===
+CONST DEV_TAPE    = 1;
+CONST DEV_PRINTER = 4;
+CONST DEV_DISK    = 8;   // 一般的な disk drive ID
+CONST DEV_DISK9   = 9;
+CONST DEV_DISK10  = 10;
+CONST DEV_DISK11  = 11;
+
+// === channel (secondary address) 定数 ===
+// C64 disk drive の secondary address: 0 = read、1 = write、15 = command channel
+CONST CH_READ    = 0;
+CONST CH_WRITE   = 1;
+CONST CH_COMMAND = 15;
+
+// === file 番号 (logical file number、自由選択だが 0/1/2/3 が一般的) ===
+// (= 任意の 1..254、user 都合で別途 CONST 化してもよい)
