@@ -79,7 +79,7 @@ public class SidBindingTests
     [Fact]
     public void SidAll_EmitsExternsAndCalls()
     {
-        // SID 8 binding を SLANG コード上で実呼出して CTranspiler が extern を
+        // SID 9 binding を SLANG コード上で実呼出して CTranspiler が extern を
         // 必ず emit するパスを通す。byte / word 引数の組合せ + void return を網羅。
         var src = TranspileWithEnv("""
             MAIN() {
@@ -100,7 +100,7 @@ public class SidBindingTests
             $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
 
         // bridge header (runtime/c64/slang_sid.h) の signature と env c_bindings: が
-        // drift していないことを 8 entry すべての extern 出力で確認。
+        // drift していないことを 9 entry すべての extern 出力で確認。
         Assert.Contains("extern void slang_sid_init_quiet(void);", src);
         Assert.Contains("extern void slang_sid_volume(unsigned char);", src);
         Assert.Contains("extern void slang_sid_freq(unsigned char, unsigned int);", src);
@@ -111,7 +111,7 @@ public class SidBindingTests
         Assert.Contains("extern void slang_sid_gate_off(unsigned char);", src);
         Assert.Contains("extern void slang_sid_sfx(unsigned char, unsigned int, unsigned char, unsigned char, unsigned char);", src);
 
-        // 呼出が C 関数として展開される (8 個すべて)
+        // 呼出が C 関数として展開される (9 個すべて)
         Assert.Contains("slang_sid_init_quiet(", src);
         Assert.Contains("slang_sid_volume(",     src);
         Assert.Contains("slang_sid_freq(",       src);
@@ -141,7 +141,7 @@ public class SidBindingTests
         Assert.Contains(config.CRuntimeFiles!,
             p => Path.GetFileName(p).Equals("slang_sid.c", StringComparison.OrdinalIgnoreCase));
 
-        // c_bindings に SID_* 8 entry がすべて含まれる
+        // c_bindings に SID_* 9 entry がすべて含まれる
         Assert.NotNull(config.CBindings);
         var bindingNames = config.CBindings!.Select(b => b.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var expected in new[]

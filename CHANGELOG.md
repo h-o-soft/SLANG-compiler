@@ -63,8 +63,8 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 - `runtime/env/c64.env` `c_bindings:` に 9 entry 追加、`c_runtime_files:` に
   `slang_sid.c` 追加
 - `runtime/c64/slang_runtime.h` に `#include "slang_sid.h"` chain
-- 新規 `tests/SLANGCompiler.Tests/SidBindingTests.cs`: 8 関数の extern
-  signature と呼出展開、実 `runtime/env/c64.env` 全 8 binding 列挙の golden
+- 新規 `tests/SLANGCompiler.Tests/SidBindingTests.cs`: 9 関数の extern
+  signature と呼出展開、実 `runtime/env/c64.env` 全 9 binding 列挙の golden
 - 新規 `examples/c64/SIDSFX.SL`: JOYSPR.SL 拡張、joystick 移動 + fire で SFX
   発射 + 1/2/3 キーで preset 切替 (laser/boom/noise) + sprite 色連動
 
