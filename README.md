@@ -208,7 +208,7 @@ slangbuild -E c64 -o examples/FMANDEL examples/FMANDEL.SL
 # → examples/FMANDEL.prg (+ oscar64 副産物 .asm/.map/.int/.lbl)
 ```
 
-**checkout 状態 (= repo root) からのビルド**: `#INCLUDE "C64_JOY.LIB"` 等の SLANG ライブラリを取り込むサンプルは `-I include` の追加が必要 (例: `slangbuild -E c64 -I include examples/c64/JOYSPR.SL -o examples/c64/JOYSPR`)。配布物 install 後 (= SLANG_HOME 設定済) は `-I include` 省略可。
+**checkout 状態 (= repo root) からのビルド**: `#INCLUDE "C64_VIC.LIB"` / `C64_JOY.LIB` / `C64_SID.LIB` / `C64_KIO.LIB` 等の SLANG ライブラリを取り込むサンプルは `-I include` の追加が必要 (例: `slangbuild -E c64 -I include examples/c64/SIDSFX.SL -o examples/c64/SIDSFX`)。配布物 install 後 (= SLANG_HOME 設定済) は `-I include` 省略可。
 
 **`-o` のセマンティクス**: `slangc -o <path>` は完全パス (`.c` 拡張子込み)、`slangbuild -o <prefix>` は prefix (`<prefix>.c` と `<prefix>.prg` を生成) という Z80 経路と同じ慣行です。
 
@@ -221,6 +221,7 @@ env file `c64.env` が以下を C backend builtin として公開しているた
 | I/O | `PRINT` 全構文 (`"..."` / `/` / `%(v)` / `!(s)` / `HEX2$(v)` / `HEX4$(v)` / `DECI$(v)` / `FORM$(v,n)` / `MSG$(p)` / `MSX$(p)` / `STR$(c,n)` / `CHR$(n)` / `SPC$(n)` / `CR$(n)` / `TAB$(n)` / `FL$(f)` / `PN$(v)`) |
 | 入力 | `INKEY(mode)` (即時状態取得、押下中=値、離した瞬間=0)、`INPUT()` (1 行入力 → 数値 parse、ESC=`$FFFF`)、`GETL(buf)` / `GETLIN(buf, x)` / `LINPUT(buf, x)` (1 行文字列入力、戻り値=入力文字数、ESC=`$FFFF`)。Z80 backend の `_CARRY` 機構は v1 未対応 |
 | ジョイスティック | `JOY_POLL(port)` (1 frame 1 回呼ぶ) + `JOY_DIR(port)` (5 bit bitmask) + `JOY_X(port)` / `JOY_Y(port)` (signed、-1=`$FFFF`) + `JOY_B(port)` (0/1 fire)。bitmask + port 定数は `#INCLUDE "C64_JOY.LIB"` で取得 (`JOY_UP/DOWN/LEFT/RIGHT/FIRE/PORT1/PORT2`)。色定数は別途 `C64_VIC.LIB` |
+| **SID 音源 (基盤)** | 初期化: `SID_INIT_QUIET()` (= 全 register 0 で停止状態)、master volume: `SID_VOLUME(v)` (0..15)、voice direct (voice = 0..2): `SID_FREQ(voice, f)` / `SID_PWM(voice, pw)` (= PULSE 波形時必須、duty 12-bit) / `SID_ADSR(voice, ad, sr)` / `SID_CTRL(voice, ctrl)` / `SID_GATE_ON(voice)` / `SID_GATE_OFF(voice)`、SFX wrapper: `SID_SFX(voice, freq, ad, sr, waveform)` (= ADSR + waveform 設定 + GATE on を 1 関数化、release は user 側 `SID_GATE_OFF` で開始)。frequency は PAL clock 基準の register 値、`NOTE_C2..NOTE_B6` 60 個と ADSR/waveform/CTRL/pwm preset 定数は `#INCLUDE "C64_SID.LIB"` で取得 (= `SID_PWM_SQR` = $0800 で 50% duty)。**PULSE 波形は事前に `SID_PWM` 設定必須** (= pwm=0 だと duty 0% で無音)。HVSC `.sid` 取り込み + BGM 再生は v3b-B で、priority SFX overlay (oscar64 `audio/sidfx` bridge) は v3b-C で対応予定 |
 | **KERNAL file I/O** | open/close: `KIO_OPEN_NAMED(fnum, dev, ch, name)` / `KIO_OPEN(fnum, dev, ch)` / `KIO_SETNAM(name)` / `KIO_CLOSE(fnum)`、channel: `KIO_CHKIN(fnum)` / `KIO_CHKOUT(fnum)` / `KIO_CLRCHN()`、1 byte: `KIO_CHRIN()` / `KIO_CHROUT(ch)` / `KIO_GETCH(fnum)` / `KIO_PUTCH(fnum, ch)`、buffer: `KIO_READ(fnum, buf, n)` / `KIO_WRITE(fnum, buf, n)`、文字列: `KIO_GETS(fnum, buf, n)` / `KIO_PUTS(fnum, str)`、status: `KIO_STATUS()` (= krnioerr 取得)。文字列は NUL terminated PETSCII で **全小文字** で書く (= SLANG リテラル `"score,s,r"` が oscar64 `-psci` 経由で PETSCII unshifted 大文字に変換され 1541 の `,S,R` token parse と整合)。SEQ ファイルの主部は起動 PRG と別名にする (= 1541 emu の同主部 PRG/SEQ 共存制約回避)。bool 系は 0/1、I/O 系はエラー時 SLANG WORD で `$FFFx` (sign extension で届く)。krnioerr / device / channel 定数は `#INCLUDE "C64_KIO.LIB"` で取得。raw address 用 (`KIO_*_ADDR`) も併設 |
 | 端末 | `WIDTH(w)` (no-op = C64 は 40 桁固定)、`LOCATE(x, y)`、`SCREEN(x, y)`、`PRMODE(m)` |
 | 数学 | `ABS / SQR / SIN / COS / TAN / LOG / EXP / ATN / RND / SRND` |
@@ -235,12 +236,13 @@ VIC 色定数 (`VCOL_BLACK..VCOL_LT_GREY`、16 色) は `#INCLUDE "C64_VIC.LIB"`
 サンプル: `examples/c64/SPRITE.SL` (sprite 1 個を VSYNC 同期で画面端バウンス) + `examples/c64/FMANDEL.SL` (40 桁テキストマンデルブロ、`examples/FMANDEL.SL` の 80 桁版を C64 画面用に縮めた版):
 
 ```sh
-# checkout 状態: -I include 必須 (= C64_VIC.LIB / C64_JOY.LIB / C64_KIO.LIB 取り込み用)
+# checkout 状態: -I include 必須 (= C64_VIC.LIB / C64_JOY.LIB / C64_SID.LIB / C64_KIO.LIB 取り込み用)
 slangbuild -E c64 -I include examples/c64/SPRITE.SL  -o examples/c64/SPRITE
 slangbuild -E c64 -I include examples/c64/FMANDEL.SL -o examples/c64/FMANDEL
 slangbuild -E c64 -I include examples/c64/JOYSPR.SL  -o examples/c64/JOYSPR
+slangbuild -E c64 -I include examples/c64/SIDSFX.SL  -o examples/c64/SIDSFX
 slangbuild -E c64 -I include examples/c64/HISCORE.SL -o examples/c64/HISCORE
-x64sc -autostart examples/c64/SPRITE.prg          # VICE (sprite/FMANDEL/JOYSPR)
+x64sc -autostart examples/c64/SPRITE.prg          # VICE (sprite/FMANDEL/JOYSPR/SIDSFX)
 # HISCORE は KERNAL file I/O で D64 が必要、autostart 不可 (= virtual drive モードで
 # 干渉する)。c1541 で空 D64 + PRG を入れて、x64sc -8 で attach + 手動 LOAD/RUN:
 c1541 -format "hiscore,01" d64 disks/hiscore.d64 -write examples/c64/HISCORE.prg hiscore
@@ -299,9 +301,9 @@ slangbuild -E c64 myapp.SL --c-source mylib.c -o myapp
 
 ### v1 スコープと制約
 
-**動作確認済**: PRINT / INPUT / 整数算術 / FLOAT 演算 / リアルタイム key 入力 / sprite (1 個アニメ、VSYNC 同期) / joystick 入力 / KERNAL file I/O (save/load 往復) + ユーザー C 任意関数 (= CFUNC + `--c-source`)。`examples/FMANDEL.SL` / `examples/FURUI.SL` / `examples/STARS.SL` / `examples/c64/SPRITE.SL` / `examples/c64/FMANDEL.SL` (= 40 桁版) / `examples/c64/JOYSPR.SL` (= joystick) / `examples/c64/HISCORE.SL` (= KERNAL file I/O) が実機 (VICE) で動作。
+**動作確認済**: PRINT / INPUT / 整数算術 / FLOAT 演算 / リアルタイム key 入力 / sprite (1 個アニメ、VSYNC 同期) / joystick 入力 / KERNAL file I/O (save/load 往復) / SID 単発 SFX (= 音色 preset 切替) + ユーザー C 任意関数 (= CFUNC + `--c-source`)。`examples/FMANDEL.SL` / `examples/FURUI.SL` / `examples/STARS.SL` / `examples/c64/SPRITE.SL` / `examples/c64/FMANDEL.SL` (= 40 桁版) / `examples/c64/JOYSPR.SL` (= joystick) / `examples/c64/SIDSFX.SL` (= SID 単発 SFX) / `examples/c64/HISCORE.SL` (= KERNAL file I/O) が実機 (VICE) で動作。
 
-**未対応 / 今後の拡張**: sprite multiplex / VIC bitmap mode / SID sound / CRT / overlay (`#MODULE`)。これらは bridge 関数を追加する形で順次対応予定。
+**未対応 / 今後の拡張**: sprite multiplex / VIC bitmap mode / HVSC `.sid` BGM 再生 (= v3b-B 予定) / priority SFX overlay (= v3b-C 予定、oscar64 `audio/sidfx` bridge) / CRT / overlay (`#MODULE`)。これらは bridge 関数を追加する形で順次対応予定。
 
 **Z80 固有機能**: `MACHINE` 宣言 / inline `#ASM` ブロック / `PORT IN/OUT` / `#MODULE` を含む SLANG コードは C backend では診断 error。`#IF BACKEND==1` (= OscarC) または `#IF ENV_TYPE==7` (= c64) で C backend 専用コードを gate できます (`BACKEND` は env で自動定義: 0=Z80、1=OscarC)。
 
@@ -309,7 +311,7 @@ slangbuild -E c64 myapp.SL --c-source mylib.c -o myapp
 
 **FLOAT 精度**: SLANG FLOAT (24-bit f24) は oscar64 の `float` (32-bit IEEE 754) にマップされるため、Z80 backend と完全に同一の結果ではなくほぼ等価な精度になります。整数→FLOAT 変換は Z80 backend の `i16tof24` と同じ signed 解釈 (`(float)(short)(...)` 経由)。
 
-**runtime 構成**: `runtime/c64/slang_runtime.{h,c}` (I/O + 数学 + ビット) + `runtime/c64/slang_sprite.{h,c}` (VIC sprite bridge + VSYNC) + `runtime/c64/slang_joystick.{h,c}` (joystick bridge) + `runtime/c64/slang_kio.{h,c}` (KERNAL file I/O bridge)。slang_runtime.h は slang_sprite.h / slang_joystick.h / slang_kio.h を chain include しているため、生成 C 側 extern と bridge 実装の signature drift が発生しません。
+**runtime 構成**: `runtime/c64/slang_runtime.{h,c}` (I/O + 数学 + ビット) + `runtime/c64/slang_sprite.{h,c}` (VIC sprite bridge + VSYNC) + `runtime/c64/slang_joystick.{h,c}` (joystick bridge) + `runtime/c64/slang_kio.{h,c}` (KERNAL file I/O bridge) + `runtime/c64/slang_sid.{h,c}` (SID register direct + 単発 SFX bridge)。slang_runtime.h は slang_sprite.h / slang_joystick.h / slang_kio.h / slang_sid.h を chain include しているため、生成 C 側 extern と bridge 実装の signature drift が発生しません。
 
 # ランタイムについて
 

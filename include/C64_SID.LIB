@@ -1,0 +1,155 @@
+// C64 SID 定数 (SLANG c64 backend、env c_bindings: SID_* と組み合わせて使う)
+// `#INCLUDE "C64_SID.LIB"` で SLANG コードに取り込み。Z80 backend で
+// include しても CONST 定義のみで害なし。
+
+// === voice 番号 (= 0..2、ハードウェア仕様で 3 voice 固定) ===
+CONST SID_VOICE_1 = 0;
+CONST SID_VOICE_2 = 1;
+CONST SID_VOICE_3 = 2;
+
+// === waveform (= ctrl register 上位 bit、1 つだけ立てる or mix 可) ===
+CONST SID_WF_TRI    = $10;   // triangle、滑らかな波形
+CONST SID_WF_SAW    = $20;   // sawtooth、明るい音
+CONST SID_WF_PULSE  = $40;   // rectangle/pulse、PWM 制御可能
+CONST SID_WF_NOISE  = $80;   // noise、SFX 用
+
+// === control register bit (= ctrl register 全体、waveform + 制御 bit) ===
+CONST SID_CTRL_GATE = $01;   // attack 開始 (= 1)、release 開始 (= 0)
+CONST SID_CTRL_SYNC = $02;   // voice N+1 と同期
+CONST SID_CTRL_RING = $04;   // voice N+1 とリング変調
+CONST SID_CTRL_TEST = $08;   // テスト bit (= phase reset)
+
+// === pulse width preset (= PULSE wave 専用、SID_PWM(voice, pwm) で設定) ===
+// PULSE 波形は pwm = 0 だと duty 0% で無音。SID_GATE_ON / SID_SFX で PULSE を
+// 鳴らす前に必ず SID_PWM(voice, value) を呼ぶこと。標準的な矩形波は SID_PWM_SQR
+// (= $0800 = 50% duty)。細い値ほど音色が硬く / 太い値ほど柔らかくなる。
+CONST SID_PWM_NARROW = $0200;   // 12.5% duty、鋭い音
+CONST SID_PWM_QUARTER = $0400;  // 25% duty、明るい音
+CONST SID_PWM_SQR    = $0800;   // 50% duty、標準矩形波
+CONST SID_PWM_WIDE   = $0C00;   // 75% duty、柔らかい音
+
+// === ADSR attack time (= attdec register 上位 4 bit) ===
+// 値は SID チップ仕様で固定 (ms = 0V → ピークに到達する時間)
+CONST SID_ATK_2     = $00;   //    2 ms
+CONST SID_ATK_8     = $10;   //    8 ms
+CONST SID_ATK_16    = $20;   //   16 ms
+CONST SID_ATK_24    = $30;   //   24 ms
+CONST SID_ATK_38    = $40;   //   38 ms
+CONST SID_ATK_56    = $50;   //   56 ms
+CONST SID_ATK_68    = $60;   //   68 ms
+CONST SID_ATK_80    = $70;   //   80 ms
+CONST SID_ATK_100   = $80;   //  100 ms
+CONST SID_ATK_250   = $90;   //  250 ms
+CONST SID_ATK_500   = $A0;   //  500 ms
+CONST SID_ATK_800   = $B0;   //  800 ms
+CONST SID_ATK_1000  = $C0;   // 1000 ms
+CONST SID_ATK_3000  = $D0;   // 3000 ms
+CONST SID_ATK_5000  = $E0;   // 5000 ms
+CONST SID_ATK_8000  = $F0;   // 8000 ms
+
+// === ADSR decay/release time (= attdec/susrel register 下位 4 bit) ===
+// decay = attdec の下位 4bit、release = susrel の下位 4bit、同じ値域。
+CONST SID_DKY_6     = $00;   //    6 ms
+CONST SID_DKY_24    = $01;   //   24 ms
+CONST SID_DKY_48    = $02;   //   48 ms
+CONST SID_DKY_72    = $03;   //   72 ms
+CONST SID_DKY_114   = $04;   //  114 ms
+CONST SID_DKY_168   = $05;   //  168 ms
+CONST SID_DKY_204   = $06;   //  204 ms
+CONST SID_DKY_240   = $07;   //  240 ms
+CONST SID_DKY_300   = $08;   //  300 ms
+CONST SID_DKY_750   = $09;   //  750 ms
+CONST SID_DKY_1500  = $0A;   // 1500 ms
+CONST SID_DKY_2400  = $0B;   // 2400 ms
+CONST SID_DKY_3000  = $0C;   // 3000 ms
+CONST SID_DKY_9000  = $0D;   // 9000 ms
+CONST SID_DKY_15000 = $0E;   // 15000 ms
+CONST SID_DKY_24000 = $0F;   // 24000 ms
+
+// === sustain level pack (= susrel register 上位 4 bit) ===
+// sustain は volume 比 0..15、SLANG コード側で SID_SUS_15 OR SID_DKY_300 のように
+// OR して susrel byte を組み立てる。
+CONST SID_SUS_0  = $00;
+CONST SID_SUS_1  = $10;
+CONST SID_SUS_2  = $20;
+CONST SID_SUS_3  = $30;
+CONST SID_SUS_4  = $40;
+CONST SID_SUS_5  = $50;
+CONST SID_SUS_6  = $60;
+CONST SID_SUS_7  = $70;
+CONST SID_SUS_8  = $80;
+CONST SID_SUS_9  = $90;
+CONST SID_SUS_10 = $A0;
+CONST SID_SUS_11 = $B0;
+CONST SID_SUS_12 = $C0;
+CONST SID_SUS_13 = $D0;
+CONST SID_SUS_14 = $E0;
+CONST SID_SUS_15 = $F0;
+
+// === NOTE 定数 (= SID frequency register 値、PAL clock 基準で事前計算済) ===
+// 半音 12 × オクターブ 5 (C2..B6) = 60 個。値は SID_FREQ_PAL(NOTE_X(o)) を
+// oscar64 sid.h の式で計算した結果 (= PAL 50Hz 想定)。
+// NTSC 機 (= NTSC 60Hz クロック) で再生すると音高が約 4% 高くなる、
+// 厳密同期が必要なら user 側で 16-bit 範囲内に収まる値を別途計算。
+// C7..B7 オクターブが必要なら user 側で SID_FREQ_PAL(NOTE_C(7)) 等を
+// 自前展開 (= B7 は 16-bit overflow なので SLANG WORD では表現不可)。
+CONST NOTE_C2  = $0452;
+CONST NOTE_CS2 = $0496;
+CONST NOTE_D2  = $04DB;
+CONST NOTE_DS2 = $051F;
+CONST NOTE_E2  = $0574;
+CONST NOTE_F2  = $05C9;
+CONST NOTE_FS2 = $061E;
+CONST NOTE_G2  = $0673;
+CONST NOTE_GS2 = $06D9;
+CONST NOTE_A2  = $0751;
+CONST NOTE_AS2 = $07B7;
+CONST NOTE_B2  = $080C;
+CONST NOTE_C3  = $08A5;
+CONST NOTE_CS3 = $092D;
+CONST NOTE_D3  = $09B6;
+CONST NOTE_DS3 = $0A4F;
+CONST NOTE_E3  = $0AE8;
+CONST NOTE_F3  = $0B92;
+CONST NOTE_FS3 = $0C4E;
+CONST NOTE_G3  = $0CF8;
+CONST NOTE_GS3 = $0DC4;
+CONST NOTE_A3  = $0EA2;
+CONST NOTE_AS3 = $0F7F;
+CONST NOTE_B3  = $1018;
+CONST NOTE_C4  = $115C;
+CONST NOTE_CS4 = $126C;
+CONST NOTE_D4  = $137D;
+CONST NOTE_DS4 = $14AF;
+CONST NOTE_E4  = $15E2;
+CONST NOTE_F4  = $1736;
+CONST NOTE_FS4 = $189C;
+CONST NOTE_G4  = $1A02;
+CONST NOTE_GS4 = $1B9A;
+CONST NOTE_A4  = $1D44;   // A4 = 440 Hz、世界標準音
+CONST NOTE_AS4 = $1EFF;
+CONST NOTE_B4  = $2042;
+CONST NOTE_C5  = $22C9;
+CONST NOTE_CS5 = $24D9;
+CONST NOTE_D5  = $270B;
+CONST NOTE_DS5 = $295F;
+CONST NOTE_E5  = $2BD5;
+CONST NOTE_F5  = $2E6D;
+CONST NOTE_FS5 = $3139;
+CONST NOTE_G5  = $3415;
+CONST NOTE_GS5 = $3735;
+CONST NOTE_A5  = $3A89;
+CONST NOTE_AS5 = $3DFE;
+CONST NOTE_B5  = $4085;
+CONST NOTE_C6  = $4593;
+CONST NOTE_CS6 = $49B3;
+CONST NOTE_D6  = $4E17;
+CONST NOTE_DS6 = $52BF;
+CONST NOTE_E6  = $57AB;
+CONST NOTE_F6  = $5CDB;
+CONST NOTE_FS6 = $6272;
+CONST NOTE_G6  = $683B;
+CONST NOTE_GS6 = $6E7C;
+CONST NOTE_A6  = $7512;
+CONST NOTE_AS6 = $7BFC;
+CONST NOTE_B6  = $811C;

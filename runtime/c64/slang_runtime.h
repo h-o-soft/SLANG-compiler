@@ -24,6 +24,10 @@
  * drift 防止のため slang_runtime.h から chain include。 */
 #include "slang_kio.h"
 
+/* SID register direct + 単発 SFX bridge API (= env c_bindings: で公開)。
+ * 同じく signature drift 防止のため slang_runtime.h から chain include。 */
+#include "slang_sid.h"
+
 /* === PRINT === */
 
 void slang_print_str(const char *s);          /* NUL-terminated 文字列 */
