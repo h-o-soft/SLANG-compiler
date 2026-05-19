@@ -19,7 +19,7 @@ public class SidBindingTests
     {
         // 実 runtime/env/c64.env をパースする代わりに、テスト独立性のために
         // 必要 binding だけ手組み (= env file 解析テストは EnvCBindingsTests で別途網羅)。
-        // v3b-A スコープの 8 entry (= SID register + 単発 SFX wrapper) を網羅。
+        // v3b-A スコープの 9 entry (= SID register direct 8 + 単発 SFX wrapper 1) を網羅。
         return new EnvironmentConfig
         {
             Name = "c64",

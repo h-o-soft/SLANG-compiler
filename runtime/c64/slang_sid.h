@@ -71,7 +71,9 @@ void slang_sid_gate_off(unsigned char voice);
  * release は user 明示の slang_sid_gate_off で開始する (= 自動 release scheduling
  * は v4f BGM player の責務、v3b-A では「鳴らしっぱなしになるので user が
  * gate off を呼ぶ」と明示)。
- * waveform は SID_WF_TRI / SAW / PULSE / NOISE のいずれか (= ctrl の上位 bit)。 */
+ * waveform は SID_WF_TRI / SAW / PULSE / NOISE のいずれか (= ctrl の上位 bit)。
+ * 内部で GATE off → GATE on の 2 段書き込みを行うため、既に GATE が立っている
+ * voice に再呼出した場合も attack が確実に re-trigger される (= 連射 SFX OK)。 */
 void slang_sid_sfx(unsigned char voice, unsigned int freq,
                    unsigned char ad, unsigned char sr, unsigned char waveform);
 

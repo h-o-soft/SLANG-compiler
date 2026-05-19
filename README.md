@@ -208,7 +208,7 @@ slangbuild -E c64 -o examples/FMANDEL examples/FMANDEL.SL
 # → examples/FMANDEL.prg (+ oscar64 副産物 .asm/.map/.int/.lbl)
 ```
 
-**checkout 状態 (= repo root) からのビルド**: `#INCLUDE "C64_JOY.LIB"` 等の SLANG ライブラリを取り込むサンプルは `-I include` の追加が必要 (例: `slangbuild -E c64 -I include examples/c64/JOYSPR.SL -o examples/c64/JOYSPR`)。配布物 install 後 (= SLANG_HOME 設定済) は `-I include` 省略可。
+**checkout 状態 (= repo root) からのビルド**: `#INCLUDE "C64_VIC.LIB"` / `C64_JOY.LIB` / `C64_SID.LIB` / `C64_KIO.LIB` 等の SLANG ライブラリを取り込むサンプルは `-I include` の追加が必要 (例: `slangbuild -E c64 -I include examples/c64/SIDSFX.SL -o examples/c64/SIDSFX`)。配布物 install 後 (= SLANG_HOME 設定済) は `-I include` 省略可。
 
 **`-o` のセマンティクス**: `slangc -o <path>` は完全パス (`.c` 拡張子込み)、`slangbuild -o <prefix>` は prefix (`<prefix>.c` と `<prefix>.prg` を生成) という Z80 経路と同じ慣行です。
 
@@ -236,13 +236,13 @@ VIC 色定数 (`VCOL_BLACK..VCOL_LT_GREY`、16 色) は `#INCLUDE "C64_VIC.LIB"`
 サンプル: `examples/c64/SPRITE.SL` (sprite 1 個を VSYNC 同期で画面端バウンス) + `examples/c64/FMANDEL.SL` (40 桁テキストマンデルブロ、`examples/FMANDEL.SL` の 80 桁版を C64 画面用に縮めた版):
 
 ```sh
-# checkout 状態: -I include 必須 (= C64_VIC.LIB / C64_JOY.LIB / C64_KIO.LIB 取り込み用)
+# checkout 状態: -I include 必須 (= C64_VIC.LIB / C64_JOY.LIB / C64_SID.LIB / C64_KIO.LIB 取り込み用)
 slangbuild -E c64 -I include examples/c64/SPRITE.SL  -o examples/c64/SPRITE
 slangbuild -E c64 -I include examples/c64/FMANDEL.SL -o examples/c64/FMANDEL
 slangbuild -E c64 -I include examples/c64/JOYSPR.SL  -o examples/c64/JOYSPR
 slangbuild -E c64 -I include examples/c64/SIDSFX.SL  -o examples/c64/SIDSFX
 slangbuild -E c64 -I include examples/c64/HISCORE.SL -o examples/c64/HISCORE
-x64sc -autostart examples/c64/SPRITE.prg          # VICE (sprite/FMANDEL/JOYSPR)
+x64sc -autostart examples/c64/SPRITE.prg          # VICE (sprite/FMANDEL/JOYSPR/SIDSFX)
 # HISCORE は KERNAL file I/O で D64 が必要、autostart 不可 (= virtual drive モードで
 # 干渉する)。c1541 で空 D64 + PRG を入れて、x64sc -8 で attach + 手動 LOAD/RUN:
 c1541 -format "hiscore,01" d64 disks/hiscore.d64 -write examples/c64/HISCORE.prg hiscore

@@ -48,12 +48,14 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 
 ロードマップ #178 配下の v3b の 3 分割初回 (= SID 基盤 + 単発 SFX) を実装:
 
-- 新規 `runtime/c64/slang_sid.{h,c}`: oscar64 `c64/sid.h` の register direct 8 関数
-  + SFX wrapper 1 関数 (`slang_sid_init_quiet` / `_volume` / `_freq` / `_pwm`
-  / `_adsr` / `_ctrl` / `_gate_on` / `_gate_off` / `_sfx`)。oscar64 `c64/sid.h`
-  は hardware register memory map (= API レベル) のため SLANG MIT runtime に
-  取り込んでも GPL 影響なし。**PULSE 波形は事前に `SID_PWM` で pulse width を
-  設定する必要あり** (= pwm=0 だと duty 0% で無音、$0800 が標準矩形波)
+- 新規 `runtime/c64/slang_sid.{h,c}`: 9 関数 (`slang_sid_init_quiet` / `_volume`
+  / `_freq` / `_pwm` / `_adsr` / `_ctrl` / `_gate_on` / `_gate_off` / `_sfx`)。
+  oscar64 `c64/sid.h` の hardware register memory map を public header として
+  `#include` 参照、bridge 実装はすべて SLANG 側オリジナル。oscar64 実装コードは
+  転載しない運用継続。**PULSE 波形は事前に `SID_PWM` で pulse width を設定する
+  必要あり** (= pwm=0 だと duty 0% で無音、$0800 が標準矩形波)。`SID_SFX` は
+  内部で GATE off → GATE on の 2 段書き込みで attack を re-trigger するため、
+  既に GATE が立っている voice に再呼出した場合も連射 SFX として動作する
 - 新規 `include/C64_SID.LIB`: voice 番号定数 3 個 + waveform 4 個 + CTRL bit 4 個
   + ATK/DKY/SUS 各 16 段階 + pulse width preset 4 個 (`SID_PWM_NARROW/QUARTER/SQR/WIDE`)
   + NOTE_C2..B6 5 オクターブ 60 個 (= PAL clock 基準の事前計算済 SID register
@@ -66,12 +68,12 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 - 新規 `examples/c64/SIDSFX.SL`: JOYSPR.SL 拡張、joystick 移動 + fire で SFX
   発射 + 1/2/3 キーで preset 切替 (laser/boom/noise) + sprite 色連動
 
-ライセンス整理:
-- oscar64 `c64/sid.h` は hardware register API なので borrow OK (= bridge 関数
-  はすべて SLANG 側オリジナル実装、`slang_*` 命名で明示)
-- oscar64 `audio/sidfx.c` (= GPL-3.0 の priority SFX player) は v3b-A では使わない
-  (= v3b-C で `#include <audio/sidfx.h>` の bridge 経由参照に限定、SLANG MIT
-  runtime に GPL コードを borrow しない方針継続)
+ライセンス運用方針 (= 既存 c64 backend と同じ規律を継続):
+- 公開 header (`c64/sid.h`) の API 参照に限定、oscar64 の実装コード (audio/sidfx.c
+  等) は SLANG runtime に転載しない
+- bridge 関数はすべて SLANG 側オリジナル実装 (`slang_*` 命名で明示)
+- v3b-C で `audio/sidfx` を扱う際も `#include <audio/sidfx.h>` の bridge 経由
+  参照に限定する方針
 
 v3b-A 設計判断:
 - voice 番号 0..2、volume 0..15、frequency は PAL clock 基準の register 値 (=

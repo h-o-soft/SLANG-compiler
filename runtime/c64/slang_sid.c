@@ -3,8 +3,8 @@
  * See slang_sid.h for API contract.
  *
  * oscar64 <c64/sid.h> の struct SID memory map (= 0xd400) を直接操作する。
- * struct SID 自体は hardware register 配置の API なので、SLANG MIT runtime に
- * 取り込んでも GPL 影響なし (= header level の参照のみ)。
+ * 本 bridge の実装はすべて SLANG 側オリジナルで、oscar64 の実装コード
+ * (audio/sidfx.c 等) は転載しない運用方針。公開 header の API 参照に限定。
  */
 
 #include "slang_sid.h"
@@ -66,7 +66,11 @@ void slang_sid_sfx(unsigned char voice, unsigned int freq,
         sid.voices[voice].freq = freq;
         sid.voices[voice].attdec = ad;
         sid.voices[voice].susrel = sr;
-        /* waveform に GATE bit を OR して書き込み = 即時 attack 開始。 */
+        /* SID envelope は GATE bit の 0→1 transition で attack を re-trigger
+         * するため、既に GATE が立っている voice に再呼出されても確実に
+         * attack をやり直せるよう、まず GATE off (= ctrl に waveform のみ) を
+         * 書いてから GATE on (= waveform | GATE) を書く 2 段書き込み。 */
+        sid.voices[voice].ctrl = (unsigned char)waveform;
         sid.voices[voice].ctrl = (unsigned char)(waveform | SID_CTRL_GATE);
     }
 }
