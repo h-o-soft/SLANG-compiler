@@ -3,9 +3,10 @@
 // X 軸方向の解像度を半分にして倍率を 2 倍 (0.0458 → 0.0916) にすることで
 // 同じ範囲のマンデルブロを 40 桁画面で描く。
 //
-// Build:
-//   slangbuild -E c64 examples/c64/FMANDEL.SL -o examples/c64/FMANDEL
+// Build (= checkout 状態 / repo root から実行):
+//   slangbuild -E c64 -I include examples/c64/FMANDEL.SL -o examples/c64/FMANDEL
 //   x64sc -autostart examples/c64/FMANDEL.prg
+// 配布物 install 後 (= SLANG_HOME 設定済) は -I include 省略可。
 
 VAR X,Y,I,VAL;
 VAR FLOAT CA, FLOAT CB, FLOAT FX, FLOAT FY;

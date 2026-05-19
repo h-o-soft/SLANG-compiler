@@ -1,0 +1,15 @@
+// C64 joystick 定数 (SLANG c64 backend、env c_bindings: JOY_DIR の bitmask
+// および JOY_POLL/X/Y/B の port 番号で使う)。
+// `#INCLUDE "C64_JOY.LIB"` で SLANG コードに取り込み、Z80 backend で
+// include しても CONST 定義のみで害なし (= 既存 SOROBAN.LIB 等と同パターン)。
+
+// JOY_DIR(port) の bitmask (= runtime/c64/slang_joystick.c と整合)
+CONST JOY_UP    = $01;
+CONST JOY_DOWN  = $02;
+CONST JOY_LEFT  = $04;
+CONST JOY_RIGHT = $08;
+CONST JOY_FIRE  = $10;
+
+// port 番号 (C64 では port 1 / port 2 が一般的、port 2 が control port 2 = $DC00)
+CONST JOY_PORT1 = 0;
+CONST JOY_PORT2 = 1;

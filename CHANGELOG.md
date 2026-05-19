@@ -40,6 +40,33 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 - `examples/STARS.SL` (リアルタイム key 入力でアニメーション、A/D で星数増減)
 - `examples/c64/SPRITE.SL` (VIC sprite 1 個 + VSYNC 同期で画面端バウンス、c64 専用 sample 用ディレクトリ)
 - `examples/c64/FMANDEL.SL` (`examples/FMANDEL.SL` 80 桁版を C64 40 桁画面用に縮めた版、X 軸解像度半減を倍率 2 倍で補償)
+- `examples/c64/JOYSPR.SL` (= v3a) joystick port 2 で sprite 移動 + fire で色変更 (= ロードマップ v3a に対応、`JOY_DIR` bitmask + `JOY_B` 主、`JOY_X/Y` の signed `-1=$FFFF` パターン解説含む)
+
+### v3a — Joystick binding (#179)
+
+ロードマップ #178 配下の v3a (= ゲーム入力中核) を実装:
+
+- 新規 `runtime/c64/slang_joystick.{h,c}`: oscar64 `joystick.h` の bridge
+  関数 5 個 (`slang_joy_poll` / `slang_joy_x` / `slang_joy_y` / `slang_joy_b` /
+  `slang_joy_dir`)。oscar64 signed byte (-1/0/1) を SLANG WORD では `-1=$FFFF` に
+  sign extension して返す。`slang_joy_dir` は 5 bit bitmask (UP=1 / DOWN=2 /
+  LEFT=4 / RIGHT=8 / FIRE=16) を組み立てる
+- 新規 `include/C64_JOY.LIB`: `JOY_UP/DOWN/LEFT/RIGHT/FIRE` の bitmask 定数 +
+  `JOY_PORT1/PORT2` port 番号、計 7 CONST
+- `runtime/env/c64.env` `c_bindings:` に 5 entry 追加 (`JOY_POLL` / `JOY_X` /
+  `JOY_Y` / `JOY_B` / `JOY_DIR`)、`c_runtime_files:` に `slang_joystick.c` 追加
+- `runtime/c64/slang_runtime.h` に `#include "slang_joystick.h"` chain
+- 新規 `tests/SLANGCompiler.Tests/JoystickBindingTests.cs`: 5 関数の extern
+  signature と呼出展開、`$FFFF` 比較パターンの golden
+- 新規 `examples/c64/JOYSPR.SL`: SPRITE.SL 改造、port 2 joystick で 8 方向移動 +
+  fire 色変更 (VSYNC 同期、debouncing 含む)
+
+Codex レビュー反映:
+- 主 API は `JOY_DIR` bitmask (= ゲーム実装で短く書ける + 符号問題なし)
+- `JOY_X` / `JOY_Y` は補助 API として位置付け、`-1=$FFFF` 判定パターンを sample で示す
+- `JOY_POLL` は明示呼出 (= 自動 poll は副作用 / 重複呼出を避ける)
+
+全 370 テスト pass (= 368 + JoystickBindingTests 2)。
 
 **v1 制約**:
 - 文字列は ASCII printable (0x20-0x7E) のみサポート。日本語・カナ・SJIS は未対応 (今後 oscar64 `p"..."` 拡張等で検討)
