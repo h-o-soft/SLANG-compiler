@@ -218,6 +218,7 @@ env file `c64.env` が以下を C backend builtin として公開しているた
 |---|---|
 | I/O | `PRINT` 全構文 (`"..."` / `/` / `%(v)` / `!(s)` / `HEX2$(v)` / `HEX4$(v)` / `DECI$(v)` / `FORM$(v,n)` / `MSG$(p)` / `MSX$(p)` / `STR$(c,n)` / `CHR$(n)` / `SPC$(n)` / `CR$(n)` / `TAB$(n)` / `FL$(f)` / `PN$(v)`) |
 | 入力 | `INKEY(mode)` (即時状態取得、押下中=値、離した瞬間=0)、`INPUT()` (1 行入力 → 数値 parse、ESC=`$FFFF`)、`GETL(buf)` / `GETLIN(buf, x)` / `LINPUT(buf, x)` (1 行文字列入力、戻り値=入力文字数、ESC=`$FFFF`)。Z80 backend の `_CARRY` 機構は v1 未対応 |
+| ジョイスティック | `JOY_POLL(port)` (1 frame 1 回呼ぶ) + `JOY_DIR(port)` (5 bit bitmask) + `JOY_X(port)` / `JOY_Y(port)` (signed、-1=`$FFFF`) + `JOY_B(port)` (0/1 fire)。色定数 + bitmask 定数は `#INCLUDE "C64_JOY.LIB"` で取得 (`JOY_UP/DOWN/LEFT/RIGHT/FIRE/PORT1/PORT2`) |
 | 端末 | `WIDTH(w)` (no-op = C64 は 40 桁固定)、`LOCATE(x, y)`、`SCREEN(x, y)`、`PRMODE(m)` |
 | 数学 | `ABS / SQR / SIN / COS / TAN / LOG / EXP / ATN / RND / SRND` |
 | メモリ | `MEM[addr]` / `MEMW[addr]` (= 絶対アドレス access、`SLANG_MEM` / `SLANG_MEMW` マクロに展開) |
@@ -283,7 +284,7 @@ slangbuild -E c64 myapp.SL --c-source mylib.c -o myapp
 
 ### v1 スコープと制約
 
-**動作確認済**: PRINT / INPUT / 整数算術 / FLOAT 演算 / リアルタイム key 入力 / sprite (1 個アニメ、VSYNC 同期) + ユーザー C 任意関数 (= CFUNC + `--c-source`)。`examples/FMANDEL.SL` / `examples/FURUI.SL` / `examples/STARS.SL` / `examples/c64/SPRITE.SL` / `examples/c64/FMANDEL.SL` (= 40 桁版) が実機 (VICE) で動作。
+**動作確認済**: PRINT / INPUT / 整数算術 / FLOAT 演算 / リアルタイム key 入力 / sprite (1 個アニメ、VSYNC 同期) / joystick 入力 + ユーザー C 任意関数 (= CFUNC + `--c-source`)。`examples/FMANDEL.SL` / `examples/FURUI.SL` / `examples/STARS.SL` / `examples/c64/SPRITE.SL` / `examples/c64/FMANDEL.SL` (= 40 桁版) / `examples/c64/JOYSPR.SL` (= joystick) が実機 (VICE) で動作。
 
 **未対応 / 今後の拡張**: sprite multiplex / VIC bitmap mode / SID sound / KERNAL file I/O / CRT / overlay (`#MODULE`)。これらは bridge 関数を追加する形で順次対応予定。
 
