@@ -41,6 +41,68 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 - `examples/c64/SPRITE.SL` (VIC sprite 1 個 + VSYNC 同期で画面端バウンス、c64 専用 sample 用ディレクトリ)
 - `examples/c64/FMANDEL.SL` (`examples/FMANDEL.SL` 80 桁版を C64 40 桁画面用に縮めた版、X 軸解像度半減を倍率 2 倍で補償)
 - `examples/c64/JOYSPR.SL` (= v3a) joystick port 2 で sprite 移動 + fire で色変更 (= ロードマップ v3a に対応、`JOY_DIR` bitmask + `JOY_B` 主、`JOY_X/Y` の signed `-1=$FFFF` パターン解説含む)
+- `examples/c64/HISCORE.SL` (= v3c) D64 disk image に `HISCORE,S,W` で save → `HISCORE,S,R` で read → 内容比較する KERNAL file I/O 往復 sample
+
+### v3c — KERNAL file I/O binding (#181)
+
+ロードマップ #178 配下の v3c (= disk file 入出力) を実装:
+
+- 新規 `runtime/c64/slang_kio.{h,c}`: oscar64 `c64/kernalio.h` の bridge
+  関数 16 個 + raw address 用 4 個。通常 API (`KIO_SETNAM` / `KIO_OPEN` /
+  `KIO_OPEN_NAMED` / `KIO_CLOSE` / `KIO_CHKIN` / `KIO_CHKOUT` / `KIO_CLRCHN` /
+  `KIO_CHRIN` / `KIO_CHROUT` / `KIO_GETCH` / `KIO_PUTCH` / `KIO_READ` /
+  `KIO_WRITE` / `KIO_PUTS` / `KIO_GETS` / `KIO_STATUS`) は文字列・buffer
+  を `byte_ptr` で受ける。raw address 用 (`KIO_SETNAM_ADDR` /
+  `KIO_OPEN_NAMED_ADDR` / `KIO_READ_ADDR` / `KIO_WRITE_ADDR`) は SLANG WORD
+  で絶対アドレスを直接渡せる
+- 新規 `include/C64_KIO.LIB`: krnioerr 定数 9 個 (`KRNIO_OK / DIR / TIMEOUT /
+  SHORT / LONG / VERIFY / CHKSUM / EOF / NODEVICE`) + device 定数 6 個
+  (`DEV_TAPE / DEV_PRINTER / DEV_DISK / DEV_DISK9 / 10 / 11`) + channel
+  定数 3 個 (`CH_READ / CH_WRITE / CH_COMMAND`)
+- `runtime/env/c64.env` `c_bindings:` に 20 entry 追加、
+  `c_runtime_files:` に `slang_kio.c` 追加、`oscar_optimize: Os` 永続化
+  (= 既定 `-O1` で bitwise AND を含む特定パターンの最適化バグを踏むため、
+  `-Os` に切替で回避 + size 最小化、副作用なし。詳細は env file 内コメント参照)
+- `runtime/c64/slang_runtime.h` に `#include "slang_kio.h"` chain
+- 新規 `tests/SLANGCompiler.Tests/KioBindingTests.cs`: extern signature
+  drift と呼出展開、`$FFFF` エラー判定パターン、実 `runtime/env/c64.env`
+  全 20 binding 列挙の golden (= byte_ptr / word / void return + 多引数を網羅)
+- 文字列は NUL terminated PETSCII 固定 (= oscar64 `-psci` で SLANG リテラル
+  `"score,s,r"` がそのまま PETSCII 化されて KERNAL に渡る)
+
+PETSCII / 1541 disk 上の流儀 (= HISCORE.SL sample の通り):
+- 文字列リテラルは「主部 + type/mode token とも全小文字」で書く: oscar64
+  `-psci` は ASCII 小文字 (0x61-0x7A) を PETSCII unshifted 大文字
+  (0x41-0x5A) に変換するため、1541 が `,S,W` 等の token を unshifted 大文字
+  (0x53) で expect する仕様と整合する。SLANG リテラル大文字
+  (`"HISCORE,S,W"`) は PETSCII shifted 領域 (0xC1-0xDA) に化けて
+  type/mode token が parse されず PRG として保存されてしまうので注意
+- SEQ ファイルの主部は PRG (= 起動用 SLANG プログラム) と別名にする
+  (sample では `score`)。1541 emu は同主部 PRG と SEQ の共存を拒否する
+  ケースがあるため、衝突回避のため別主部を選ぶのが安全
+
+戻り値の慣行:
+- bool 系 (`open` / `chkin` / `chkout` / `chrout`) は 0 = fail / 1 = success、
+  詳細は `KIO_STATUS()` (krnioerr enum) で確認
+- byte 読み系 (`chrin`) は 0..255
+- `getch` / `read` / `write` / `gets` / `puts` は oscar64 で signed int を
+  返しエラーは負値。SLANG WORD では sign extension で `$FFFx` として届くので、
+  エラー判定は `IF (result & $8000) THEN ...` または `IF result == $FFFF`
+
+付随する CTranspiler 修正:
+- `CastTo`: PointerType target は src と同型でも明示 cast を残す。理由:
+  SLANG StringLiteral を `byte_ptr` binding に渡す際、C 側の `const u8[]`
+  から `unsigned char *` への暗黙変換が oscar64 で reject されるため
+- `VisitReturnStmt`: SLANG `RETURN;` (引数なし) を関数の戻り型 size に応じた
+  default 値 (`return 0;` / `return 0.0;`) で emit (= CTranspiler は全関数を
+  非 void で emit するため整合が必要)
+
+既知の oscar64 issue (= 本 PR 範囲外、最小再現と issue 投稿は別途):
+- oscar64 `-O1` (= 既定) で `if (((unsigned int)((V_X) & 0x8000u)))` の
+  ような多重 cast + 周辺の bridge call chain がある場合、定数式 `5 & 0x8000`
+  の partial constant fold が誤動作して常時 true 判定されるケースを観測。
+  `-O0` / `-O2` / `-O3` / `-Os` では未再現のため、c64.env で `oscar_optimize: Os`
+  を採用して回避。最小再現を別途切り出して oscar64 へ報告予定
 
 ### v3a — Joystick binding (#179)
 

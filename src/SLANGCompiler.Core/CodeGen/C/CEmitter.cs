@@ -40,6 +40,10 @@ public class CEmitter : IAstVisitor<EmitResult>
     private readonly ConstEvaluator _constEval;
     private readonly CBindingRegistry _cBindings;
     private int _indent;
+    // current 関数の戻り型 size (= FuncDef 進入中のみ意味あり、`RETURN;` の暗黙
+    // default 値を type に応じて補うために保持)。VisitFuncDef enter/leave で set/clear。
+    private DataSize _currentFuncRetSize = DataSize.Word;
+
     // current 関数名 (= FuncDef 進入中なら名前、関数外 / global なら null)。
     // SLANG の関数内 static var (= BEGIN 前の VarDecl) の C 側 ident 衝突を
     // 避けるために funcName_varName で suffix 付ける。
@@ -385,6 +389,7 @@ public class CEmitter : IAstVisitor<EmitResult>
         var paramSig = BuildParamSignature(node.Parameters);
 
         _currentFuncName = node.Name;
+        _currentFuncRetSize = node.ReturnSize;
         _scope.EnterFunction();
         _currentStaticDecls.Clear();
 
@@ -851,7 +856,14 @@ public class CEmitter : IAstVisitor<EmitResult>
 
     public EmitResult VisitReturnStmt(ReturnStmt node)
     {
-        if (node.Value == null) return new(Line("return;"), null);
+        if (node.Value == null)
+        {
+            // SLANG `RETURN;` (引数なし)。CTranspiler は全関数を非 void 戻り型で
+            // emit する (= MAIN も unsigned int、終端で暗黙 0 return 補完) ため、
+            // 中途 `RETURN;` も型に応じた default 値を返す必要がある。
+            var defaultRet = _currentFuncRetSize == DataSize.Float ? "0.0" : "0";
+            return new(Line($"return {defaultRet};"), null);
+        }
         return new(Line($"return ({Expr(node.Value)});"), null);
     }
 
@@ -1454,7 +1466,18 @@ public class CEmitter : IAstVisitor<EmitResult>
     private string CastTo(EmitResult expr, SlangType targetType)
     {
         var srcType = expr.Type;
-        if (srcType == null || srcType.Equals(targetType)) return expr.Text;
+        if (srcType == null || srcType.Equals(targetType))
+        {
+            // PointerType target は明示 cast を残す。理由: SLANG StringLiteral は
+            // PointerType(Byte) を返すが、C 側では `const u8[]` (string literal の型)
+            // で表現される。CFUNC / c_bindings の `unsigned char *` 引数に渡すには
+            // 明示 cast が必要 (= oscar64 は const から non-const への暗黙変換を拒否)。
+            if (targetType is PointerType)
+            {
+                return $"(({CTypeMapper.MapDeclType(targetType)})({expr.Text}))";
+            }
+            return expr.Text;
+        }
 
         // 整数 → Float 変換は signed 解釈 (Z80 backend の i16tof24 と同じセマンティクス)。
         // SLANG WORD は unsigned int としてマップしているが、FLOAT に変換するときは

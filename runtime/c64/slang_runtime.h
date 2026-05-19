@@ -20,6 +20,10 @@
  * 同一 header chain で生成 C 側 extern と bridge 実装の signature drift を防ぐ。 */
 #include "slang_joystick.h"
 
+/* KERNAL file I/O bridge API (= env c_bindings: で公開)。同じく signature
+ * drift 防止のため slang_runtime.h から chain include。 */
+#include "slang_kio.h"
+
 /* === PRINT === */
 
 void slang_print_str(const char *s);          /* NUL-terminated 文字列 */
