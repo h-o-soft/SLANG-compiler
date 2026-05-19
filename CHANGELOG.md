@@ -42,6 +42,54 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 - `examples/c64/FMANDEL.SL` (`examples/FMANDEL.SL` 80 桁版を C64 40 桁画面用に縮めた版、X 軸解像度半減を倍率 2 倍で補償)
 - `examples/c64/JOYSPR.SL` (= v3a) joystick port 2 で sprite 移動 + fire で色変更 (= ロードマップ v3a に対応、`JOY_DIR` bitmask + `JOY_B` 主、`JOY_X/Y` の signed `-1=$FFFF` パターン解説含む)
 - `examples/c64/HISCORE.SL` (= v3c) D64 disk image に `HISCORE,S,W` で save → `HISCORE,S,R` で read → 内容比較する KERNAL file I/O 往復 sample
+- `examples/c64/SIDSFX.SL` (= v3b-A) joystick で sprite 移動 + fire ボタンで voice 0 SFX 発射 + 1/2/3 キーで音色 preset 切替 (= laser/boom/noise の 3 種類)
+
+### v3b-A — SID 基盤 + 単発 SFX binding (#180 配下)
+
+ロードマップ #178 配下の v3b の 3 分割初回 (= SID 基盤 + 単発 SFX) を実装:
+
+- 新規 `runtime/c64/slang_sid.{h,c}`: oscar64 `c64/sid.h` の register direct 8 関数
+  + SFX wrapper 1 関数 (`slang_sid_init_quiet` / `_volume` / `_freq` / `_pwm`
+  / `_adsr` / `_ctrl` / `_gate_on` / `_gate_off` / `_sfx`)。oscar64 `c64/sid.h`
+  は hardware register memory map (= API レベル) のため SLANG MIT runtime に
+  取り込んでも GPL 影響なし。**PULSE 波形は事前に `SID_PWM` で pulse width を
+  設定する必要あり** (= pwm=0 だと duty 0% で無音、$0800 が標準矩形波)
+- 新規 `include/C64_SID.LIB`: voice 番号定数 3 個 + waveform 4 個 + CTRL bit 4 個
+  + ATK/DKY/SUS 各 16 段階 + pulse width preset 4 個 (`SID_PWM_NARROW/QUARTER/SQR/WIDE`)
+  + NOTE_C2..B6 5 オクターブ 60 個 (= PAL clock 基準の事前計算済 SID register
+  値、`SID_FREQ_PAL(NOTE_X(o))` 二段変換結果)
+- `runtime/env/c64.env` `c_bindings:` に 9 entry 追加、`c_runtime_files:` に
+  `slang_sid.c` 追加
+- `runtime/c64/slang_runtime.h` に `#include "slang_sid.h"` chain
+- 新規 `tests/SLANGCompiler.Tests/SidBindingTests.cs`: 8 関数の extern
+  signature と呼出展開、実 `runtime/env/c64.env` 全 8 binding 列挙の golden
+- 新規 `examples/c64/SIDSFX.SL`: JOYSPR.SL 拡張、joystick 移動 + fire で SFX
+  発射 + 1/2/3 キーで preset 切替 (laser/boom/noise) + sprite 色連動
+
+ライセンス整理:
+- oscar64 `c64/sid.h` は hardware register API なので borrow OK (= bridge 関数
+  はすべて SLANG 側オリジナル実装、`slang_*` 命名で明示)
+- oscar64 `audio/sidfx.c` (= GPL-3.0 の priority SFX player) は v3b-A では使わない
+  (= v3b-C で `#include <audio/sidfx.h>` の bridge 経由参照に限定、SLANG MIT
+  runtime に GPL コードを borrow しない方針継続)
+
+v3b-A 設計判断:
+- voice 番号 0..2、volume 0..15、frequency は PAL clock 基準の register 値 (=
+  NOTE_C4 等の事前計算済定数を C64_SID.LIB から取得)
+- ADSR pack は `SID_ATK_* OR SID_DKY_*` (attdec)、`SID_SUS_* OR SID_DKY_*` (susrel)
+  形式で SLANG コード側で組み立て
+- SFX wrapper は「gate on までの helper」と再定義 = release は user 明示
+  `SID_GATE_OFF(voice)` で開始、自動 release scheduling は v3b-C / v4f BGM player
+  の責務に分離
+- NOTE_B7 は 16-bit overflow (= $10249 = 66121) のため C7..AS7 のみ提供、B7 と
+  それ以上のオクターブは user 側で計算
+
+v3b roadmap (= 後続 PR):
+- v3b-B: HVSC .sid 取り込み + BGM 再生 (= slangbuild `--sid` option、`SID_LOAD` /
+  `SID_PLAYER_INIT` / `SID_PLAYER_PLAY` bridge、sample SIDBGM.SL)
+- v3b-C: oscar64 `audio/sidfx` bridge で priority SFX overlay (= `#include
+  <audio/sidfx.h>` 経由参照、SLANG MIT runtime に GPL コードを含めない方針継続、
+  sample SIDOVERLAY.SL)
 
 ### v3c — KERNAL file I/O binding (#181)
 
