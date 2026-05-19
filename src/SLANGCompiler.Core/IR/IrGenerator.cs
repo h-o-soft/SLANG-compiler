@@ -641,6 +641,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
         return IrOperand.None;
     }
 
+    public IrOperand VisitCFuncDecl(CFuncDecl node)
+    {
+        // CFUNC は C backend 専用宣言。Z80 backend で出てきたら診断 error。
+        // SLANG コードが両 backend 兼用なら `#IF BACKEND==1` で gate する想定。
+        _diagnostics.Error(
+            $"CFUNC declaration `{node.Name}` is not supported by Z80 backend; "
+            + "gate it with `#IF BACKEND==1` or `#IF ENV_TYPE==7`",
+            node.Span);
+        return IrOperand.None;
+    }
+
     public IrOperand VisitMachineDecl(MachineDecl node)
     {
         Emit(IrOp.Comment, IrOperand.Asm($"MACHINE {node.Name}"));
@@ -1695,6 +1706,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         var funcName = (node.Function as IdentifierExpr)?.Name;
         var funcSym = funcName != null ? _globalSymbols?.Resolve(funcName) : null;
+
+        // CFUNC 呼出は Z80 backend では未対応 (C backend 専用)。
+        // `#IF BACKEND==1` で gate していない場合に発見できるよう診断 error。
+        if (funcSym?.Kind == SymbolKind.CFunction)
+        {
+            _diagnostics.Error(
+                $"call to CFUNC `{funcName}` is not supported by Z80 backend; "
+                + "gate the call with `#IF BACKEND==1` or `#IF ENV_TYPE==7`",
+                node.Span);
+            return IrOperand.Imm(0);
+        }
 
         // MACHINE関数判定:
         // - SymbolKind.MachineFunction（MACHINE宣言、ビルトイン関数）

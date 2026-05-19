@@ -1,5 +1,57 @@
 # 更新履歴
 
+## Unreleased
+
+### Commodore 64 (oscar64) C transpile backend (experimental)
+
+Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を追加。**SLANG → C ソース → oscar64 → .prg** の二段変換で 6502 バイナリを生成。oscar64 ([https://github.com/drmortalwombat/oscar64](https://github.com/drmortalwombat/oscar64)) は別途インストール必要 (= 配布物に同梱なし)。
+
+**ビルドフロー**:
+- `slangc -E c64 input.SL -o output.c` → SLANG → C ソース変換のみ
+- `slangbuild -E c64 input.SL -o prefix` → 内部 slangc → oscar64 一括ビルド → `<prefix>.prg`
+- oscar64 binary の解決順: `--oscar-path` → env file `oscar_path:` → 環境変数 `$OSCAR64` → PATH
+
+**env file** `runtime/env/c64.env`:
+- `backend: oscar_c` / `output: c_source` / `oscar_machine: c64` / `oscar_format: prg` / `oscar_petscii: true`
+- `c_runtime_files:` で `runtime/c64/slang_runtime.c` + `slang_sprite.c` を oscar64 source list に並べる
+- `c_bindings:` で env が提供する C 関数 binding 表を一括公開 (= SLANG 側 CFUNC 宣言不要、sprite API 等の標準 API として呼べる)
+
+**SLANG 言語拡張**:
+- **`CFUNC` 宣言**: SLANG → C 関数の直接マッピング (略式 `CFUNC FOO(2):foo;` + 型あり `CFUNC FOO(BYTE x, WORD y) VOID :foo;` 両対応)。配列ポインタ引数 `BYTE buf[]`、戻り値型 `BYTE/WORD/FLOAT/VOID` 指定可、`c_name` は case preserve。Z80 backend では診断 error (= `#IF BACKEND==1` で gate)
+- **`VOID` キーワード**: CFUNC の戻り値型表記用に追加 (既存 SLANG コードへの影響なし)
+- **`BACKEND` preprocessor const**: env が自動定義 (0=Z80、1=OscarC)、`#IF BACKEND==1` で C backend 専用コード gate
+
+**slangbuild CLI 拡張**:
+- `--oscar-path <p>`: oscar64 binary 上書き指定
+- `--c-source <p>`: ユーザー C ファイルを oscar64 build に追加 (repeatable、CFUNC 実体を置く)。Z80 env で指定すると early reject
+
+**実装 (oscar64 backend)**:
+- `runtime/c64/slang_runtime.{h,c}`: PRINT 13 構文 (`!` / `%` / `FORM$` / `DECI$` / `HEX2$` / `HEX4$` / `MSG$` / `STR$` / `CHR$` / `SPC$` / `CR$` / `TAB$` / `FL$` / `MSX$` / `PN$` / `/`) + INPUT 系 (`INPUT()` 数値入力、`GETL(buf)` / `GETLIN(buf, x)` / `LINPUT(buf, x)` 文字列入力、ESC で `$FFFF` 返却、`_CARRY` 機構は v1 未対応) + RND + BIT + LOCATE + INKEY (= KERNAL $C5 直読みで押下中=値・離した瞬間=0 の即時状態取得) + SCREEN ($0400 screen RAM 直読み) + WIDTH (C64 は 40 桁固定なので no-op)
+- `runtime/c64/slang_sprite.{h,c}`: VIC sprite bridge 9 関数 (`SPR_INIT` / `SPR_SET` / `SPR_MOVE` / `SPR_SHOW` / `SPR_POSX` / `SPR_POSY` / `SPR_COLOR` / `SPR_IMAGE` / `VIC_WAIT`)。oscar64 sprites.h を直接 binding せず bridge 経由で型整合と pointer table 管理を吸収。slang_runtime.h ← slang_sprite.h chain include で生成 C 側 extern と bridge 実装の signature drift を防ぐ
+- `include/C64_VIC.LIB`: VIC-II 色定数 16 個 (`VCOL_BLACK..VCOL_LT_GREY`)、`#INCLUDE` で取り込み
+- 生成 C は `unsigned int` (16-bit) で WORD wrap を保持、整数 → FLOAT 変換は signed cast 経由 (= Z80 backend の `i16tof24` と同じセマンティクス)
+- FOR ループは body 前比較 + body 後 step + wrap-sentinel break 形式で SLANG 仕様 (自然終了で `I=end+step`) と body 内 manual `I++` の両方をサポート
+- `ARRAY A[N]` は SLANG 仕様通り要素数 N+1 (index 0..N) として確保
+- `MEM[addr]` / `MEMW[addr]` (= memory-mapped 配列) は `SLANG_MEM(addr)` / `SLANG_MEMW(addr)` マクロに展開
+
+**動作確認済サンプル** (実機 VICE):
+- `examples/FMANDEL.SL` (テキストマンデルブロ、FLOAT 演算、oscar64 最適化で Z80 backend より高速動作)
+- `examples/FURUI.SL` (エラトステネス素数判定 1〜10000)
+- `examples/STARS.SL` (リアルタイム key 入力でアニメーション、A/D で星数増減)
+- `examples/c64/SPRITE.SL` (VIC sprite 1 個 + VSYNC 同期で画面端バウンス、c64 専用 sample 用ディレクトリ)
+- `examples/c64/FMANDEL.SL` (`examples/FMANDEL.SL` 80 桁版を C64 40 桁画面用に縮めた版、X 軸解像度半減を倍率 2 倍で補償)
+
+**v1 制約**:
+- 文字列は ASCII printable (0x20-0x7E) のみサポート。日本語・カナ・SJIS は未対応 (今後 oscar64 `p"..."` 拡張等で検討)
+- `MACHINE` 宣言 / inline `#ASM` / `PORT IN/OUT` / `#MODULE` (overlay) / 多段 `EXIT(n>=2)` は診断エラー
+- 未宣言関数呼び出しは error (= Z80 backend の MACHINE 暗黙呼出を許さない、明示的に CFUNC または env c_bindings: で declare)
+- sprite multiplex / VIC bitmap mode / SID sound / KERNAL file I/O / CRT 等は未対応 (bridge 追加で順次対応予定)
+
+**Z80 backend 互換性**:
+- 既存 16 env の挙動は変わらず、`IrGenerator` / `CodeGenerator` / `RuntimeManager` / `Z80Emitter` / `PeepholeOptimizer` 無変更
+- `--c-source` を Z80 env で指定すると early reject (= 既存 oscar_*/c_runtime_* 排他検証と同じ規律)
+- 既存 + 新規 全 361 単体テスト pass
+
 ## Version 0.24.1
 
 - MZ-2500 環境の MAGIC ライブラリ対応と IOCS 入力ランタイム拡充 (#175)

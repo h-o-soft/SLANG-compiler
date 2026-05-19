@@ -178,6 +178,123 @@ Layer 2グラフィックス、タイルマップ、スプライト、パレッ�
 
 > **注**: `examples/zxn/Makefile` の `make build` (default) は NextDAW なし版 (`game_nomusic.nex`) を build します。NextDAW を含む完全版 (`game.nex`) を build するには `make music` を使い、`examples/zxn/NextDAW_RuntimePlayer_E000.bin` (= NextDAW Runtime Player) を `examples/zxn/` 配下に配置してください。NextDAW ([https://nextdaw.biasillo.com/](https://nextdaw.biasillo.com/)) は外部製品のため配布物には含まれません。**2026-04-30 時点で公式サイトでの入手はできない状態**で、再公開された場合も driver の仕様変更等により `examples/zxn/game.cfg` や `game.sl` の修正が必要となる可能性があります。
 
+## c64 (Commodore 64 / oscar64) — experimental
+
+Commodore 64 (6502) 用の環境です。SLANG コンパイラは 6502 アセンブラを直接出力する代わりに、**SLANG → C ソース → oscar64 → .prg** という二段変換で 6502 バイナリを生成します。
+
+> **謝辞**: 本 backend は drmortalwombat 氏による 6502 C コンパイラ **oscar64** ([https://github.com/drmortalwombat/oscar64](https://github.com/drmortalwombat/oscar64)) の最適化に依存しています。高品質な C → 6502 コンパイラを公開してくださっている oscar64 プロジェクトに感謝します。oscar64 は本配布物には含まれないため、別途インストールが必要です。
+
+### 事前準備
+
+oscar64 をインストールし、以下のいずれかの方法で発見可能な状態にしてください:
+
+- PATH を通す (例: `/usr/local/bin/oscar64` 等、`which oscar64` で見える状態)
+- 環境変数 `$OSCAR64` に絶対パスを設定
+- env file (`runtime/env/c64.env`) の `oscar_path:` に絶対パスを記述
+- `slangbuild --oscar-path <path>` で明示指定 (CLI override)
+
+解決順は上記の逆 (`--oscar-path` → `oscar_path:` → `$OSCAR64` → PATH) で、見つかった時点で確定します。
+
+### 基本 build
+
+`slangc -E c64` は `.c` ファイルを出力し、`slangbuild -E c64` は内部で `slangc` → `oscar64` を順に呼んで `.prg` を生成します。
+
+```sh
+# .c のみ生成 (oscar64 invoke なし)
+slangc -E c64 -o examples/FMANDEL.c examples/FMANDEL.SL
+
+# 一発で .prg まで生成
+slangbuild -E c64 -o examples/FMANDEL examples/FMANDEL.SL
+# → examples/FMANDEL.prg (+ oscar64 副産物 .asm/.map/.int/.lbl)
+```
+
+**`-o` のセマンティクス**: `slangc -o <path>` は完全パス (`.c` 拡張子込み)、`slangbuild -o <prefix>` は prefix (`<prefix>.c` と `<prefix>.prg` を生成) という Z80 経路と同じ慣行です。
+
+### 提供 API
+
+env file `c64.env` が以下を C backend builtin として公開しているため、SLANG コードからそのまま呼べます (CFUNC 宣言不要、`#IF BACKEND==1` の gate も不要 = env 提供 API は自動的に有効):
+
+| 種別 | API |
+|---|---|
+| I/O | `PRINT` 全構文 (`"..."` / `/` / `%(v)` / `!(s)` / `HEX2$(v)` / `HEX4$(v)` / `DECI$(v)` / `FORM$(v,n)` / `MSG$(p)` / `MSX$(p)` / `STR$(c,n)` / `CHR$(n)` / `SPC$(n)` / `CR$(n)` / `TAB$(n)` / `FL$(f)` / `PN$(v)`) |
+| 入力 | `INKEY(mode)` (即時状態取得、押下中=値、離した瞬間=0)、`INPUT()` (1 行入力 → 数値 parse、ESC=`$FFFF`)、`GETL(buf)` / `GETLIN(buf, x)` / `LINPUT(buf, x)` (1 行文字列入力、戻り値=入力文字数、ESC=`$FFFF`)。Z80 backend の `_CARRY` 機構は v1 未対応 |
+| 端末 | `WIDTH(w)` (no-op = C64 は 40 桁固定)、`LOCATE(x, y)`、`SCREEN(x, y)`、`PRMODE(m)` |
+| 数学 | `ABS / SQR / SIN / COS / TAN / LOG / EXP / ATN / RND / SRND` |
+| メモリ | `MEM[addr]` / `MEMW[addr]` (= 絶対アドレス access、`SLANG_MEM` / `SLANG_MEMW` マクロに展開) |
+| ビット | `BIT(v, b)` / `SET(p, b)` / `RESET(p, b)` |
+| 文字列長 | `STRLEN(s)` |
+| **VIC sprite** | `SPR_INIT(screen_addr)` / `SPR_SET(sp, show, x, y, image, color, multi, xex, yex)` / `SPR_MOVE(sp, x, y)` / `SPR_SHOW(sp, show)` / `SPR_POSX(sp)` / `SPR_POSY(sp)` / `SPR_COLOR(sp, c)` / `SPR_IMAGE(sp, image)` |
+| **VIC 同期** | `VIC_WAIT()` (= 1 フレーム VSYNC 待ち、tearing 防止) |
+
+VIC 色定数 (`VCOL_BLACK..VCOL_LT_GREY`、16 色) は `#INCLUDE "C64_VIC.LIB"` で取り込めます。
+
+サンプル: `examples/c64/SPRITE.SL` (sprite 1 個を VSYNC 同期で画面端バウンス) + `examples/c64/FMANDEL.SL` (40 桁テキストマンデルブロ、`examples/FMANDEL.SL` の 80 桁版を C64 画面用に縮めた版):
+
+```sh
+slangbuild -E c64 examples/c64/SPRITE.SL  -o examples/c64/SPRITE
+slangbuild -E c64 examples/c64/FMANDEL.SL -o examples/c64/FMANDEL
+x64sc -autostart examples/c64/SPRITE.prg   # VICE
+```
+
+### CFUNC 宣言 (自前 C 関数を呼ぶ)
+
+env が提供しない C 関数を SLANG から直接呼ぶには `CFUNC` 宣言を書きます。実体は `--c-source` で渡したユーザー C ファイルに置きます。
+
+```slang
+// myapp.SL
+CFUNC HELLO() VOID :hello_func;                       // 型あり: 引数なし、戻り値 void
+CFUNC PEEK(WORD addr) BYTE :peek;                     // 型あり: WORD → BYTE
+CFUNC POKE(WORD addr, BYTE val) VOID :poke;           // 複数引数
+CFUNC ADD(2):my_add;                                  // 略式: 引数 2 個 (= WORD)、戻り値 WORD 仮定
+
+MAIN()
+{
+    HELLO();
+    POKE($D020, PEEK($D020) + 1);   // 枠色 +1
+    PRINT(ADD(3, 4));
+}
+```
+
+ユーザー C ファイル:
+
+```c
+// mylib.c
+#include <stdio.h>
+void hello_func(void) { printf("HELLO!"); }
+unsigned char peek(unsigned int addr) { return *(volatile unsigned char *)addr; }
+void poke(unsigned int addr, unsigned char val) { *(volatile unsigned char *)addr = val; }
+unsigned int my_add(unsigned int a, unsigned int b) { return a + b; }
+```
+
+build:
+
+```sh
+slangbuild -E c64 myapp.SL --c-source mylib.c -o myapp
+```
+
+`--c-source` は repeatable で複数 .c を渡せます。`#INCLUDE` のように SLANG プログラムにインライン埋め込みする syntax (`#CCODE`) は今後の検討項目です。
+
+**CFUNC 文法**:
+
+- 略式 (= MACHINE と同じ書き味): `CFUNC NAME(N):c_name;` — 引数 N 個すべて WORD、戻り値 WORD 仮定。簡易 interop 用。
+- 型あり (= 推奨): `CFUNC NAME(BYTE x, WORD y, ...) RET :c_name;` — `RET` は `BYTE` / `WORD` / `FLOAT` / `VOID` (省略は WORD)。配列ポインタ引数は `BYTE buf[]` 形式。
+- `c_name` は C 識別子規則 (`^[A-Za-z_][A-Za-z0-9_]*$`)、case preserve。
+- セミコロン必須。複数宣言はカンマ区切り (`CFUNC A(1):a, B(WORD x) BYTE :b;`)。
+
+### v1 スコープと制約
+
+**動作確認済**: PRINT / INPUT / 整数算術 / FLOAT 演算 / リアルタイム key 入力 / sprite (1 個アニメ、VSYNC 同期) + ユーザー C 任意関数 (= CFUNC + `--c-source`)。`examples/FMANDEL.SL` / `examples/FURUI.SL` / `examples/STARS.SL` / `examples/c64/SPRITE.SL` / `examples/c64/FMANDEL.SL` (= 40 桁版) が実機 (VICE) で動作。
+
+**未対応 / 今後の拡張**: sprite multiplex / VIC bitmap mode / SID sound / KERNAL file I/O / CRT / overlay (`#MODULE`)。これらは bridge 関数を追加する形で順次対応予定。
+
+**Z80 固有機能**: `MACHINE` 宣言 / inline `#ASM` ブロック / `PORT IN/OUT` / `#MODULE` を含む SLANG コードは C backend では診断 error。`#IF BACKEND==1` (= OscarC) または `#IF ENV_TYPE==7` (= c64) で C backend 専用コードを gate できます (`BACKEND` は env で自動定義: 0=Z80、1=OscarC)。
+
+**文字列・PETSCII**: SLANG の文字列リテラルは oscar64 の `-psci` オプション (env file default で有効) により PETSCII エンコーディングで出力されます。**ASCII printable (0x20-0x7E) のみサポート**し、日本語・カナ・SJIS は未対応です (高位バイトは `\xNN` で出るが画面表示は崩れる)。
+
+**FLOAT 精度**: SLANG FLOAT (24-bit f24) は oscar64 の `float` (32-bit IEEE 754) にマップされるため、Z80 backend と完全に同一の結果ではなくほぼ等価な精度になります。整数→FLOAT 変換は Z80 backend の `i16tof24` と同じ signed 解釈 (`(float)(short)(...)` 経由)。
+
+**runtime 構成**: `runtime/c64/slang_runtime.{h,c}` (I/O + 数学 + ビット) + `runtime/c64/slang_sprite.{h,c}` (VIC sprite bridge + VSYNC)。slang_runtime.h は slang_sprite.h を chain include しているため、生成 C 側 extern と bridge 実装の signature drift が発生しません。
+
 # ランタイムについて
 
 SLANG Compilerはランタイムライブラリとして、`runtime/` フォルダ内の `.asm` ファイルを読み込みます。

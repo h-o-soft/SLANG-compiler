@@ -76,6 +76,7 @@ public class Parser
             case TokenKind.Var: return ParseVarDeclList();
             case TokenKind.Array: return ParseArrayDeclList();
             case TokenKind.Machine: return ParseMachineDeclList();
+            case TokenKind.Cfunc: return ParseCFuncDeclList();
             case TokenKind.Byte:
             case TokenKind.Word:
             case TokenKind.Float:
@@ -338,6 +339,125 @@ public class Parser
         } while (Match(TokenKind.Comma));
 
         Match(TokenKind.Semicolon);
+        return decls.Count == 1 ? decls[0] : new Block(decls, start);
+    }
+
+    // ==== CFUNC declaration (C backend で SLANG → C 関数の直接マッピング) ====
+    //
+    // 文法:
+    //   CFUNC NAME(PARAMS) [RET] : C_NAME ( , NAME(PARAMS) [RET] : C_NAME )* ;
+    //
+    //   PARAMS = 空 | IntegerLiteral (= 略式: WORD 仮定) | TypedParam,...
+    //   TypedParam = (BYTE|WORD|FLOAT|!) IDENT [ '[' ']' ]   ← '[]' で配列ポインタ
+    //   RET = 省略 (= WORD 仮定) | (BYTE|WORD|FLOAT|VOID|!)
+    //   C_NAME = C 識別子規則 (^[A-Za-z_][A-Za-z0-9_]*$、case preserve)
+    //
+    // セミコロン必須 (= MachineDecl と異なり optional ではない、レビュー反映)。
+    private static readonly System.Text.RegularExpressions.Regex _cIdentRegex
+        = new("^[A-Za-z_][A-Za-z0-9_]*$");
+
+    private AstNode ParseCFuncDeclList()
+    {
+        var start = Advance().Span; // CFUNC
+        var decls = new List<AstNode>();
+
+        do
+        {
+            var entryStart = Current.Span;
+            var name = Expect(TokenKind.Identifier, "Expected CFUNC name").StringValue;
+
+            Expect(TokenKind.LParen, "Expected '('");
+
+            // disambiguation:
+            //   IntegerLiteral → 略式 (paramCount のみ)
+            //   RParen          → 引数 0 (型あり 0 引数 == 略式 0 引数 同等)
+            //   BYTE/WORD/FLOAT/! → 型あり (TypedParam)
+            int paramCount;
+            List<CFuncParam>? typedParams = null;
+
+            if (Check(TokenKind.IntegerLiteral))
+            {
+                // 略式
+                paramCount = (int)Advance().IntValue;
+            }
+            else if (Check(TokenKind.RParen))
+            {
+                // 引数 0 (= VOID 引数)
+                paramCount = 0;
+                typedParams = new List<CFuncParam>();
+            }
+            else
+            {
+                // 型あり: 1+ TypedParam
+                typedParams = new List<CFuncParam>();
+                do
+                {
+                    if (!(Check(TokenKind.Byte) || Check(TokenKind.Word)
+                        || Check(TokenKind.Float) || Check(TokenKind.Exclamation)))
+                    {
+                        _diagnostics.Error(
+                            $"Expected param type (BYTE/WORD/FLOAT/!) or integer literal, got {Current.Kind} '{Current.Text}'",
+                            Current.Span);
+                        break;
+                    }
+                    var size = ParseOptionalDataSize();
+                    // param name は SLANG identifier (型あり時のみ、bridge 側 ident と独立)
+                    Expect(TokenKind.Identifier, "Expected param name");
+                    // [] で配列ポインタ
+                    bool isArray = false;
+                    if (Match(TokenKind.ArrayBracketOpen))
+                    {
+                        Expect(TokenKind.RBracket, "Expected ']'");
+                        isArray = true;
+                    }
+                    typedParams.Add(new CFuncParam(size, isArray));
+                } while (Match(TokenKind.Comma));
+                paramCount = typedParams.Count;
+            }
+
+            Expect(TokenKind.RParen, "Expected ')'");
+
+            // 戻り型 (省略 = WORD 仮定、または BYTE/WORD/FLOAT/VOID/!)
+            DataSize? returnSize = null;
+            bool isVoidReturn = false;
+            if (Match(TokenKind.Void))
+            {
+                isVoidReturn = true;
+            }
+            else if (Check(TokenKind.Byte) || Check(TokenKind.Word)
+                || Check(TokenKind.Float) || Check(TokenKind.Exclamation))
+            {
+                returnSize = ParseOptionalDataSize();
+            }
+
+            Expect(TokenKind.Colon, "Expected ':' before C function name");
+
+            // C 関数名 (= case preserve)。SLANG keyword と衝突する有効な C ident
+            // (例: `print`, `void`, `if` 等) を bridge 名として指定できるよう、
+            // TokenKind.Identifier 限定ではなく Current.Text に対して直接
+            // C ident regex で validate する (= codex review 反映)。
+            // SLANG 識別子規則と C 識別子規則は同形 (^[A-Za-z_][A-Za-z0-9_]*$)
+            // なので、SLANG keyword token (= 上記 regex を満たす) もそのまま
+            // 受け付ける。EOF や記号 token は regex で reject される。
+            var cNameTok = Current;
+            var cName = cNameTok.Text;
+            if (string.IsNullOrEmpty(cName) || !_cIdentRegex.IsMatch(cName))
+            {
+                _diagnostics.Error(
+                    $"Expected C function name (identifier) after ':', got {cNameTok.Kind} '{cNameTok.Text}'",
+                    cNameTok.Span);
+            }
+            else
+            {
+                Advance();
+            }
+
+            decls.Add(new CFuncDecl(name, cName, paramCount, typedParams,
+                                    returnSize, isVoidReturn, entryStart));
+        } while (Match(TokenKind.Comma));
+
+        // セミコロン必須 (= MACHINE と差別化、レビュー L5 反映)
+        Expect(TokenKind.Semicolon, "Expected ';' at end of CFUNC declaration");
         return decls.Count == 1 ? decls[0] : new Block(decls, start);
     }
 

@@ -38,9 +38,29 @@ public class EnvironmentLoader
         // コード領域の読取専用フラグ（ROM環境）
         config.CodeReadonly = raw.CodeReadonly;
 
-        // output: AILZ80ASM 出力 format (default = bin、"cmt" で CMT 出力)。
-        // 空白/null は null、"bin" も null に正規化 (= 内部表現統一)、
-        // それ以外は明示エラーで typo を早期検出。
+        // backend: コンパイラ backend 種別 (= 出力経路の選択)。
+        // 未指定 / "z80" = BackendKind.Z80 (既存挙動)、"oscar_c" = BackendKind.OscarC。
+        // typo は明示 reject。
+        var rawBackend = raw.Backend?.Trim();
+        if (string.IsNullOrEmpty(rawBackend) || rawBackend.Equals("z80", StringComparison.OrdinalIgnoreCase))
+        {
+            config.Backend = BackendKind.Z80;
+        }
+        else if (rawBackend.Equals("oscar_c", StringComparison.OrdinalIgnoreCase))
+        {
+            config.Backend = BackendKind.OscarC;
+        }
+        else
+        {
+            throw new InvalidDataException(
+                $"Invalid `backend:` value '{rawBackend}' in {envFilePath}. "
+                + "Allowed: z80 (default) / oscar_c.");
+        }
+
+        // output: 出力 format。allowlist は backend で異なる:
+        //   Z80     : null/bin (default) / cmt
+        //   OscarC  : c_source 必須
+        // null/空 = null、"bin" は null 正規化、それ以外は allowlist 確認。
         var rawOutput = raw.Output?.Trim();
         if (string.IsNullOrEmpty(rawOutput))
         {
@@ -49,13 +69,25 @@ public class EnvironmentLoader
         else
         {
             var normalized = rawOutput.ToLowerInvariant();
-            if (normalized != "bin" && normalized != "cmt")
+            if (normalized != "bin" && normalized != "cmt" && normalized != "c_source")
             {
                 throw new InvalidDataException(
                     $"Invalid `output:` value '{rawOutput}' in {envFilePath}. "
-                    + "Allowed: bin (default) / cmt.");
+                    + "Allowed: bin (default) / cmt / c_source.");
             }
             config.OutputFormat = (normalized == "bin") ? null : normalized;
+        }
+
+        // backend / output の整合 check
+        if (config.Backend == BackendKind.OscarC && config.OutputFormat != "c_source")
+        {
+            throw new InvalidDataException(
+                $"`backend: oscar_c` requires `output: c_source` in {envFilePath}.");
+        }
+        if (config.Backend == BackendKind.Z80 && config.OutputFormat == "c_source")
+        {
+            throw new InvalidDataException(
+                $"`output: c_source` requires `backend: oscar_c` in {envFilePath}.");
         }
 
         // ライブラリリスト（.yml → .asm に変換）
@@ -187,6 +219,79 @@ public class EnvironmentLoader
             config.OverlayName = name;
         }
 
+        // === oscar64 backend 系フィールドの parse + 排他検証 ===
+        // OscarC でのみ使えるフィールドは: oscar_path / oscar_machine / oscar_format /
+        //   oscar_optimize / oscar_petscii / c_runtime_files / c_runtime_includes
+        // Z80 backend でこれらが指定されたら typo 早期検出のため reject。
+        bool hasOscarPath = !string.IsNullOrWhiteSpace(raw.OscarPath);
+        bool hasOscarMachine = !string.IsNullOrWhiteSpace(raw.OscarMachine);
+        bool hasOscarFormat = !string.IsNullOrWhiteSpace(raw.OscarFormat);
+        bool hasOscarOptimize = !string.IsNullOrWhiteSpace(raw.OscarOptimize);
+        bool hasOscarPetscii = raw.OscarPetscii.HasValue;
+        bool hasCRuntimeFiles = raw.CRuntimeFiles != null && raw.CRuntimeFiles.Count > 0;
+        bool hasCRuntimeIncludes = raw.CRuntimeIncludes != null && raw.CRuntimeIncludes.Count > 0;
+        bool hasCBindings = raw.CBindings != null && raw.CBindings.Count > 0;
+        bool hasAnyOscarField = hasOscarPath || hasOscarMachine || hasOscarFormat
+                              || hasOscarOptimize || hasOscarPetscii
+                              || hasCRuntimeFiles || hasCRuntimeIncludes
+                              || hasCBindings;
+
+        if (config.Backend == BackendKind.Z80 && hasAnyOscarField)
+        {
+            throw new InvalidDataException(
+                $"`oscar_*` / `c_runtime_*` / `c_bindings` fields require `backend: oscar_c` in {envFilePath}.");
+        }
+
+        if (config.Backend == BackendKind.OscarC)
+        {
+            // Z80 専用フィールドの混入を reject (typo 早期検出)。
+            if (config.Libraries.Count > 0)
+                throw new InvalidDataException(
+                    $"`libraries:` is not allowed with `backend: oscar_c` in {envFilePath}.");
+            if (raw.Disk != null)
+                throw new InvalidDataException(
+                    $"`disk:` is not allowed with `backend: oscar_c` in {envFilePath}.");
+            if (hasBinPadSize || hasOverlayPadAlign)
+                throw new InvalidDataException(
+                    $"`bin_pad_size` / `overlay_pad_align` are not allowed with `backend: oscar_c` in {envFilePath}.");
+            if (hasCmtConcat || hasCmtAssets || hasOverlayName || hasOverlayOutputFormat)
+                throw new InvalidDataException(
+                    $"`cmt_concat` / `cmt_assets` / `overlay_name` / `overlay_output_format` "
+                    + $"are not allowed with `backend: oscar_c` in {envFilePath}.");
+
+            // c_runtime_files は最低 1 件必須 (slang_runtime.c 等)。
+            if (!hasCRuntimeFiles)
+                throw new InvalidDataException(
+                    $"`c_runtime_files:` is required with `backend: oscar_c` in {envFilePath}.");
+
+            // oscar_* フィールドを config に流し込み (絶対化必要なものは絶対化)。
+            if (hasOscarPath) config.OscarPath = raw.OscarPath!.Trim();
+            if (hasOscarMachine) config.OscarMachine = raw.OscarMachine!.Trim();
+            if (hasOscarFormat) config.OscarFormat = raw.OscarFormat!.Trim();
+            if (hasOscarOptimize) config.OscarOptimize = raw.OscarOptimize!.Trim();
+            if (hasOscarPetscii) config.OscarPetscii = raw.OscarPetscii!.Value;
+
+            // c_runtime_files / c_runtime_includes は env file dir 起点で絶対化
+            // (既存 Disk.Template / SystemFiles と同じ pattern)。installed 環境でも
+            // path が解決できるようにする。
+            config.CRuntimeFiles = raw.CRuntimeFiles!
+                .Select(p => Path.GetFullPath(Path.Combine(envDir, p)))
+                .ToList();
+            if (hasCRuntimeIncludes)
+            {
+                config.CRuntimeIncludes = raw.CRuntimeIncludes!
+                    .Select(p => Path.GetFullPath(Path.Combine(envDir, p)))
+                    .ToList();
+            }
+
+            // c_bindings: env file が提供する C 関数 binding 表 (OscarC 専用)。
+            // SLANG ソース側 CFUNC 宣言と同じ意味を YAML 経由で env が用意できる。
+            if (raw.CBindings != null && raw.CBindings.Count > 0)
+            {
+                config.CBindings = ParseCBindings(raw.CBindings, envFilePath);
+            }
+        }
+
         // disk セクション (slangbuild --emit disk 用)
         if (raw.Disk != null)
         {
@@ -245,6 +350,110 @@ public class EnvironmentLoader
         }
 
         return config;
+    }
+
+    /// <summary>
+    /// env file の c_bindings: YAML 配列を <see cref="CBindingDef"/> リストに変換 + validate。
+    /// 失敗 case はすべて InvalidDataException で reject (silent wrong 防止)。
+    /// </summary>
+    private static List<CBindingDef> ParseCBindings(
+        List<EnvFileCBinding> raw, string envFilePath)
+    {
+        var slangIdentRe = new System.Text.RegularExpressions.Regex(@"^[A-Za-z_][A-Za-z0-9_]*$");
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenCNamesSig = new Dictionary<string, CBindingDef>(StringComparer.Ordinal);
+        var result = new List<CBindingDef>();
+
+        foreach (var entry in raw)
+        {
+            if (string.IsNullOrWhiteSpace(entry.Name))
+                throw new InvalidDataException(
+                    $"`c_bindings:` entry missing `name:` in {envFilePath}.");
+            if (string.IsNullOrWhiteSpace(entry.CName))
+                throw new InvalidDataException(
+                    $"`c_bindings:` entry `{entry.Name}` missing `c_name:` in {envFilePath}.");
+
+            var name = entry.Name.Trim();
+            var cName = entry.CName.Trim();
+
+            if (!slangIdentRe.IsMatch(name))
+                throw new InvalidDataException(
+                    $"`c_bindings:` invalid `name:` '{name}' in {envFilePath}; must match ^[A-Za-z_][A-Za-z0-9_]*$.");
+            if (!slangIdentRe.IsMatch(cName))
+                throw new InvalidDataException(
+                    $"`c_bindings:` invalid `c_name:` '{cName}' in {envFilePath}; must match ^[A-Za-z_][A-Za-z0-9_]*$.");
+
+            // name 重複は case-insensitive で reject (= "Spr_Set" と "spr_set" が
+            // registry overwrite で silent に消えるのを防ぐ、レビュー L 反映)
+            if (!seenNames.Add(name))
+                throw new InvalidDataException(
+                    $"`c_bindings:` duplicate `name:` '{name}' (case-insensitive) in {envFilePath}.");
+
+            var paramTypes = new List<CBindingType>();
+            if (entry.Params != null)
+            {
+                foreach (var t in entry.Params)
+                {
+                    var parsed = ParseCBindingType(t, envFilePath, $"`c_bindings:` entry `{name}` params");
+                    if (parsed == CBindingType.Void)
+                        throw new InvalidDataException(
+                            $"`c_bindings:` entry `{name}` params cannot include `void` in {envFilePath}.");
+                    paramTypes.Add(parsed);
+                }
+            }
+            var retType = string.IsNullOrWhiteSpace(entry.Return)
+                ? CBindingType.Word    // 省略 = WORD 仮定 (= 略式 CFUNC と揃える)
+                : ParseCBindingType(entry.Return!, envFilePath, $"`c_bindings:` entry `{name}` return");
+
+            var def = new CBindingDef
+            {
+                Name = name,
+                CName = cName,
+                Params = paramTypes,
+                Return = retType,
+            };
+
+            // c_name 重複: signature 一致なら alias OK、不一致 (= 同じ C 関数を
+            // 異なる prototype で呼び出す) は error (= 後段で C extern が衝突する)
+            if (seenCNamesSig.TryGetValue(cName, out var prev))
+            {
+                if (!CBindingSignatureEqual(prev, def))
+                    throw new InvalidDataException(
+                        $"`c_bindings:` entry `{name}` aliases C function `{cName}` with a different signature than previous binding `{prev.Name}` in {envFilePath}.");
+            }
+            else
+            {
+                seenCNamesSig[cName] = def;
+            }
+            result.Add(def);
+        }
+        return result;
+    }
+
+    private static CBindingType ParseCBindingType(string token, string envFilePath, string contextMsg)
+    {
+        return token.Trim().ToLowerInvariant() switch
+        {
+            "byte"      => CBindingType.Byte,
+            "word"      => CBindingType.Word,
+            "float"     => CBindingType.Float,
+            "byte_ptr"  => CBindingType.BytePtr,
+            "word_ptr"  => CBindingType.WordPtr,
+            "float_ptr" => CBindingType.FloatPtr,
+            "void"      => CBindingType.Void,
+            _ => throw new InvalidDataException(
+                $"{contextMsg}: invalid type token '{token}' in {envFilePath}. "
+                + "Allowed: byte / word / float / byte_ptr / word_ptr / float_ptr / void (return only)."),
+        };
+    }
+
+    private static bool CBindingSignatureEqual(CBindingDef a, CBindingDef b)
+    {
+        if (a.Return != b.Return) return false;
+        if (a.Params.Count != b.Params.Count) return false;
+        for (int i = 0; i < a.Params.Count; i++)
+            if (a.Params[i] != b.Params[i]) return false;
+        return true;
     }
 
     private static int ParseAddress(string s)
@@ -307,6 +516,53 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "disk")]
         public EnvFileDiskData? Disk { get; set; }
+
+        // --- C backend (oscar64) 系 ---
+        [YamlMember(Alias = "backend")]
+        public string? Backend { get; set; }
+
+        [YamlMember(Alias = "oscar_path")]
+        public string? OscarPath { get; set; }
+
+        [YamlMember(Alias = "oscar_machine")]
+        public string? OscarMachine { get; set; }
+
+        [YamlMember(Alias = "oscar_format")]
+        public string? OscarFormat { get; set; }
+
+        [YamlMember(Alias = "oscar_optimize")]
+        public string? OscarOptimize { get; set; }
+
+        [YamlMember(Alias = "oscar_petscii")]
+        public bool? OscarPetscii { get; set; }
+
+        [YamlMember(Alias = "c_runtime_files")]
+        public List<string>? CRuntimeFiles { get; set; }
+
+        [YamlMember(Alias = "c_runtime_includes")]
+        public List<string>? CRuntimeIncludes { get; set; }
+
+        [YamlMember(Alias = "c_bindings")]
+        public List<EnvFileCBinding>? CBindings { get; set; }
+    }
+
+    /// <summary>
+    /// c_bindings: 1 entry の YAML 構造。
+    ///   - name: SLANG 側名前
+    ///   - c_name: C 側 ident (case preserve)
+    ///   - params: 型 token のリスト (byte/word/float/byte_ptr/word_ptr/float_ptr)
+    ///   - return: 戻り型 token (上記 + void)
+    /// </summary>
+    private class EnvFileCBinding
+    {
+        [YamlMember(Alias = "name")]
+        public string? Name { get; set; }
+        [YamlMember(Alias = "c_name")]
+        public string? CName { get; set; }
+        [YamlMember(Alias = "params")]
+        public List<string>? Params { get; set; }
+        [YamlMember(Alias = "return")]
+        public string? Return { get; set; }
     }
 
     private class EnvFileDiskData

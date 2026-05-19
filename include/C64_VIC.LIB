@@ -1,0 +1,20 @@
+// VIC-II 色定数 (oscar64 c64/vic.h VICColors enum と同期、手動メンテ)
+// SLANG コードから #INCLUDE "C64_VIC.LIB" で取り込めば
+// CONST VCOL_* が使える。Z80 backend で include しても CONST 定義のみで害なし。
+
+CONST VCOL_BLACK     = 0;
+CONST VCOL_WHITE     = 1;
+CONST VCOL_RED       = 2;
+CONST VCOL_CYAN      = 3;
+CONST VCOL_PURPLE    = 4;
+CONST VCOL_GREEN     = 5;
+CONST VCOL_BLUE      = 6;
+CONST VCOL_YELLOW    = 7;
+CONST VCOL_ORANGE    = 8;
+CONST VCOL_BROWN     = 9;
+CONST VCOL_LT_RED    = 10;
+CONST VCOL_DARK_GREY = 11;
+CONST VCOL_MED_GREY  = 12;
+CONST VCOL_LT_GREEN  = 13;
+CONST VCOL_LT_BLUE   = 14;
+CONST VCOL_LT_GREY   = 15;

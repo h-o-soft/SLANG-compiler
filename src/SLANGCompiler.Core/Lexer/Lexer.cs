@@ -22,6 +22,8 @@ public class Lexer
         ["ARRAY"] = TokenKind.Array,
         ["CONST"] = TokenKind.Const,
         ["MACHINE"] = TokenKind.Machine,
+        ["CFUNC"] = TokenKind.Cfunc,
+        ["VOID"] = TokenKind.Void,
         ["IF"] = TokenKind.If,
         ["THEN"] = TokenKind.Then,
         ["ELSE"] = TokenKind.Else,
