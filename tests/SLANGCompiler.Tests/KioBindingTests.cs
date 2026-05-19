@@ -20,6 +20,7 @@ public class KioBindingTests
     {
         // 実 runtime/env/c64.env をパースする代わりに、テスト独立性のために
         // 必要 binding だけ手組み (= env file 解析テストは EnvCBindingsTests で別途網羅)。
+        // 全 20 entry (= 通常 16 + raw addr 4) を網羅して signature drift 検出力を確保。
         return new EnvironmentConfig
         {
             Name = "c64",
@@ -51,14 +52,41 @@ public class KioBindingTests
                 new() { Name = "KIO_CHRIN", CName = "slang_kio_chrin",
                         Params = new List<CBindingType>(),
                         Return = CBindingType.Word },
+                new() { Name = "KIO_CHROUT", CName = "slang_kio_chrout",
+                        Params = new List<CBindingType> { CBindingType.Word },
+                        Return = CBindingType.Word },
+                new() { Name = "KIO_GETCH", CName = "slang_kio_getch",
+                        Params = new List<CBindingType> { CBindingType.Byte },
+                        Return = CBindingType.Word },
+                new() { Name = "KIO_PUTCH", CName = "slang_kio_putch",
+                        Params = new List<CBindingType> { CBindingType.Byte, CBindingType.Word },
+                        Return = CBindingType.Word },
                 new() { Name = "KIO_READ", CName = "slang_kio_read",
                         Params = new List<CBindingType> { CBindingType.Byte, CBindingType.BytePtr, CBindingType.Word },
                         Return = CBindingType.Word },
                 new() { Name = "KIO_WRITE", CName = "slang_kio_write",
                         Params = new List<CBindingType> { CBindingType.Byte, CBindingType.BytePtr, CBindingType.Word },
                         Return = CBindingType.Word },
+                new() { Name = "KIO_PUTS", CName = "slang_kio_puts",
+                        Params = new List<CBindingType> { CBindingType.Byte, CBindingType.BytePtr },
+                        Return = CBindingType.Word },
+                new() { Name = "KIO_GETS", CName = "slang_kio_gets",
+                        Params = new List<CBindingType> { CBindingType.Byte, CBindingType.BytePtr, CBindingType.Word },
+                        Return = CBindingType.Word },
                 new() { Name = "KIO_STATUS", CName = "slang_kio_status",
                         Params = new List<CBindingType>(),
+                        Return = CBindingType.Word },
+                new() { Name = "KIO_SETNAM_ADDR", CName = "slang_kio_setnam_addr",
+                        Params = new List<CBindingType> { CBindingType.Word },
+                        Return = CBindingType.Void },
+                new() { Name = "KIO_OPEN_NAMED_ADDR", CName = "slang_kio_open_named_addr",
+                        Params = new List<CBindingType> { CBindingType.Byte, CBindingType.Byte, CBindingType.Byte, CBindingType.Word },
+                        Return = CBindingType.Word },
+                new() { Name = "KIO_READ_ADDR", CName = "slang_kio_read_addr",
+                        Params = new List<CBindingType> { CBindingType.Byte, CBindingType.Word, CBindingType.Word },
+                        Return = CBindingType.Word },
+                new() { Name = "KIO_WRITE_ADDR", CName = "slang_kio_write_addr",
+                        Params = new List<CBindingType> { CBindingType.Byte, CBindingType.Word, CBindingType.Word },
                         Return = CBindingType.Word },
             },
         };
@@ -87,20 +115,31 @@ public class KioBindingTests
     {
         // ARRAY と StringLiteral を byte_ptr binding に渡す典型パターン、
         // および void return / word return / 多引数 binding を網羅する SLANG。
+        // 全 20 binding (= 通常 16 + raw addr 4) を SLANG コード上で実呼出して
+        // CTranspiler が extern を必ず emit するパスを通す。
         var src = TranspileWithEnv("""
             ARRAY BYTE BUF[16];
             MAIN() {
                 VAR OK, N, ST;
-                KIO_SETNAM("HISCORE,S,W");
+                KIO_SETNAM("hiscore,s,w");
                 OK = KIO_OPEN(2, 8, 1);
-                OK = KIO_OPEN_NAMED(2, 8, 0, "HISCORE,S,R");
+                OK = KIO_OPEN_NAMED(2, 8, 0, "hiscore,s,r");
                 IF KIO_CHKIN(2) THEN N = 1;
                 IF KIO_CHKOUT(2) THEN N = 1;
                 N = KIO_READ(2, BUF, 16);
                 N = KIO_WRITE(2, BUF, 16);
                 KIO_CLRCHN();
                 N = KIO_CHRIN();
+                KIO_CHROUT(13);
+                N = KIO_GETCH(2);
+                KIO_PUTCH(2, 65);
+                N = KIO_GETS(2, BUF, 16);
+                N = KIO_PUTS(2, "hello");
                 ST = KIO_STATUS();
+                KIO_SETNAM_ADDR($C000);
+                OK = KIO_OPEN_NAMED_ADDR(2, 8, 0, $C000);
+                N = KIO_READ_ADDR(2, $C100, 16);
+                N = KIO_WRITE_ADDR(2, $C100, 16);
                 KIO_CLOSE(2);
             }
             """, MakeC64EnvWithKio(), out var diag);
@@ -109,8 +148,10 @@ public class KioBindingTests
             $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
 
         // bridge header (runtime/c64/slang_kio.h) の signature と env c_bindings: が
-        // drift していないことを extern 出力で確認。byte_ptr は `unsigned char *`、
-        // word は `unsigned int`、byte は `unsigned char`、void は `void` にマッピング。
+        // drift していないことを 20 entry すべての extern 出力で確認。
+        // byte_ptr は `unsigned char *`、word は `unsigned int`、byte は `unsigned char`、
+        // void は `void` にマッピング。
+        // === 通常 API (16 個) ===
         Assert.Contains("extern void slang_kio_setnam(unsigned char *);", src);
         Assert.Contains("extern unsigned int slang_kio_open(unsigned char, unsigned char, unsigned char);", src);
         Assert.Contains("extern unsigned int slang_kio_open_named(unsigned char, unsigned char, unsigned char, unsigned char *);", src);
@@ -119,22 +160,41 @@ public class KioBindingTests
         Assert.Contains("extern unsigned int slang_kio_chkout(unsigned char);", src);
         Assert.Contains("extern void slang_kio_clrchn(void);", src);
         Assert.Contains("extern unsigned int slang_kio_chrin(void);", src);
+        Assert.Contains("extern unsigned int slang_kio_chrout(unsigned int);", src);
+        Assert.Contains("extern unsigned int slang_kio_getch(unsigned char);", src);
+        Assert.Contains("extern unsigned int slang_kio_putch(unsigned char, unsigned int);", src);
         Assert.Contains("extern unsigned int slang_kio_read(unsigned char, unsigned char *, unsigned int);", src);
         Assert.Contains("extern unsigned int slang_kio_write(unsigned char, unsigned char *, unsigned int);", src);
+        Assert.Contains("extern unsigned int slang_kio_puts(unsigned char, unsigned char *);", src);
+        Assert.Contains("extern unsigned int slang_kio_gets(unsigned char, unsigned char *, unsigned int);", src);
         Assert.Contains("extern unsigned int slang_kio_status(void);", src);
+        // === raw address 用 (4 個) ===
+        Assert.Contains("extern void slang_kio_setnam_addr(unsigned int);", src);
+        Assert.Contains("extern unsigned int slang_kio_open_named_addr(unsigned char, unsigned char, unsigned char, unsigned int);", src);
+        Assert.Contains("extern unsigned int slang_kio_read_addr(unsigned char, unsigned int, unsigned int);", src);
+        Assert.Contains("extern unsigned int slang_kio_write_addr(unsigned char, unsigned int, unsigned int);", src);
 
-        // 呼出が C 関数として展開される
-        Assert.Contains("slang_kio_setnam(", src);
-        Assert.Contains("slang_kio_open(",   src);
-        Assert.Contains("slang_kio_open_named(", src);
-        Assert.Contains("slang_kio_chkin(",  src);
-        Assert.Contains("slang_kio_chkout(", src);
-        Assert.Contains("slang_kio_clrchn(", src);
-        Assert.Contains("slang_kio_chrin(",  src);
-        Assert.Contains("slang_kio_read(",   src);
-        Assert.Contains("slang_kio_write(",  src);
-        Assert.Contains("slang_kio_status(", src);
-        Assert.Contains("slang_kio_close(",  src);
+        // 呼出が C 関数として展開される (20 個すべて)
+        Assert.Contains("slang_kio_setnam(",          src);
+        Assert.Contains("slang_kio_open(",            src);
+        Assert.Contains("slang_kio_open_named(",      src);
+        Assert.Contains("slang_kio_close(",           src);
+        Assert.Contains("slang_kio_chkin(",           src);
+        Assert.Contains("slang_kio_chkout(",          src);
+        Assert.Contains("slang_kio_clrchn(",          src);
+        Assert.Contains("slang_kio_chrin(",           src);
+        Assert.Contains("slang_kio_chrout(",          src);
+        Assert.Contains("slang_kio_getch(",           src);
+        Assert.Contains("slang_kio_putch(",           src);
+        Assert.Contains("slang_kio_read(",            src);
+        Assert.Contains("slang_kio_write(",           src);
+        Assert.Contains("slang_kio_puts(",            src);
+        Assert.Contains("slang_kio_gets(",            src);
+        Assert.Contains("slang_kio_status(",          src);
+        Assert.Contains("slang_kio_setnam_addr(",     src);
+        Assert.Contains("slang_kio_open_named_addr(", src);
+        Assert.Contains("slang_kio_read_addr(",       src);
+        Assert.Contains("slang_kio_write_addr(",      src);
     }
 
     [Fact]
