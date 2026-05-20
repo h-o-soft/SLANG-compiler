@@ -28,6 +28,11 @@
  * 同じく signature drift 防止のため slang_runtime.h から chain include。 */
 #include "slang_sid.h"
 
+/* oscar64 audio/sidfx priority SFX overlay bridge API (= env c_bindings:
+ * で公開、 v3b-C)。bridge は audio/sidfx.h declaration 参照のみ、 GPL-3.0 の
+ * audio/sidfx.c 実体は user の oscar64 install からリンク時解決。 */
+#include "slang_sidfx.h"
+
 /* === PRINT === */
 
 void slang_print_str(const char *s);          /* NUL-terminated 文字列 */
