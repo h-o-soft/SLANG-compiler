@@ -45,6 +45,14 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 - `examples/c64/SIDSFX.SL` (= v3b-A) joystick で sprite 移動 + fire ボタンで voice 0 SFX 発射 + 1/2/3 キーで音色 preset 切替 (= laser/boom/noise の 3 種類)
 - `examples/c64/SIDBGM.SL` (= v3b-B) disk から PSID v2 `.sid` file を KIO 経由で読み込み → header parse + payload 配置 → VSYNC loop で player 駆動して BGM 再生 (= HVSC tune を user 持込で動作確認)
 
+### v3b-D — ARRAY BYTE initializer の oscar_c backend 対応 (#180 配下)
+
+- `src/SLANGCompiler.Core/CodeGen/C/CEmitter.cs` の `VisitArrayDecl` / `EmitStaticDecl` で `ARRAY BYTE NAME[N] = { 値, %値, ... }` 初期化を C array init (`= { 0xNN, ... }`) に展開。default は 1 byte、`%` prefix (= `CastExpr(TargetSize: Word)`) で LE 2 byte。`ConstEvaluator` で式評価するため CONST 参照や `OR` 式も対応
+- v3b-D scope: ARRAY BYTE のみ (= ARRAY WORD / ARRAY FLOAT / `%%` FLOAT 要素 / StringLiteral / 非定数式 は引き続き error)
+- 新規 `tests/SLANGCompiler.Tests/ArrayInitOscarCTests.cs`: 全 BYTE / WORD prefix 混在 / CONST OR 式 / 関数内 static / scope 外 (ARRAY FLOAT) reject の 5 ケース
+
+これにより v3b-C で `audio/sidfx.h` の `SIDFX` struct (= WORD 2 個 + BYTE 8 個程度の 14 byte 構造) を SLANG コード上で自然に書ける流儀が用意できる。
+
 ### v3b-B — HVSC .sid disk load + BGM 再生 (#180 配下)
 
 - `runtime/c64/slang_sid.{h,c}` に 5 関数追加: `slang_sid_load_from_buf` (= PSID

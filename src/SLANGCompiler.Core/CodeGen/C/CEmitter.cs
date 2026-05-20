@@ -294,12 +294,6 @@ public class CEmitter : IAstVisitor<EmitResult>
         // 1 つでも null = 間接配列 (= ポインタ)、宣言は static T *A_name;
         bool isIndirect = node.Dimensions.Any(d => d == null);
 
-        if (node.InitialCode != null)
-        {
-            Error("`= { code... }` initializer is not supported by oscar_c backend (uses Z80-specific MACHINE code)", node.Span);
-            return new("", null);
-        }
-
         // ARRAY x:address → static T *A_x = (T*)addr;
         if (node.Address != null)
         {
@@ -346,6 +340,15 @@ public class CEmitter : IAstVisitor<EmitResult>
         {
             init = " = " + Expr(node.InitialValue);
         }
+        else if (node.InitialCode != null)
+        {
+            // SLANG `ARRAY BYTE NAME[N] = { 値, %値, ... }` 形式の初期化。
+            // 各要素は default BYTE (= 1 byte)、CastExpr で wrap されてれば
+            // TargetSize に従う (= `%` prefix で WORD → 2 byte LE 展開)。
+            // ConstEvaluator で定数評価して C の hex literal 列に展開する。
+            // FLOAT 要素 / StringLiteral / 非定数式は v3b-D scope 外で error。
+            init = " = " + BuildArrayInitFromCode(node.InitialCode, slangType, node.Span);
+        }
 
         var declLine = _scope.ScopeDepth == 0
             ? Line($"static {cType} {ident}{dimsSb}{init};")
@@ -353,6 +356,64 @@ public class CEmitter : IAstVisitor<EmitResult>
         if (_scope.ScopeDepth > 0)
             _scope.DeclareLocal(node.Name, new ArrayType(slangType, dimList));
         return new(declLine, null);
+    }
+
+    /// <summary>
+    /// SLANG `ARRAY BYTE NAME[N] = { 値, %値, ... }` の InitialCode を C array
+    /// init 文字列 (= `{ 0xNN, 0xNN, ... }`) に変換する。各要素は default BYTE
+    /// (= 1 byte)、`CastExpr(TargetSize: Word)` で wrap されてれば WORD (= 2 byte
+    /// LE)。定数評価不能 / FLOAT / 非整数の要素は v3b-D scope 外で error。
+    /// 配列の要素型 (slangType) は現状 BYTE 想定 (= ARRAY BYTE 限定)、ARRAY WORD
+    /// / ARRAY FLOAT の InitialCode は未対応。
+    /// </summary>
+    private string BuildArrayInitFromCode(System.Collections.Generic.List<Expression> code,
+                                           SlangType elementType, SourceSpan span)
+    {
+        if (!(elementType is PrimitiveType { Kind: PrimitiveKind.Byte }))
+        {
+            Error("`= { ... }` initializer is supported only for ARRAY BYTE in oscar_c backend (v3b-D)", span);
+            return "{0}";
+        }
+
+        var bytes = new System.Collections.Generic.List<string>();
+        foreach (var expr in code)
+        {
+            var itemExpr = expr;
+            int itemSize = 1; // default BYTE
+            if (itemExpr is CastExpr cast)
+            {
+                itemExpr = cast.Operand;
+                if (cast.TargetSize == DataSize.Float)
+                {
+                    Error("FLOAT (`%%`) prefix in ARRAY BYTE initializer is not supported by oscar_c backend (v3b-D scope)", expr.Span);
+                    continue;
+                }
+                itemSize = cast.TargetSize == DataSize.Byte ? 1 : 2;
+            }
+
+            var constVal = _constEval.Evaluate(itemExpr);
+            if (itemExpr is IntegerLiteral ilit)
+                constVal = (int)ilit.Value;
+            if (!constVal.HasValue)
+            {
+                Error("ARRAY BYTE initializer element must be a compile-time constant in oscar_c backend (non-constant / string literal は v3b-D scope 外)", expr.Span);
+                continue;
+            }
+
+            int v = constVal.Value;
+            if (itemSize == 1)
+            {
+                bytes.Add($"0x{(byte)(v & 0xFF):X2}");
+            }
+            else
+            {
+                // WORD: little-endian で 2 byte に展開
+                bytes.Add($"0x{(byte)(v & 0xFF):X2}");
+                bytes.Add($"0x{(byte)((v >> 8) & 0xFF):X2}");
+            }
+        }
+
+        return "{" + string.Join(", ", bytes) + "}";
     }
 
     public EmitResult VisitConstDecl(ConstDecl node)
@@ -555,7 +616,11 @@ public class CEmitter : IAstVisitor<EmitResult>
                 dimList.Add(allocSize);
             }
             _scope.DeclareLocal(ad.Name, new ArrayType(slangType, dimList));
-            string init = ad.InitialValue != null ? " = " + Expr(ad.InitialValue) : "";
+            string init = "";
+            if (ad.InitialValue != null)
+                init = " = " + Expr(ad.InitialValue);
+            else if (ad.InitialCode != null)
+                init = " = " + BuildArrayInitFromCode(ad.InitialCode, slangType, ad.Span);
             return Line($"static {cType} {ident}{dimsSb}{init};");
         }
         if (decl is ConstDecl cd)
