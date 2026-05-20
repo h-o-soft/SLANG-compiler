@@ -1,0 +1,41 @@
+// C64 SIDFX 定数 (SLANG c64 backend、 env c_bindings: SIDFX_* と組み合わせて使う)
+// `#INCLUDE "C64_SIDFX.LIB"` で SLANG コードに取り込み。Z80 backend で
+// include しても CONST 定義のみで害なし。
+//
+// SIDFX struct layout (= oscar64 audio/sidfx.h 定義、 14 byte fixed):
+//   offset 0-1  : freq      (WORD)  SID frequency 初期値
+//   offset 2-3  : pwm       (WORD)  pulse width 初期値 (PULSE 時のみ意味)
+//   offset 4    : ctrl      (BYTE)  waveform + SID_CTRL_GATE 等 bit 集合
+//   offset 5    : attdec    (BYTE)  attack << 4 | decay
+//   offset 6    : susrel    (BYTE)  sustain << 4 | release
+//   offset 7-8  : dfreq     (WORD)  毎 tick 加算量 (signed 解釈、 sweep 用)
+//   offset 9-10 : dpwm      (WORD)  毎 tick pwm 加算量
+//   offset 11   : time1     (BYTE)  phase 1 duration (= 鳴り続ける tick 数)
+//   offset 12   : time0     (BYTE)  phase 0 duration (= 余韻 tick 数)
+//   offset 13   : priority  (BYTE)  同 voice 上書き判定 (= 高い方が勝つ、 0..255)
+//
+// SLANG コードで SIDFX struct 1 個を書く例:
+//   ARRAY BYTE FX_LASER[] = {
+//       %$1500, %$0000,
+//       SID_CTRL_GATE OR SID_WF_SAW,
+//       $10, $A8,
+//       %$FFC0, %$0000,
+//       $20, $00,
+//       SIDFX_PRIO_MID
+//   };
+//   SIDFX_PLAY(SIDFX_VOICE_3, FX_LASER, 1);
+//
+// SID_CTRL_* / SID_WF_* / SID_ATK_* / SID_DKY_* 等の bit 値は C64_SID.LIB
+// 側で定義。SIDFX 利用時は通常 `#INCLUDE "C64_SID.LIB"` と併用する。
+
+// === voice 番号 (= SID 3 voice、 v3b-A SID_VOICE_* と同じ値) ===
+CONST SIDFX_VOICE_1 = 0;
+CONST SIDFX_VOICE_2 = 1;
+CONST SIDFX_VOICE_3 = 2;
+
+// === priority preset (= 同 voice の SFX 上書き判定、 数値が大きい方が勝つ) ===
+// 用途に応じて user が任意の 0..255 を直接指定しても OK、 以下は典型分類。
+CONST SIDFX_PRIO_LOW  = 1;    // UI tick 等の控えめ SFX
+CONST SIDFX_PRIO_MID  = 64;   // ジャンプ / shot 等の普通 SFX
+CONST SIDFX_PRIO_HIGH = 192;  // explosion / death 等の重要 SFX
+CONST SIDFX_PRIO_MAX  = 255;  // 必ず上書きする最優先 SFX

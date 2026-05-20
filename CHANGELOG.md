@@ -45,6 +45,26 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 - `examples/c64/SIDSFX.SL` (= v3b-A) joystick で sprite 移動 + fire ボタンで voice 0 SFX 発射 + 1/2/3 キーで音色 preset 切替 (= laser/boom/noise の 3 種類)
 - `examples/c64/SIDBGM.SL` (= v3b-B) disk から PSID v2 `.sid` file を KIO 経由で読み込み → header parse + payload 配置 → VSYNC loop で player 駆動して BGM 再生 (= HVSC tune を user 持込で動作確認)
 
+### v3b-C — oscar64 audio/sidfx priority SFX overlay binding (#180 配下)
+
+- 新規 `runtime/c64/slang_sidfx.{h,c}`: 7 関数 (`slang_sidfx_init` / `_play` / `_stop` / `_idle` / `_cnt` / `_loop` / `_loop_2`)。oscar64 `audio/sidfx.h` declaration を `#include` で参照、`audio/sidfx.c` 実体は user の oscar64 install からリンク時解決 (= GPL 配布物に同梱せず MIT 維持、 sprite/joystick/kio/sid と同じ bridge 規律)
+- `runtime/env/c64.env` `c_bindings:` に 7 entry 追加 (= 全体で 21 binding に)。`SIDFX_PLAY` は SIDFX struct array を `byte_ptr` 経由で渡し、 SLANG コード側で v3b-D ARRAY BYTE initializer + `%WORD` prefix で 14 byte の SIDFX struct を 1 行記述可能
+- `runtime/c64/slang_runtime.h` に `#include "slang_sidfx.h"` chain
+- 新規 `include/C64_SIDFX.LIB`: voice 番号 (`SIDFX_VOICE_1/2/3`) + priority preset (`SIDFX_PRIO_LOW/MID/HIGH/MAX`) + SIDFX struct layout 詳細コメント (= 14 byte 内訳)
+- 新規 `examples/c64/SIDOVERLAY.SL`: SLANG 自前 voice 0 triangle melody (= 4 note ドミソド loop) + joystick fire 押下 edge detection で voice 2 laser SFX (= sweep down saw)、 `SIDFX_LOOP_2()` で voice 2 のみ tick、 BGM player と voice 競合せず
+- 新規 `examples/c64/SIDBGM_SFX.SL`: v3b-B SIDBGM フローに voice 2 SFX overlay を併用、 user 持込 HVSC tune と並列稼働 (= BGM voice 2 と SFX 競合観測あり、 sample コメントで「tune voice 2 が控えめなものが overlay 自然」を明記)。oscar64 BSS 配置が HVSC `$1000` 系 loadAddress と衝突する制約があるため機能最小限で BSS を $0FF0 未満に収める workaround で対応 (= 別 issue 課題)
+- 新規 `tests/SLANGCompiler.Tests/SidfxBindingTests.cs`: 7 binding の extern + 呼出 + 実 env file 全 7 列挙 + signature pin、 SIDFX struct (= 14 byte) を SLANG ARRAY BYTE で組み立てて LE 展開できることも確認 (= v3b-D 依存機能の統合確認)
+
+**設計判断**:
+- SIDFX struct の SLANG 公開は **raw byte_ptr** 経由 (= 14 byte 全 field を 1 引数化する wrapper は scope 外、 v3b-D ARRAY BYTE initializer で SLANG コード側に自然に書ける流儀)
+- `SIDFX_PLAY` の priority 比較は oscar64 sidfx 仕様で `<=` (= 同 priority も上書き)、 fire 押しっぱなしで毎フレーム呼ぶと SFX 冒頭 reset される → sample は **edge detection (= 押下瞬間 1 回発射)** で実装、 SLANG コード側で前フレーム fire 状態保持
+- `SIDFX_LOOP_2` (= voice 2 only tick) 採用 (= BGM player と並列稼働の一般 構成)、 voice 0/1/2 全 tick の `SIDFX_LOOP` は BGM 不使用構成用に併設
+
+**ライセンス運用方針** (= v3b-A/B と同じ規律継続):
+- bridge / sample SLANG コードはすべて SLANG 側オリジナル実装、 MIT 維持
+- oscar64 `audio/sidfx.c` (= GPL-3.0) は SLANG runtime に取り込まず `#include <audio/sidfx.h>` declaration 参照のみ、 実体は user の oscar64 install からリンク時解決
+- HVSC tune は同梱しない、 user 持込前提
+
 ### v3b-D — ARRAY BYTE initializer の oscar_c backend 対応 (#180 配下)
 
 - `src/SLANGCompiler.Core/CodeGen/C/CEmitter.cs` の `VisitArrayDecl` / `EmitStaticDecl` で `ARRAY BYTE NAME[N] = { 値, %値, ... }` 初期化を C array init (`= { 0xNN, ... }`) に展開。default は 1 byte、`%` prefix (= `CastExpr(TargetSize: Word)`) で LE 2 byte。`ConstEvaluator` で式評価するため CONST 参照や `OR` 式も対応
