@@ -1318,10 +1318,23 @@ public class CEmitter : IAstVisitor<EmitResult>
         // C コードを emit してしまうため、 ここで明示 error にして silently drop を
         // 防ぐ (= SemanticAnalyzer の check 不足を backend 側で補う)。
         // `VAR BYTE T[];` (= IsArrayDecl=false、 ポインタ的) は引き続き通る。
+        //
+        // 関数内 static ARRAY (= MAIN ARRAY BYTE A[2]; のような local) は global
+        // SymbolTable に登録されないので、 _scope (= CScopeTracker) で ArrayType
+        // として declare されているかも併せて check する。
         if (node.Target is IdentifierExpr tid)
         {
             var sym = _globals?.GlobalScope.Resolve(tid.Name);
-            if (sym != null && sym.IsArrayDecl)
+            bool isArraySymbol = sym != null && sym.IsArrayDecl;
+            if (!isArraySymbol)
+            {
+                // global 未登録 (= 関数内 static or local) を _scope で ArrayType 確認。
+                // PointerType (= VAR BYTE T[]) は配列実体ではないので reject 対象外。
+                var localType = _scope.Resolve(tid.Name);
+                if (localType is ArrayType)
+                    isArraySymbol = true;
+            }
+            if (isArraySymbol)
             {
                 Error($"cannot assign to ARRAY symbol `{tid.Name}`; ARRAY 宣言は配列実体で再代入不可 (`VAR BYTE T[];` のポインタ宣言ならOK)", node.Span);
                 return new("/* invalid ARRAY assignment */0", SlangType.Word);

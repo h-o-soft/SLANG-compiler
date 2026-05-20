@@ -251,4 +251,62 @@ public class ArrayInitOscarCTests
         Assert.Contains("static unsigned char *V_T;", src);
         Assert.Contains("V_T = ", src);
     }
+
+    [Fact]
+    public void AssignmentToFunctionStaticArrayDecl_RaisesError()
+    {
+        // 関数内 static ARRAY (= MAIN() ARRAY BYTE A[2]; BEGIN ... END;) の symbol
+        // も IsArrayDecl=true で reject。global SymbolTable には登録されないので
+        // _scope (= CScopeTracker) で ArrayType 判別する必要あり (= Codex review 2nd
+        // round Medium 指摘の核心: _globals だけ見てた漏れの fix)。
+        var src = TranspileWithEnv("""
+            MAIN()
+                ARRAY BYTE A[2];
+            BEGIN
+                A = $3000;
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "関数内 static ARRAY 代入は error 期待");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("ARRAY", StringComparison.OrdinalIgnoreCase)
+              && d.Message.Contains("assign", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void AssignmentToFunctionStaticUnsizedArrayInit_RaisesError()
+    {
+        // 関数内 static + unsized + InitialCode の組合せも reject (= 同 Codex 指摘)。
+        var src = TranspileWithEnv("""
+            MAIN()
+                ARRAY BYTE A[] = { 1, 2, 3 };
+            BEGIN
+                A = $3000;
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "関数内 static unsized + InitialCode の ARRAY 代入は error 期待");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("ARRAY", StringComparison.OrdinalIgnoreCase)
+              && d.Message.Contains("assign", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void AssignmentToFunctionStaticVarPointer_StillWorks()
+    {
+        // 関数内 static VAR BYTE T[]; (= IsArrayDecl=false、 PointerType) は引き続き
+        // 通る (= regression なし)。
+        var src = TranspileWithEnv("""
+            MAIN()
+                VAR BYTE T[];
+            BEGIN
+                T = $3000;
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static unsigned char *V_MAIN_T;", src);
+        Assert.Contains("V_MAIN_T = ", src);
+    }
 }

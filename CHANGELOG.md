@@ -49,7 +49,7 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 
 - `src/SLANGCompiler.Core/CodeGen/C/CEmitter.cs` の `VisitArrayDecl` / `EmitStaticDecl` で `ARRAY BYTE NAME[N] = { 値, %値, ... }` 初期化を C array init (`= { 0xNN, ... }`) に展開。default は 1 byte、`%` prefix (= `CastExpr(TargetSize: Word)`) で LE 2 byte。`ConstEvaluator` で式評価するため CONST 参照や `OR` 式も対応
 - v3b-D scope: ARRAY BYTE のみ (= ARRAY WORD / ARRAY FLOAT / `%%` FLOAT 要素 / StringLiteral / 非定数式 は引き続き error)
-- 新規 `tests/SLANGCompiler.Tests/ArrayInitOscarCTests.cs` (11 ケース): BYTE 列のみ / `%WORD` prefix 混在 / CONST OR 式 / 関数内 static / ARRAY FLOAT reject / unsized + InitialCode (= 固定配列化) / 容量超過 error / 不足は 0 fill / ARRAY 宣言 symbol への代入 reject (固定サイズ + unsized) / VAR ポインタ代入 regression なし
+- 新規 `tests/SLANGCompiler.Tests/ArrayInitOscarCTests.cs` (14 ケース): BYTE 列のみ / `%WORD` prefix 混在 / CONST OR 式 / 関数内 static / ARRAY FLOAT reject / unsized + InitialCode (= 固定配列化) / 容量超過 error / 不足は 0 fill / ARRAY 宣言 symbol への代入 reject (global 固定サイズ + global unsized + 関数内 static 固定サイズ + 関数内 static unsized) / VAR ポインタ代入 regression なし (global + 関数内 static)
 
 これにより v3b-C で `audio/sidfx.h` の `SIDFX` struct (= WORD 2 個 + BYTE 8 個程度の 14 byte 構造) を SLANG コード上で自然に書ける流儀が用意できる。
 
