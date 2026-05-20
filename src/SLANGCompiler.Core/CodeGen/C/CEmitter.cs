@@ -1312,6 +1312,21 @@ public class CEmitter : IAstVisitor<EmitResult>
 
     public EmitResult VisitAssignExpr(AssignExpr node)
     {
+        // SLANG `ARRAY ...` 宣言で確保された symbol への直接代入 (= `A = $3000;`) は
+        // SLANG 仕様で意味曖昧 (= 配列実体の置換は不可、ポインタ代入は `VAR x[];` の
+        // 役割)。oscar_c backend では `static unsigned char V_A[N]` に代入する無効な
+        // C コードを emit してしまうため、 ここで明示 error にして silently drop を
+        // 防ぐ (= SemanticAnalyzer の check 不足を backend 側で補う)。
+        // `VAR BYTE T[];` (= IsArrayDecl=false、 ポインタ的) は引き続き通る。
+        if (node.Target is IdentifierExpr tid)
+        {
+            var sym = _globals?.GlobalScope.Resolve(tid.Name);
+            if (sym != null && sym.IsArrayDecl)
+            {
+                Error($"cannot assign to ARRAY symbol `{tid.Name}`; ARRAY 宣言は配列実体で再代入不可 (`VAR BYTE T[];` のポインタ宣言ならOK)", node.Span);
+                return new("/* invalid ARRAY assignment */0", SlangType.Word);
+            }
+        }
         var target = ExprFull(node.Target);
         var value = ExprFull(node.Value);
         var targetType = target.Type ?? SlangType.Word;

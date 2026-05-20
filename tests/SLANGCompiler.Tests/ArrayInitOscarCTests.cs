@@ -189,4 +189,66 @@ public class ArrayInitOscarCTests
     // 既に reject する (= `:address = { ... }` の組合せは文法上 parse error)、
     // CEmitter の Address + InitialCode 分岐は文法的に到達不能。 念のため
     // CEmitter 側にも防御 error を残しているが、 unit test の必要なし。
+
+    [Fact]
+    public void AssignmentToArrayDecl_RaisesError()
+    {
+        // SLANG `ARRAY ...` 宣言の symbol への直接代入 (= `A = $3000;`) は
+        // 配列実体の置換が SLANG 仕様で意味曖昧。oscar_c backend では C 側で
+        // `static unsigned char V_A[N] = ...` という無効 C を出してしまうため、
+        // VisitAssignExpr で IsArrayDecl を check して error にする。
+        // Codex review Medium 指摘 (= unsized + InitialCode で代入が通ってしまう
+        // 件) の修正、固定サイズ ARRAY も同じ理由で reject する。
+        var src = TranspileWithEnv("""
+            ARRAY BYTE A[10];
+            MAIN()
+            BEGIN
+                A = $3000;
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "ARRAY 宣言 symbol への代入は error 期待");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("ARRAY", StringComparison.OrdinalIgnoreCase)
+              && d.Message.Contains("assign", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void AssignmentToUnsizedArrayWithInitCode_RaisesError()
+    {
+        // 添字省略 + InitialCode の ARRAY も IsArrayDecl=true で reject される
+        // (= Codex review Medium の主指摘ケース、static unsigned char V_A[3] に
+        // V_A = ... の無効 C を出さないこと)。
+        var src = TranspileWithEnv("""
+            ARRAY BYTE A[] = { 1, 2, 3 };
+            MAIN()
+            BEGIN
+                A = $3000;
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "unsized + InitialCode の ARRAY 代入も error 期待");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("ARRAY", StringComparison.OrdinalIgnoreCase)
+              && d.Message.Contains("assign", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void AssignmentToVarPointer_StillWorks()
+    {
+        // VAR BYTE T[]; (= IsArrayDecl=false、ポインタ宣言) への代入は SLANG 仕様で
+        // OK。oscar_c backend でも従来通り通る (= regression なし)。
+        var src = TranspileWithEnv("""
+            VAR BYTE T[];
+            MAIN()
+            BEGIN
+                T = $3000;
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static unsigned char *V_T;", src);
+        Assert.Contains("V_T = ", src);
+    }
 }
