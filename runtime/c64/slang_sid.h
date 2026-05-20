@@ -77,4 +77,43 @@ void slang_sid_gate_off(unsigned char voice);
 void slang_sid_sfx(unsigned char voice, unsigned int freq,
                    unsigned char ad, unsigned char sr, unsigned char waveform);
 
+/* === HVSC .sid BGM 再生 (v3b-B) === */
+
+/* PSID v2 .sid file (buf, len) を parse して payload を loadAddress に配置、
+ * init/play address を bridge 内 static に保存する。
+ *
+ * PSID header layout (BE WORD):
+ *   0x00-0x03: magic ("PSID")  -- "RSID" は v3b-B 非対応 (= playAddr=0 の通常 program 形式)
+ *   0x06-0x07: dataOffset       -- 通常 0x007C
+ *   0x08-0x09: loadAddress      -- 0 なら payload 先頭 2 byte (LE WORD) が実 loadAddress
+ *   0x0A-0x0B: initAddress
+ *   0x0C-0x0D: playAddress      -- 0 なら IRQ-driven (RSID 様、v3b-B 非対応)
+ *
+ * 戻り値: 1 = 成功 / 0 = 失敗 (= magic 不一致、version > 2、 playAddr=0 等)。
+ * 失敗時は init/play addr が 0 のまま、後続 PLAYER_INIT/PLAY は no-op 化。
+ * 検証は slang_sid_player_ready() で個別取得可能。 */
+unsigned int slang_sid_load_from_buf(unsigned char *buf, unsigned int len);
+
+/* SID_LOAD_FROM_BUF 成功時に bridge 内に保存された init address を呼び出す
+ * (= A レジスタに song 番号を入れて JSR initAddress 相当)。.sid file 1 つで
+ * 複数 song を含む場合は song = 0..(songs-1) で切替。 */
+void slang_sid_player_init(unsigned char song);
+
+/* SID_LOAD_FROM_BUF 成功時に bridge 内に保存された play address を呼び出す
+ * (= JSR playAddress 相当)。毎フレーム (VSYNC 後) 呼ぶことで music が進行する。
+ * 通常は PAL 50Hz / NTSC 60Hz クロック前提、v3b-B は VIC_WAIT() 連動で 50Hz 想定。 */
+void slang_sid_player_play(void);
+
+/* SID_LOAD_FROM_BUF が成功して player ready 状態かを返す (1 = ready / 0 = not loaded
+ * or load 失敗)。SLANG コード側で再生開始前の状態判定に使う。 */
+unsigned int slang_sid_player_ready(void);
+
+/* SID_LOAD_FROM_BUF の raw address 版。SLANG コードで `ARRAY BYTE BUF[]` を
+ * declare すると oscar64 の BSS が $0F78-$1F91 等の領域を占有してしまい、
+ * Hoopsidasies (= loadAddress $1000 系) の payload memcpy で SLANG runtime の
+ * global 変数を破壊する。回避策として KIO_READ_ADDR で raw addr ($C000 等の
+ * SLANG runtime と衝突しない free RAM area) に disk read してから、本関数に
+ * その raw addr を渡して bridge 側で PSID parse + memcpy する。 */
+unsigned int slang_sid_load_from_buf_addr(unsigned int buf_addr, unsigned int len);
+
 #endif /* SLANG_SID_H */

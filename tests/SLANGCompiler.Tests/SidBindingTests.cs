@@ -19,7 +19,8 @@ public class SidBindingTests
     {
         // 実 runtime/env/c64.env をパースする代わりに、テスト独立性のために
         // 必要 binding だけ手組み (= env file 解析テストは EnvCBindingsTests で別途網羅)。
-        // v3b-A スコープの 9 entry (= SID register direct 8 + 単発 SFX wrapper 1) を網羅。
+        // v3b-A 9 entry (= register direct 8 + 単発 SFX wrapper 1) +
+        // v3b-B 4 entry (= HVSC .sid disk load + player) = 計 13 entry を網羅。
         return new EnvironmentConfig
         {
             Name = "c64",
@@ -54,6 +55,22 @@ public class SidBindingTests
                 new() { Name = "SID_SFX", CName = "slang_sid_sfx",
                         Params = new List<CBindingType> { CBindingType.Byte, CBindingType.Word, CBindingType.Byte, CBindingType.Byte, CBindingType.Byte },
                         Return = CBindingType.Void },
+                // v3b-B: HVSC .sid disk load + BGM player
+                new() { Name = "SID_LOAD_FROM_BUF", CName = "slang_sid_load_from_buf",
+                        Params = new List<CBindingType> { CBindingType.BytePtr, CBindingType.Word },
+                        Return = CBindingType.Word },
+                new() { Name = "SID_PLAYER_INIT", CName = "slang_sid_player_init",
+                        Params = new List<CBindingType> { CBindingType.Byte },
+                        Return = CBindingType.Void },
+                new() { Name = "SID_PLAYER_PLAY", CName = "slang_sid_player_play",
+                        Params = new List<CBindingType>(),
+                        Return = CBindingType.Void },
+                new() { Name = "SID_PLAYER_READY", CName = "slang_sid_player_ready",
+                        Params = new List<CBindingType>(),
+                        Return = CBindingType.Word },
+                new() { Name = "SID_LOAD_FROM_BUF_ADDR", CName = "slang_sid_load_from_buf_addr",
+                        Params = new List<CBindingType> { CBindingType.Word, CBindingType.Word },
+                        Return = CBindingType.Word },
             },
         };
     }
@@ -79,11 +96,13 @@ public class SidBindingTests
     [Fact]
     public void SidAll_EmitsExternsAndCalls()
     {
-        // SID 9 binding を SLANG コード上で実呼出して CTranspiler が extern を
-        // 必ず emit するパスを通す。byte / word 引数の組合せ + void return を網羅。
+        // SID 14 binding (= v3b-A 9 + v3b-B 5) を SLANG コード上で実呼出して
+        // CTranspiler が extern を必ず emit するパスを通す。byte / word /
+        // byte_ptr 引数の組合せ + void / word return を網羅。
         var src = TranspileWithEnv("""
+            ARRAY BYTE BUF[16];
             MAIN() {
-                VAR I, F;
+                VAR OK, R;
                 SID_INIT_QUIET();
                 SID_VOLUME(15);
                 SID_FREQ(0, $1D44);
@@ -93,6 +112,11 @@ public class SidBindingTests
                 SID_GATE_ON(0);
                 SID_GATE_OFF(1);
                 SID_SFX(2, $22C9, $20, $A8, $80);
+                OK = SID_LOAD_FROM_BUF(BUF, 16);
+                OK = SID_LOAD_FROM_BUF_ADDR($C000, 1024);
+                SID_PLAYER_INIT(0);
+                SID_PLAYER_PLAY();
+                R = SID_PLAYER_READY();
             }
             """, MakeC64EnvWithSid(), out var diag);
 
@@ -100,7 +124,8 @@ public class SidBindingTests
             $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
 
         // bridge header (runtime/c64/slang_sid.h) の signature と env c_bindings: が
-        // drift していないことを 9 entry すべての extern 出力で確認。
+        // drift していないことを 13 entry すべての extern 出力で確認。
+        // === v3b-A: register direct + SFX wrapper (9 個) ===
         Assert.Contains("extern void slang_sid_init_quiet(void);", src);
         Assert.Contains("extern void slang_sid_volume(unsigned char);", src);
         Assert.Contains("extern void slang_sid_freq(unsigned char, unsigned int);", src);
@@ -110,17 +135,28 @@ public class SidBindingTests
         Assert.Contains("extern void slang_sid_gate_on(unsigned char);", src);
         Assert.Contains("extern void slang_sid_gate_off(unsigned char);", src);
         Assert.Contains("extern void slang_sid_sfx(unsigned char, unsigned int, unsigned char, unsigned char, unsigned char);", src);
+        // === v3b-B: HVSC .sid disk load + BGM player (5 個) ===
+        Assert.Contains("extern unsigned int slang_sid_load_from_buf(unsigned char *, unsigned int);", src);
+        Assert.Contains("extern unsigned int slang_sid_load_from_buf_addr(unsigned int, unsigned int);", src);
+        Assert.Contains("extern void slang_sid_player_init(unsigned char);", src);
+        Assert.Contains("extern void slang_sid_player_play(void);", src);
+        Assert.Contains("extern unsigned int slang_sid_player_ready(void);", src);
 
-        // 呼出が C 関数として展開される (9 個すべて)
-        Assert.Contains("slang_sid_init_quiet(", src);
-        Assert.Contains("slang_sid_volume(",     src);
-        Assert.Contains("slang_sid_freq(",       src);
-        Assert.Contains("slang_sid_pwm(",        src);
-        Assert.Contains("slang_sid_adsr(",       src);
-        Assert.Contains("slang_sid_ctrl(",       src);
-        Assert.Contains("slang_sid_gate_on(",    src);
-        Assert.Contains("slang_sid_gate_off(",   src);
-        Assert.Contains("slang_sid_sfx(",        src);
+        // 呼出が C 関数として展開される (14 個すべて)
+        Assert.Contains("slang_sid_init_quiet(",         src);
+        Assert.Contains("slang_sid_volume(",             src);
+        Assert.Contains("slang_sid_freq(",               src);
+        Assert.Contains("slang_sid_pwm(",                src);
+        Assert.Contains("slang_sid_adsr(",               src);
+        Assert.Contains("slang_sid_ctrl(",               src);
+        Assert.Contains("slang_sid_gate_on(",            src);
+        Assert.Contains("slang_sid_gate_off(",           src);
+        Assert.Contains("slang_sid_sfx(",                src);
+        Assert.Contains("slang_sid_load_from_buf(",      src);
+        Assert.Contains("slang_sid_load_from_buf_addr(", src);
+        Assert.Contains("slang_sid_player_init(",        src);
+        Assert.Contains("slang_sid_player_play(",        src);
+        Assert.Contains("slang_sid_player_ready(",       src);
     }
 
     [Fact]
@@ -141,13 +177,17 @@ public class SidBindingTests
         Assert.Contains(config.CRuntimeFiles!,
             p => Path.GetFileName(p).Equals("slang_sid.c", StringComparison.OrdinalIgnoreCase));
 
-        // c_bindings に SID_* 9 entry がすべて含まれる
+        // c_bindings に SID_* 14 entry (= v3b-A 9 + v3b-B 5) がすべて含まれる
         Assert.NotNull(config.CBindings);
         var bindingNames = config.CBindings!.Select(b => b.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var expected in new[]
         {
+            // v3b-A
             "SID_INIT_QUIET", "SID_VOLUME", "SID_FREQ", "SID_PWM", "SID_ADSR",
             "SID_CTRL", "SID_GATE_ON", "SID_GATE_OFF", "SID_SFX",
+            // v3b-B
+            "SID_LOAD_FROM_BUF", "SID_LOAD_FROM_BUF_ADDR",
+            "SID_PLAYER_INIT", "SID_PLAYER_PLAY", "SID_PLAYER_READY",
         })
         {
             Assert.Contains(expected, bindingNames);
@@ -174,6 +214,24 @@ public class SidBindingTests
         Assert.Equal(2, sidFreq.Params.Count);
         Assert.Equal(CBindingType.Byte, sidFreq.Params[0]);
         Assert.Equal(CBindingType.Word, sidFreq.Params[1]);
+
+        // v3b-B signature pinning
+        var sidLoadFromBuf = config.CBindings!.First(b => b.Name == "SID_LOAD_FROM_BUF");
+        Assert.Equal("slang_sid_load_from_buf", sidLoadFromBuf.CName);
+        Assert.Equal(2, sidLoadFromBuf.Params.Count);
+        Assert.Equal(CBindingType.BytePtr, sidLoadFromBuf.Params[0]);
+        Assert.Equal(CBindingType.Word, sidLoadFromBuf.Params[1]);
+        Assert.Equal(CBindingType.Word, sidLoadFromBuf.Return);
+
+        var sidPlayerPlay = config.CBindings!.First(b => b.Name == "SID_PLAYER_PLAY");
+        Assert.Equal("slang_sid_player_play", sidPlayerPlay.CName);
+        Assert.Empty(sidPlayerPlay.Params);
+        Assert.Equal(CBindingType.Void, sidPlayerPlay.Return);
+
+        var sidPlayerReady = config.CBindings!.First(b => b.Name == "SID_PLAYER_READY");
+        Assert.Equal("slang_sid_player_ready", sidPlayerReady.CName);
+        Assert.Empty(sidPlayerReady.Params);
+        Assert.Equal(CBindingType.Word, sidPlayerReady.Return);
     }
 
     /// <summary>

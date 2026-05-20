@@ -43,6 +43,71 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 - `examples/c64/JOYSPR.SL` (= v3a) joystick port 2 で sprite 移動 + fire で色変更 (= ロードマップ v3a に対応、`JOY_DIR` bitmask + `JOY_B` 主、`JOY_X/Y` の signed `-1=$FFFF` パターン解説含む)
 - `examples/c64/HISCORE.SL` (= v3c) D64 disk image に `HISCORE,S,W` で save → `HISCORE,S,R` で read → 内容比較する KERNAL file I/O 往復 sample
 - `examples/c64/SIDSFX.SL` (= v3b-A) joystick で sprite 移動 + fire ボタンで voice 0 SFX 発射 + 1/2/3 キーで音色 preset 切替 (= laser/boom/noise の 3 種類)
+- `examples/c64/SIDBGM.SL` (= v3b-B) disk から PSID v2 `.sid` file を KIO 経由で読み込み → header parse + payload 配置 → VSYNC loop で player 駆動して BGM 再生 (= HVSC tune を user 持込で動作確認)
+
+### v3b-B — HVSC .sid disk load + BGM 再生 (#180 配下)
+
+ロードマップ #178 配下の v3b の 3 分割 2 回目 (= disk load 経由の BGM 再生) を実装:
+
+- `runtime/c64/slang_sid.{h,c}` に 5 関数追加: `slang_sid_load_from_buf` (= PSID
+  v2 header parse + payload を loadAddress に memcpy + init/play addr を bridge
+  内 static 保持) / `slang_sid_load_from_buf_addr` (= 上記の raw addr 版、SLANG
+  `ARRAY BYTE` を経由せず KIO_READ_ADDR で直接 free RAM ($C000) に load する
+  ケース用) / `slang_sid_player_init` (= 保存 init addr に JMP indirect 経由
+  jump、song 番号を A レジスタ、zp $FB/$FC vector を経由するのは oscar64 の
+  C 関数ポインタ呼出が bytecode interpreter に流れて raw 6502 に届かないため)
+  / `slang_sid_player_play` (= 保存 play addr に同じく JMP indirect で jump、
+  毎フレーム VSYNC 後呼出) / `slang_sid_player_ready` (= load 成功状態の判定)
+- `runtime/env/c64.env` `c_bindings:` に 5 entry 追加 (= SID 全体で 14 entry に)
+- 新規 `examples/c64/SIDBGM.SL`: KIO で disk から "music" PRG を $C000 領域
+  (= C64 伝統的 free RAM、SLANG runtime と衝突しない) に直 read → 
+  SID_LOAD_FROM_BUF_ADDR → SID_PLAYER_INIT(0) → VSYNC loop で SID_PLAYER_PLAY、
+  1-9 キーで song 切替
+- `tests/SLANGCompiler.Tests/SidBindingTests.cs` を v3b-B 5 entry 追加で拡張
+  (= 計 14 binding の extern + 呼出展開 + signature pin 留め)
+
+設計判断:
+- slangbuild 拡張は行わない (= PRG に SID embed せず、disk load 一択。最終的に
+  は crt/ROM コピーも視野だが今回は disk load のみ。memory `feedback_pr_split_codex_review`
+  の scope 縮小規律と整合)
+- PSID v2 only (= RSID = playAddress=0 の IRQ-driven 形式は非対応、別 PR で
+  検討)、シングル SID のみ (= multi-SID は非対応)
+- PAL 50Hz 想定 (= VIC_WAIT 経由)、NTSC では音高ずれ許容
+- header parse 失敗時 (= magic 不一致 / version 不正 / RSID 等) は init/play
+  addr を 0 のまま保持、PLAYER_INIT/PLAY は no-op 化、`SID_PLAYER_READY` で
+  状態確認可能
+
+着手中に踏んだ 3 つの bug と修正 (= v3a/c で未経験の領域):
+1. **char literal の PETSCII 変換**: bridge 内 `psid_eq(buf, 'P', 'S', 'I', 'D')` を
+   書いたが oscar64 `-psci` は char literal も PETSCII 化 (`'P'` → 0xD0) するため
+   disk から読んだ ASCII 0x50 と mismatch して常に false。**16 進値直書きの
+   `is_psid_magic(buf)` (= `p[0] == 0x50 && ...`)** に変更して PETSCII 変換から独立
+2. **C 関数ポインタ呼出が bytecode interpreter (bcexec) に流れる**: oscar64 で
+   `((void(*)(byte))addr)(song)` を書いたが asm 出力で `JSR bcexec` (= oscar64
+   bytecode 実行 routine) に行く → raw 6502 native code に届かず hang。**zp
+   $FB/$FC に target addr 保存 + `__asm { jmp ($00fb) }` 6502 indirect jump** で
+   動的 addr 対応 (= oscar64 sample にある `__asm { jsr $a000 }` literal pattern を
+   そのまま使えない動的 addr ケースの正攻法)
+3. **SLANG `ARRAY BYTE` が $1000 領域を侵食 (= self-destruction)**: SLANG コード
+   で `ARRAY BYTE SID_BUF[4096]` を declare すると oscar64 BSS が $0F90-$1F91 を
+   占有、HVSC tune (= loadAddress $1000 が大半) と完全 overlap。payload memcpy
+   で SID_BUF 自身 + SLANG runtime の global 変数を破壊して reset 様の挙動に。
+   **SLANG コードで ARRAY BYTE を消し、`KIO_READ_ADDR` で $C000 (= 伝統的 free
+   RAM) に直接 disk read + `SID_LOAD_FROM_BUF_ADDR` で raw word addr を bridge
+   に渡す流儀** を採用。 BSS area は $0DA9-$0DC1 (24 byte) まで縮小、$1000 領域
+   free
+
+license 整理:
+- bridge / sample SLANG コードはすべて SLANG 側オリジナル実装、MIT 維持
+- HVSC tune は **同梱しない** (= HVSC は全 tune copyright 残存、FAQ Q29 で
+  個別 publisher 許諾必要と明示。SLANG repo に法的 PD 不明な binary を置く
+  ことを避ける)
+- ユーザーが持ち込む `.sid` の copyright / license 整合は user 責務、README
+  / sample コメントに明記
+
+v3b roadmap (= 後続 PR):
+- v3b-C: oscar64 `audio/sidfx` bridge で priority SFX overlay (= `#include
+  <audio/sidfx.h>` 経由参照、sample SIDOVERLAY.SL)
 
 ### v3b-A — SID 基盤 + 単発 SFX binding (#180 配下)
 

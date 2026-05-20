@@ -221,7 +221,8 @@ env file `c64.env` が以下を C backend builtin として公開しているた
 | I/O | `PRINT` 全構文 (`"..."` / `/` / `%(v)` / `!(s)` / `HEX2$(v)` / `HEX4$(v)` / `DECI$(v)` / `FORM$(v,n)` / `MSG$(p)` / `MSX$(p)` / `STR$(c,n)` / `CHR$(n)` / `SPC$(n)` / `CR$(n)` / `TAB$(n)` / `FL$(f)` / `PN$(v)`) |
 | 入力 | `INKEY(mode)` (即時状態取得、押下中=値、離した瞬間=0)、`INPUT()` (1 行入力 → 数値 parse、ESC=`$FFFF`)、`GETL(buf)` / `GETLIN(buf, x)` / `LINPUT(buf, x)` (1 行文字列入力、戻り値=入力文字数、ESC=`$FFFF`)。Z80 backend の `_CARRY` 機構は v1 未対応 |
 | ジョイスティック | `JOY_POLL(port)` (1 frame 1 回呼ぶ) + `JOY_DIR(port)` (5 bit bitmask) + `JOY_X(port)` / `JOY_Y(port)` (signed、-1=`$FFFF`) + `JOY_B(port)` (0/1 fire)。bitmask + port 定数は `#INCLUDE "C64_JOY.LIB"` で取得 (`JOY_UP/DOWN/LEFT/RIGHT/FIRE/PORT1/PORT2`)。色定数は別途 `C64_VIC.LIB` |
-| **SID 音源 (基盤)** | 初期化: `SID_INIT_QUIET()` (= 全 register 0 で停止状態)、master volume: `SID_VOLUME(v)` (0..15)、voice direct (voice = 0..2): `SID_FREQ(voice, f)` / `SID_PWM(voice, pw)` (= PULSE 波形時必須、duty 12-bit) / `SID_ADSR(voice, ad, sr)` / `SID_CTRL(voice, ctrl)` / `SID_GATE_ON(voice)` / `SID_GATE_OFF(voice)`、SFX wrapper: `SID_SFX(voice, freq, ad, sr, waveform)` (= ADSR + waveform 設定 + GATE on を 1 関数化、release は user 側 `SID_GATE_OFF` で開始)。frequency は PAL clock 基準の register 値、`NOTE_C2..NOTE_B6` 60 個と ADSR/waveform/CTRL/pwm preset 定数は `#INCLUDE "C64_SID.LIB"` で取得 (= `SID_PWM_SQR` = $0800 で 50% duty)。**PULSE 波形は事前に `SID_PWM` 設定必須** (= pwm=0 だと duty 0% で無音)。HVSC `.sid` 取り込み + BGM 再生は v3b-B で、priority SFX overlay (oscar64 `audio/sidfx` bridge) は v3b-C で対応予定 |
+| **SID 音源 (基盤)** | 初期化: `SID_INIT_QUIET()` (= 全 register 0 で停止状態)、master volume: `SID_VOLUME(v)` (0..15)、voice direct (voice = 0..2): `SID_FREQ(voice, f)` / `SID_PWM(voice, pw)` (= PULSE 波形時必須、duty 12-bit) / `SID_ADSR(voice, ad, sr)` / `SID_CTRL(voice, ctrl)` / `SID_GATE_ON(voice)` / `SID_GATE_OFF(voice)`、SFX wrapper: `SID_SFX(voice, freq, ad, sr, waveform)` (= ADSR + waveform 設定 + GATE on を 1 関数化、release は user 側 `SID_GATE_OFF` で開始)。frequency は PAL clock 基準の register 値、`NOTE_C2..NOTE_B6` 60 個と ADSR/waveform/CTRL/pwm preset 定数は `#INCLUDE "C64_SID.LIB"` で取得 (= `SID_PWM_SQR` = $0800 で 50% duty)。**PULSE 波形は事前に `SID_PWM` 設定必須** (= pwm=0 だと duty 0% で無音)。priority SFX overlay (oscar64 `audio/sidfx` bridge) は v3b-C で対応予定 |
+| **SID 音源 (BGM 再生)** | PSID v2 形式 `.sid` file を disk から KIO で読み込み → `SID_LOAD_FROM_BUF(buf, len)` (= byte_ptr 経由) または `SID_LOAD_FROM_BUF_ADDR(buf_addr, len)` (= raw word addr 経由) で header parse + payload を loadAddress に memcpy + init/play address を bridge 内 static 保存 → `SID_PLAYER_INIT(song)` (= 任意 song で再生開始、内部は zp $FB/$FC vector + `JMP ($00fb)` で raw 6502 indirect jump) → VSYNC loop で `SID_PLAYER_PLAY()` を毎フレーム呼出。`SID_PLAYER_READY()` で load 状態確認可。**重要**: SLANG `ARRAY BYTE BUF[]` 経由だと oscar64 BSS が $1000 領域を占有し loadAddress $1000 系の HVSC tune と衝突するため、sample (SIDBGM.SL) は `KIO_READ_ADDR` で $C000 (= C64 伝統的 free RAM) に直 read + `SID_LOAD_FROM_BUF_ADDR` で raw addr 渡し流儀を採用。RSID (= IRQ-driven、playAddress=0) と multi-SID は v3b-B 非対応。HVSC tune の copyright は残存する (= FAQ Q29、配布は user 責務) ため、SLANG repo に `.sid` 同梱はせず user が手元で持ち込む形態 |
 | **KERNAL file I/O** | open/close: `KIO_OPEN_NAMED(fnum, dev, ch, name)` / `KIO_OPEN(fnum, dev, ch)` / `KIO_SETNAM(name)` / `KIO_CLOSE(fnum)`、channel: `KIO_CHKIN(fnum)` / `KIO_CHKOUT(fnum)` / `KIO_CLRCHN()`、1 byte: `KIO_CHRIN()` / `KIO_CHROUT(ch)` / `KIO_GETCH(fnum)` / `KIO_PUTCH(fnum, ch)`、buffer: `KIO_READ(fnum, buf, n)` / `KIO_WRITE(fnum, buf, n)`、文字列: `KIO_GETS(fnum, buf, n)` / `KIO_PUTS(fnum, str)`、status: `KIO_STATUS()` (= krnioerr 取得)。文字列は NUL terminated PETSCII で **全小文字** で書く (= SLANG リテラル `"score,s,r"` が oscar64 `-psci` 経由で PETSCII unshifted 大文字に変換され 1541 の `,S,R` token parse と整合)。SEQ ファイルの主部は起動 PRG と別名にする (= 1541 emu の同主部 PRG/SEQ 共存制約回避)。bool 系は 0/1、I/O 系はエラー時 SLANG WORD で `$FFFx` (sign extension で届く)。krnioerr / device / channel 定数は `#INCLUDE "C64_KIO.LIB"` で取得。raw address 用 (`KIO_*_ADDR`) も併設 |
 | 端末 | `WIDTH(w)` (no-op = C64 は 40 桁固定)、`LOCATE(x, y)`、`SCREEN(x, y)`、`PRMODE(m)` |
 | 数学 | `ABS / SQR / SIN / COS / TAN / LOG / EXP / ATN / RND / SRND` |
@@ -241,14 +242,23 @@ slangbuild -E c64 -I include examples/c64/SPRITE.SL  -o examples/c64/SPRITE
 slangbuild -E c64 -I include examples/c64/FMANDEL.SL -o examples/c64/FMANDEL
 slangbuild -E c64 -I include examples/c64/JOYSPR.SL  -o examples/c64/JOYSPR
 slangbuild -E c64 -I include examples/c64/SIDSFX.SL  -o examples/c64/SIDSFX
+slangbuild -E c64 -I include examples/c64/SIDBGM.SL  -o examples/c64/SIDBGM
 slangbuild -E c64 -I include examples/c64/HISCORE.SL -o examples/c64/HISCORE
 x64sc -autostart examples/c64/SPRITE.prg          # VICE (sprite/FMANDEL/JOYSPR/SIDSFX)
-# HISCORE は KERNAL file I/O で D64 が必要、autostart 不可 (= virtual drive モードで
-# 干渉する)。c1541 で空 D64 + PRG を入れて、x64sc -8 で attach + 手動 LOAD/RUN:
+# HISCORE / SIDBGM は KERNAL file I/O で D64 が必要、autostart 不可 (= virtual drive
+# モードで干渉する)。c1541 で空 D64 + PRG を入れて、x64sc -8 で attach + 手動 LOAD/RUN:
 c1541 -format "hiscore,01" d64 disks/hiscore.d64 -write examples/c64/HISCORE.prg hiscore
 x64sc -8 disks/hiscore.d64
 # BASIC 上で:
 LOAD"hiscore",8
+RUN
+# SIDBGM は HVSC 等から user が好きな .sid を手元に取得して D64 に同梱する形態
+# (= SLANG repo に tune は同梱しない、HVSC tune の copyright は user 責務):
+c1541 -format "bgm,01" d64 disks/sidbgm.d64 \
+      -write examples/c64/SIDBGM.prg sidbgm \
+      -write /path/to/your_tune.sid music
+x64sc -8 disks/sidbgm.d64
+LOAD"sidbgm",8
 RUN
 ```
 
@@ -301,9 +311,9 @@ slangbuild -E c64 myapp.SL --c-source mylib.c -o myapp
 
 ### v1 スコープと制約
 
-**動作確認済**: PRINT / INPUT / 整数算術 / FLOAT 演算 / リアルタイム key 入力 / sprite (1 個アニメ、VSYNC 同期) / joystick 入力 / KERNAL file I/O (save/load 往復) / SID 単発 SFX (= 音色 preset 切替) + ユーザー C 任意関数 (= CFUNC + `--c-source`)。`examples/FMANDEL.SL` / `examples/FURUI.SL` / `examples/STARS.SL` / `examples/c64/SPRITE.SL` / `examples/c64/FMANDEL.SL` (= 40 桁版) / `examples/c64/JOYSPR.SL` (= joystick) / `examples/c64/SIDSFX.SL` (= SID 単発 SFX) / `examples/c64/HISCORE.SL` (= KERNAL file I/O) が実機 (VICE) で動作。
+**動作確認済**: PRINT / INPUT / 整数算術 / FLOAT 演算 / リアルタイム key 入力 / sprite (1 個アニメ、VSYNC 同期) / joystick 入力 / KERNAL file I/O (save/load 往復) / SID 単発 SFX (= 音色 preset 切替) / HVSC `.sid` BGM 再生 (= disk load 経由) + ユーザー C 任意関数 (= CFUNC + `--c-source`)。`examples/FMANDEL.SL` / `examples/FURUI.SL` / `examples/STARS.SL` / `examples/c64/SPRITE.SL` / `examples/c64/FMANDEL.SL` (= 40 桁版) / `examples/c64/JOYSPR.SL` (= joystick) / `examples/c64/SIDSFX.SL` (= SID 単発 SFX) / `examples/c64/SIDBGM.SL` (= HVSC SID BGM) / `examples/c64/HISCORE.SL` (= KERNAL file I/O) が実機 (VICE) で動作。
 
-**未対応 / 今後の拡張**: sprite multiplex / VIC bitmap mode / HVSC `.sid` BGM 再生 (= v3b-B 予定) / priority SFX overlay (= v3b-C 予定、oscar64 `audio/sidfx` bridge) / CRT / overlay (`#MODULE`)。これらは bridge 関数を追加する形で順次対応予定。
+**未対応 / 今後の拡張**: sprite multiplex / VIC bitmap mode / priority SFX overlay (= v3b-C 予定、oscar64 `audio/sidfx` bridge) / CRT / overlay (`#MODULE`)。これらは bridge 関数を追加する形で順次対応予定。
 
 **Z80 固有機能**: `MACHINE` 宣言 / inline `#ASM` ブロック / `PORT IN/OUT` / `#MODULE` を含む SLANG コードは C backend では診断 error。`#IF BACKEND==1` (= OscarC) または `#IF ENV_TYPE==7` (= c64) で C backend 専用コードを gate できます (`BACKEND` は env で自動定義: 0=Z80、1=OscarC)。
 
