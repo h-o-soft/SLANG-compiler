@@ -43,6 +43,40 @@ Z80 専用だった SLANG コンパイラに **Commodore 64 (6502)** 対応を�
 - `examples/c64/JOYSPR.SL` (= v3a) joystick port 2 で sprite 移動 + fire で色変更 (= ロードマップ v3a に対応、`JOY_DIR` bitmask + `JOY_B` 主、`JOY_X/Y` の signed `-1=$FFFF` パターン解説含む)
 - `examples/c64/HISCORE.SL` (= v3c) D64 disk image に `HISCORE,S,W` で save → `HISCORE,S,R` で read → 内容比較する KERNAL file I/O 往復 sample
 - `examples/c64/SIDSFX.SL` (= v3b-A) joystick で sprite 移動 + fire ボタンで voice 0 SFX 発射 + 1/2/3 キーで音色 preset 切替 (= laser/boom/noise の 3 種類)
+- `examples/c64/SIDBGM.SL` (= v3b-B) disk から PSID v2 `.sid` file を KIO 経由で読み込み → header parse + payload 配置 → VSYNC loop で player 駆動して BGM 再生 (= HVSC tune を user 持込で動作確認)
+
+### v3b-B — HVSC .sid disk load + BGM 再生 (#180 配下)
+
+- `runtime/c64/slang_sid.{h,c}` に 5 関数追加: `slang_sid_load_from_buf` (= PSID
+  v2 header parse + payload を loadAddress に memcpy + init/play addr を bridge
+  内 static 保持、`byte_ptr` 引数) / `slang_sid_load_from_buf_addr` (= 同等機能の
+  raw word addr 引数版) / `slang_sid_player_init` (= 保存 init addr へ song 番号
+  (A レジスタ) で jump、内部は zp $FB/$FC vector + `JMP ($00fb)` 6502 indirect
+  経由) / `slang_sid_player_play` (= 保存 play addr へ jump、毎フレーム VSYNC 後
+  呼出) / `slang_sid_player_ready` (= load 成功状態判定)
+- `runtime/env/c64.env` `c_bindings:` に 5 entry 追加 (= SID 全体で 14 entry)
+- 新規 `examples/c64/SIDBGM.SL`: disk から "music" PRG を `KIO_READ_ADDR` で
+  $C000 (= C64 伝統的 free RAM area) に直接 read → `SID_LOAD_FROM_BUF_ADDR` →
+  `SID_PLAYER_INIT(0)` → VSYNC loop で `SID_PLAYER_PLAY`、1-9 キーで song 切替
+- `tests/SLANGCompiler.Tests/SidBindingTests.cs` 拡張 (= 計 14 binding の extern
+  + 呼出展開 + signature pin)
+
+**設計判断**:
+- PSID v2 only (= RSID = playAddress=0 形式は非対応)、シングル SID のみ
+- PAL 50Hz 想定 (= VIC_WAIT 連動)、NTSC では音高ずれ許容
+- header parse 失敗時 (= magic 不一致 / version 不正 / RSID 等) は init/play addr
+  を 0 のまま保持、PLAYER_INIT/PLAY は no-op 化、`SID_PLAYER_READY` で状態確認可
+- sample は SLANG `ARRAY BYTE` でなく `KIO_READ_ADDR` + raw addr ($C000) 流儀で
+  実装 (= ARRAY BYTE 経由だと oscar64 BSS が $1000 領域を占有して HVSC tune
+  loadAddress $1000 系と衝突するため)
+- 任意 6502 addr への動的 jump は oscar64 の C 関数ポインタ呼出経路ではなく
+  zp vector + `JMP ($00fb)` indirect 形式を採用 (= player code を raw 6502 native
+  として直接実行するため)
+
+**ライセンス運用方針** (= v3b-A と同じ規律継続):
+- bridge / sample SLANG コードはすべて SLANG 側オリジナル実装、MIT 維持
+- HVSC tune は同梱しない、user が手元で個別に持ち込む形態 (= HVSC tune の
+  copyright 整合は user 責務、README / sample コメントで明記)
 
 ### v3b-A — SID 基盤 + 単発 SFX binding (#180 配下)
 
