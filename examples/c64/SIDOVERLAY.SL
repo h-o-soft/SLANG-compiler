@@ -12,9 +12,11 @@
 //
 // 操作:
 //   起動 = 4 note ドミソド loop (voice 0、 約 0.6 秒 / 音)
-//   joystick port 2 fire = voice 2 で laser SFX 発射 (= sweep down saw)
-//     fire 連射で SIDFX_PLAY を毎フレーム呼んでも priority 比較で attack 再
-//     trigger されない (= 同 priority 値だと現在再生中の SFX 完了まで待つ)
+//   joystick port 2 fire = 押下 edge で voice 2 laser SFX 発射 (= sweep down saw)
+//     注意: oscar64 sidfx_play は priority 比較が `<=` (= 同 priority も上書き)
+//     のため、 fire 押しっぱなしで毎フレーム SIDFX_PLAY を呼ぶと SFX 冒頭で
+//     reset され続けて完走しない。main loop 内で前フレーム fire 状態を保持
+//     する edge detection (= 押下瞬間 1 回発射) で回避している。
 //
 // SIDFX struct (= oscar64 audio/sidfx.h、 14 byte fixed):
 //   ARRAY BYTE で WORD/BYTE 混在 (= v3b-D の `%` prefix) で組み立てる
