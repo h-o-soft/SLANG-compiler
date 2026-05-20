@@ -130,4 +130,63 @@ public class ArrayInitOscarCTests
         Assert.Contains(diag.Diagnostics,
             d => d.Message.Contains("ARRAY BYTE", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public void UnsizedArrayByte_InitCode_DerivesSizeFromInit()
+    {
+        // SLANG 仕様: 添字省略 `ARRAY BYTE A[]={...}` は初期値 byte 列長で配列サイズ決定
+        // (= 「添字省略時はチェックしない」)。pointer 化せず固定配列として emit。
+        // Codex review High 指摘 (= 旧実装で initializer silently dropped されてた) の回帰防止。
+        var src = TranspileWithEnv("""
+            ARRAY BYTE UNSIZED[] = { %$1234, $56 };
+            MAIN() { PRINT(UNSIZED[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // %$1234 (= 2 byte LE) + $56 (= 1 byte) = 3 byte、ポインタ宣言ではなく固定配列
+        Assert.Contains("static unsigned char V_UNSIZED[3] = {0x34, 0x12, 0x56};", src);
+        // 旧実装で silently dropped されていた pointer 宣言は出ないこと
+        Assert.DoesNotContain("static unsigned char *V_UNSIZED;", src);
+    }
+
+    [Fact]
+    public void OverflowArrayByte_InitCode_RaisesError()
+    {
+        // SLANG 仕様: 「初期値が多すぎる場合はエラー」。
+        // ARRAY BYTE A[1] は 2 要素確保 (= index 0..1)、 init 4 byte は超過 → error。
+        // Codex review Medium 指摘 (= 旧実装で容量超過 check なしに無効 C 出力) の回帰防止。
+        var src = TranspileWithEnv("""
+            ARRAY BYTE OVER[1] = { 1, 2, 3, 4 };
+            MAIN() { PRINT(OVER[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "容量超過 ARRAY BYTE init は SLANG 仕様で error");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("multi", StringComparison.OrdinalIgnoreCase)
+              || d.Message.Contains("capacity", StringComparison.OrdinalIgnoreCase)
+              || d.Message.Contains("多すぎ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void UnderfilledArrayByte_InitCode_Accepted_RestZeroFilledByC()
+    {
+        // SLANG 仕様: 「初期値が足りない場合は0で埋められる」。
+        // ARRAY BYTE A[4] は 5 要素確保、init 2 byte は足りないが error にはならず、
+        // C array init の挙動で残り 3 byte は 0 で埋まる (= oscar64 も同様)。
+        var src = TranspileWithEnv("""
+            ARRAY BYTE UNDER[4] = { 1, 2 };
+            MAIN() { PRINT(UNDER[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // 配列宣言は 5 要素、 init は 2 byte だけ書く (= C コンパイラが残り 0 で fill)
+        Assert.Contains("static unsigned char V_UNDER[5] = {0x01, 0x02};", src);
+    }
+
+    // 注: `ARRAY ...:address = { ... }` (fixed addr + initializer) は SLANG parser が
+    // 既に reject する (= `:address = { ... }` の組合せは文法上 parse error)、
+    // CEmitter の Address + InitialCode 分岐は文法的に到達不能。 念のため
+    // CEmitter 側にも防御 error を残しているが、 unit test の必要なし。
 }
