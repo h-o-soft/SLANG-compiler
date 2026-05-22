@@ -53,6 +53,12 @@ public class CEmitter : IAstVisitor<EmitResult>
     // 引けるようにする。FuncDef enter/leave で push/pop。
     private readonly HashSet<string> _currentStaticDecls = new(StringComparer.OrdinalIgnoreCase);
 
+    // 添字省略 ARRAY + InitialCode で **固定配列化** された symbol 名集合
+    // (= PR #189 oscar_c CEmitter の独自拡張、 SLANG 仕様の純 PointerType 解釈と
+    // 異なる)。これら symbol への直接代入は CEmitter が `static unsigned char V_A[N] = {...}`
+    // で emit 済のため `V_A = ...` の無効 C を生む。VisitAssignExpr で defensive reject 用。
+    private readonly HashSet<string> _unsizedArraysWithInit = new(StringComparer.OrdinalIgnoreCase);
+
     public CEmitter(SymbolTable? globals, CScopeTracker scope, DiagnosticBag diagnostics,
                     CBindingRegistry? cBindings = null)
     {
@@ -331,6 +337,10 @@ public class CEmitter : IAstVisitor<EmitResult>
                 : Line($"{cType} {ident}[{byteCount}] = {initText};");
             if (_scope.ScopeDepth > 0)
                 _scope.DeclareLocal(node.Name, new ArrayType(slangType, new List<int> { byteCount }));
+            // 固定配列化された symbol を記録 (= VisitAssignExpr で reject 用)。
+            // SLANG 仕様レベルでは PointerType だが、 oscar_c は固定配列で emit して
+            // いるため代入は無効 C を生む。
+            _unsizedArraysWithInit.Add(node.Name);
             return new(declLine0, null);
         }
 
@@ -648,6 +658,8 @@ public class CEmitter : IAstVisitor<EmitResult>
                 }
                 var (initText0, byteCount0) = BuildArrayInitFromCode(ad.InitialCode, slangType, ad.Span);
                 _scope.DeclareLocal(ad.Name, new ArrayType(slangType, new List<int> { byteCount0 }));
+                // 固定配列化された symbol を記録 (= VisitAssignExpr で reject 用、 同 global 経路)。
+                _unsizedArraysWithInit.Add(ad.Name);
                 return Line($"static {cType} {ident}[{byteCount0}] = {initText0};");
             }
 
@@ -1317,31 +1329,31 @@ public class CEmitter : IAstVisitor<EmitResult>
 
     public EmitResult VisitAssignExpr(AssignExpr node)
     {
-        // SLANG `ARRAY ...` 宣言で確保された symbol への直接代入 (= `A = $3000;`) は
-        // SLANG 仕様で意味曖昧 (= 配列実体の置換は不可、ポインタ代入は `VAR x[];` の
-        // 役割)。oscar_c backend では `static unsigned char V_A[N]` に代入する無効な
-        // C コードを emit してしまうため、 ここで明示 error にして silently drop を
-        // 防ぐ (= SemanticAnalyzer の check 不足を backend 側で補う)。
-        // `VAR BYTE T[];` (= IsArrayDecl=false、 ポインタ的) は引き続き通る。
-        //
-        // 関数内 static ARRAY (= MAIN ARRAY BYTE A[2]; のような local) は global
-        // SymbolTable に登録されないので、 _scope (= CScopeTracker) で ArrayType
-        // として declare されているかも併せて check する。
+        // Issue #190: ARRAY 実体への代入は SemanticAnalyzer.CheckNotArrayAssignment
+        // で先に reject される。ここは defensive guard (= backend 到達した場合の
+        // 無効 C emit 防止)、 条件は semantic 側と完全一致させる:
+        // `IsArrayDecl=true && Type is ArrayType` のみ reject、 添字省略
+        // (= IsArrayDecl=true && Type is PointerType) は SLANG 仕様で「間接配列 =
+        // ポインタ」扱いのため通過する。
         if (node.Target is IdentifierExpr tid)
         {
             var sym = _globals?.GlobalScope.Resolve(tid.Name);
-            bool isArraySymbol = sym != null && sym.IsArrayDecl;
+            bool isArraySymbol = sym?.IsArrayDecl == true && sym.Type is ArrayType;
             if (!isArraySymbol)
             {
                 // global 未登録 (= 関数内 static or local) を _scope で ArrayType 確認。
-                // PointerType (= VAR BYTE T[]) は配列実体ではないので reject 対象外。
+                // PointerType (= VAR BYTE T[] や ARRAY BYTE P[] の添字省略) は通過。
                 var localType = _scope.Resolve(tid.Name);
                 if (localType is ArrayType)
                     isArraySymbol = true;
             }
+            // PR #189 oscar_c 拡張: 添字省略 + InitialCode は固定配列で emit してる
+            // ため、 semantic 上 PointerType 扱いの symbol でも oscar_c では代入不可。
+            if (!isArraySymbol && _unsizedArraysWithInit.Contains(tid.Name))
+                isArraySymbol = true;
             if (isArraySymbol)
             {
-                Error($"cannot assign to ARRAY symbol `{tid.Name}`; ARRAY 宣言は配列実体で再代入不可 (`VAR BYTE T[];` のポインタ宣言ならOK)", node.Span);
+                Error($"cannot assign to ARRAY symbol `{tid.Name}`; ARRAY 宣言は配列実体で再代入不可 (`VAR BYTE T[];` / 初期値なし `ARRAY BYTE P[];` のポインタ宣言ならOK)", node.Span);
                 return new("/* invalid ARRAY assignment */0", SlangType.Word);
             }
         }
