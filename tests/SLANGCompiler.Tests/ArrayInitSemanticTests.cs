@@ -185,4 +185,65 @@ public class ArrayInitSemanticTests
         var diag = Analyze("VAR BYTE T[]; MAIN() BEGIN T = $3000; END;");
         Assert.False(diag.HasErrors, $"VAR BYTE T[] (PointerType) 代入は許可、 errors: {DiagMessages(diag)}");
     }
+
+    // === helper 各分岐 pin (= drift 防止のため Issue #190 helper 内ロジックを直接 golden) ===
+
+    [Fact]
+    public void Helper_StringLiteralInItem_CountedAsSjisByteLength_Pass()
+    {
+        // StringLiteral は SJIS byte 長 (= ASCII printable は 1 byte / 文字) で換算。
+        // "HELLO" は 5 byte、 容量 6 byte の ARRAY BYTE A[5] にぴったり収まる。
+        var diag = Analyze(@"ARRAY BYTE A[5] = {""HELLO""}; MAIN() BEGIN END;");
+        Assert.False(diag.HasErrors, $"StringLiteral は SJIS byte 長で counting、 errors: {DiagMessages(diag)}");
+    }
+
+    [Fact]
+    public void Helper_StringLiteralOverflow_Error()
+    {
+        // "HELLO!" は 6 byte、 容量 5 byte の ARRAY BYTE A[4] (= 5 要素確保) を超過
+        var diag = Analyze(@"ARRAY BYTE A[4] = {""HELLO!""}; MAIN() BEGIN END;");
+        Assert.True(diag.HasErrors, "StringLiteral 容量超過は error 期待");
+    }
+
+    [Fact]
+    public void Helper_CodeLabelRefInItem_CountedAs2Bytes_Pass()
+    {
+        // CodeLabelRef は label address WORD (= 2 byte)。 容量 4 byte の ARRAY BYTE A[3]
+        // に CodeLabelRef 2 個 (= 4 byte) でぴったり。
+        var diag = Analyze("ARRAY BYTE A[3] = {<MAIN>, <MAIN>}; MAIN() BEGIN END;");
+        Assert.False(diag.HasErrors, $"CodeLabelRef は 2 byte、 errors: {DiagMessages(diag)}");
+    }
+
+    [Fact]
+    public void Helper_ByteCastInItem_CountedAs1Byte_Pass()
+    {
+        // CastExpr(TargetSize: Byte) (= `BYTE,expr` 明示構文) は 1 byte、 default item
+        // と同じ size。 typed item 経路を通っていることを確認。
+        var diag = Analyze("ARRAY BYTE A[3] = {BYTE,1, BYTE,2, BYTE,3, BYTE,4}; MAIN() BEGIN END;");
+        Assert.False(diag.HasErrors, $"BYTE cast は 1 byte、 errors: {DiagMessages(diag)}");
+    }
+
+    [Fact]
+    public void Helper_NonConstantDefaultItem_Error()
+    {
+        // default item が ConstEvaluator で評価不能 = error (= 「非定数 BYTE は error」)。
+        // 識別子参照は CONST でないと評価できないので、 未宣言識別子で再現。
+        // ※ 識別子未宣言で別 error も出るが、 「ARRAY initializer item must be a compile-time
+        //   constant」 が出ることだけ確認。
+        var diag = Analyze("ARRAY BYTE A[3] = {UNKNOWN_SYM}; MAIN() BEGIN END;");
+        Assert.True(diag.HasErrors, "非定数 default item は error 期待");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("compile-time constant", System.StringComparison.OrdinalIgnoreCase)
+              || d.Message.Contains("typed prefix", System.StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void MultiDimensional_OmittedFirstDim_NoCapacityCheck_Pass()
+    {
+        // 多次元 ARRAY で添字省略を含む (= `[][3]`) は SLANG 仕様「添字省略時はチェック
+        // しない」に従い容量判定 skip。 Codex review Medium 指摘 (= 旧実装で
+        // capacity is 0 bytes と誤 error 出していた) の regression 防止。
+        var diag = Analyze("ARRAY BYTE A[][3] = {1,2,3,4,5}; MAIN() BEGIN END;");
+        Assert.False(diag.HasErrors, $"多次元の一部 omitted は容量判定 skip、 errors: {DiagMessages(diag)}");
+    }
 }

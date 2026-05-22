@@ -375,10 +375,10 @@ public class CEmitter : IAstVisitor<EmitResult>
             // SLANG `ARRAY BYTE NAME[N] = { 値, %値, ... }` 形式の初期化。
             // 各要素は default BYTE (= 1 byte)、CastExpr で wrap されてれば
             // TargetSize に従う (= `%` prefix で WORD → 2 byte LE 展開)。
-            // ConstEvaluator で定数評価して C の hex literal 列に展開する。
-            // 容量超過 (= initializer byte 数 > 配列要素数 N+1) は SLANG 仕様で
-            // error、足りない場合は C array init の挙動で残り 0 fill。
-            // FLOAT 要素 / StringLiteral / 非定数式は v3b-D scope 外で error。
+            // 容量超過 / 非定数 BYTE / FLOAT array トップレベル cast 等の SLANG 仕様
+            // 違反は SemanticAnalyzer + ArrayInitialCodeSizer 側で先に reject 済 (Issue
+            // #190)。ここでは oscar_c emit のみ (= 非 BYTE 要素 / FLOAT prefix / 非定数
+            // は backend feature gap として defensive reject、 別 PR v3b-E で拡張予定)。
             var (initText, _) = BuildArrayInitFromCode(node.InitialCode, slangType, node.Span);
             init = " = " + initText;
         }
@@ -684,7 +684,8 @@ public class CEmitter : IAstVisitor<EmitResult>
                 init = " = " + Expr(ad.InitialValue);
             else if (ad.InitialCode != null)
             {
-                // 容量超過 check 込み (= maxBytes=totalSize)。
+                // 容量超過 check は SemanticAnalyzer に移行済 (Issue #190)、 ここでは
+                // emit のみ + backend feature gap reject (= 非 BYTE 要素等、 defensive)。
                 var (initText, _) = BuildArrayInitFromCode(ad.InitialCode, slangType, ad.Span);
                 init = " = " + initText;
             }

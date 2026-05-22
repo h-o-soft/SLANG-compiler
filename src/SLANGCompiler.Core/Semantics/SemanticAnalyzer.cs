@@ -232,10 +232,13 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         }
 
         // Issue #190: ARRAY initializer 容量超過 check (= 全 backend 共通)。
-        // 添字省略を含む配列 (= dims.Any(d => d == 0)) は SLANG 仕様で容量判定なし。
-        // 固定サイズ ARRAY のみ ArrayInitialCodeSizer で展開後 byte 数を計算し、
-        // type.ByteSize 超過なら error。
-        if (node.InitialCode != null && type is ArrayType arrType)
+        // SLANG 仕様: 「添字省略時はチェックしない」 — 全次元 null (= PointerType)
+        // と多次元の一部 null (= 例 `ARRAY BYTE A[][3]`) のどちらも容量判定 skip。
+        // 固定サイズ ARRAY (= dims に null を含まない) のみ ArrayInitialCodeSizer で
+        // 展開後 byte 数を計算し、 type.ByteSize 超過なら error。
+        if (node.InitialCode != null
+            && type is ArrayType arrType
+            && !node.Dimensions.Any(d => d == null))
         {
             int? byteCount = ArrayInitialCodeSizer.CalculateByteCount(
                 node.InitialCode, node.Size, _symbols, _diagnostics);
