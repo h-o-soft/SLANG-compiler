@@ -319,7 +319,7 @@ public class CEmitter : IAstVisitor<EmitResult>
         // 決まる。pointer 化せず固定配列として emit する。
         if (isIndirect && node.InitialCode != null)
         {
-            var (initText, byteCount) = BuildArrayInitFromCode(node.InitialCode, slangType, null, node.Span);
+            var (initText, byteCount) = BuildArrayInitFromCode(node.InitialCode, slangType, node.Span);
             // 多次元 unsized + InitialCode は scope 外
             if (node.Dimensions.Count != 1)
             {
@@ -379,7 +379,7 @@ public class CEmitter : IAstVisitor<EmitResult>
             // 容量超過 (= initializer byte 数 > 配列要素数 N+1) は SLANG 仕様で
             // error、足りない場合は C array init の挙動で残り 0 fill。
             // FLOAT 要素 / StringLiteral / 非定数式は v3b-D scope 外で error。
-            var (initText, _) = BuildArrayInitFromCode(node.InitialCode, slangType, totalSize, node.Span);
+            var (initText, _) = BuildArrayInitFromCode(node.InitialCode, slangType, node.Span);
             init = " = " + initText;
         }
 
@@ -404,11 +404,15 @@ public class CEmitter : IAstVisitor<EmitResult>
     /// </summary>
     private (string initText, int byteCount) BuildArrayInitFromCode(
         System.Collections.Generic.List<Expression> code,
-        SlangType elementType, int? maxBytes, SourceSpan span)
+        SlangType elementType, SourceSpan span)
     {
+        // Issue #190 移行後: 容量超過 / 非定数 BYTE 等の SLANG 仕様違反は
+        // SemanticAnalyzer + ArrayInitialCodeSizer で先 reject 済み。
+        // ここでは emit logic (= C array init 文字列生成) と、 oscar_c backend の
+        // feature gap (= ARRAY BYTE のみ対応、 FLOAT prefix 未対応) の guard のみ残す。
         if (!(elementType is PrimitiveType { Kind: PrimitiveKind.Byte }))
         {
-            Error("`= { ... }` initializer is supported only for ARRAY BYTE in oscar_c backend (v3b-D)", span);
+            Error("`= { ... }` initializer is supported only for ARRAY BYTE in oscar_c backend (= 非 BYTE InitialCode の oscar_c emit 対応は別 PR / v3b-E 候補)", span);
             return ("{0}", 0);
         }
 
@@ -422,7 +426,9 @@ public class CEmitter : IAstVisitor<EmitResult>
                 itemExpr = cast.Operand;
                 if (cast.TargetSize == DataSize.Float)
                 {
-                    Error("FLOAT (`%%`) prefix in ARRAY BYTE initializer is not supported by oscar_c backend (v3b-D scope)", expr.Span);
+                    // 非 FLOAT 配列の %% は SemanticAnalyzer は許可するが、 oscar_c emit
+                    // は未対応 (= defensive、 SemanticAnalyzer 通過しても oscar_c で reject)
+                    Error("FLOAT (`%%`) prefix in ARRAY BYTE initializer is not supported by oscar_c backend (= 別 PR / v3b-E 候補)", expr.Span);
                     continue;
                 }
                 itemSize = cast.TargetSize == DataSize.Byte ? 1 : 2;
@@ -433,7 +439,8 @@ public class CEmitter : IAstVisitor<EmitResult>
                 constVal = (int)ilit.Value;
             if (!constVal.HasValue)
             {
-                Error("ARRAY BYTE initializer element must be a compile-time constant in oscar_c backend (non-constant / string literal は v3b-D scope 外)", expr.Span);
+                // defensive (= SemanticAnalyzer で同じ error が出るはず)
+                Error("ARRAY BYTE initializer element must be a compile-time constant in oscar_c backend (non-constant / string literal の oscar_c emit 対応は別 PR / v3b-E 候補)", expr.Span);
                 continue;
             }
 
@@ -450,10 +457,7 @@ public class CEmitter : IAstVisitor<EmitResult>
             }
         }
 
-        if (maxBytes.HasValue && bytes.Count > maxBytes.Value)
-        {
-            Error($"ARRAY BYTE initializer has {bytes.Count} bytes but array capacity is {maxBytes.Value} (= dimension N+1); SLANG 仕様で「多すぎる場合はエラー」", span);
-        }
+        // 容量超過 check は SemanticAnalyzer 移行済み (= Issue #190)、 ここでは emit のみ。
 
         return ("{" + string.Join(", ", bytes) + "}", bytes.Count);
     }
@@ -642,7 +646,7 @@ public class CEmitter : IAstVisitor<EmitResult>
                     Error("multi-dimensional ARRAY with omitted size + initializer is not supported by oscar_c backend (v3b-D scope)", ad.Span);
                     return "";
                 }
-                var (initText0, byteCount0) = BuildArrayInitFromCode(ad.InitialCode, slangType, null, ad.Span);
+                var (initText0, byteCount0) = BuildArrayInitFromCode(ad.InitialCode, slangType, ad.Span);
                 _scope.DeclareLocal(ad.Name, new ArrayType(slangType, new List<int> { byteCount0 }));
                 return Line($"static {cType} {ident}[{byteCount0}] = {initText0};");
             }
@@ -681,7 +685,7 @@ public class CEmitter : IAstVisitor<EmitResult>
             else if (ad.InitialCode != null)
             {
                 // 容量超過 check 込み (= maxBytes=totalSize)。
-                var (initText, _) = BuildArrayInitFromCode(ad.InitialCode, slangType, totalSize, ad.Span);
+                var (initText, _) = BuildArrayInitFromCode(ad.InitialCode, slangType, ad.Span);
                 init = " = " + initText;
             }
             return Line($"static {cType} {ident}{dimsSb}{init};");

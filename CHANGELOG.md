@@ -8,6 +8,7 @@
 - oscar_c backend で `ARRAY BYTE NAME[N] = { 値, %値, ... }` 初期化対応 (= `%` 前置で WORD を LE 2 byte に展開)。
 - c64 backend に VIC sprite + VSYNC 同期 + joystick + KERNAL file I/O + SID 音源 (register direct + 単発 SFX + HVSC `.sid` BGM 再生 + oscar64 `audio/sidfx` priority SFX overlay) の bridge と sample 一式を追加。
 - 既存 Z80 backend の codegen / runtime の挙動は無変更 (= 言語側で `VOID` 予約語追加・`CFUNC` 構文追加が入っているため Parser には影響あり、 ただし既存 Z80 SLANG コードへの regression は確認なし)。
+- ARRAY initializer の容量超過 check / ARRAY symbol 代入 guard を SemanticAnalyzer に集約し全 backend で揃えた (Closes #190、 oscar_c の非 BYTE InitialCode emit 対応は別 PR 候補)。
 
 ## Version 0.24.1
 
