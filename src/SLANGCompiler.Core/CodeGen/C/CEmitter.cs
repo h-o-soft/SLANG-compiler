@@ -53,6 +53,12 @@ public class CEmitter : IAstVisitor<EmitResult>
     // 引けるようにする。FuncDef enter/leave で push/pop。
     private readonly HashSet<string> _currentStaticDecls = new(StringComparer.OrdinalIgnoreCase);
 
+    // 添字省略 ARRAY + InitialCode で **固定配列化** された symbol 名集合
+    // (= PR #189 oscar_c CEmitter の独自拡張、 SLANG 仕様の純 PointerType 解釈と
+    // 異なる)。これら symbol への直接代入は CEmitter が `static unsigned char V_A[N] = {...}`
+    // で emit 済のため `V_A = ...` の無効 C を生む。VisitAssignExpr で defensive reject 用。
+    private readonly HashSet<string> _unsizedArraysWithInit = new(StringComparer.OrdinalIgnoreCase);
+
     public CEmitter(SymbolTable? globals, CScopeTracker scope, DiagnosticBag diagnostics,
                     CBindingRegistry? cBindings = null)
     {
@@ -319,7 +325,7 @@ public class CEmitter : IAstVisitor<EmitResult>
         // 決まる。pointer 化せず固定配列として emit する。
         if (isIndirect && node.InitialCode != null)
         {
-            var (initText, byteCount) = BuildArrayInitFromCode(node.InitialCode, slangType, null, node.Span);
+            var (initText, byteCount) = BuildArrayInitFromCode(node.InitialCode, slangType, node.Span);
             // 多次元 unsized + InitialCode は scope 外
             if (node.Dimensions.Count != 1)
             {
@@ -331,6 +337,10 @@ public class CEmitter : IAstVisitor<EmitResult>
                 : Line($"{cType} {ident}[{byteCount}] = {initText};");
             if (_scope.ScopeDepth > 0)
                 _scope.DeclareLocal(node.Name, new ArrayType(slangType, new List<int> { byteCount }));
+            // 固定配列化された symbol を記録 (= VisitAssignExpr で reject 用)。
+            // SLANG 仕様レベルでは PointerType だが、 oscar_c は固定配列で emit して
+            // いるため代入は無効 C を生む。
+            _unsizedArraysWithInit.Add(node.Name);
             return new(declLine0, null);
         }
 
@@ -375,11 +385,11 @@ public class CEmitter : IAstVisitor<EmitResult>
             // SLANG `ARRAY BYTE NAME[N] = { 値, %値, ... }` 形式の初期化。
             // 各要素は default BYTE (= 1 byte)、CastExpr で wrap されてれば
             // TargetSize に従う (= `%` prefix で WORD → 2 byte LE 展開)。
-            // ConstEvaluator で定数評価して C の hex literal 列に展開する。
-            // 容量超過 (= initializer byte 数 > 配列要素数 N+1) は SLANG 仕様で
-            // error、足りない場合は C array init の挙動で残り 0 fill。
-            // FLOAT 要素 / StringLiteral / 非定数式は v3b-D scope 外で error。
-            var (initText, _) = BuildArrayInitFromCode(node.InitialCode, slangType, totalSize, node.Span);
+            // 容量超過 / 非定数 BYTE / FLOAT array トップレベル cast 等の SLANG 仕様
+            // 違反は SemanticAnalyzer + ArrayInitialCodeSizer 側で先に reject 済 (Issue
+            // #190)。ここでは oscar_c emit のみ (= 非 BYTE 要素 / FLOAT prefix / 非定数
+            // は backend feature gap として defensive reject、 別 PR v3b-E で拡張予定)。
+            var (initText, _) = BuildArrayInitFromCode(node.InitialCode, slangType, node.Span);
             init = " = " + initText;
         }
 
@@ -404,11 +414,15 @@ public class CEmitter : IAstVisitor<EmitResult>
     /// </summary>
     private (string initText, int byteCount) BuildArrayInitFromCode(
         System.Collections.Generic.List<Expression> code,
-        SlangType elementType, int? maxBytes, SourceSpan span)
+        SlangType elementType, SourceSpan span)
     {
+        // Issue #190 移行後: 容量超過 / 非定数 BYTE 等の SLANG 仕様違反は
+        // SemanticAnalyzer + ArrayInitialCodeSizer で先 reject 済み。
+        // ここでは emit logic (= C array init 文字列生成) と、 oscar_c backend の
+        // feature gap (= ARRAY BYTE のみ対応、 FLOAT prefix 未対応) の guard のみ残す。
         if (!(elementType is PrimitiveType { Kind: PrimitiveKind.Byte }))
         {
-            Error("`= { ... }` initializer is supported only for ARRAY BYTE in oscar_c backend (v3b-D)", span);
+            Error("`= { ... }` initializer is supported only for ARRAY BYTE in oscar_c backend (= 非 BYTE InitialCode の oscar_c emit 対応は別 PR / v3b-E 候補)", span);
             return ("{0}", 0);
         }
 
@@ -422,7 +436,9 @@ public class CEmitter : IAstVisitor<EmitResult>
                 itemExpr = cast.Operand;
                 if (cast.TargetSize == DataSize.Float)
                 {
-                    Error("FLOAT (`%%`) prefix in ARRAY BYTE initializer is not supported by oscar_c backend (v3b-D scope)", expr.Span);
+                    // 非 FLOAT 配列の %% は SemanticAnalyzer は許可するが、 oscar_c emit
+                    // は未対応 (= defensive、 SemanticAnalyzer 通過しても oscar_c で reject)
+                    Error("FLOAT (`%%`) prefix in ARRAY BYTE initializer is not supported by oscar_c backend (= 別 PR / v3b-E 候補)", expr.Span);
                     continue;
                 }
                 itemSize = cast.TargetSize == DataSize.Byte ? 1 : 2;
@@ -433,7 +449,8 @@ public class CEmitter : IAstVisitor<EmitResult>
                 constVal = (int)ilit.Value;
             if (!constVal.HasValue)
             {
-                Error("ARRAY BYTE initializer element must be a compile-time constant in oscar_c backend (non-constant / string literal は v3b-D scope 外)", expr.Span);
+                // defensive (= SemanticAnalyzer で同じ error が出るはず)
+                Error("ARRAY BYTE initializer element must be a compile-time constant in oscar_c backend (non-constant / string literal の oscar_c emit 対応は別 PR / v3b-E 候補)", expr.Span);
                 continue;
             }
 
@@ -450,10 +467,7 @@ public class CEmitter : IAstVisitor<EmitResult>
             }
         }
 
-        if (maxBytes.HasValue && bytes.Count > maxBytes.Value)
-        {
-            Error($"ARRAY BYTE initializer has {bytes.Count} bytes but array capacity is {maxBytes.Value} (= dimension N+1); SLANG 仕様で「多すぎる場合はエラー」", span);
-        }
+        // 容量超過 check は SemanticAnalyzer 移行済み (= Issue #190)、 ここでは emit のみ。
 
         return ("{" + string.Join(", ", bytes) + "}", bytes.Count);
     }
@@ -642,8 +656,11 @@ public class CEmitter : IAstVisitor<EmitResult>
                     Error("multi-dimensional ARRAY with omitted size + initializer is not supported by oscar_c backend (v3b-D scope)", ad.Span);
                     return "";
                 }
-                var (initText0, byteCount0) = BuildArrayInitFromCode(ad.InitialCode, slangType, null, ad.Span);
+                var (initText0, byteCount0) = BuildArrayInitFromCode(ad.InitialCode, slangType, ad.Span);
                 _scope.DeclareLocal(ad.Name, new ArrayType(slangType, new List<int> { byteCount0 }));
+                // (関数内 static は _scope に ArrayType 登録済 = VisitAssignExpr の
+                //  _scope.Resolve 経由で reject されるため、 _unsizedArraysWithInit
+                //  への登録は不要。 そちらは global 由来の同名 symbol 限定。)
                 return Line($"static {cType} {ident}[{byteCount0}] = {initText0};");
             }
 
@@ -680,8 +697,9 @@ public class CEmitter : IAstVisitor<EmitResult>
                 init = " = " + Expr(ad.InitialValue);
             else if (ad.InitialCode != null)
             {
-                // 容量超過 check 込み (= maxBytes=totalSize)。
-                var (initText, _) = BuildArrayInitFromCode(ad.InitialCode, slangType, totalSize, ad.Span);
+                // 容量超過 check は SemanticAnalyzer に移行済 (Issue #190)、 ここでは
+                // emit のみ + backend feature gap reject (= 非 BYTE 要素等、 defensive)。
+                var (initText, _) = BuildArrayInitFromCode(ad.InitialCode, slangType, ad.Span);
                 init = " = " + initText;
             }
             return Line($"static {cType} {ident}{dimsSb}{init};");
@@ -1312,31 +1330,35 @@ public class CEmitter : IAstVisitor<EmitResult>
 
     public EmitResult VisitAssignExpr(AssignExpr node)
     {
-        // SLANG `ARRAY ...` 宣言で確保された symbol への直接代入 (= `A = $3000;`) は
-        // SLANG 仕様で意味曖昧 (= 配列実体の置換は不可、ポインタ代入は `VAR x[];` の
-        // 役割)。oscar_c backend では `static unsigned char V_A[N]` に代入する無効な
-        // C コードを emit してしまうため、 ここで明示 error にして silently drop を
-        // 防ぐ (= SemanticAnalyzer の check 不足を backend 側で補う)。
-        // `VAR BYTE T[];` (= IsArrayDecl=false、 ポインタ的) は引き続き通る。
-        //
-        // 関数内 static ARRAY (= MAIN ARRAY BYTE A[2]; のような local) は global
-        // SymbolTable に登録されないので、 _scope (= CScopeTracker) で ArrayType
-        // として declare されているかも併せて check する。
+        // Issue #190: ARRAY 実体への代入は SemanticAnalyzer.CheckNotArrayAssignment
+        // で先に reject される。ここは defensive guard (= backend 到達した場合の
+        // 無効 C emit 防止)、 条件は semantic 側と完全一致させる:
+        // `IsArrayDecl=true && Type is ArrayType` のみ reject、 添字省略
+        // (= IsArrayDecl=true && Type is PointerType) は SLANG 仕様で「間接配列 =
+        // ポインタ」扱いのため通過する。
         if (node.Target is IdentifierExpr tid)
         {
             var sym = _globals?.GlobalScope.Resolve(tid.Name);
-            bool isArraySymbol = sym != null && sym.IsArrayDecl;
+            bool isArraySymbol = sym?.IsArrayDecl == true && sym.Type is ArrayType;
             if (!isArraySymbol)
             {
                 // global 未登録 (= 関数内 static or local) を _scope で ArrayType 確認。
-                // PointerType (= VAR BYTE T[]) は配列実体ではないので reject 対象外。
+                // PointerType (= VAR BYTE T[] や ARRAY BYTE P[] の添字省略) は通過。
                 var localType = _scope.Resolve(tid.Name);
                 if (localType is ArrayType)
                     isArraySymbol = true;
             }
+            // PR #189 oscar_c 拡張: 添字省略 + InitialCode は固定配列で emit してる
+            // ため、 semantic 上 PointerType 扱いの symbol でも oscar_c では代入不可。
+            // ただし関数内 local (= VAR BYTE A[] や ARRAY BYTE A[]) で shadowing
+            // されている場合は global 由来の判定を skip (= local が PointerType なら
+            // 代入 OK)。
+            if (!isArraySymbol && !_scope.IsLocal(tid.Name)
+                && _unsizedArraysWithInit.Contains(tid.Name))
+                isArraySymbol = true;
             if (isArraySymbol)
             {
-                Error($"cannot assign to ARRAY symbol `{tid.Name}`; ARRAY 宣言は配列実体で再代入不可 (`VAR BYTE T[];` のポインタ宣言ならOK)", node.Span);
+                Error($"cannot assign to ARRAY symbol `{tid.Name}`; ARRAY 宣言は配列実体で再代入不可 (`VAR BYTE T[];` / 初期値なし `ARRAY BYTE P[];` のポインタ宣言ならOK)", node.Span);
                 return new("/* invalid ARRAY assignment */0", SlangType.Word);
             }
         }

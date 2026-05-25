@@ -1,3 +1,4 @@
+using SLANGCompiler.Lexer;
 using SLANGCompiler.Parser.Ast;
 
 namespace SLANGCompiler.Semantics;
@@ -228,6 +229,25 @@ public class SemanticAnalyzer : IAstVisitor<object?>
                 sym.AsmLabel = LabelUtils.StaticVarLabel(_currentFuncName, node.Name);
             else
                 sym.AsmLabel = LabelUtils.UserVarLabel(node.Name);
+        }
+
+        // Issue #190: ARRAY initializer 容量超過 check (= 全 backend 共通)。
+        // SLANG 仕様: 「添字省略時はチェックしない」 — 全次元 null (= PointerType)
+        // と多次元の一部 null (= 例 `ARRAY BYTE A[][3]`) のどちらも容量判定 skip。
+        // 固定サイズ ARRAY (= dims に null を含まない) のみ ArrayInitialCodeSizer で
+        // 展開後 byte 数を計算し、 type.ByteSize 超過なら error。
+        if (node.InitialCode != null
+            && type is ArrayType arrType
+            && !node.Dimensions.Any(d => d == null))
+        {
+            int? byteCount = ArrayInitialCodeSizer.CalculateByteCount(
+                node.InitialCode, node.Size, _symbols, _diagnostics);
+            if (byteCount.HasValue && byteCount.Value > arrType.ByteSize)
+            {
+                _diagnostics.Error(
+                    $"ARRAY `{node.Name}` initializer is {byteCount.Value} bytes but capacity is {arrType.ByteSize} bytes (= SLANG 仕様「多すぎる場合エラー」)",
+                    node.Span);
+            }
         }
 
         return null;
@@ -483,9 +503,51 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     }
     public object? VisitBinaryExpr(BinaryExpr node) { node.Left.Accept(this); node.Right.Accept(this); return null; }
     public object? VisitUnaryExpr(UnaryExpr node) { node.Operand.Accept(this); return null; }
-    public object? VisitAssignExpr(AssignExpr node) { node.Target.Accept(this); node.Value.Accept(this); return null; }
-    public object? VisitCompoundAssignExpr(CompoundAssignExpr node) { node.Target.Accept(this); node.Value.Accept(this); return null; }
-    public object? VisitIncrementExpr(IncrementExpr node) { node.Operand.Accept(this); return null; }
+    public object? VisitAssignExpr(AssignExpr node)
+    {
+        CheckNotArrayAssignment(node.Target, "assign to", node.Span);
+        node.Target.Accept(this); node.Value.Accept(this); return null;
+    }
+    public object? VisitCompoundAssignExpr(CompoundAssignExpr node)
+    {
+        CheckNotArrayAssignment(node.Target, "compound-assign", node.Span);
+        node.Target.Accept(this); node.Value.Accept(this); return null;
+    }
+    public object? VisitIncrementExpr(IncrementExpr node)
+    {
+        CheckNotArrayAssignment(node.Operand, "increment", node.Span);
+        node.Operand.Accept(this); return null;
+    }
+
+    /// <summary>
+    /// Issue #190: <strong>固定サイズ ARRAY</strong> 宣言 symbol への代入系操作
+    /// (AssignExpr / CompoundAssignExpr / IncrementExpr) を reject。
+    /// 配列実体の置換は SLANG 仕様で意味曖昧で、 backend で無効 code を emit する
+    /// 原因になるため semantic で潰す。
+    /// <para>許可するもの:</para>
+    /// <list type="bullet">
+    /// <item><description>ArrayAccessExpr (= <c>A[i] = X</c>) — 要素代入</description></item>
+    /// <item><description><c>VAR BYTE T[];</c> (= IsArrayDecl=false、 PointerType) — ポインタ代入</description></item>
+    /// <item><description><c>ARRAY BYTE P[];</c> (= 添字省略 ARRAY、 IsArrayDecl=true だが
+    /// 型は PointerType = 間接配列) — SLANG 仕様で実質ポインタ扱い、 代入可能</description></item>
+    /// </list>
+    /// 判定は <c>IsArrayDecl == true</c> かつ <c>Type is ArrayType</c> (= 実体配列の場合のみ) で行う。
+    /// </summary>
+    private void CheckNotArrayAssignment(Expression target, string opName, SourceSpan span)
+    {
+        if (target is IdentifierExpr id)
+        {
+            var sym = _symbols.Resolve(id.Name);
+            // IsArrayDecl + ArrayType の場合のみ reject (= 添字省略の PointerType は通過)
+            if (sym?.IsArrayDecl == true && sym.Type is ArrayType)
+            {
+                _diagnostics.Error(
+                    $"cannot {opName} ARRAY symbol `{id.Name}`; ARRAY 宣言は配列実体で再代入不可 (`VAR BYTE T[];` / `ARRAY BYTE P[];` のポインタ宣言ならOK、 `{id.Name}[i] = ...` の要素代入は許可)",
+                    span);
+            }
+        }
+        // ArrayAccessExpr (= `A[i] = X`) は通過 (= 要素代入は許可)
+    }
     public object? VisitCallExpr(CallExpr node)
     {
         node.Function.Accept(this);
