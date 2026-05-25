@@ -658,8 +658,9 @@ public class CEmitter : IAstVisitor<EmitResult>
                 }
                 var (initText0, byteCount0) = BuildArrayInitFromCode(ad.InitialCode, slangType, ad.Span);
                 _scope.DeclareLocal(ad.Name, new ArrayType(slangType, new List<int> { byteCount0 }));
-                // 固定配列化された symbol を記録 (= VisitAssignExpr で reject 用、 同 global 経路)。
-                _unsizedArraysWithInit.Add(ad.Name);
+                // (関数内 static は _scope に ArrayType 登録済 = VisitAssignExpr の
+                //  _scope.Resolve 経由で reject されるため、 _unsizedArraysWithInit
+                //  への登録は不要。 そちらは global 由来の同名 symbol 限定。)
                 return Line($"static {cType} {ident}[{byteCount0}] = {initText0};");
             }
 
@@ -1349,7 +1350,11 @@ public class CEmitter : IAstVisitor<EmitResult>
             }
             // PR #189 oscar_c 拡張: 添字省略 + InitialCode は固定配列で emit してる
             // ため、 semantic 上 PointerType 扱いの symbol でも oscar_c では代入不可。
-            if (!isArraySymbol && _unsizedArraysWithInit.Contains(tid.Name))
+            // ただし関数内 local (= VAR BYTE A[] や ARRAY BYTE A[]) で shadowing
+            // されている場合は global 由来の判定を skip (= local が PointerType なら
+            // 代入 OK)。
+            if (!isArraySymbol && !_scope.IsLocal(tid.Name)
+                && _unsizedArraysWithInit.Contains(tid.Name))
                 isArraySymbol = true;
             if (isArraySymbol)
             {
