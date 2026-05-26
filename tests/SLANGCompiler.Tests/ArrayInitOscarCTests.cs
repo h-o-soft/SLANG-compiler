@@ -725,17 +725,20 @@ public class ArrayInitOscarCTests
     }
 
     [Fact]
-    public void ArrayByte_LabelRef_GenericNonConstError()
+    public void ArrayByte_FunctionRef_OscarCRejectsWithRuntimeWorkaroundHint()
     {
-        // ARRAY BYTE への %FUNC ref も SLANG 仕様 (= byte stream に address) では
-        // 不可、 既存の非定数 reject path で error (= oscar64 制約 message)
+        // ARRAY BYTE への %FUNC ref (= byte stream に address を 1 byte だけ詰める
+        // SLANG 構文) も oscar64 制約で reject、 既存の非定数 reject path で oscar64
+        // 制約 message に流れる。 名前を LabelRef ではなく FunctionRef にして実体
+        // (= CastExpr(Word, IdentifierExpr) で関数参照) と一致させる (Codex review Low)。
+        // 真の CodeLabelRef (`<LABEL>`) は別 SLANG 構文で別 test 対象。
         var src = TranspileWithEnv("""
             FUNC1() BEGIN END;
             ARRAY BYTE B[] = { %FUNC1 };
             MAIN() { PRINT(B[0]); }
             """, MakeC64Env(), out var diag);
 
-        Assert.True(diag.HasErrors, "ARRAY BYTE への label ref も oscar_c で reject");
+        Assert.True(diag.HasErrors, "ARRAY BYTE への function ref も oscar_c で reject");
         Assert.Contains(diag.Diagnostics,
             d => d.Message.Contains("FUNC1", StringComparison.Ordinal)
               && d.Message.Contains("oscar64", StringComparison.Ordinal));

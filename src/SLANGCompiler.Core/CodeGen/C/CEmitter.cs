@@ -557,7 +557,7 @@ public class CEmitter : IAstVisitor<EmitResult>
                         || sym?.Kind == SymbolKind.MachineFunction
                         || (sym?.IsArrayDecl == true && sym.IsGlobal))
                     {
-                        Error($"ARRAY initializer の非定数 identifier `{id.Name}` の address 参照は oscar_c では未対応 (= oscar64 が static integer initializer で `(unsigned int)F_xxx` / `(unsigned int)V_xxx` を constant initializer と認めない、 error 3008)。 SLANG 側で runtime 初期化に書き換えてください (例: MAIN 冒頭で `<ARRAY 名>[i] = %{id.Name};`)。 Z80 backend は `DW LABEL` で linker reloc 解決", expr.Span);
+                        Error($"ARRAY initializer の非定数 identifier `{id.Name}` の address 参照は oscar_c では未対応 (= oscar64 が static integer initializer で `(unsigned int)F_xxx` / `(unsigned int)V_xxx` を constant initializer と認めない、 error 3008)。 SLANG 側で runtime 初期化に書き換えてください (例: `ARRAY WORD <ARRAY 名>[N];` のように **固定サイズ宣言** にしてから MAIN 冒頭で `<ARRAY 名>[i] = %{id.Name};` で代入。 添字省略 `[]` のまま InitialCode を削ると oscar_c で pointer 宣言になるので注意)。 Z80 backend は `DW LABEL` で linker reloc 解決", expr.Span);
                         continue;
                     }
                 }
