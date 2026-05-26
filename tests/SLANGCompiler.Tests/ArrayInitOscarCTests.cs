@@ -808,6 +808,104 @@ public class ArrayInitOscarCTests
     // float32 mapped で f24 byte stream 表現を持たないため意味的にも対応不能、
     // ARRAY FLOAT を使う workaround を CEmitter message で促す (= 到達した場合の保険)。
 
+    // === v3b-E (Issue #194) (4): multi-dim 添字省略 + InitialCode ===
+    // SLANG `ARRAY BYTE A[][M] = { ... }` を C99 auto dim 推論
+    // (= `static T A[][M+1] = {flat init};`) に乗せて emit する。 第 1 次元のみ
+    // 省略可、 第 2 次元以降の `[]` は C99 仕様で不可。 ARRAY BYTE / WORD のみ対応
+    // (= ARRAY FLOAT multi-dim は scope 外 reject)。
+
+    [Fact]
+    public void MultiDimArrayByte_UnsizedFirstDim_EmitsCArrayInit()
+    {
+        // ARRAY BYTE A[][3] (= 第 2 次元 = 4 element 確保 / 1 行) + 6 byte init
+        // → `static unsigned char V_A[][4] = {0x01,...,0x06};` で oscar64 が
+        // 第 1 次元 = ceil(6/4) = 2 行を auto 推論
+        var src = TranspileWithEnv("""
+            ARRAY BYTE A[][3] = { 1, 2, 3, 4, 5, 6 };
+            MAIN() { PRINT(A[0][0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static unsigned char V_A[][4] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};", src);
+    }
+
+    [Fact]
+    public void MultiDimArrayWord_UnsizedFirstDim_EmitsCArrayInit()
+    {
+        // ARRAY WORD W[][2] (= 第 2 次元 = 3 element / 1 行) + 6 WORD init
+        var src = TranspileWithEnv("""
+            ARRAY WORD W[][2] = { %$1234, %$5678, %$9ABC, %$DEF0, %$ABCD, %$FFFF };
+            MAIN() { PRINT(W[0][0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static unsigned int V_W[][3] = {0x1234, 0x5678, 0x9ABC, 0xDEF0, 0xABCD, 0xFFFF};", src);
+    }
+
+    [Fact]
+    public void MultiDimArrayByte_ThreeDim_UnsizedFirstDim_EmitsCArrayInit()
+    {
+        // 3 次元: ARRAY BYTE A[][2][3] (= 第 2/3 次元 = 3*4=12 element / 1 行)
+        var src = TranspileWithEnv("""
+            ARRAY BYTE A[][2][3] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+            MAIN() { PRINT(A[0][0][0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static unsigned char V_A[][3][4] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C};", src);
+    }
+
+    [Fact]
+    public void MultiDimArrayFloat_UnsizedFirstDim_RaisesError()
+    {
+        // ARRAY FLOAT multi-dim 添字省略 は本 PR scope 外 (= 別 PR / v3b-E (4-ext) 候補)
+        var src = TranspileWithEnv("""
+            ARRAY FLOAT FA[][2] = { 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+            MAIN() { PRINT(FA[0][0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "ARRAY FLOAT multi-dim 添字省略は scope 外 error");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("ARRAY FLOAT", StringComparison.Ordinal)
+              && d.Message.Contains("multi-dimensional", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void MultiDimArrayByte_SecondDimAlsoOmitted_RaisesError()
+    {
+        // 第 2 次元以降の `[]` 省略 は C99 仕様違反、 reject
+        var src = TranspileWithEnv("""
+            ARRAY BYTE A[][][3] = { 1, 2, 3, 4, 5, 6 };
+            MAIN() { PRINT(A[0][0][0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "第 2 次元以降省略は C99 違反 reject");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("first dimension", StringComparison.OrdinalIgnoreCase)
+              && d.Message.Contains("C99", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void LocalStaticMultiDimArrayByte_UnsizedFirstDim_EmitsCArrayInit()
+    {
+        // 関数内 static 経路も同じ multi-dim path で動くこと
+        var src = TranspileWithEnv("""
+            MAIN()
+                ARRAY BYTE A[][3] = { 1, 2, 3, 4 };
+            BEGIN
+                PRINT(A[0][0]);
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // C implicit zero fill: 4 byte init / 4 element per row → 1 行ぴったり (= 第 1 次元 = 1 を推論)
+        Assert.Contains("static unsigned char V_MAIN_A[][4] = {0x01, 0x02, 0x03, 0x04};", src);
+    }
+
     [Fact]
     public void ArrayBytePrefixDoublePercent_ParserRejects()
     {
