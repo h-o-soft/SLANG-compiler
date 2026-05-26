@@ -1,102 +1,109 @@
 ; libx1native_print.asm
-; SLANG x1native runtime — text print (OS 非依存、 X1 text VRAM 直書き)
+; SLANG x1native runtime — text print (OS 非依存、 X1 port-mapped text VRAM 書込)
+;
+; **重要**: X1 の text VRAM は **port-mapped I/O** (= `OUT (C), A`、 BC = VRAM addr)、
+; 単純な `LD (HL), A` では書けない (= main RAM に書いてしまう)。 既存 libx1_print.asm
+; PRT (LSX 上で動作実績あり) と X1_compatible_rom IPL_PUTCHAR の sequence を採用:
+;   1. BC に VRAM addr (= $0000-$07CF が text 領域内 offset)
+;   2. LD A,B; OR $38; LD B,A   ← 上位 nibble に $38 = text VRAM region 選択
+;   3. DB $ED,$71  (OUT (C),0 = Z80 未定義命令)  ← kanji = 0 (= ANK 文字指定)
+;   4. RES 3, B    ← bit 3 clear ($38→$30) で text 領域に切替
+;   5. OUT (C), A  ← text VRAM 書込 (= 文字コード)
+;   6. attribute は触らず (= boot ROM 初期色のまま、 IPL_PUTCHAR と同様の MVP 戦略)
 ;
 ; Strategy: sPRINT (= 1 char emit) のみ native 実装、 上位 routine (PRT / PSTR /
-; PCRONE / PCR / PCR1 / PCHR / PHEX / PRT / P10 / PMSG / PMSX / MPRNT / PSIGN) は
-; libsos_print.asm から copy 流用 (= 全部 PRT 経由、 PRT は sPRINT を JP)。
-; WIDTH / PRMODE / SCREEN / LOCATE は S-OS BIOS 依存のため本 file scope 外
-; (= MVP sample で使わない、 必要なら後続段階で native 実装)。
+; PCRONE / 等) は libsos_print.asm から copy 流用 (= 全部 PRT 経由、 PRT = JP sPRINT)。
+; WIDTH / PRMODE / SCREEN / LOCATE は scope 外 (= MVP sample で使わない)。
 ;
-; Text VRAM layout (= X1):
-;   $3000-$37FF : text VRAM (80 col × 25 row = 2000 byte)
-;   $2000-$27FF : attribute VRAM (boot ROM 初期値そのまま、 本 file は text のみ書込)
+; X1 text VRAM layout:
+;   port-mapped、 BC = $30xx (text) / $20xx (attribute) / $10xx (kanji)
+;   80 col × 25 row = 2000 byte (= offset $0000-$07CF)
 ;
-; Cursor: sXYADR (L=X 0-79, H=Y 0-24)、 LSX 同名 work area を __WORK__ 内で保持
+; Cursor: sXYADR (L=X 0-79, H=Y 0-24)、 LSX 同名 work area を __WORK__ 内で保持。
+; scroll は port-mapped VRAM だと LDIR 不可 (= 1920 cell × IN+OUT loop) で重い、
+; MVP は Y=25 到達で stop (= 最終行に居続け、 後続 char は同じ位置を上書き)。
 ;
 ; Adapted from:
+;   - libx1_print.asm (SLANG-compiler, MIT) — PRT 内 VRAM port-mapped OUT sequence
 ;   - libsos_print.asm (SLANG-compiler, MIT) — PRT 系上位 routine
-;   - X1_compatible_rom (Meister, CC0) — IPL_PUTCHAR / IPLPRN_1 周辺 (VRAM 書込 pattern)
-;     (https://github.com/meister68k/X1_compatible_rom L1247-1340)
+;   - X1_compatible_rom (Meister, CC0) — IPL_PUTCHAR 実装 (BIT_ATTR_TEXT 反転)
+;     (https://github.com/meister68k/X1_compatible_rom L1262-1280)
 
 
 ; @name sPRINT
 ; @resident shared
 ; @param_count 0
 ; @calls sWORK
-; X1 native: A = char code を text VRAM に書き込み + cursor 進行
-; - $0D (CR): 行頭に戻す → 次行
-; - $0A (LF): 無視 (CR と LF は LSX 流儀で CR=改行、 LF は noop)
-; - $08 (BS): 後退 (本 MVP は未対応、 通常文字扱い)
-; - 他: VRAM 書込 + cursor X 進行、 X=80 で自動改行、 Y=25 で scroll up
+; A = char code
+; - $0D (CR): X=0, Y++ (= sp_do_cr)
+; - $0A (LF): no-op
+; - 他: text VRAM port-mapped 書込 + cursor X 進行、 X=80 で auto CR
+PUSH AF
 PUSH BC
 PUSH DE
 PUSH HL
-LD (sp_char_buf), A   ; char を退避 (= POP DE で E が破壊されるため、 別途保存)
 LD E, A
 CP $0D
 JR Z, .sp_cr
 CP $0A
 JR Z, .sp_end
-; 通常文字
-LD HL, (sXYADR)   ; L=X, H=Y
+; 通常文字: X=80 なら auto CR
+LD HL, (sXYADR)
 LD A, L
 CP 80
 JR C, .sp_putc
-; 行末超え: auto CR
 PUSH DE
 CALL sp_do_cr
 POP DE
 LD HL, (sXYADR)
 .sp_putc:
-; VRAM addr = $3000 + Y*80 + X
-PUSH HL
+; HL = Y*80 + X を計算 (= text 領域内 offset 0-$07CF)
+PUSH DE
 LD A, H
+LD D, 0
+LD E, A       ; DE = Y (= 0-24)
 LD H, 0
-LD D, H
-LD B, A           ; B = Y count
-OR A
-JR Z, .sp_no_y
+LD L, 0       ; HL = 0
 LD BC, 80
-LD H, 0
-LD L, 0
+OR A
+JR Z, .sp_no_y_loop
 .sp_y_loop:
-ADD HL, BC
+ADD HL, BC    ; HL += 80
 DEC A
 JR NZ, .sp_y_loop
-JR .sp_addy
-.sp_no_y:
-LD H, 0
-LD L, 0
-.sp_addy:
-POP DE            ; D=元Y, E=元X
-LD A, E
+.sp_no_y_loop:
+POP DE        ; DE 復元 (E=char、 D=?)
+; HL += X (= sXYADR low byte)
+LD A, (sXYADR)
 LD B, 0
 LD C, A
-ADD HL, BC        ; HL = Y*80 + X
-LD BC, $3000
-ADD HL, BC        ; HL = $3000 + Y*80 + X
-LD A, (sp_char_buf)
-LD (HL), A
+ADD HL, BC    ; HL = Y*80 + X (= 0-$07CF)
+; port-mapped OUT (libx1_print.asm PRT sequence)
+LD B, H
+LD C, L
+LD A, B
+OR $38        ; text VRAM region (= bit set $30-$37 範囲)
+LD B, A
+DB $ED, $71   ; OUT (C), 0 = kanji area に 0 (= ANK 文字、 Z80 未定義命令)
+RES 3, B      ; bit 3 clear ($38→$30、 text region)
+OUT (C), E    ; OUT text (= 文字コード)
 ; cursor X 進行
 LD HL, sXYADR
 INC (HL)
 JR .sp_end
 .sp_cr:
 CALL sp_do_cr
-JR .sp_end
 .sp_end:
 POP HL
 POP DE
 POP BC
+POP AF
 RET
 
-; --- internal helpers (= label private to file) ---
-sp_char_buf: DB 0   ; char 一時保存用 (= sPRINT 内の POP DE で E が破壊されるため必要)
 
-; CR 処理: X=0, Y++、 Y=25 なら scroll up
+; CR 処理: X=0, Y++、 Y=25 到達で stop (= MVP、 scroll は port-mapped 重いので後回し)
 sp_do_cr:
-PUSH BC
-PUSH DE
+PUSH AF
 PUSH HL
 XOR A
 LD (sXYADR), A     ; X = 0
@@ -104,27 +111,13 @@ LD HL, sXYADR+1
 INC (HL)           ; Y++
 LD A, (HL)
 CP 25
-JR C, .sp_cr_done
-; Y=25: scroll up = text VRAM を 80 byte 上に移動、 最終行 clear
-LD HL, $3000+80    ; src = 2 行目
-LD DE, $3000       ; dst = 1 行目
-LD BC, 80*24       ; 24 行分
-LDIR
-; 最終行 clear (= space で埋める、 $20)
-LD HL, $3000+80*24
-LD A, $20
-LD B, 80
-.sp_clr_last:
-LD (HL), A
-INC HL
-DJNZ .sp_clr_last
-; Y を 24 に戻す
+JR C, .spcr_done
+; Y=25 到達: 最終行に固定 (= scroll なし、 上書きされ続ける、 後続 PR で port-mapped scroll 実装)
 LD A, 24
 LD (sXYADR+1), A
-.sp_cr_done:
+.spcr_done:
 POP HL
-POP DE
-POP BC
+POP AF
 RET
 
 
