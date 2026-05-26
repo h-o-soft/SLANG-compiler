@@ -15,6 +15,7 @@
 - oscar_c CEmitter の `ARRAY ...:address = { ... }` (= fixed addr + InitialCode) 防衛 error を削除 (= SLANG parser が文法レベルで reject するため到達不能、 #194 配下 v3b-E (5))。 parser reject を pin する test を追加。
 - oscar_c backend で `ARRAY FLOAT FA[N] = { 1.0, 2.0, ... }` 初期化対応 (= oscar64 native float32 で `static float V_FA[N+1] = {1.0, 2.0};` emit、 整数 element は自動的に float promote、 容量未満は C implicit zero fill、 #194 配下 v3b-E (1b))。非定数 element は oscar64 制約で reject + runtime 初期化 hint message。 `ARRAY BYTE/WORD` 内の `%%` FLOAT prefix は SLANG parser 文法上未対応 + oscar_c は f24 byte stream 表現を持たないため意味的にも対応不能、 ARRAY FLOAT を使う旨を CEmitter defensive guard で diagnose (= #194 配下 v3b-E (2))。
 - oscar_c backend で `ARRAY BYTE/WORD A[][M] = { ... }` (= multi-dim 第 1 次元省略) の InitialCode 対応 (= C99 auto dim 推論 `static T V_A[][M+1] = {flat init};` で emit、 第 1 次元は C compiler が init 量から推定、 #194 配下 v3b-E (4))。ARRAY FLOAT multi-dim および第 2 次元以降の `[]` 省略は scope 外で error (= C99 仕様で第 1 次元のみ省略可)。これで #194 配下 v3b-E は完了。
+- X1 環境に **OS 非依存の `x1native` env** を新設 (= Phase A、 将来 .tap / .wav テープ出力対応のための土台)。 既存 `x1.env` / `sosx1.env` (= LSX-Dodgers / S-OS 依存) は完全無触、 新規 `libx1native_base/input/print.asm` 3 ファイルで SLANGINIT / sGETKY (X1 sub CPU $1900 polling) / sPRINT (text VRAM $3000 直書き) を native 実装、 `libx1_base.asm` (VSYNC) のみ既存 reuse。 file I/O は linker undefined symbol で reject (= 必要なら lsx / sosx1 env を使う)、 D88 boot / graphics / PSG / PCG は Phase A scope 外。 出典: LSX-Dodgers (MIT) / X1_compatible_rom (CC0) を参考実装、 各 asm header に attribution。 詳細は [docs/X1.md](docs/X1.md) 参照。
 
 ## Version 0.24.1
 
