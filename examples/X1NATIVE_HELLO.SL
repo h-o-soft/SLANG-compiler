@@ -9,5 +9,5 @@ BEGIN
     PRINT(/);
     PRINT("PRESS ANY KEY...");
     PRINT(/);
-    INKEY(0);
+    INKEY(1);   // 1 = wait until any key (0 = no-wait, n>=2 = loop wait)
 END;
