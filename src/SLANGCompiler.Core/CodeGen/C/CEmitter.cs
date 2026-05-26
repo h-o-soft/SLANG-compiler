@@ -323,12 +323,59 @@ public class CEmitter : IAstVisitor<EmitResult>
         // 決まる。pointer 化せず固定配列として emit する。
         if (isIndirect && node.InitialCode != null)
         {
-            var emit = BuildArrayInitFromCode(node.InitialCode, slangType, node.Span);
-            // 多次元 unsized + InitialCode は scope 外
-            if (node.Dimensions.Count != 1)
+            // 多次元 unsized + InitialCode: v3b-E (4) で対応。 C99 の auto dim 推論
+            // (= `static T A[][M+1][N+1]... = {flat init};`) に乗せ、 第 1 次元のみ
+            // `[]` で C compiler に推論させる。 ARRAY BYTE / WORD のみ対応 (= ARRAY
+            // FLOAT multi-dim は scope 外 reject)、 第 2 次元以降の省略は C99 違反
+            // のため reject。
+            bool isMultiDim = node.Dimensions.Count != 1;
+            if (isMultiDim)
             {
-                Error("multi-dimensional ARRAY with omitted size + initializer is not supported by oscar_c backend (v3b-D scope)", node.Span);
+                if (slangType is PrimitiveType { Kind: PrimitiveKind.Float })
+                {
+                    Error("multi-dimensional ARRAY FLOAT with omitted size + initializer is not supported by oscar_c backend (= scope 外、 ARRAY BYTE / WORD のみ対応)", node.Span);
+                    return new("", null);
+                }
+                // 第 1 次元のみ省略 OK、 第 2 次元以降に null があれば C99 違反で reject
+                for (int i = 1; i < node.Dimensions.Count; i++)
+                {
+                    if (node.Dimensions[i] == null)
+                    {
+                        Error("only the first dimension can be omitted in multi-dim ARRAY initializer (= C99 仕様で第 2 次元以降の `[]` は不可)", node.Span);
+                        return new("", null);
+                    }
+                }
+            }
+            var emit = BuildArrayInitFromCode(node.InitialCode, slangType, node.Span);
+            // multi-dim + 単独 StringLiteral path は InitText が C string literal
+            // (= `"hello"`) になり、 C で `unsigned char V[][4] = "hello";` は無効
+            // (= oscar64 error 3012 Incompatible constant initializer)。 StringLiteral
+            // を flat byte 化すると -psci 扱いの再設計になるため本 PR scope 外 reject。
+            if (isMultiDim && emit.IsCStringLiteral)
+            {
+                Error("multi-dimensional ARRAY BYTE / WORD initializer with single StringLiteral is not supported by oscar_c backend (= C string literal `\"...\"` を multi-dim 配列に使うと oscar64 error 3012、 単独 StringLiteral は 1 次元 ARRAY BYTE でのみ対応、 別 PR / v3b-E (4+3a-mix) 候補)", node.Span);
                 return new("", null);
+            }
+            if (isMultiDim)
+            {
+                // 第 1 次元 = `[]` (C 自動推論)、 第 2 次元以降は SLANG dim 値 + 1
+                var mdimsSb = new StringBuilder("[]");
+                var mdimList = new List<int> { 0 };
+                foreach (var dim in node.Dimensions.Skip(1))
+                {
+                    var ev = _constEval.Evaluate(dim!);
+                    if (ev == null) { Error("ARRAY dimension must be a compile-time constant expression", dim!.Span); ev = 0; }
+                    int allocSize = ev.Value + 1;
+                    mdimsSb.Append('[').Append(allocSize).Append(']');
+                    mdimList.Add(allocSize);
+                }
+                var declLineM = _scope.ScopeDepth == 0
+                    ? Line($"static {cType} {ident}{mdimsSb} = {emit.InitText};")
+                    : Line($"{cType} {ident}{mdimsSb} = {emit.InitText};");
+                if (_scope.ScopeDepth > 0)
+                    _scope.DeclareLocal(node.Name, new ArrayType(slangType, mdimList));
+                _unsizedArraysWithInit.Add(node.Name);
+                return new(declLineM, null);
             }
             // C 配列長は CElementCount (= WORD なら byte 数 /2)、 byte 数を直接使うと
             // WORD 配列で 2 倍になる事故が起きる (Issue #194 / Codex review 指摘)。
@@ -823,14 +870,50 @@ public class CEmitter : IAstVisitor<EmitResult>
 
             // 添字省略 (= ARRAY BYTE A[]) + InitialCode は SLANG 仕様で
             // 「添字省略時は要素数チェックなし」、 初期値 byte 列長で配列サイズを決定。
+            // v3b-E (4): multi-dim 添字省略は C99 auto dim 推論 (`static T A[][M+1]...`)
+            // に乗せる、 ARRAY BYTE / WORD のみ対応 (= ARRAY FLOAT multi-dim は scope 外)。
             if (isIndirect && ad.InitialCode != null)
             {
-                if (ad.Dimensions.Count != 1)
+                bool isMultiDimL = ad.Dimensions.Count != 1;
+                if (isMultiDimL)
                 {
-                    Error("multi-dimensional ARRAY with omitted size + initializer is not supported by oscar_c backend (v3b-D scope)", ad.Span);
-                    return "";
+                    if (slangType is PrimitiveType { Kind: PrimitiveKind.Float })
+                    {
+                        Error("multi-dimensional ARRAY FLOAT with omitted size + initializer is not supported by oscar_c backend (= scope 外、 ARRAY BYTE / WORD のみ対応)", ad.Span);
+                        return "";
+                    }
+                    for (int i = 1; i < ad.Dimensions.Count; i++)
+                    {
+                        if (ad.Dimensions[i] == null)
+                        {
+                            Error("only the first dimension can be omitted in multi-dim ARRAY initializer (= C99 仕様で第 2 次元以降の `[]` は不可)", ad.Span);
+                            return "";
+                        }
+                    }
                 }
                 var emit0 = BuildArrayInitFromCode(ad.InitialCode, slangType, ad.Span);
+                // multi-dim + 単独 StringLiteral は global 経路と同じく reject
+                // (= C string literal を multi-dim init に書くと oscar64 error 3012)
+                if (isMultiDimL && emit0.IsCStringLiteral)
+                {
+                    Error("multi-dimensional ARRAY BYTE / WORD initializer with single StringLiteral is not supported by oscar_c backend (= C string literal `\"...\"` を multi-dim 配列に使うと oscar64 error 3012、 単独 StringLiteral は 1 次元 ARRAY BYTE でのみ対応、 別 PR / v3b-E (4+3a-mix) 候補)", ad.Span);
+                    return "";
+                }
+                if (isMultiDimL)
+                {
+                    var mdimsSbL = new StringBuilder("[]");
+                    var mdimListL = new List<int> { 0 };
+                    foreach (var dim in ad.Dimensions.Skip(1))
+                    {
+                        var ev = _constEval.Evaluate(dim!);
+                        if (ev == null) { Error("ARRAY dimension must be a compile-time constant expression", dim!.Span); ev = 0; }
+                        int allocSize = ev.Value + 1;
+                        mdimsSbL.Append('[').Append(allocSize).Append(']');
+                        mdimListL.Add(allocSize);
+                    }
+                    _scope.DeclareLocal(ad.Name, new ArrayType(slangType, mdimListL));
+                    return Line($"static {cType} {ident}{mdimsSbL} = {emit0.InitText};");
+                }
                 _scope.DeclareLocal(ad.Name, new ArrayType(slangType, new List<int> { emit0.CElementCount }));
                 // (関数内 static は _scope に ArrayType 登録済 = VisitAssignExpr の
                 //  _scope.Resolve 経由で reject されるため、 _unsizedArraysWithInit
