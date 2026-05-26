@@ -445,6 +445,27 @@ public class CEmitter : IAstVisitor<EmitResult>
             return new ArrayInitEmitResult("{0}", 0, 0, 0);
         }
 
+        // 単独 StringLiteral path (= `ARRAY BYTE S[] = {"hello"}` / `ARRAY BYTE S[N] = {"hi"}`)
+        // は C string literal をそのまま emit して oscar64 -psci で PETSCII 化に任せる
+        // (= hex literal 列で出すと -psci 変換 が効かない、 PETSCII 自動変換は string
+        //  literal のみ対象)。 BYTE 配列限定 (WORD/FLOAT は意味曖昧 = scope 外)、 mixed
+        //  (= StringLiteral + 他要素) も loop 側で reject。
+        if (code.Count == 1 && code[0] is StringLiteral slit)
+        {
+            if (!isByteArray)
+            {
+                Error("StringLiteral element is supported only for ARRAY BYTE in oscar_c backend (= ARRAY WORD への StringLiteral は意味曖昧、 scope 外)", span);
+                return new ArrayInitEmitResult("\"\"", 0, 0, 0);
+            }
+            // SLANG 仕様 byte stream 長は SJIS bytes (= ArrayInitialCodeSizer の容量
+            // check と整合)。 C 配列は NUL 含めて確保 (= C string literal 規約)。
+            var sjisBytes = StringEncoder.ToShiftJisBytes(slit.Value, _diagnostics);
+            int strSourceBytes = sjisBytes.Length;
+            int strCElementCount = slit.Value.Length + 1; // C source の char 数 + NUL
+            string strInitText = CStringEncoder.Encode(slit.Value);
+            return new ArrayInitEmitResult(strInitText, strSourceBytes, strCElementCount, strCElementCount);
+        }
+
         var bytes = new System.Collections.Generic.List<byte>();
         foreach (var expr in code)
         {
@@ -463,13 +484,21 @@ public class CEmitter : IAstVisitor<EmitResult>
                 itemSize = cast.TargetSize == DataSize.Byte ? 1 : 2;
             }
 
+            // StringLiteral が mixed で来た (= 単独 short-circuit に入らなかった) は
+            // 別 PR scope。 単独 path だけ先に対応済 (= v3b-E (3a) first PR)。
+            if (itemExpr is StringLiteral)
+            {
+                Error("StringLiteral mixed with other items in ARRAY initializer is not supported by oscar_c backend (= 別 PR / v3b-E 候補、 単独 StringLiteral 要素なら対応済)", expr.Span);
+                continue;
+            }
+
             var constVal = _constEval.Evaluate(itemExpr);
             if (itemExpr is IntegerLiteral ilit)
                 constVal = (int)ilit.Value;
             if (!constVal.HasValue)
             {
                 // defensive (= SemanticAnalyzer で同じ error が出るはず)
-                Error("non-FLOAT ARRAY initializer element must be a compile-time constant in oscar_c backend (non-constant / string literal / CodeLabelRef の oscar_c emit 対応は別 PR / v3b-E 候補)", expr.Span);
+                Error("non-FLOAT ARRAY initializer element must be a compile-time constant in oscar_c backend (non-constant / CodeLabelRef の oscar_c emit 対応は別 PR / v3b-E 候補)", expr.Span);
                 continue;
             }
 
