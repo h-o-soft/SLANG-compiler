@@ -446,10 +446,55 @@ public class CEmitter : IAstVisitor<EmitResult>
     {
         bool isByteArray = elementType is PrimitiveType { Kind: PrimitiveKind.Byte };
         bool isWordArray = elementType is PrimitiveType { Kind: PrimitiveKind.Word };
-        if (!isByteArray && !isWordArray)
+        bool isFloatArray = elementType is PrimitiveType { Kind: PrimitiveKind.Float };
+        if (!isByteArray && !isWordArray && !isFloatArray)
         {
-            Error("`= { ... }` initializer is supported only for ARRAY BYTE / ARRAY WORD in oscar_c backend (= ARRAY FLOAT InitialCode の oscar_c emit 対応は別 PR / v3b-E 候補)", span);
+            Error("`= { ... }` initializer is supported only for ARRAY BYTE / WORD / FLOAT in oscar_c backend", span);
             return new ArrayInitEmitResult("{0}", 0, 0, 0);
+        }
+
+        // v3b-E (1b): ARRAY FLOAT FA[N] = { 1.0, 2.0, ... } 専用 path
+        // oscar64 native float32 を使い `static float V_FA[N+1] = {1.0, 2.0};` で emit。
+        // SLANG semantic は f24 (3 byte/elem) 基準で容量計算するが、 oscar_c では
+        // float32 (4 byte/elem) 基準で C 配列確保 = element 数ベースで偶然整合する
+        // (= 容量 N+1 elements 以内に init element が収まれば semantic / C 両方 pass)。
+        // ユーザー指示: oscar 側 float のみ考慮、 SLANG f24 byte stream layout は無視。
+        if (isFloatArray)
+        {
+            var floatLiterals = new System.Collections.Generic.List<string>(code.Count);
+            bool sawFloatError = false;
+            foreach (var expr in code)
+            {
+                // トップレベル CastExpr は ArrayInitialCodeSizer で先 reject 済 = defensive
+                if (expr is CastExpr)
+                {
+                    Error("Cast expression not allowed in FLOAT array initializer (= ArrayInitialCodeSizer で先 reject 済、 defensive)", expr.Span);
+                    sawFloatError = true;
+                    continue;
+                }
+                // ConstEvaluator.EvaluateFloat で値解決 (= FloatLiteral / IntegerLiteral
+                // promote / 定数式 1.0 + 2.0 等を C float literal に展開)
+                var fv = _constEval.EvaluateFloat(expr);
+                if (fv.HasValue)
+                {
+                    // oscar64 は float の `f` suffix を受け付けない (= 既存 VisitFloatLiteral
+                    // と同じ規約)、 `.0` を含む形に補完して float literal を確定させる
+                    string lit = fv.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+                    if (!lit.Contains('.') && !lit.Contains('e') && !lit.Contains('E')) lit += ".0";
+                    floatLiterals.Add(lit);
+                    continue;
+                }
+                // 非定数 (= 識別子参照等) は oscar64 static initializer 制約で reject
+                // (= 既存 (3b) 知見、 error 3008 Constant initializer expected と同じ理由)
+                Error("ARRAY FLOAT initializer element must be a compile-time constant in oscar_c backend (= 非定数 expression の static init は oscar64 で error 3008、 MAIN 冒頭等で runtime 初期化に書き換え推奨)", expr.Span);
+                sawFloatError = true;
+            }
+            if (sawFloatError) return new ArrayInitEmitResult("{0}", 0, 0, 0);
+            string fInitText = "{" + string.Join(", ", floatLiterals) + "}";
+            // SourceByteCount = SLANG semantic 基準 (= f24 3 byte/elem)、
+            // EmittedByteCount = oscar64 float32 基準 (= 4 byte/elem)、
+            // CElementCount = element 数 (= caller の C 配列長算出 / NUL fit check に使う)
+            return new ArrayInitEmitResult(fInitText, code.Count * 3, code.Count * 4, code.Count);
         }
 
         // 単独 StringLiteral path (= `ARRAY BYTE S[] = {"hello"}` / `ARRAY BYTE S[N] = {"hi"}`)
@@ -520,9 +565,11 @@ public class CEmitter : IAstVisitor<EmitResult>
                 itemExpr = cast.Operand;
                 if (cast.TargetSize == DataSize.Float)
                 {
-                    // 非 FLOAT 配列の %% は SemanticAnalyzer は許可するが、 oscar_c emit
-                    // は未対応 (= defensive、 SemanticAnalyzer 通過しても oscar_c で reject)
-                    Error("FLOAT (`%%`) prefix in ARRAY BYTE / WORD initializer is not supported by oscar_c backend (= 別 PR / v3b-E 候補)", expr.Span);
+                    // FLOAT prefix (= `%%1.5`) は SLANG 仕様で f24 (= 3 byte) を byte
+                    // stream に流す機能だが、 oscar_c は oscar64 native float32 mapped で
+                    // f24 byte 表現を持たないため意味的に **permanent backend gap**。
+                    // ユーザーが float 値を ARRAY に詰めたい場合は ARRAY FLOAT を使う。
+                    Error("FLOAT prefix (`%%`) in ARRAY BYTE / WORD initializer is not supported by oscar_c backend (= oscar64 は f24 byte stream 表現を持たない、 ARRAY FLOAT FA[N] = { 1.0, ... } を使ってください、 #194 配下 v3b-E (2) permanent backend gap)", expr.Span);
                     continue;
                 }
                 itemSize = cast.TargetSize == DataSize.Byte ? 1 : 2;
