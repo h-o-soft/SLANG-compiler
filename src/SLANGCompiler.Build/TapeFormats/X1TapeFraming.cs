@@ -4,21 +4,26 @@ namespace SLANGCompiler.Build.TapeFormats;
 /// Frame a SHARP X1 cassette byte stream from a tape-bit sequence (and vice versa).
 ///
 /// Per X1 IPL ROM (CMT_LOADIFB / MT_RDBYTE)、 X1_compatible_rom 実装 (= 互換 IPL)
-/// と整合する on-tape structure:
+/// と整合する on-tape structure (= **純正 / 互換 X1 IPL 両 boot 成功確認済**):
 ///
 ///   [LEADER]    long run of "1" bits (info: ~1000+; data body: ~3000+)
 ///   [SYNC 0s]   continuous "0" bits (info: 40 / data: 20)
-///   [SYNC 1s]   continuous "1" bits (info: 40 / data: 20)
+///   [SYNC 1s]   continuous "1" bits (info: **41** / data: **21**)
+///                ← 互換 IPL MT_SKIP1 が 41 / 21 個 skip する実装と整合、
+///                  40 / 20 だと byte 0 start "1" が MT_SKIP1 の +1 padding に
+///                  消費されて IPL が boot 失敗 (= 「立ち上がり検出 1 個」 の正体)。
 ///   [BYTE]*     each byte = **1 start bit "1"** + 8 data bits MSB first = 9 bit/byte
 ///                (互換 IPL MT_RDBYTE は MT_RDBIT を 9 回 read で 1 byte)
 ///   [CHECKSUM]  2 bytes also framed as **9 bit/byte** (= 通常 byte と同じ start "1" +
-///                8 data)。 互換 IPL CMT_LOADIFB は 32+2=34 byte を MT_RDBYTE で 34 回
-///                read してる、 つまり checksum も通常 byte framing でないと読めない。
-///                (retropc tapeformat.html では checksum は start "1" なし と記載あり、
-///                 互換 IPL 実装と矛盾するが、 emulator boot 優先で互換 IPL 寄りを採用)
+///                8 data)。 互換 IPL CMT_LOADIFB は info 32 + checksum 2 = 34 byte を
+///                MT_RDBYTE × 34 回 で 一括 read してる、 純正 X1 IPL も同じ framing。
+///                (retropc tapeformat.html の「checksum は start '1' なし」 表記は誤読、
+///                 実 X1 tape decode で 9 bit/byte 確定)
 ///
 /// Checksum 値計算: payload 全 byte の bit "1" 個数 (= popcount) を 16-bit modular sum、
-/// little-endian で block 末尾に書く (= X1 IPL `ld hl,(...)` で LE 読み)。
+/// **big-endian** (= MSB first、 high byte 先) で block 末尾に書く (= 実 X1 tape 逆引きで
+/// BE 確定、 LE と読むと checksum 一致しない)。 ただし info block の DataSize / LoadAddress
+/// / ExecuteAddress 自体は逆に **little-endian** (= X1 IPL `ld hl,(...)` 互換、 X1InfoBlock 参照)。
 ///
 /// The classic "information block" carries the file header (boot flag, filename,
 /// extension, sizes, addresses, date, ...) in a 32-byte payload + 2-byte checksum.
