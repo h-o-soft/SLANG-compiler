@@ -44,7 +44,9 @@ public class Driver
         /// <summary>slangc に pass-through する `-L &lt;path&gt;` の値リスト</summary>
         public List<string> LibraryPaths { get; } = new();
 
-        /// <summary>"bin" (default) or "disk"。"disk" は env の `disk:` セクション必須。</summary>
+        /// <summary>"bin" (default) or "disk" or "tape"。"disk" は env の `disk:`
+        /// セクション必須、 "tape" は raw bin output env (= Z80 backend + OutputFormat
+        /// null/bin) + env の `tape:` セクション or CLI tape option 必須 (Phase B)。</summary>
         public string EmitMode { get; set; } = "bin";
         /// <summary>`--disk-image &lt;path&gt;`。EmitMode == "disk" 時のみ意味を持つ。
         /// null の場合は &lt;output_prefix&gt;.d88 を使う。</summary>
@@ -52,6 +54,17 @@ public class Driver
         /// <summary>`--disk-template &lt;path&gt;`。env file の disk.template を CLI で
         /// override する。EmitMode == "disk" 時のみ意味を持つ。null/空なら env 値を使う。</summary>
         public string? DiskTemplatePath { get; set; }
+
+        // === Phase B: --emit tape 関連 ===
+        /// <summary>`--wav`。EmitMode == "tape" 時に .wav も同時生成。</summary>
+        public bool EmitWav { get; set; }
+        /// <summary>`--tape-name &lt;name&gt;`。env.Tape.Name を CLI override。</summary>
+        public string? TapeName { get; set; }
+        /// <summary>`--tape-load &lt;addr&gt;`。env.Tape.Load (or env.DefaultOrg) を CLI override。
+        /// 例: `--tape-load '$1000'` or `--tape-load 0x1000`。</summary>
+        public int? TapeLoad { get; set; }
+        /// <summary>`--tape-exec &lt;addr&gt;`。env.Tape.Exec (or load) を CLI override。</summary>
+        public int? TapeExec { get; set; }
     }
 
     private readonly Options _opts;
@@ -140,6 +153,21 @@ public class Driver
             Console.Error.WriteLine(
                 $"slangbuild: --emit disk requires `disk:` section in env: {envPath}");
             return 1;
+        }
+
+        // --emit tape は raw bin output env 限定 (= Phase B)。
+        // Z80 backend + OutputFormat null/bin のみ許容、 cmt / c_source は reject。
+        // Driver.RunOscarC は別 path で Z80 dispatch 前に分岐するため、 ここでは
+        // Z80 backend 想定の OutputFormat check のみ。
+        if (_opts.EmitMode == "tape")
+        {
+            if (envConfig.OutputFormat != null)
+            {
+                Console.Error.WriteLine(
+                    $"slangbuild: --emit tape requires raw bin output env " +
+                    $"(got `output: {envConfig.OutputFormat}`) in env: {envPath}");
+                return 1;
+            }
         }
 
         // === 出力 format / 拡張子 / AILZ80ASM 出力 flag / extra args 決定 ===
@@ -369,6 +397,26 @@ public class Driver
                 int diskRc = BuildDiskImage(envConfig, envPath, mainBin,
                                             renamedOverlayBins, outputBase);
                 if (diskRc != 0) return diskRc;
+            }
+
+            // === Step 4 (Phase B): --emit tape → X1 .tap (+ optional .wav) 組み立て ===
+            if (_opts.EmitMode == "tape")
+            {
+                // overlay 検出時は reject (= MVP scope 外、 silent に main だけ tape 化
+                //  すると事故るため明示)。 X1 tape = 1 binary per tape spec、
+                //  multi-overlay tape 対応は別 PR で検討。
+                if (renamedOverlayBins.Count > 0)
+                {
+                    Console.Error.WriteLine(
+                        $"slangbuild: --emit tape with overlay (got {renamedOverlayBins.Count} overlay) " +
+                        "is not supported (= X1 tape は 1 binary per tape 仕様、 multi-overlay tape は未対応)");
+                    return 1;
+                }
+                var binBytes = File.ReadAllBytes(mainBin);
+                var tapeCfg = TapeImageBuilder.MergeTapeConfig(envConfig, _opts, outputBase);
+                int tapeRc = new TapeImageBuilder().Build(
+                    binBytes, tapeCfg, outputBase, _opts.EmitWav, _opts.Verbose);
+                if (tapeRc != 0) return tapeRc;
             }
 
             if (_opts.Verbose)

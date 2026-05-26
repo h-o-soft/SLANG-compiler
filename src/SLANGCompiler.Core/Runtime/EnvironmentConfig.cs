@@ -117,6 +117,13 @@ public class EnvironmentConfig
     public DiskConfig? Disk { get; set; }
 
     /// <summary>
+    /// X1 tape 出力設定 (slangbuild --emit tape 用、 Phase B)。env file に
+    /// `tape:` セクションが無ければ null。 raw bin output env (= OutputFormat
+    /// null/bin) 専用、 CMT / oscar_c とは排他 (Driver で reject)。
+    /// </summary>
+    public TapeConfig? Tape { get; set; }
+
+    /// <summary>
     /// AILZ80ASM 出力後に main bin の直後に concat する追加 .cmt path のリスト
     /// (env file dir 基準の相対 path → 絶対化済み)。pc80mk2x の XBIOS.CMT 結合用。
     /// null/empty = 結合なし。<see cref="OutputFormat"/> == "cmt" 必須
@@ -284,6 +291,31 @@ public class DiskConfig
     /// 順序保証 = YAML リスト順。他 tool では null。
     /// </summary>
     public List<string>? ExtraFiles { get; set; }
+}
+
+/// <summary>
+/// `tape:` セクション (slangbuild --emit tape 用、 Phase B)。 X1 tape (.tap / .wav)
+/// 出力時の header 情報 default。 CLI option (`--tape-name` / `--tape-load` /
+/// `--tape-exec`) で override 可能、 未指定時 load default は <see cref="EnvironmentConfig.DefaultOrg"/>。
+/// </summary>
+public class TapeConfig
+{
+    /// <summary>X1InfoBlock.FileName (= 13 char ASCII printable max)。 null なら
+    /// CLI / output basename から derive (TapeImageBuilder.MergeTapeConfig)。</summary>
+    public string? Name { get; set; }
+
+    /// <summary>X1InfoBlock.LoadAddress (16-bit、 $XXXX or 0xXXXX 文字列 → int parse)。
+    /// null なら CLI override or EnvironmentConfig.DefaultOrg。</summary>
+    public int? Load { get; set; }
+
+    /// <summary>X1InfoBlock.ExecuteAddress (16-bit)。 null なら Load と同じ。</summary>
+    public int? Exec { get; set; }
+
+    /// <summary>WAV 出力の sample rate (Hz)、 default 48000 (= xmil 互換)。</summary>
+    public int? WavSampleRate { get; set; }
+
+    /// <summary>WAV 出力の bit depth (8 or 16)、 default 8。</summary>
+    public int? WavBits { get; set; }
 }
 
 /// <summary>

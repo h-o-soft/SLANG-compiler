@@ -349,6 +349,22 @@ public class EnvironmentLoader
             }
         }
 
+        // tape セクション (Phase B、 slangbuild --emit tape 用)
+        if (raw.Tape != null)
+        {
+            config.Tape = new TapeConfig
+            {
+                Name = raw.Tape.Name,
+                WavSampleRate = raw.Tape.WavSampleRate,
+                WavBits = raw.Tape.WavBits,
+            };
+            // load/exec は "$XXXX" / "0xXXXX" 文字列 → int parse (= default_org と同流儀)
+            if (!string.IsNullOrEmpty(raw.Tape.Load))
+                config.Tape.Load = ParseAddress(raw.Tape.Load);
+            if (!string.IsNullOrEmpty(raw.Tape.Exec))
+                config.Tape.Exec = ParseAddress(raw.Tape.Exec);
+        }
+
         return config;
     }
 
@@ -517,6 +533,9 @@ public class EnvironmentLoader
         [YamlMember(Alias = "disk")]
         public EnvFileDiskData? Disk { get; set; }
 
+        [YamlMember(Alias = "tape")]
+        public EnvFileTapeData? Tape { get; set; }
+
         // --- C backend (oscar64) 系 ---
         [YamlMember(Alias = "backend")]
         public string? Backend { get; set; }
@@ -609,6 +628,28 @@ public class EnvironmentLoader
     {
         [YamlMember(Alias = "path")]
         public string? Path { get; set; }
+    }
+
+    /// <summary>
+    /// `tape:` セクションの YAML 受け側 (Phase B、 X1 .tap / .wav 出力 default 値)。
+    /// load/exec は "$XXXX" / "0xXXXX" 等の文字列で受けて ParseAddress で int 化。
+    /// </summary>
+    private class EnvFileTapeData
+    {
+        [YamlMember(Alias = "name")]
+        public string? Name { get; set; }
+
+        [YamlMember(Alias = "load")]
+        public string? Load { get; set; }
+
+        [YamlMember(Alias = "exec")]
+        public string? Exec { get; set; }
+
+        [YamlMember(Alias = "wav_sample_rate")]
+        public int? WavSampleRate { get; set; }
+
+        [YamlMember(Alias = "wav_bits")]
+        public int? WavBits { get; set; }
     }
 
     private class EnvFileSystemFile
