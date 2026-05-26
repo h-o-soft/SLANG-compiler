@@ -446,4 +446,235 @@ public class ArrayInitOscarCTests
         // ARRAY WORD W[2] は 3 要素確保、 init 2 WORD で残り 1 WORD は C implicit fill
         Assert.Contains("static unsigned int V_MAIN_W[3] = {0x1234, 0x5678};", src);
     }
+
+    // === v3b-E (Issue #194) (3a): StringLiteral 単独 in ARRAY BYTE 対応 ===
+    // oscar64 -psci で C string literal の PETSCII 自動変換を活かすため、
+    // SLANG 仕様の SJIS byte 列 (= Z80 既存挙動) ではなく C string literal を
+    // そのまま emit する (= 意図的 backend gap)。 mixed / WORD / FLOAT は scope 外。
+
+    [Fact]
+    public void UnsizedArrayByte_StringLiteralSingle_EmitsCStringWithNul()
+    {
+        // 添字省略 + 単独 StringLiteral: C 配列長 = SJIS bytes + NUL 1 byte
+        var src = TranspileWithEnv("""
+            ARRAY BYTE MSG[] = { "hello" };
+            MAIN() { PRINT(MSG[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // hex literal 列ではなく C string literal で emit (= oscar64 -psci で PETSCII 化)
+        Assert.Contains("static unsigned char V_MSG[6] = \"hello\";", src);
+    }
+
+    [Fact]
+    public void FixedArrayByte_StringLiteralExactCapacity_EmitsCString()
+    {
+        // ARRAY BYTE M[5] は 6 要素確保 = "hello" (5 char) + NUL でぴったり
+        var src = TranspileWithEnv("""
+            ARRAY BYTE MSG[5] = { "hello" };
+            MAIN() { PRINT(MSG[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static unsigned char V_MSG[6] = \"hello\";", src);
+    }
+
+    [Fact]
+    public void FixedArrayByte_StringLiteralUnderfilled_ImplicitZeroFillByC()
+    {
+        // ARRAY BYTE M[9] は 10 要素確保、 "hi" (2 char) + NUL = 3 byte 書き、
+        // 残り 7 byte は C implicit zero fill (= 既存 underfilled BYTE test と整合)
+        var src = TranspileWithEnv("""
+            ARRAY BYTE MSG[9] = { "hi" };
+            MAIN() { PRINT(MSG[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static unsigned char V_MSG[10] = \"hi\";", src);
+    }
+
+    [Fact]
+    public void FixedArrayByte_StringLiteralOverflow_SemanticErrorByCapacity()
+    {
+        // ARRAY BYTE M[1] は 2 要素確保、 "hello" SJIS 5 byte は超過 → semantic error
+        // (= helper の StringLiteral path 自体は通すが ArrayInitialCodeSizer で先 reject)
+        var src = TranspileWithEnv("""
+            ARRAY BYTE MSG[1] = { "hello" };
+            MAIN() { PRINT(MSG[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "StringLiteral 容量超過は SLANG semantic で reject");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("capacity", StringComparison.OrdinalIgnoreCase)
+              || d.Message.Contains("多すぎ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ArrayByte_StringLiteralMixedWithOther_RaisesError()
+    {
+        // mixed (= "hi" + 数値要素) は v3b-E first PR scope 外として error
+        var src = TranspileWithEnv("""
+            ARRAY BYTE MSG[] = { "hi", 0 };
+            MAIN() { PRINT(MSG[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "StringLiteral と数値の mixed は scope 外 error");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("StringLiteral", StringComparison.OrdinalIgnoreCase)
+              && d.Message.Contains("mixed", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ArrayWord_StringLiteralSingle_RaisesError()
+    {
+        // WORD 配列への StringLiteral は意味曖昧 = scope 外 error
+        var src = TranspileWithEnv("""
+            ARRAY WORD W[] = { "hi" };
+            MAIN() { PRINT(W[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "ARRAY WORD への StringLiteral は scope 外 error");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("StringLiteral", StringComparison.OrdinalIgnoreCase)
+              && d.Message.Contains("ARRAY BYTE", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void LocalStaticArrayByte_StringLiteralSingle_EmitsCString()
+    {
+        // 関数内 static + 添字省略 + StringLiteral
+        var src = TranspileWithEnv("""
+            MAIN()
+                ARRAY BYTE MSG[] = { "world" };
+            BEGIN
+                PRINT(MSG[0]);
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static unsigned char V_MAIN_MSG[6] = \"world\";", src);
+    }
+
+    [Fact]
+    public void ArrayByte_StringLiteral_EscapesQuoteAndBackslash()
+    {
+        // C string literal 出力で `"` `\` 等が escape されること (= CStringEncoder 経由)
+        var src = TranspileWithEnv("""
+            ARRAY BYTE MSG[] = { "a\"b\\c" };
+            MAIN() { PRINT(MSG[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // SLANG `a"b\c` の 5 char + NUL = 6 byte、 C 出力で `"` `\` を escape
+        Assert.Contains("static unsigned char V_MSG[6] = \"a\\\"b\\\\c\";", src);
+    }
+
+    [Fact]
+    public void FixedArrayByte_StringLiteralExactSjisCapacity_RaisesNulFitError()
+    {
+        // ARRAY BYTE MSG[4] (= 容量 5 byte) に "hello" (SJIS 5 byte) は semantic では
+        // ぴったり pass するが、 C string literal は NUL 含めて 6 byte 必要 →
+        // NUL 終端が容量に入らず backend error (= Codex review Medium 指摘 (1) 対応、
+        // C 上は NUL 落ちで compile 通るが SLANG 期待の終端保証が壊れる)
+        var src = TranspileWithEnv("""
+            ARRAY BYTE MSG[4] = { "hello" };
+            MAIN() { PRINT(MSG[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "固定長で NUL 終端が容量に入らない StringLiteral は backend reject");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("NUL", StringComparison.Ordinal)
+              && d.Message.Contains("容量", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LocalStaticArrayByte_StringLiteralExactSjisCapacity_RaisesNulFitError()
+    {
+        // 関数内 static 経路も同じ NUL 終端 check が効くこと
+        var src = TranspileWithEnv("""
+            MAIN()
+                ARRAY BYTE MSG[4] = { "world" };
+            BEGIN
+                PRINT(MSG[0]);
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "関数内 static でも NUL 終端 check");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("NUL", StringComparison.Ordinal)
+              && d.Message.Contains("容量", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ArrayByte_StringLiteralNonAscii_RaisesError()
+    {
+        // 高位 byte (= "あ" 等) は SJIS bytes と char 数が一致せず、 C 配列長 / 内容が
+        // 壊れる + CStringEncoder の `\xNN` escape が後続 hex digit を食う問題もある
+        // (= Codex review Medium 指摘 (2) 対応)。 ASCII printable 限定スコープで reject。
+        var src = TranspileWithEnv("""
+            ARRAY BYTE MSG[] = { "あ" };
+            MAIN() { PRINT(MSG[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "非 ASCII char は v3b-E (3a) scope 外");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("non-ASCII", StringComparison.OrdinalIgnoreCase)
+              || d.Message.Contains("ASCII printable", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ArrayByte_StringLiteralControlChar_RaisesError()
+    {
+        // 制御文字 + 後続 hex digit (= "\x01A") は C `\xNN` escape が後続を食って
+        // 0x1A になる仕様の罠 (= Codex review Low 指摘 (3) 対応)。 制御文字も reject。
+        var src = TranspileWithEnv("""
+            ARRAY BYTE MSG[] = { "\x01A" };
+            MAIN() { PRINT(MSG[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "0x01 等の表示不可制御文字は v3b-E (3a) scope 外");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("non-printable", StringComparison.OrdinalIgnoreCase)
+              || d.Message.Contains("ASCII printable", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ArrayByte_StringLiteralAllowedNewline_Accepted()
+    {
+        // SLANG `\n` (lexer 解釈で CR=0x0D) は scope 内で許可、 通過すること。
+        // SLANG `\r` `\t` `\0` は SLANG lexer 仕様では別 char (= 0x1C / 't' / '0')
+        // になり、 `\r` のみ ASCII printable 外で reject 対象 (= scope 外)。
+        var src = TranspileWithEnv("""
+            ARRAY BYTE MSG[] = { "hi\n" };
+            MAIN() { PRINT(MSG[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // SLANG `"hi\n"` (= 3 char with 改行=CR) + NUL = 4 byte、 C 出力で `\r`
+        Assert.Contains("static unsigned char V_MSG[4] = \"hi\\r\";", src);
+    }
+
+    [Fact]
+    public void ArrayByte_StringLiteralNul_RaisesError()
+    {
+        // NUL (= `\x00`) は CStringEncoder が `\0` C octal escape 短縮形で出すため、
+        // 直後が 0..7 だと C 側で octal escape として連結し ARRAY 内容が壊れる
+        // (= Codex review round 2 Medium 指摘: SLANG `"\x007"` → C `"\07"` = [0x07]
+        //  と誤解釈、 期待 [0x00, '7', 0x00] にならない)。 安全策で NUL も scope 外 reject。
+        var src = TranspileWithEnv("""
+            ARRAY BYTE MSG[] = { "\x007" };
+            MAIN() { PRINT(MSG[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "NUL 含む StringLiteral は v3b-E (3a) scope 外");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("NUL", StringComparison.Ordinal)
+              || d.Message.Contains("non-printable", StringComparison.OrdinalIgnoreCase));
+    }
 }
