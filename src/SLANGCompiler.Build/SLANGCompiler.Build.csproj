@@ -13,5 +13,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\SLANGCompiler.Core\SLANGCompiler.Core.csproj" />
+    <InternalsVisibleTo Include="SLANGCompiler.Tests" />
   </ItemGroup>
 </Project>
