@@ -309,4 +309,141 @@ public class ArrayInitOscarCTests
         Assert.Contains("static unsigned char *V_MAIN_T;", src);
         Assert.Contains("V_MAIN_T = ", src);
     }
+
+    // === v3b-E (Issue #194) first PR: ARRAY WORD InitialCode 対応 ===
+    // SLANG 仕様の「`= { ... }` は CODE byte stream」解釈を維持しつつ
+    // C 型整合のため WORD literal に grouping して emit する。
+    // 容量までの 0 fill は helper では行わず C implicit zero fill に委譲。
+
+    [Fact]
+    public void GlobalArrayWord_AllWordValues_EmitsCArrayInit()
+    {
+        // 全 %prefix WORD 要素: 各 2 byte LE → そのまま WORD literal に grouping
+        var src = TranspileWithEnv("""
+            ARRAY WORD W[2] = { %$1234, %$5678, %$9ABC };
+            MAIN() { PRINT(W[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // ARRAY WORD W[2] は 3 要素確保 (= index 0..2)、 init 3 WORD = 6 byte で ぴったり
+        Assert.Contains("static unsigned int V_W[3] = {0x1234, 0x5678, 0x9ABC};", src);
+    }
+
+    [Fact]
+    public void GlobalArrayWord_DefaultByteItems_GroupedAsLE()
+    {
+        // default 1 byte item を 2 byte ずつ LE で grouping して WORD literal 化。
+        // byte stream [0xAB, 0xCD, 0xEF, 0xFF] → WORD[2] = {0xCDAB, 0xFFEF}
+        var src = TranspileWithEnv("""
+            ARRAY WORD W[2] = { $AB, $CD, $EF, $FF };
+            MAIN() { PRINT(W[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // 容量 3 WORD = 6 byte に対し init 4 byte = 2 WORD、 残り 1 WORD は C implicit 0 fill
+        Assert.Contains("static unsigned int V_W[3] = {0xCDAB, 0xFFEF};", src);
+    }
+
+    [Fact]
+    public void GlobalArrayWord_OddByteCount_PadsLastByteWithZero()
+    {
+        // 奇数 byte stream の場合は末尾を 0 padding して偶数化 (= WORD grouping のため)。
+        // [0x34, 0x12, 0xAB] → +1 padding → [0x34, 0x12, 0xAB, 0x00] = WORD[2] = {0x1234, 0x00AB}
+        var src = TranspileWithEnv("""
+            ARRAY WORD W[1] = { %$1234, $AB };
+            MAIN() { PRINT(W[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // ARRAY WORD W[1] は 2 要素確保、 init 2 WORD = ぴったり
+        Assert.Contains("static unsigned int V_W[2] = {0x1234, 0x00AB};", src);
+    }
+
+    [Fact]
+    public void GlobalArrayWord_Underfilled_ImplicitlyZeroFilledByC()
+    {
+        // 容量に満たない init は helper では 0 fill せず C implicit zero fill に委譲。
+        // (= 既存 BYTE UnderfilledArrayByte_InitCode_Accepted_RestZeroFilledByC と同じ流儀)
+        var src = TranspileWithEnv("""
+            ARRAY WORD W[3] = { %$0001 };
+            MAIN() { PRINT(W[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // ARRAY WORD W[3] は 4 要素確保、 init 1 WORD のみ書き残り 3 WORD は C が 0 埋め
+        Assert.Contains("static unsigned int V_W[4] = {0x0001};", src);
+    }
+
+    [Fact]
+    public void UnsizedArrayWord_InitCode_DerivesCElementCount()
+    {
+        // 添字省略 + InitialCode: C array 長は CElementCount (= byte 数 / 2)、
+        // byte 数を直接使うと WORD で 2 倍になる事故が起きる (= Codex review High 指摘)。
+        var src = TranspileWithEnv("""
+            ARRAY WORD P[] = { %$1234, %$5678 };
+            MAIN() { PRINT(P[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // byte 数 4 → CElementCount=2、 C array V_P[2]
+        Assert.Contains("static unsigned int V_P[2] = {0x1234, 0x5678};", src);
+        // 旧 byte-count 流用で V_P[4] が出ないこと (= Codex High 指摘の回帰防止)
+        Assert.DoesNotContain("V_P[4]", src);
+    }
+
+    [Fact]
+    public void UnsizedArrayWord_OddByteCount_PadsAndDerivesCElementCount()
+    {
+        // 添字省略で source byte=1 (奇数) → +1 padding → emitted byte=2、 CElementCount=1
+        var src = TranspileWithEnv("""
+            ARRAY WORD P[] = { $AB };
+            MAIN() { PRINT(P[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static unsigned int V_P[1] = {0x00AB};", src);
+    }
+
+    [Fact]
+    public void UnsizedArrayWord_AssignmentRaisesError()
+    {
+        // 添字省略 + InitialCode の ARRAY WORD も _unsizedArraysWithInit で tracking、
+        // 代入は reject (= BYTE 配列と同様の guard が WORD でも効くこと)。
+        var src = TranspileWithEnv("""
+            ARRAY WORD P[] = { %$1234 };
+            MAIN()
+            BEGIN
+                P = $3000;
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "unsized ARRAY WORD + InitialCode の代入も error 期待");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("ARRAY", StringComparison.OrdinalIgnoreCase)
+              && d.Message.Contains("assign", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void LocalStaticArrayWord_InitCode_EmitsCArrayInit()
+    {
+        // 関数内 static ARRAY WORD の InitialCode も同じ logic で展開
+        var src = TranspileWithEnv("""
+            MAIN()
+                ARRAY WORD W[2] = { %$1234, %$5678 };
+            BEGIN
+                PRINT(W[0]);
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // ARRAY WORD W[2] は 3 要素確保、 init 2 WORD で残り 1 WORD は C implicit fill
+        Assert.Contains("static unsigned int V_MAIN_W[3] = {0x1234, 0x5678};", src);
+    }
 }
