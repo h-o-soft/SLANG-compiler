@@ -12,6 +12,7 @@
 - oscar_c backend で `ARRAY WORD W[N] = { 値, %値, ... }` 初期化対応 (= CODE byte stream を 2 byte ずつ little-endian で WORD literal に grouping、 容量埋めは C implicit zero fill 任せ、 #194 配下 v3b-E first PR)。
 - oscar_c backend で `ARRAY BYTE S[N] = { "..." }` の StringLiteral 単独初期化対応 (= C string literal `static unsigned char V_S[N+1] = "...";` で emit、 oscar64 `-psci` で PETSCII 自動変換、 #194 配下 v3b-E (3a))。mixed (= StringLiteral + 数値) と ARRAY WORD への StringLiteral は scope 外で error。
 - oscar_c backend の ARRAY initializer で `%FUNC` / `%ARRAY` の address 参照 (= jump table / pointer table 用途) を **permanent backend gap** として明示 reject + workaround メッセージ (= MAIN 冒頭等で runtime 初期化に書き換え) を出すよう更新 (= oscar64 が static integer initializer で address-to-integer cast を constant initializer と認めない、 error 3008 を実機検証で確認、 #194 配下 v3b-E (3b))。Z80 backend は `DW LABEL` で linker reloc 解決可能、 backend gap として明示。
+- oscar_c CEmitter の `ARRAY ...:address = { ... }` (= fixed addr + InitialCode) 防衛 error を削除 (= SLANG parser が文法レベルで reject するため到達不能、 #194 配下 v3b-E (5))。 parser reject を pin する test を追加。
 
 ## Version 0.24.1
 
