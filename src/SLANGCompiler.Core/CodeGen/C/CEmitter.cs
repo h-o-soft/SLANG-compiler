@@ -466,19 +466,25 @@ public class CEmitter : IAstVisitor<EmitResult>
                 Error("StringLiteral element is supported only for ARRAY BYTE in oscar_c backend (= ARRAY WORD への StringLiteral は意味曖昧、 scope 外)", span);
                 return new ArrayInitEmitResult("\"\"", 0, 0, 0);
             }
-            // 非 ASCII / 表示不可制御文字は v3b-E (3a) scope 外 で reject:
+            // 非 ASCII / 表示不可制御文字 / NUL は v3b-E (3a) scope 外 で reject:
             //   1. SLANG raw .Length と SJIS byte 数が一致しないと C 配列長 (= raw.Length + 1)
             //      が SJIS byte 数より小さくなる (= "あ" U+3042 は SJIS 2 byte / .Length=1)
             //   2. CStringEncoder の `\xNN` escape は C 仕様で後続 hex digit を食う
-            //      (例 "\x01A" → 0x1A) ため制御文字 + 続く hex char の組合せが壊れる
-            // 安全策として ASCII printable (0x20-0x7E) + 既定 escape (\n \r \t \0) のみ許可。
+            //      (例 "\x01A" → C `\x01A` = 0x1A) ため制御文字 + 続く hex char が壊れる
+            //   3. NUL (= U+0000) は CStringEncoder が `\0` (C octal escape の短縮形) で
+            //      出すため、直後が 0..7 だと C 側で octal escape として連結 (例 SLANG
+            //      `"\x007"` → C `"\07"` = [0x07] と誤解釈) → これも reject
+            // SLANG lexer 解釈に注意: `"\n"` 経由は CR (0x0D)、 `"\xNN"` 経由は raw byte、
+            // SLANG `"\r"` `"\t"` `"\0"` 自体は別の char (0x1C / 't' / '0') になるため
+            // ここの check は **char 値ベース** で判定する (= SLANG escape 構文ベースではない)。
+            // 安全策として **ASCII printable (0x20-0x7E) + CR (0x0D、 SLANG `\n` 経由) のみ** 許可。
             foreach (var ch in slit.Value)
             {
                 bool isAsciiPrintable = ch >= 0x20 && ch <= 0x7E;
-                bool isWhitelistedEscape = ch == '\n' || ch == '\r' || ch == '\t' || ch == '\0';
-                if (!isAsciiPrintable && !isWhitelistedEscape)
+                bool isAllowedNewline = ch == '\r'; // SLANG `\n` (lexer で CR=0x0D 解釈)
+                if (!isAsciiPrintable && !isAllowedNewline)
                 {
-                    Error("StringLiteral with non-ASCII / non-printable character is not supported in oscar_c ARRAY BYTE initializer (v3b-E (3a) scope は ASCII printable 0x20-0x7E + 既定 escape `\\n` `\\r` `\\t` `\\0` のみ、 高位 byte / その他制御文字は別 PR / v3b-E (3a-ext) 候補)", slit.Span);
+                    Error("StringLiteral with non-ASCII / non-printable / NUL character is not supported in oscar_c ARRAY BYTE initializer (v3b-E (3a) scope は ASCII printable 0x20-0x7E + 改行 CR (0x0D、 SLANG `\\n` 経由) のみ、 NUL / 高位 byte / その他制御文字は別 PR / v3b-E (3a-ext) 候補)", slit.Span);
                     return new ArrayInitEmitResult("\"\"", 0, 0, 0, IsCStringLiteral: true);
                 }
             }

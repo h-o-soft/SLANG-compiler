@@ -644,11 +644,11 @@ public class ArrayInitOscarCTests
     }
 
     [Fact]
-    public void ArrayByte_StringLiteralAllowedEscapes_Accepted()
+    public void ArrayByte_StringLiteralAllowedNewline_Accepted()
     {
-        // 既定 escape (= `\n` `\r` `\t` `\0`) は scope 内で許可、 通過すること。
-        // SLANG parser は `\n` (改行) を CR (0x0D) として解釈する仕様 (= microcomputer
-        // 文化、 既存 SLANG 動作)、 そのため C 出力では `\r` escape になる。
+        // SLANG `\n` (lexer 解釈で CR=0x0D) は scope 内で許可、 通過すること。
+        // SLANG `\r` `\t` `\0` は SLANG lexer 仕様では別 char (= 0x1C / 't' / '0')
+        // になり、 `\r` のみ ASCII printable 外で reject 対象 (= scope 外)。
         var src = TranspileWithEnv("""
             ARRAY BYTE MSG[] = { "hi\n" };
             MAIN() { PRINT(MSG[0]); }
@@ -658,5 +658,23 @@ public class ArrayInitOscarCTests
             $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
         // SLANG `"hi\n"` (= 3 char with 改行=CR) + NUL = 4 byte、 C 出力で `\r`
         Assert.Contains("static unsigned char V_MSG[4] = \"hi\\r\";", src);
+    }
+
+    [Fact]
+    public void ArrayByte_StringLiteralNul_RaisesError()
+    {
+        // NUL (= `\x00`) は CStringEncoder が `\0` C octal escape 短縮形で出すため、
+        // 直後が 0..7 だと C 側で octal escape として連結し ARRAY 内容が壊れる
+        // (= Codex review round 2 Medium 指摘: SLANG `"\x007"` → C `"\07"` = [0x07]
+        //  と誤解釈、 期待 [0x00, '7', 0x00] にならない)。 安全策で NUL も scope 外 reject。
+        var src = TranspileWithEnv("""
+            ARRAY BYTE MSG[] = { "\x007" };
+            MAIN() { PRINT(MSG[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "NUL 含む StringLiteral は v3b-E (3a) scope 外");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("NUL", StringComparison.Ordinal)
+              || d.Message.Contains("non-printable", StringComparison.OrdinalIgnoreCase));
     }
 }
