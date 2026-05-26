@@ -74,6 +74,29 @@ internal class Program
                 case "--disk-template" when i + 1 < args.Length:
                     opts.DiskTemplatePath = args[++i];
                     break;
+                // --- Phase B: --emit tape 関連 ---
+                case "--wav":
+                    opts.EmitWav = true;
+                    break;
+                case "--tape-name" when i + 1 < args.Length:
+                    opts.TapeName = args[++i];
+                    break;
+                case "--tape-load" when i + 1 < args.Length:
+                    if (!TryParseAddress(args[++i], out var tload))
+                    {
+                        Console.Error.WriteLine($"slangbuild: invalid --tape-load: {args[i]}");
+                        return 1;
+                    }
+                    opts.TapeLoad = tload;
+                    break;
+                case "--tape-exec" when i + 1 < args.Length:
+                    if (!TryParseAddress(args[++i], out var texec))
+                    {
+                        Console.Error.WriteLine($"slangbuild: invalid --tape-exec: {args[i]}");
+                        return 1;
+                    }
+                    opts.TapeExec = texec;
+                    break;
                 case "-I" when i + 1 < args.Length:
                     opts.IncludePaths.Add(args[++i]);
                     break;
@@ -103,10 +126,10 @@ internal class Program
         }
 
         // option validation
-        if (opts.EmitMode != "bin" && opts.EmitMode != "disk")
+        if (opts.EmitMode != "bin" && opts.EmitMode != "disk" && opts.EmitMode != "tape")
         {
             Console.Error.WriteLine(
-                $"slangbuild: --emit must be 'bin' or 'disk' (got: {opts.EmitMode})");
+                $"slangbuild: --emit must be 'bin' / 'disk' / 'tape' (got: {opts.EmitMode})");
             return 1;
         }
         if (opts.EmitMode != "disk" && !string.IsNullOrEmpty(opts.DiskImagePath))
@@ -120,6 +143,21 @@ internal class Program
             Console.Error.WriteLine(
                 "slangbuild: --disk-template requires --emit disk");
             return 1;
+        }
+        // Phase B: --tape-* / --wav は --emit tape 必須 (= 既存 --disk-image と同規律)
+        if (opts.EmitMode != "tape")
+        {
+            if (opts.EmitWav)
+            {
+                Console.Error.WriteLine("slangbuild: --wav requires --emit tape");
+                return 1;
+            }
+            if (opts.TapeName != null || opts.TapeLoad.HasValue || opts.TapeExec.HasValue)
+            {
+                Console.Error.WriteLine(
+                    "slangbuild: --tape-name / --tape-load / --tape-exec require --emit tape");
+                return 1;
+            }
         }
 
         try
@@ -141,6 +179,28 @@ internal class Program
         }
     }
 
+    /// <summary>
+    /// CLI で受ける address 文字列を 16-bit int に parse:
+    ///   - `$XXXX` (= SLANG / asm 流儀、 必要なら shell quote)
+    ///   - `0xXXXX` (= C 流儀)
+    ///   - `XXXX` (= decimal)
+    /// 範囲外 / parse 失敗 = false。 0..0xFFFF 範囲は呼出側 (TapeImageBuilder) で再 check。
+    /// </summary>
+    private static bool TryParseAddress(string s, out int value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        s = s.Trim();
+        if (s.StartsWith("$"))
+            return int.TryParse(s.Substring(1), System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out value);
+        if (s.StartsWith("0x") || s.StartsWith("0X"))
+            return int.TryParse(s.Substring(2), System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out value);
+        return int.TryParse(s, System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out value);
+    }
+
     private static void PrintUsage()
     {
         Console.Error.WriteLine($"SLANG Build Driver v{Version}");
@@ -159,9 +219,13 @@ internal class Program
         Console.Error.WriteLine("  --mzd88 <path>  mzd88 executable path (override resolution; --emit disk + tool=mzd88)");
         Console.Error.WriteLine("  --oscar-path <p> oscar64 executable path (override resolution; backend=oscar_c env)");
         Console.Error.WriteLine("  --c-source <p>  Extra C source file passed to oscar64 (repeatable; backend=oscar_c only)");
-        Console.Error.WriteLine("  --emit <mode>   Output mode: 'bin' (default) or 'disk' (build d88)");
+        Console.Error.WriteLine("  --emit <mode>   Output mode: 'bin' (default) / 'disk' (build d88) / 'tape' (build .tap)");
         Console.Error.WriteLine("  --disk-image <p> Output disk image path (default: <output_prefix>.d88)");
         Console.Error.WriteLine("  --disk-template <p> Override env's disk.template path (--emit disk)");
+        Console.Error.WriteLine("  --wav           Also emit .wav (--emit tape only、 48kHz/8bit/mono default)");
+        Console.Error.WriteLine("  --tape-name <s> Override tape file name (--emit tape only; ASCII printable 1..13 char)");
+        Console.Error.WriteLine("  --tape-load <a> Override tape load address (--emit tape only; '$1000' / 0x1000 / 4096)");
+        Console.Error.WriteLine("  --tape-exec <a> Override tape exec address (--emit tape only; default = load)");
         Console.Error.WriteLine("  --keep-asm      Keep intermediate ASM / sym files");
         Console.Error.WriteLine("  --verbose       Show subprocess (slangc / AILZ80ASM) output");
         Console.Error.WriteLine("  -h, --help      Show this help");
