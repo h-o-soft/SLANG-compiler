@@ -31,10 +31,33 @@ public sealed class TapFile
 
     public static TapFile FromBytes(ReadOnlySpan<byte> raw)
     {
-        var header = TapHeader.Read(raw);
-        var body = raw.Slice(TapHeader.SizeBytes);
-        var samples = UnpackSamples(body, (int)header.DataSizeBits);
-        return new TapFile(header, samples);
+        // CommonSourceCodeProject datarec.cpp 互換: 先頭 4 byte が "TAPE" magic なら
+        // Extended format (40 byte header)、 それ以外は Simple format (= 先頭 4 byte
+        // sample rate uint32 LE + body)。
+        if (raw.Length >= 4 &&
+            raw[0] == (byte)'T' && raw[1] == (byte)'A' &&
+            raw[2] == (byte)'P' && raw[3] == (byte)'E')
+        {
+            var header = TapHeader.Read(raw);
+            var body = raw.Slice(TapHeader.SizeBytes);
+            var samples = UnpackSamples(body, (int)header.DataSizeBits);
+            return new TapFile(header, samples);
+        }
+        else
+        {
+            // Simple format: 先頭 4 byte sample rate + payload (= 全 byte sample stream)
+            var rate = (uint)(raw[0] | (raw[1] << 8) | (raw[2] << 16) | (raw[3] << 24));
+            var body = raw.Slice(4);
+            int nBits = body.Length * 8;
+            var header = new TapHeader
+            {
+                Name = "(simple)",
+                SampleRate = rate,
+                DataSizeBits = (uint)nBits,
+            };
+            var samples = UnpackSamples(body, nBits);
+            return new TapFile(header, samples);
+        }
     }
 
     public void Save(string path)

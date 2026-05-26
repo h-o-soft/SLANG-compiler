@@ -12,11 +12,13 @@ namespace SLANGCompiler.Build.TapeFormats;
 ///   +01h 13  File name (ASCII, space-padded)
 ///   +0Eh 3   Extension (ASCII, space-padded)
 ///   +11h 1   Password byte (typically 0x20 = "no password")
-///   +12h 2   Data size in bytes (big-endian uint16)
-///   +14h 2   Load address (big-endian uint16)
-///   +16h 2   Execute address (big-endian uint16)
+///   +12h 2   Data size in bytes (**little-endian** uint16)
+///   +14h 2   Load address (**little-endian** uint16)
+///   +16h 2   Execute address (**little-endian** uint16)
 ///   +18h 6   Date (BCD: YY MM DD HH MM weekday)
 ///   +1Eh 2   Reserved (zero-filled)
+/// 注 (Z80 native): X1 IPL `ld hl,(FILEBUF+14h)` で little-endian で読む、
+/// tapcnv 初期実装の big-endian は bug、 emulator で load/exec が逆になっていた。
 /// </summary>
 public sealed class X1InfoBlock
 {
@@ -42,9 +44,9 @@ public sealed class X1InfoBlock
             FileName = ReadAscii(src.Slice(0x01, 13)),
             Extension = ReadAscii(src.Slice(0x0E, 3)),
             Password = src[0x11],
-            DataSize = BinaryPrimitives.ReadUInt16BigEndian(src.Slice(0x12)),
-            LoadAddress = BinaryPrimitives.ReadUInt16BigEndian(src.Slice(0x14)),
-            ExecuteAddress = BinaryPrimitives.ReadUInt16BigEndian(src.Slice(0x16)),
+            DataSize = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(0x12)),
+            LoadAddress = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(0x14)),
+            ExecuteAddress = BinaryPrimitives.ReadUInt16LittleEndian(src.Slice(0x16)),
             Date = src.Slice(0x18, 6).ToArray(),
             Reserved = src.Slice(0x1E, 2).ToArray(),
         };
@@ -58,9 +60,9 @@ public sealed class X1InfoBlock
         WriteAsciiPadded(buf.AsSpan(0x01, 13), FileName, (byte)' ');
         WriteAsciiPadded(buf.AsSpan(0x0E, 3), Extension, (byte)' ');
         buf[0x11] = Password;
-        BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(0x12), DataSize);
-        BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(0x14), LoadAddress);
-        BinaryPrimitives.WriteUInt16BigEndian(buf.AsSpan(0x16), ExecuteAddress);
+        BinaryPrimitives.WriteUInt16LittleEndian(buf.AsSpan(0x12), DataSize);
+        BinaryPrimitives.WriteUInt16LittleEndian(buf.AsSpan(0x14), LoadAddress);
+        BinaryPrimitives.WriteUInt16LittleEndian(buf.AsSpan(0x16), ExecuteAddress);
         (Date.Length >= 6 ? Date.AsSpan(0, 6) : (Span<byte>)stackalloc byte[6]).CopyTo(buf.AsSpan(0x18, 6));
         (Reserved.Length >= 2 ? Reserved.AsSpan(0, 2) : (Span<byte>)stackalloc byte[2]).CopyTo(buf.AsSpan(0x1E, 2));
         return buf;
