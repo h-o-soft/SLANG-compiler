@@ -764,6 +764,27 @@ public class ArrayInitOscarCTests
     }
 
     [Fact]
+    public void ArrayFloat_SmallValue_EmitsFixedPointNotation()
+    {
+        // .NET の R format は `0.00001` 等で exponent (= `1E-05`) に逃げるが、
+        // oscar64 は exponent notation を float literal として受理しない
+        // (= Codex review #199 High 指摘で実機確認、 parse error)。 共通 formatter
+        // が exponent を検知して F17 trimEnd fallback で固定小数点表記にすること
+        // を pin。
+        var src = TranspileWithEnv("""
+            ARRAY FLOAT FA[] = { 0.00001 };
+            MAIN() { PRINT(FA[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // exponent notation `1E-05` 等は含まれず、 固定小数点 `0.00001` で emit
+        Assert.Contains("static float V_FA[1] = {0.00001};", src);
+        Assert.DoesNotContain("E-", src);
+        Assert.DoesNotContain("e-", src);
+    }
+
+    [Fact]
     public void LocalStaticArrayFloat_InitCode_EmitsCArrayInit()
     {
         // 関数内 static ARRAY FLOAT の InitialCode も同じ logic で展開

@@ -473,15 +473,13 @@ public class CEmitter : IAstVisitor<EmitResult>
                     continue;
                 }
                 // ConstEvaluator.EvaluateFloat で値解決 (= FloatLiteral / IntegerLiteral
-                // promote / 定数式 1.0 + 2.0 等を C float literal に展開)
+                // promote / 定数式 1.0 + 2.0 等を C float literal に展開)。
+                // oscar64 は exponent notation (= `1E-05`) を float literal として
+                // 受理しないため、 共通 helper で固定小数点 + `.0` 補完に整形する。
                 var fv = _constEval.EvaluateFloat(expr);
                 if (fv.HasValue)
                 {
-                    // oscar64 は float の `f` suffix を受け付けない (= 既存 VisitFloatLiteral
-                    // と同じ規約)、 `.0` を含む形に補完して float literal を確定させる
-                    string lit = fv.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
-                    if (!lit.Contains('.') && !lit.Contains('e') && !lit.Contains('E')) lit += ".0";
-                    floatLiterals.Add(lit);
+                    floatLiterals.Add(FormatFloatForOscar64Literal(fv.Value));
                     continue;
                 }
                 // 非定数 (= 識別子参照等) は oscar64 static initializer 制約で reject
@@ -1359,11 +1357,36 @@ public class CEmitter : IAstVisitor<EmitResult>
 
     public EmitResult VisitFloatLiteral(FloatLiteral node)
     {
-        // oscar64 は float リテラルの `f` suffix を受け付けない (ANSI C と差異)。
-        // 整数表記 (`1`) は int になるため、必ず `.` を含める形にする。
-        var s = node.Value.ToString("R", CultureInfo.InvariantCulture);
-        if (!s.Contains('.') && !s.Contains('e') && !s.Contains('E')) s += ".0";
-        return new(s, SlangType.Float);
+        return new(FormatFloatForOscar64Literal(node.Value), SlangType.Float);
+    }
+
+    /// <summary>
+    /// double 値を oscar64 が受理する C float literal 形式に整形する。 oscar64 は
+    /// (1) `f` suffix 不可 (= ANSI C と差異)、 (2) **exponent notation (`1E-05` 等)
+    /// を float literal として受理しない** (= Codex review #199 で実機確認) ため、
+    /// `R` (短い round-trip) を優先しつつ、 exponent が含まれた場合のみ F17 で
+    /// 固定小数点 fallback して trailing zeros を除去する (= `0.00001` の精度悪化
+    /// を避けつつ `3.14` の精度誤差表記 (`3.14000000000000012`) も避ける)。 整数値
+    /// (`1`) は `.0` 補完で float literal 確定。
+    /// </summary>
+    internal static string FormatFloatForOscar64Literal(double v)
+    {
+        string s = v.ToString("R", CultureInfo.InvariantCulture);
+        // exponent (= 1E-05 / 1e+30) が出たら F17 で固定小数点 fallback
+        if (s.IndexOfAny(new[] { 'e', 'E' }) >= 0)
+        {
+            s = v.ToString("F17", CultureInfo.InvariantCulture);
+            if (s.Contains('.'))
+            {
+                s = s.TrimEnd('0');
+                if (s.EndsWith('.')) s += '0';
+            }
+        }
+        else if (!s.Contains('.'))
+        {
+            s += ".0";
+        }
+        return s;
     }
 
     public EmitResult VisitStringLiteral(StringLiteral node)
