@@ -660,6 +660,25 @@ public class ArrayInitOscarCTests
         Assert.Contains("static unsigned char V_MSG[4] = \"hi\\r\";", src);
     }
 
+    [Fact]
+    public void ArrayWithFixedAddressAndInitCode_ParserRejects()
+    {
+        // SLANG 文法レベルで `ARRAY x:address = { ... }` は parse error
+        // (= `:address` の後に LBrace は来ない)。 つまり CEmitter の Address +
+        // InitialCode 分岐は到達不能 = dead code。 v3b-E (5) で defensive guard を
+        // 削除した際の回帰防止 (= 将来 parser に `:address = { ... }` 受理が入っても
+        // この test が落ちて気付ける)。
+        var src = TranspileWithEnv("""
+            ARRAY BYTE A:$3000 = { 1, 2, 3 };
+            MAIN() { PRINT(A[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "`ARRAY ...:address = { ... }` は SLANG parser で reject される文法");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("Expected expression", StringComparison.OrdinalIgnoreCase)
+              || d.Message.Contains("LBrace", StringComparison.OrdinalIgnoreCase));
+    }
+
     // === v3b-E (Issue #194) (3b): ARRAY initializer 内の非定数 address 参照は
     //   oscar_c では permanent reject ===
     //

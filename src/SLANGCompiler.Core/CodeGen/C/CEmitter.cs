@@ -300,13 +300,11 @@ public class CEmitter : IAstVisitor<EmitResult>
         // 1 つでも null = 間接配列 (= ポインタ)、宣言は static T *A_name;
         bool isIndirect = node.Dimensions.Any(d => d == null);
 
-        // ARRAY x:address + InitialCode は不整合 (固定 addr に初期値併用は SLANG では
-        // 意味曖昧)、 oscar_c backend では明示 error にして silently drop を防ぐ。
-        if (node.Address != null && node.InitialCode != null)
-        {
-            Error("`ARRAY ...:address = { ... }` (fixed address with initializer) is not supported by oscar_c backend", node.Span);
-            return new("", null);
-        }
+        // (v3b-E (5) 調査結果: `ARRAY ...:address = { ... }` (fixed addr + InitialCode)
+        //  は SLANG parser 自体が文法 reject する (= "Expected expression, got LBrace '{'"、
+        //  `:address` の後に `;` か別の syntax が来るのが文法)、 CEmitter には到達しない
+        //  ため defensive guard は dead code として削除。 ArrayInitOscarCTests に
+        //  parser reject を pin する test を追加。)
 
         // ARRAY x:address → static T *A_x = (T*)addr;
         if (node.Address != null)
