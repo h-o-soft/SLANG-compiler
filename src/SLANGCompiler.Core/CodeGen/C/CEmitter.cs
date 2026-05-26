@@ -394,6 +394,14 @@ public class CEmitter : IAstVisitor<EmitResult>
             // 省略 / fixed-addr) は次 PR 以降。 固定配列は C array 長 = dims から計算済
             // のためここでは InitText のみ使い、 C の implicit zero fill に容量埋めを委譲。
             var emit = BuildArrayInitFromCode(node.InitialCode, slangType, node.Span);
+            // StringLiteral 単独 path は C string literal が NUL を含んで初期化するため、
+            // 固定配列の容量 (= dims から決まる N+1 byte) が NUL 含む長さに満たないと
+            // C 上は valid (= NUL 落ち) だが SLANG 期待の終端保証が壊れる。
+            // semantic は SJIS K byte 単位で容量比較するため検知できないので backend で reject。
+            if (emit.IsCStringLiteral && emit.CElementCount > totalSize)
+            {
+                Error($"固定長 ARRAY BYTE NAME[N] = {{\"...\"}} で C string literal の NUL 終端が容量に入りません (= 容量 {totalSize} byte < NUL 含 {emit.CElementCount} byte)。容量を 1 byte 大きく、もしくは StringLiteral を短くしてください", node.Span);
+            }
             init = " = " + emit.InitText;
         }
 
@@ -417,7 +425,8 @@ public class CEmitter : IAstVisitor<EmitResult>
         string InitText,
         int SourceByteCount,
         int EmittedByteCount,
-        int CElementCount);
+        int CElementCount,
+        bool IsCStringLiteral = false);
 
     /// <summary>
     /// SLANG `ARRAY BYTE/WORD NAME[N] = { 値, %値, ... }` の InitialCode を C array
@@ -457,13 +466,30 @@ public class CEmitter : IAstVisitor<EmitResult>
                 Error("StringLiteral element is supported only for ARRAY BYTE in oscar_c backend (= ARRAY WORD への StringLiteral は意味曖昧、 scope 外)", span);
                 return new ArrayInitEmitResult("\"\"", 0, 0, 0);
             }
+            // 非 ASCII / 表示不可制御文字は v3b-E (3a) scope 外 で reject:
+            //   1. SLANG raw .Length と SJIS byte 数が一致しないと C 配列長 (= raw.Length + 1)
+            //      が SJIS byte 数より小さくなる (= "あ" U+3042 は SJIS 2 byte / .Length=1)
+            //   2. CStringEncoder の `\xNN` escape は C 仕様で後続 hex digit を食う
+            //      (例 "\x01A" → 0x1A) ため制御文字 + 続く hex char の組合せが壊れる
+            // 安全策として ASCII printable (0x20-0x7E) + 既定 escape (\n \r \t \0) のみ許可。
+            foreach (var ch in slit.Value)
+            {
+                bool isAsciiPrintable = ch >= 0x20 && ch <= 0x7E;
+                bool isWhitelistedEscape = ch == '\n' || ch == '\r' || ch == '\t' || ch == '\0';
+                if (!isAsciiPrintable && !isWhitelistedEscape)
+                {
+                    Error("StringLiteral with non-ASCII / non-printable character is not supported in oscar_c ARRAY BYTE initializer (v3b-E (3a) scope は ASCII printable 0x20-0x7E + 既定 escape `\\n` `\\r` `\\t` `\\0` のみ、 高位 byte / その他制御文字は別 PR / v3b-E (3a-ext) 候補)", slit.Span);
+                    return new ArrayInitEmitResult("\"\"", 0, 0, 0, IsCStringLiteral: true);
+                }
+            }
             // SLANG 仕様 byte stream 長は SJIS bytes (= ArrayInitialCodeSizer の容量
-            // check と整合)。 C 配列は NUL 含めて確保 (= C string literal 規約)。
+            // check と整合、 ASCII printable 限定なら SJIS == .Length)。 C 配列は NUL
+            // 含めて確保 (= C string literal 規約)。
             var sjisBytes = StringEncoder.ToShiftJisBytes(slit.Value, _diagnostics);
             int strSourceBytes = sjisBytes.Length;
             int strCElementCount = slit.Value.Length + 1; // C source の char 数 + NUL
             string strInitText = CStringEncoder.Encode(slit.Value);
-            return new ArrayInitEmitResult(strInitText, strSourceBytes, strCElementCount, strCElementCount);
+            return new ArrayInitEmitResult(strInitText, strSourceBytes, strCElementCount, strCElementCount, IsCStringLiteral: true);
         }
 
         var bytes = new System.Collections.Generic.List<byte>();
@@ -770,6 +796,13 @@ public class CEmitter : IAstVisitor<EmitResult>
                 // 容量埋めは C implicit zero fill に委譲 (= dims から決まる固定配列長
                 // を使い InitText だけ流す)。
                 var emit = BuildArrayInitFromCode(ad.InitialCode, slangType, ad.Span);
+                // StringLiteral 単独 path は C string literal が NUL を含むため、固定
+                // 配列の容量が NUL 含む長さに満たないと NUL 終端保証が壊れる (= global
+                // 経路と同じ理由)。
+                if (emit.IsCStringLiteral && emit.CElementCount > totalSize)
+                {
+                    Error($"関数内 static ARRAY BYTE NAME[N] = {{\"...\"}} で C string literal の NUL 終端が容量に入りません (= 容量 {totalSize} byte < NUL 含 {emit.CElementCount} byte)。容量を 1 byte 大きく、もしくは StringLiteral を短くしてください", ad.Span);
+                }
                 init = " = " + emit.InitText;
             }
             return Line($"static {cType} {ident}{dimsSb}{init};");
