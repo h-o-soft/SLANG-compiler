@@ -117,19 +117,8 @@ public class ArrayInitOscarCTests
         Assert.Contains("static unsigned char V_MAIN_LOCAL[3] = {0xCD, 0xAB, 0xEF};", src);
     }
 
-    [Fact]
-    public void ArrayFloat_InitCode_StillRejected()
-    {
-        // v3b-D scope: ARRAY BYTE 限定。ARRAY FLOAT の InitialCode は明示 error
-        var src = TranspileWithEnv("""
-            ARRAY FLOAT FA[2] = { 1.0, 2.0, 3.0 };
-            MAIN() { PRINT(FA[0]); }
-            """, MakeC64Env(), out var diag);
-
-        Assert.True(diag.HasErrors, "ARRAY FLOAT init は v3b-D scope 外として error 期待");
-        Assert.Contains(diag.Diagnostics,
-            d => d.Message.Contains("ARRAY BYTE", StringComparison.OrdinalIgnoreCase));
-    }
+    // (v3b-D 時代の `ArrayFloat_InitCode_StillRejected` は v3b-E (1b) で ARRAY FLOAT
+    //  InitialCode 対応により撤回、 後続の `GlobalArrayFloat_*` test 群で置換)
 
     [Fact]
     public void UnsizedArrayByte_InitCode_DerivesSizeFromInit()
@@ -658,6 +647,181 @@ public class ArrayInitOscarCTests
             $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
         // SLANG `"hi\n"` (= 3 char with 改行=CR) + NUL = 4 byte、 C 出力で `\r`
         Assert.Contains("static unsigned char V_MSG[4] = \"hi\\r\";", src);
+    }
+
+    // === v3b-E (Issue #194) (1b): ARRAY FLOAT InitialCode の oscar_c 対応 ===
+    // oscar64 native float32 mapped、 各 element を C float literal で emit する。
+    // SLANG semantic は f24 (3 byte/elem) 基準で容量計算するが、 oscar_c は
+    // element 数ベースで C 配列確保 (= float32 で 4 byte/elem)、 容量整合は
+    // element 数ベースで偶然 OK。 user 指示: oscar 側 float のみ考慮、 f24 layout 無視。
+
+    [Fact]
+    public void GlobalArrayFloat_AllFloatLiterals_EmitsCArrayInit()
+    {
+        // ARRAY FLOAT FA[2] = 3 要素確保、 init 3 element でぴったり
+        var src = TranspileWithEnv("""
+            ARRAY FLOAT FA[2] = { 1.0, 2.5, 3.14 };
+            MAIN() { PRINT(FA[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static float V_FA[3] = {1, 2.5, 3.14};", src.Replace("1.0", "1"));
+        // 念のため形のみ pin (= 1.0 / 1 どちらの表現でも OK、 oscar64 で float に promote)
+        Assert.Contains("static float V_FA[3] =", src);
+    }
+
+    [Fact]
+    public void GlobalArrayFloat_IntegerPromotion_EmitsAsFloatLiteral()
+    {
+        // IntegerLiteral element (= `42`) は ConstEvaluator.EvaluateFloat で
+        // double 化、 `.0` 補完で float literal `42.0` として emit
+        var src = TranspileWithEnv("""
+            ARRAY FLOAT FA[2] = { 42, 1.5 };
+            MAIN() { PRINT(FA[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static float V_FA[3] = {42.0, 1.5};", src);
+    }
+
+    [Fact]
+    public void GlobalArrayFloat_Underfilled_ImplicitZeroFillByC()
+    {
+        // ARRAY FLOAT FA[3] = 4 要素確保、 init 1 element、 残り 3 element は C
+        // implicit 0 fill (= 既存 BYTE/WORD/String と同じ流儀)
+        var src = TranspileWithEnv("""
+            ARRAY FLOAT FA[3] = { 1.0 };
+            MAIN() { PRINT(FA[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static float V_FA[4] = {1.0};", src);
+    }
+
+    [Fact]
+    public void UnsizedArrayFloat_InitCode_DerivesCElementCount()
+    {
+        // 添字省略 + InitialCode = init element 数で C 配列長確定
+        var src = TranspileWithEnv("""
+            ARRAY FLOAT FA[] = { 1.0, 2.0 };
+            MAIN() { PRINT(FA[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static float V_FA[2] = {1.0, 2.0};", src);
+    }
+
+    [Fact]
+    public void ArrayFloat_Overflow_SemanticRejectsWithCapacity()
+    {
+        // ARRAY FLOAT FA[1] = 2 elem = 6 byte 容量、 init 3 elem = 9 byte は超過、
+        // ArrayInitialCodeSizer で semantic reject (= byte 単位 6 vs 9 比較)
+        var src = TranspileWithEnv("""
+            ARRAY FLOAT FA[1] = { 1.0, 2.0, 3.0 };
+            MAIN() { PRINT(FA[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "ARRAY FLOAT 容量超過は semantic で reject");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("capacity", StringComparison.OrdinalIgnoreCase)
+              || d.Message.Contains("多すぎ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ArrayFloat_TopLevelCastExpr_SemanticRejects()
+    {
+        // ARRAY FLOAT 内の `%expr` (= トップレベル CastExpr) は SLANG 仕様で禁止、
+        // ArrayInitialCodeSizer.CalculateFloatArrayBytes で先 reject
+        var src = TranspileWithEnv("""
+            ARRAY FLOAT FA[2] = { %1.0 };
+            MAIN() { PRINT(FA[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "FLOAT 配列内のトップレベル CastExpr は semantic 違反");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("Cast expression not allowed in FLOAT array", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ArrayFloat_NonConstantElement_OscarCRejectsWithRuntimeWorkaroundHint()
+    {
+        // 非定数 element (= VAR FLOAT 参照) は oscar64 static initializer 制約で reject、
+        // (3b) と同じ「runtime 初期化に書き換え」 hint message
+        var src = TranspileWithEnv("""
+            VAR FLOAT FV;
+            ARRAY FLOAT FA[2] = { FV };
+            MAIN() { PRINT(FA[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "ARRAY FLOAT で非定数 element は oscar_c で reject");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("compile-time constant", StringComparison.OrdinalIgnoreCase)
+              && d.Message.Contains("oscar64", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ArrayFloat_SmallValue_EmitsFixedPointNotation()
+    {
+        // .NET の R format は `0.00001` 等で exponent (= `1E-05`) に逃げるが、
+        // oscar64 は exponent notation を float literal として受理しない
+        // (= Codex review #199 High 指摘で実機確認、 parse error)。 共通 formatter
+        // が exponent を検知して F17 trimEnd fallback で固定小数点表記にすること
+        // を pin。
+        var src = TranspileWithEnv("""
+            ARRAY FLOAT FA[] = { 0.00001 };
+            MAIN() { PRINT(FA[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        // exponent notation `1E-05` 等は含まれず、 固定小数点 `0.00001` で emit
+        Assert.Contains("static float V_FA[1] = {0.00001};", src);
+        Assert.DoesNotContain("E-", src);
+        Assert.DoesNotContain("e-", src);
+    }
+
+    [Fact]
+    public void LocalStaticArrayFloat_InitCode_EmitsCArrayInit()
+    {
+        // 関数内 static ARRAY FLOAT の InitialCode も同じ logic で展開
+        var src = TranspileWithEnv("""
+            MAIN()
+                ARRAY FLOAT FA[2] = { 1.0, 2.0 };
+            BEGIN
+                PRINT(FA[0]);
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.False(diag.HasErrors,
+            $"errors: {string.Join("; ", diag.Diagnostics.Select(d => d.Message))}");
+        Assert.Contains("static float V_MAIN_FA[3] = {1.0, 2.0};", src);
+    }
+
+    // === v3b-E (Issue #194) (2): FLOAT prefix in ARRAY BYTE/WORD は parser でも reject ===
+    // SLANG `%%` (= FLOAT cast prefix) は parser で非 FLOAT 配列の InitialCode 内では
+    // 受理されない (= ArrayInitSemanticTests のコメント L85 で言及済)、 CEmitter の
+    // FLOAT prefix reject guard は dead code として保険のみ。 oscar_c は oscar64 native
+    // float32 mapped で f24 byte stream 表現を持たないため意味的にも対応不能、
+    // ARRAY FLOAT を使う workaround を CEmitter message で促す (= 到達した場合の保険)。
+
+    [Fact]
+    public void ArrayBytePrefixDoublePercent_ParserRejects()
+    {
+        // ARRAY BYTE A[] = { %%1.5 } の `%%` は parser 文法上 ARRAY initializer 内では
+        // 受理されない (= future syntax)。 parser reject を pin、 将来 parser に
+        // `%%` InitialCode 受理が入った場合に test が落ちて気付ける
+        var src = TranspileWithEnv("""
+            ARRAY BYTE A[5] = { %%1.5 };
+            MAIN() { PRINT(A[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "ARRAY BYTE 内の `%%` は parser で reject");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("Expected", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

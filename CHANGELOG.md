@@ -13,6 +13,7 @@
 - oscar_c backend で `ARRAY BYTE S[N] = { "..." }` の StringLiteral 単独初期化対応 (= C string literal `static unsigned char V_S[N+1] = "...";` で emit、 oscar64 `-psci` で PETSCII 自動変換、 #194 配下 v3b-E (3a))。mixed (= StringLiteral + 数値) と ARRAY WORD への StringLiteral は scope 外で error。
 - oscar_c backend の ARRAY initializer で `%FUNC` / `%ARRAY` の address 参照 (= jump table / pointer table 用途) を **permanent backend gap** として明示 reject + workaround メッセージ (= MAIN 冒頭等で runtime 初期化に書き換え) を出すよう更新 (= oscar64 が static integer initializer で address-to-integer cast を constant initializer と認めない、 error 3008 を実機検証で確認、 #194 配下 v3b-E (3b))。Z80 backend は `DW LABEL` で linker reloc 解決可能、 backend gap として明示。
 - oscar_c CEmitter の `ARRAY ...:address = { ... }` (= fixed addr + InitialCode) 防衛 error を削除 (= SLANG parser が文法レベルで reject するため到達不能、 #194 配下 v3b-E (5))。 parser reject を pin する test を追加。
+- oscar_c backend で `ARRAY FLOAT FA[N] = { 1.0, 2.0, ... }` 初期化対応 (= oscar64 native float32 で `static float V_FA[N+1] = {1.0, 2.0};` emit、 整数 element は自動的に float promote、 容量未満は C implicit zero fill、 #194 配下 v3b-E (1b))。非定数 element は oscar64 制約で reject + runtime 初期化 hint message。 `ARRAY BYTE/WORD` 内の `%%` FLOAT prefix は SLANG parser 文法上未対応 + oscar_c は f24 byte stream 表現を持たないため意味的にも対応不能、 ARRAY FLOAT を使う旨を CEmitter defensive guard で diagnose (= #194 配下 v3b-E (2))。
 
 ## Version 0.24.1
 
