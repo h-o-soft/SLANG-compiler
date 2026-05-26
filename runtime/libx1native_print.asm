@@ -87,6 +87,11 @@ LD B, A
 DB $ED, $71   ; OUT (C), 0 = kanji area に 0 (= ANK 文字、 Z80 未定義命令)
 RES 3, B      ; bit 3 clear ($38→$30、 text region)
 OUT (C), E    ; OUT text (= 文字コード)
+; attribute も白で書込 (= IPL_PUTCHAR と同戦略、 boot ROM 初期値依存を回避)。
+; bit 4 clear で $30→$20 (attribute region)、 $07 = 白
+RES 4, B
+LD A, $07
+OUT (C), A
 ; cursor X 進行
 LD HL, sXYADR
 INC (HL)
@@ -161,10 +166,15 @@ JR .pstr1
 ; @name PCHR
 ; @resident shared
 ; @calls PRT
+; 既存 libx1_print.asm L243-251 と同じく、 H / L が 0 なら sPRINT skip
+; (= NUL 文字を VRAM に書かない、 cursor 進めない、 Codex review Medium 指摘修正)
 LD A, H
-CALL PRT
+OR A
+CALL NZ, PRT
 LD A, L
-JR PRT
+OR A
+JR NZ, PRT
+RET
 
 
 ; @name PRT

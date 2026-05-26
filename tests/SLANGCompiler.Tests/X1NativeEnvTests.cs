@@ -83,4 +83,11 @@ public class X1NativeEnvTests
         var config = EnvironmentLoader.Load(EnvFilePath());
         Assert.Null(config.OutputFormat);
     }
+
+    // 注: 「実 SLANG → asm 生成 + 内容 grep」 系 test (= MinimumPrint_BuildsSuccessfully /
+    // NoLsxBdosCall / HasNativeVramOut 等、 Codex review Medium 指摘) は本 PR scope 外。
+    // 理由: CodeGenerator が RuntimeManager + env runtime asm 解決 path を必要とし、
+    // unit test 内での setup が複雑。 別 PR で integration test として slangc CLI
+    // spawn ベースで追加予定。 現状は docs/X1.md の manual verification 手順
+    // (= grep / AILZ80ASM / emulator memory load) で代替。
 }

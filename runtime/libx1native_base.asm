@@ -33,11 +33,40 @@ LDIR
 
 <<CALLINITIALIZER>>
 
+; --- X1 hardware 初期化 (= X1_compatible_rom IPLBOT 参考、 CC0) ---
+; INIT_8255: port B のみ入力 mode (= 8255 CWR $1A03 に $82)
+LD BC, $1A03
+LD A, $82
+OUT (C), A
+
+; CLR_VRAM_ALL: text VRAM $3000-$37FF を space + attribute $2000-$27FF を白で fill
+; (= X1_compatible_rom CLR_VRAM_ALL + CLR_VRAM、 256 byte × 8 block = $800 byte loop)
+LD A, 8           ; HIGH(TXTSIZ=$800) = 8 block (= 256 byte × 8)
+LD HL, $2007      ; H = $20 (space) / L = $07 (white attribute) = TEXT_STD
+LD BC, $3000      ; BC = IOTEXT (text VRAM base port)
+.clrv_text:
+OUT (C), H        ; text: space を 256 byte
+INC C
+JR NZ, .clrv_text
+RES 4, B          ; bit 4 clear: text ($30) → attribute ($20)
+.clrv_attr:
+OUT (C), L        ; attribute: white を 256 byte
+INC C
+JR NZ, .clrv_attr
+SET 4, B          ; bit 4 set: attribute ($20) → text ($30)
+INC B             ; 次 256 byte block ($3000 → $3100 → ... → $3700)
+DEC A
+JR NZ, .clrv_text
+
 ; cursor 初期値 (= __WORK__ 内 sXYADR を 0,0 に)。 __WORK__ clear で既に 0 だが
 ; 明示的に書く。 LSX 同期 ($FF80 = TXTCUR) は意図的に行わない (= native は独立)。
 XOR A
 LD (sXYADR), A
 LD (sXYADR+1), A
+
+; CRTC 初期化は本 file scope 外 (= IPL / emulator boot ROM が WIDTH 80 mode で
+;  設定済の前提、 X1_compatible_rom は WIDTH 40 / 80 別パラメタ table 必要)。
+;  WIDTH 切替が必要なら後続 PR で別 routine 追加。
 
 LD IY, __IYWORK
 
