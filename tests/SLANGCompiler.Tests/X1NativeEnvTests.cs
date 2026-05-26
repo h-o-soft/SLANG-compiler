@@ -84,10 +84,62 @@ public class X1NativeEnvTests
         Assert.Null(config.OutputFormat);
     }
 
-    // 注: 「実 SLANG → asm 生成 + 内容 grep」 系 test (= MinimumPrint_BuildsSuccessfully /
-    // NoLsxBdosCall / HasNativeVramOut 等、 Codex review Medium 指摘) は本 PR scope 外。
-    // 理由: CodeGenerator が RuntimeManager + env runtime asm 解決 path を必要とし、
-    // unit test 内での setup が複雑。 別 PR で integration test として slangc CLI
-    // spawn ベースで追加予定。 現状は docs/X1.md の manual verification 手順
-    // (= grep / AILZ80ASM / emulator memory load) で代替。
+    // 注: 「実 SLANG → asm 生成 + 内容 grep」 系 test は CodeGenerator + RuntimeManager
+    // setup の複雑さで scope 外、 docs/X1.md の manual verification 手順で代替。
+    // ただし runtime/libx1native_*.asm の構造維持 (= @name annotation / @works 内
+    // AT_WIDTH 等) は static file inspect で pin 可能、 以下で push する。
+
+    private static string RuntimeAsmPath(string name)
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var dir = new DirectoryInfo(baseDir);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "runtime", name)))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        return Path.Combine(dir!.FullName, "runtime", name);
+    }
+
+    [Theory]
+    [InlineData("INIT_CRTC")]      // CRTC 80/40 mode 切替 helper
+    [InlineData("AT_VRCALC")]      // Y*width+X VRAM offset 計算
+    [InlineData("clear_screen")]   // text + attribute + kanji 3 plane 初期化
+    [InlineData("_C8025L")]        // CRTC PARM 80 col Lo-res table
+    [InlineData("_C4025L")]        // CRTC PARM 40 col Lo-res table
+    [InlineData("_CRTCD")]         // CRTC 現在設定 work area (= R1 から動的 width 取得)
+    public void Libx1NativeBase_DefinesRoutine(string name)
+    {
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        Assert.Contains($"; @name {name}", content);
+    }
+
+    [Theory]
+    [InlineData("WIDTH")]          // 40/80 動的切替 public API
+    [InlineData("LOCATE")]         // cursor 移動 public API
+    [InlineData("SCREEN")]         // char code read public API
+    [InlineData("PRMODE")]         // printer mode stub
+    public void Libx1NativePrint_DefinesPublicApi(string name)
+    {
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_print.asm"));
+        Assert.Contains($"; @name {name}", content);
+    }
+
+    [Fact]
+    public void Libx1NativeBase_DeclaresAtWidthInWorks()
+    {
+        // sWORK の @works listing に AT_WIDTH:1 (= __WORK__ 内 1 byte BSS) が含まれる
+        // (= WIDTH 動的化 / AT_VRCALC が読む現在 column 数 symbol、 既存 X1 系
+        //  libx1_print.asm と同名で graphics native 化時に流用可能)
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        Assert.Matches(@"; @works .*AT_WIDTH:1", content);
+    }
+
+    [Fact]
+    public void Libx1NativePrint_SprintCallsAtVrcalcAndAtWidth()
+    {
+        // sPRINT が wrap 判定で AT_WIDTH を読み、 VRAM offset 計算で AT_VRCALC を
+        // call するように更新されたか pin (= plan で hardcode 80 → 動的化を要求)
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_print.asm"));
+        Assert.Contains("LD A, (AT_WIDTH)", content);
+        Assert.Contains("CALL AT_VRCALC", content);
+    }
 }
