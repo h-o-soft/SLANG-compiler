@@ -498,6 +498,20 @@ public class CEmitter : IAstVisitor<EmitResult>
             return new ArrayInitEmitResult(strInitText, strSourceBytes, strCElementCount, strCElementCount, IsCStringLiteral: true);
         }
 
+        // v3b-E (3b) 調査結果: ARRAY WORD W[] = { %FUNC, %ARRAY } 等の address reloc
+        // を oscar_c で emit する MVP を一度試したが、 oscar64 が **static integer
+        // initializer で address-to-integer cast (= `(unsigned int)F_FUNC` /
+        // `(unsigned int)V_BUF`) を constant initializer と認めない** (= error 3008
+        // Constant initializer expected) ため、 `void (*fp[])() = { foo }` 系の
+        // pointer-typed initializer なら通るが SLANG `ARRAY WORD` の C 型は unsigned int[]
+        // で意味論的に変えられない。 runtime 初期化 / 内部 `void *[]` 表現の特別扱いは
+        // (3b) MVP の範囲を超える別 issue。
+        // → **permanent backend gap**: oscar_c では `%FUNC` / `%ARRAY` の address ref
+        //   を static init に書けない、 SLANG 側で runtime 初期化 (= ARRAY 宣言後
+        //   `W[0] = %FUNC; W[1] = %ARRAY;` を main 等の冒頭で書く) で workaround。
+        // 既存 generic non-const reject (loop 内 L515 付近) で error 出るが、 message
+        // を oscar64 制約由来として明示するため下の path で個別 reject 経路を残す。
+
         var bytes = new System.Collections.Generic.List<byte>();
         foreach (var expr in code)
         {
@@ -529,8 +543,25 @@ public class CEmitter : IAstVisitor<EmitResult>
                 constVal = (int)ilit.Value;
             if (!constVal.HasValue)
             {
-                // defensive (= SemanticAnalyzer で同じ error が出るはず)
-                Error("non-FLOAT ARRAY initializer element must be a compile-time constant in oscar_c backend (non-constant / CodeLabelRef の oscar_c emit 対応は別 PR / v3b-E 候補)", expr.Span);
+                // v3b-E (3b) 調査: 非定数 IdentifierExpr (= `%FUNC` / `%ARRAY` 等の
+                //   address ref) は oscar64 が static unsigned int initializer に
+                //   address-to-integer cast (= `(unsigned int)F_FUNC`) を許容しない
+                //   (= error 3008 Constant initializer expected)、 permanent backend gap。
+                // workaround は SLANG 側で runtime 初期化 (= MAIN() の冒頭等で
+                //   `JT[0] = %FUNC; JT[1] = %ARRAY;`)、 Z80 backend は `DW LABEL` で
+                //   linker reloc 解決可能なため backend gap として明示する。
+                if (itemExpr is IdentifierExpr id)
+                {
+                    var sym = _globals?.GlobalScope.Resolve(id.Name);
+                    if (sym?.Kind == SymbolKind.Function
+                        || sym?.Kind == SymbolKind.MachineFunction
+                        || (sym?.IsArrayDecl == true && sym.IsGlobal))
+                    {
+                        Error($"ARRAY initializer の非定数 identifier `{id.Name}` の address 参照は oscar_c では未対応 (= oscar64 が static integer initializer で `(unsigned int)F_xxx` / `(unsigned int)V_xxx` を constant initializer と認めない、 error 3008)。 SLANG 側で runtime 初期化に書き換えてください (例: MAIN 冒頭で `<ARRAY 名>[i] = %{id.Name};`)。 Z80 backend は `DW LABEL` で linker reloc 解決", expr.Span);
+                        continue;
+                    }
+                }
+                Error("non-FLOAT ARRAY initializer element must be a compile-time constant in oscar_c backend (= 非定数 expression の static init は oscar64 で error 3008、 runtime 初期化に書き換え推奨)", expr.Span);
                 continue;
             }
 

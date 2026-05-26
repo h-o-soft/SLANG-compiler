@@ -660,6 +660,87 @@ public class ArrayInitOscarCTests
         Assert.Contains("static unsigned char V_MSG[4] = \"hi\\r\";", src);
     }
 
+    // === v3b-E (Issue #194) (3b): ARRAY initializer 内の非定数 address 参照は
+    //   oscar_c では permanent reject ===
+    //
+    // 当初は `%FUNC` / `%ARRAY` の address ref を `(unsigned int)F_xxx` /
+    // `(unsigned int)V_xxx` で emit する MVP を試したが、 oscar64 が static integer
+    // initializer で address-to-integer cast を constant initializer と認めない
+    // (= error 3008 Constant initializer expected) ことを実機検証で確認した。
+    // `void (*fp[])(void) = { foo }` 系の pointer-typed initializer なら通るが
+    // SLANG `ARRAY WORD` の C 型は unsigned int[] で意味論的に変えられないため、
+    // permanent backend gap として明示 reject + workaround メッセージを出す。
+    // workaround: SLANG 側で runtime 初期化 (= ARRAY 宣言後 MAIN 冒頭等で
+    //   `JT[0] = %FUNC; JT[1] = %ARRAY;`)。 Z80 backend は `DW LABEL` で対応。
+
+    [Fact]
+    public void ArrayWord_FunctionRef_OscarCRejectsWithRuntimeWorkaroundHint()
+    {
+        // ARRAY WORD JT[] = { %FUNC1 } = jump table の address ref、 oscar64 制約で
+        // permanent reject、 SLANG runtime 初期化 workaround を message で誘導
+        var src = TranspileWithEnv("""
+            FUNC1() BEGIN END;
+            ARRAY WORD JT[] = { %FUNC1 };
+            MAIN() { PRINT(JT[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "ARRAY WORD への function address ref は oscar_c 制約で reject");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("FUNC1", StringComparison.Ordinal)
+              && d.Message.Contains("oscar64", StringComparison.Ordinal)
+              && d.Message.Contains("error 3008", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ArrayWord_ArrayRef_OscarCRejectsWithRuntimeWorkaroundHint()
+    {
+        // ARRAY WORD PT[] = { %BUF1 } = pointer table の address ref、 同制約で reject
+        var src = TranspileWithEnv("""
+            ARRAY BYTE BUF1[10];
+            ARRAY WORD PT[] = { %BUF1 };
+            MAIN() { PRINT(PT[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "ARRAY WORD への array address ref も同 oscar_c 制約で reject");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("BUF1", StringComparison.Ordinal)
+              && d.Message.Contains("oscar64", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ArrayWord_ScalarGlobalVarRef_GenericNonConstError()
+    {
+        // scalar global var への %SVAR は Function/ARRAY 判定に hit せず generic
+        // 「非定数 expression は static init で oscar64 error 3008」 message に流れる
+        var src = TranspileWithEnv("""
+            VAR WORD SVAR;
+            ARRAY WORD W[] = { %SVAR };
+            MAIN() { PRINT(W[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "scalar global var address も oscar_c で reject");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("compile-time constant", StringComparison.OrdinalIgnoreCase)
+              || d.Message.Contains("oscar64", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ArrayByte_LabelRef_GenericNonConstError()
+    {
+        // ARRAY BYTE への %FUNC ref も SLANG 仕様 (= byte stream に address) では
+        // 不可、 既存の非定数 reject path で error (= oscar64 制約 message)
+        var src = TranspileWithEnv("""
+            FUNC1() BEGIN END;
+            ARRAY BYTE B[] = { %FUNC1 };
+            MAIN() { PRINT(B[0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "ARRAY BYTE への label ref も oscar_c で reject");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("FUNC1", StringComparison.Ordinal)
+              && d.Message.Contains("oscar64", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void ArrayByte_StringLiteralNul_RaisesError()
     {
