@@ -889,6 +889,42 @@ public class ArrayInitOscarCTests
     }
 
     [Fact]
+    public void MultiDimArrayByte_SingleStringLiteral_RaisesError()
+    {
+        // multi-dim + 単独 StringLiteral path は InitText が C string literal (= `"hello"`)
+        // になり、 C で `unsigned char V[][4] = "hello";` は無効 (= oscar64 error 3012
+        // Incompatible constant initializer)。 (3a) StringLiteral path は 1 次元限定、
+        // multi-dim との mix は scope 外 reject (= Codex review High 指摘で実機確認)。
+        var src = TranspileWithEnv("""
+            ARRAY BYTE A[][3] = { "hello" };
+            MAIN() { PRINT(A[0][0]); }
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "multi-dim + 単独 StringLiteral は scope 外 reject");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("multi-dimensional", StringComparison.OrdinalIgnoreCase)
+              && d.Message.Contains("StringLiteral", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LocalStaticMultiDimArrayByte_SingleStringLiteral_RaisesError()
+    {
+        // 関数内 static 経路も同じ multi-dim + StringLiteral reject
+        var src = TranspileWithEnv("""
+            MAIN()
+                ARRAY BYTE A[][3] = { "hello" };
+            BEGIN
+                PRINT(A[0][0]);
+            END;
+            """, MakeC64Env(), out var diag);
+
+        Assert.True(diag.HasErrors, "関数内 static でも multi-dim + 単独 StringLiteral reject");
+        Assert.Contains(diag.Diagnostics,
+            d => d.Message.Contains("multi-dimensional", StringComparison.OrdinalIgnoreCase)
+              && d.Message.Contains("StringLiteral", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void LocalStaticMultiDimArrayByte_UnsizedFirstDim_EmitsCArrayInit()
     {
         // 関数内 static 経路も同じ multi-dim path で動くこと

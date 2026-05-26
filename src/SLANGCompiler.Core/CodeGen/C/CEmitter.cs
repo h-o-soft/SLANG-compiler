@@ -347,6 +347,15 @@ public class CEmitter : IAstVisitor<EmitResult>
                 }
             }
             var emit = BuildArrayInitFromCode(node.InitialCode, slangType, node.Span);
+            // multi-dim + 単独 StringLiteral path は InitText が C string literal
+            // (= `"hello"`) になり、 C で `unsigned char V[][4] = "hello";` は無効
+            // (= oscar64 error 3012 Incompatible constant initializer)。 StringLiteral
+            // を flat byte 化すると -psci 扱いの再設計になるため本 PR scope 外 reject。
+            if (isMultiDim && emit.IsCStringLiteral)
+            {
+                Error("multi-dimensional ARRAY BYTE / WORD initializer with single StringLiteral is not supported by oscar_c backend (= C string literal `\"...\"` を multi-dim 配列に使うと oscar64 error 3012、 単独 StringLiteral は 1 次元 ARRAY BYTE でのみ対応、 別 PR / v3b-E (4+3a-mix) 候補)", node.Span);
+                return new("", null);
+            }
             if (isMultiDim)
             {
                 // 第 1 次元 = `[]` (C 自動推論)、 第 2 次元以降は SLANG dim 値 + 1
@@ -883,6 +892,13 @@ public class CEmitter : IAstVisitor<EmitResult>
                     }
                 }
                 var emit0 = BuildArrayInitFromCode(ad.InitialCode, slangType, ad.Span);
+                // multi-dim + 単独 StringLiteral は global 経路と同じく reject
+                // (= C string literal を multi-dim init に書くと oscar64 error 3012)
+                if (isMultiDimL && emit0.IsCStringLiteral)
+                {
+                    Error("multi-dimensional ARRAY BYTE / WORD initializer with single StringLiteral is not supported by oscar_c backend (= C string literal `\"...\"` を multi-dim 配列に使うと oscar64 error 3012、 単独 StringLiteral は 1 次元 ARRAY BYTE でのみ対応、 別 PR / v3b-E (4+3a-mix) 候補)", ad.Span);
+                    return "";
+                }
                 if (isMultiDimL)
                 {
                     var mdimsSbL = new StringBuilder("[]");
