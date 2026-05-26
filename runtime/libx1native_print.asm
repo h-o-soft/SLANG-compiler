@@ -44,7 +44,7 @@ CP 80
 JR C, .sp_putc
 ; 行末超え: auto CR
 PUSH DE
-CALL .sp_do_cr
+CALL sp_do_cr
 POP DE
 LD HL, (sXYADR)
 .sp_putc:
@@ -82,7 +82,7 @@ LD HL, sXYADR
 INC (HL)
 JR .sp_end
 .sp_cr:
-CALL .sp_do_cr
+CALL sp_do_cr
 JR .sp_end
 .sp_end:
 POP HL
@@ -94,7 +94,7 @@ RET
 sp_char_buf: DB 0   ; char 一時保存用 (= sPRINT 内の POP DE で E が破壊されるため必要)
 
 ; CR 処理: X=0, Y++、 Y=25 なら scroll up
-.sp_do_cr:
+sp_do_cr:
 PUSH BC
 PUSH DE
 PUSH HL
