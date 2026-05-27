@@ -374,6 +374,26 @@ public class X1NativeEnvTests
     }
 
     [Fact]
+    public void Libx1Psg_PsgEnd_HasX1NativeGuard()
+    {
+        // Codex review High fix: PSG_END で x1native の場合 ch1 vector slot が
+        // ISR_ENTRY 指してるかチェック、 違ったら early RET (= PSG_INIT(0) 後の
+        // _CTC=0 で `OUT (C),$03` が偽 port 書込、 CTC3BACKUP=0 で vector
+        // $FFE2/$FFE3 を 0 fill して想定外 interrupt $0000 飛び の bug 再発防止)。
+        // pin: PSG_END routine 区間内に OS_TYPE == 4 #IF block + _ISRADR 比較 +
+        // RET NZ early-return が存在 (= guard 構造)。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1_psg.asm"));
+        var match = Regex.Match(content,
+            @"; @name PSG_END\b(.*?)(?=; @name |\z)",
+            RegexOptions.Singleline);
+        Assert.True(match.Success, "PSG_END routine 区間が見つからない");
+        var body = match.Groups[1].Value;
+        Assert.Contains("#IF NAME_SPACE_DEFAULT.OS_TYPE == 4", body);
+        Assert.Contains("LD HL,(_ISRADR)", body);
+        Assert.Contains("RET NZ", body);
+    }
+
+    [Fact]
     public void X1SglSample_BuildsSuccessfully()
     {
         // X1SGL.SL は PSG_INIT(0)/(1) + SGL sprite + PCG を全部使う最小 demo

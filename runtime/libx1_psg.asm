@@ -1221,6 +1221,25 @@ SOUNDDRV_EXEC_END:
 ; @lib PSGLIB
     CALL PSG_STOP
 
+#IF NAME_SPACE_DEFAULT.OS_TYPE == 4
+    ; x1native: PSG_INIT(0) (= 非割り込み mode) 後の PSG_END だと _CTC = 0
+    ; (= SEARCHCTC が走ってない) で `OUT (C), $03` が偽 port に書込、 さらに
+    ; CTC3BACKUP = 0 で vector ch1 slot ($FFE2/$FFE3) を 0 fill して想定外
+    ; interrupt 来たら $0000 飛び。 guard: ch1 vector slot が ISR_ENTRY
+    ; (= _ISRADR、 PSG_INIT(1) で登録済の状態) を指してれば CTC stop + restore
+    ; 実施、 違ったら (= PSG_INIT(0) のまま or 他 device が登録) 即 RET。
+    LD HL,(_CTCVEC)
+    INC L
+    INC L           ; HL = ch1 vector slot ($FFE2)
+    LD E,(HL)
+    INC HL
+    LD D,(HL)       ; DE = ch1 vector slot の現値
+    LD HL,(_ISRADR) ; HL = ISR_ENTRY addr ($FFEB、 SETUP_ISR_AREA で設定)
+    OR A
+    SBC HL,DE
+    RET NZ          ; ch1 vector が ISR_ENTRY 指してない (= PSG 未登録) → early RET
+#ENDIF
+
     ; CTC1を止める
     LD      HL,(_CTC)
     DEC L
