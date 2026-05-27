@@ -7114,7 +7114,11 @@ SGL_VRCALC:
     LD C,L
     LD B,H
     LD	A,B
-    OR	038H
+    OR	030H        ; X1 text VRAM region ($3000-$37FF)。 $38xx は漢字 VRAM
+                    ; ($3800-$3FFF、 漢字 ROM コード上位 + 漢字 CG セレクト) の
+                    ; ため $30xx を text として明示。 X1 normal は wrap 偶発動作、
+                    ; X1turbo で turbo 漢字 VRAM が活性 で text 出ない bug を fix。
+                    ; libx1_sgl.asm SGL_VRCALC と同等 修正。
     LD	B,A
 
     RET

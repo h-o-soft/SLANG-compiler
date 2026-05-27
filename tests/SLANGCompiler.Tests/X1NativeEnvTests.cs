@@ -416,6 +416,28 @@ public class X1NativeEnvTests
         }
     }
 
+    [Theory]
+    [InlineData("libx1_sgl.asm")]      // x1native / sosx1 で使用
+    [InlineData("libx1_sgl_lsx.asm")]  // x1 (= LSX) で使用
+    public void SglVrcalc_UsesTextVramRegion(string libName)
+    {
+        // X1 text VRAM region は $3000-$37FF (= text コード)、 $3800-$3FFF は
+        // 漢字 VRAM (= 漢字 ROM コード上位 + 漢字 CG セレクト)。 SGL_VRCALC の
+        // text addr 計算で `OR $38` してたが、 X1turbo で漢字 VRAM 活性化により
+        // text 出ない bug (= 元 source x1sgl_balls 由来の長年 bug、 X1 normal
+        // では wrap 偶発動作)、 `OR $30` (= text region 明示) に修正。
+        // pin: SGL_VRCALC 直前-直後の text vram address 計算で OR 030H が存在 +
+        // OR 038H が存在しない (= 両 sgl/sgl_lsx file で同等 fix を確認)。
+        var content = File.ReadAllText(RuntimeAsmPath(libName));
+        var match = Regex.Match(content,
+            @"SGL_VRCALC:.*?to text vram address(.*?)RET",
+            RegexOptions.Singleline);
+        Assert.True(match.Success, $"{libName}: SGL_VRCALC + to text vram 区間 not found");
+        var body = match.Groups[1].Value;
+        Assert.Matches(@"\bOR\s+030H\b", body);
+        Assert.DoesNotMatch(@"\bOR\s+038H\b", body);
+    }
+
     [Fact]
     public void Libmag_DoesNotDefineGrdispGrcls()
     {
