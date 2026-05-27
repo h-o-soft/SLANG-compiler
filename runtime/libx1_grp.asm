@@ -2642,8 +2642,10 @@ JP	X1PAINT.WIDTHPATCH
 ; 8 色モード、 palette 設定 + bank 0 select)。
 ; graphics 表示制御の中核 routine、 全 env (= x1 / sosx1 / x1native 等) で
 ; libx1_grp 経由で provide される (= 旧 libmag 側 GRDISP/GRCLS は削除済、
-; graphics 責務として library 整理)。 _WK1FD0 は x1 / sosx1 では libx1_print の
-; X1WORK、 x1native では libx1native_base の X1WORK alias 経由で provide。
+; graphics 責務として library 整理)。 _WK1FD0 は env 毎に異なる場所で provide:
+;  - x1: libx1_print.asm の X1WORK 内 DB (= LSX-Dodgers 共有 work)
+;  - sosx1: libsosx1_base.asm の @works listing 内 BSS
+;  - x1native: libx1native_base.asm の X1WORK alias 内 DB (= libmag 互換 shim)
 LD A,H
 OR L
 JR Z,.gr_nodisp
