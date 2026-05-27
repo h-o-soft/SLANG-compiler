@@ -717,6 +717,23 @@ SOUNDDRV_INIT:
     DEC C
     LD A,(_CTCVEC)
     OUT (C),A
+#ELIF NAME_SPACE_DEFAULT.OS_TYPE == 4
+    ; x1native: 本 path で SEARCHCTC + CTC ch0 vector register 書込
+    ; (= SLANGINIT は SETUP_ISR_AREA + LD I, $FF + IM 2 まで、 SEARCHCTC + EI は
+    ;  device side、 IRQ 基盤と device 責任分割原則)
+    _CTC  EQU   NAME_SPACE_DEFAULT._CTC
+
+    CALL NAME_SPACE_DEFAULT.SEARCHCTC
+    LD BC,(_CTC)
+    LD A,C
+    OR B
+    JP Z,NOCTC          ; CTC 検出失敗時は割り込み無効
+
+    ; CTC ch0 に vector register 値 ($E0 = _CTCVEC 下位 byte) を OUT
+    DEC C
+    DEC C
+    LD A,(_CTCVEC)
+    OUT (C),A
 #ENDIF
 
     ; BCにはCTCのチャンネル2のアクセス先が入っている
@@ -748,6 +765,26 @@ SOUNDDRV_INIT:
     LD      (HL),C
     INC HL
     LD      (HL),B
+#ELIF NAME_SPACE_DEFAULT.OS_TYPE == 4
+    ; x1native: ISR_ENTRY 経由 indirect (= SETUP_ISR_AREA で _ISRADR/_ISRHANDLER 済)。
+    ; vector table ch1 slot (= HL は L743 で _CTCVEC+2 を指してる) に
+    ; ISR_ENTRY addr ($FFEB = _ISRADR) を書く。
+    LD DE,(NAME_SPACE_DEFAULT._ISRADR)
+    LD (HL),E
+    INC HL
+    LD (HL),D
+    ; ISR_ENTRY 内 JP operand に SOUNDDRV_EXEC addr を書く (= _ISRHANDLER 経由)
+    LD DE,SOUNDDRV_EXEC
+    LD HL,(NAME_SPACE_DEFAULT._ISRHANDLER)
+    LD (HL),E
+    INC HL
+    LD (HL),D
+    ; 注: RETI→RET 書換 (LD A,$C9; LD (SOUNDDRV_EXEC_END),A) は実行しない
+    ;     (= x1native ISR_ENTRY は JP handler 単純型、 SOUNDDRV_EXEC RETI で
+    ;      interrupt から直接帰る、 戻り先 trampoline 不要)。
+    ; 注: EI は本 branch では行わない。 PSG_INIT 共通末尾の EI に任せる
+    ;     (= CTC ch1 設定済 + driver state / work area 初期化未完了 + PUSH 済
+    ;      register stack 上の状態で EI すると割り込みで破綻する)。
 #ELIF NAME_SPACE_DEFAULT.OS_TYPE == 1
     ; 割り込み先アドレスが格納されている場合はturboである
     LD DE,(NAME_SPACE_DEFAULT._ISRADR)

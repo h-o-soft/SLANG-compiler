@@ -23,7 +23,12 @@
 
 ; @name SLANGINIT
 ; @resident local
-; @calls sWORK, INIT_CRTC, clear_screen, _C8025L
+; @calls sWORK, INIT_CRTC, clear_screen, _C8025L, SETUP_ISR_AREA, SEARCHCTC
+; 注: SLANGINIT 自体は SEARCHCTC を CALL しない (= IRQ 基盤と device 責任分割
+;      原則、 SEARCHCTC は PSG_INIT(1) 等 device library 側で CALL)、 ただし
+;      link planner が SEARCHCTC を link 対象に積むため declare として記載。
+;      libx1_psg.asm x1native path の `CALL NAME_SPACE_DEFAULT.SEARCHCTC` が
+;      sym 解決できるよう、 ここで依存宣言する。
 DI
 ; SP は default_org ($1000) 直前に置く。 emulator load 時に boot ROM 経由 SP が
 ; 既に有効でも、 安全のため明示設定 (= スタック overflow しても user code に
@@ -60,6 +65,19 @@ CALL INIT_CRTC
 ; LSX 同期 ($FF80 = TXTCUR) は行わない (= native は独立)。
 CALL clear_screen
 
+; IRQ 土台のみ構築 (= IRQ 基盤と device-specific 責任分割):
+;  - SETUP_ISR_AREA: $FFE0-$FFFF に IM2 vector table + ISR_DUMMY + ISR_ENTRY、
+;    vector 全 entry を ISR_DUMMY で init、 _CTCVEC/_ISRADR/_ISRHANDLER 設定
+;  - LD I, $FF + IM 2: IM2 mode 設定、 vector page = $FFxx
+;  - EI は本 routine では行わない (= device library 側 (PSG_INIT(1) 等) が
+;    vector slot 登録 + 初期化完了後の共通末尾で EI、 将来 Arkos Tracker 等
+;    別 IRQ driver 入れたとき干渉しない)
+;  - SEARCHCTC も本 routine では呼ばない (= device 利用時に PSG_INIT 等が call)
+CALL SETUP_ISR_AREA
+LD A, $FF
+LD I, A
+IM 2
+
 LD IY, __IYWORK
 
 CALL MAIN
@@ -86,7 +104,7 @@ JR .stop_halt
 ; @name sWORK
 ; @resident shared
 ; @param_count 0
-; @works sXYADR:2,sKBFAD:128,sKBFAD0:1,sKBFAD1:1,sKBFADX:81,sPRBF:80,sSUBPS:2,sSUBBF:256,_CTCVEC:2,_CTC:2,AT_WIDTH:1
+; @works sXYADR:2,sKBFAD:128,sKBFAD0:1,sKBFAD1:1,sKBFADX:81,sPRBF:80,sSUBPS:2,sSUBBF:256,_CTCVEC:2,_CTC:2,AT_WIDTH:1,_ISRADR:2,_ISRHANDLER:2
 ; LSX 同名 work area を踏襲 (= sPRINT / sGETL 等の互換性確保)。 LSX 固定 addr
 ; ($EE8C / $EE8E / $EE92 等) は使わない、 全て __WORK__ 内 BSS。
 ; AT_WIDTH (1 byte) は現在の column 数 (40 or 80)、 SLANGINIT で 80 に init、
@@ -244,3 +262,119 @@ DB	$A0                                          ; WK1FD0
 ;   互換用 shim、 graphics pcg/grp 単独動作には実質使わないが保守的に provide。
 AT_COLORF: DB $07   ; 前景色 default (= 白、 既存 libx1_print と同初期値)
 _WK1FD0:   DB $00   ; 8255 WK1FD0 cache (= 既存 libx1_print と同初期値)
+
+
+; @name SEARCHCTC
+; @resident shared
+; @calls sWORK
+; CTC port を 4 address 全試行 (= 後勝ち、 最後に成功した CTC が _CTC に残る)、
+; _CTC に CTC ch2 port address を保存。 SLANGINIT からは呼ばない (= device-specific
+; library = PSG_INIT(1) 等 から call、 IRQ 基盤と device 責任分割原則)。
+; priority 調整 (= FM 優先 / 内蔵優先) は後続 PR 検討。
+; libsosx1_base.asm L56-72 + L160-185 fork、 機種判定 + ISR_ENTRY copy 関連は除去。
+; CHKCTC は本 block 内 ローカル label として置く (= linker が CHKCTC を落とさない
+; 構造維持、 別 @name に分けるなら @calls CHKCTC 必要)。
+LD BC, 0
+LD (_CTC), BC
+LD BC, $0A04
+CALL .chkctc
+LD BC, $0704
+CALL .chkctc
+LD BC, $1FA8
+CALL .chkctc
+LD BC, $1FA0
+CALL .chkctc
+RET
+
+; CHKCTC: BC = candidate addr、 CTC chip 応答確認 (= write/read pattern test)、
+;          success なら _CTC = BC+2 (= ch2 port addr)、 fail なら _CTC 変更なし
+.chkctc:
+PUSH BC
+LD DE, $4703
+.inictc1:
+INC C
+OUT (C), D
+DB $ED, $71            ; OUT (C), 0 (= Z80 未定義命令)
+DEC E
+JR NZ, .inictc1
+POP BC
+LD DE, $07FA
+OUT (C), D
+OUT (C), E
+IN A, (C)
+CP E
+RET NZ
+OUT (C), D
+OUT (C), D
+IN A, (C)
+CP D
+RET NZ
+INC C
+INC C
+LD (_CTC), BC
+RET
+
+
+; @name SETUP_ISR_AREA
+; @resident shared
+; @calls sWORK
+; $FFE0-$FFFF に IM2 vector table + ISR_DUMMY + ISR_ENTRY trampoline を構築、
+; vector 全 entry を ISR_DUMMY addr で初期化 (= 想定外 interrupt 安全網)、
+; _CTCVEC / _ISRADR / _ISRHANDLER 設定。 SLANGINIT から call、 device library が
+; 後で個別 vector slot を差し替える形 (= PSG_INIT(1) 等)。
+;
+; memory layout ($FFE0-$FFFF、 32 byte、 x1native ABI 予約領域):
+;  - $FFE0-$FFE7: IM2 vector table (= CTC ch0-3 vector × 2 byte)
+;  - $FFE8-$FFEA: ISR_DUMMY (= 3 byte: EI; RETI)
+;  - $FFEB-$FFFF: ISR_ENTRY (= 9 byte + 余裕 12 byte)
+;
+; ISR_DUMMY_TEMPLATE / ISR_ENTRY_TEMPLATE は本 block 内 ローカル label。
+; ISR_ENTRY 内 JP operand addr = $FFEB + 7 = $FFF2 (= _ISRHANDLER 経由 patch)。
+LD HL, .isr_dummy_template
+LD DE, $FFE8
+LD BC, .isr_dummy_template_end - .isr_dummy_template
+LDIR
+
+LD HL, .isr_entry_template
+LD DE, $FFEB
+LD BC, .isr_entry_template_end - .isr_entry_template
+LDIR
+
+; vector table $FFE0-$FFE7 を ISR_DUMMY ($FFE8) で初期化
+LD HL, $FFE8
+LD DE, $FFE0
+LD B, 4
+.sia_loop:
+LD A, L
+LD (DE), A
+INC DE
+LD A, H
+LD (DE), A
+INC DE
+DJNZ .sia_loop
+
+LD HL, $FFE0
+LD (_CTCVEC), HL
+LD HL, $FFEB
+LD (_ISRADR), HL
+LD HL, $FFEB + 7        ; ISR_ENTRY 内 JP operand addr = $FFF2
+LD (_ISRHANDLER), HL
+RET
+
+; ISR_DUMMY: 想定外 interrupt 安全網 (= EI で割り込み再許可後 RETI で即帰る)
+.isr_dummy_template:
+EI                       ; FB
+DB $ED, $4D              ; RETI
+.isr_dummy_template_end:
+
+; ISR_ENTRY: register 保存 + RAM bank restore (defensive) + handler jump
+; SOUNDDRV_EXEC 等 handler 側で RETI して interrupt から帰る (= ISR_ENTRY 側で
+; POP + RETI する形式ではない、 JP handler 単純型)。 RETI→RET 書換は不要。
+.isr_entry_template:
+PUSH AF
+LD A, $1E                ; X1 BIOS bank port: RAM bank restore (defensive、
+                         ; user code が ROM 使わない前提なら不要だが念のため)
+OUT ($00), A
+POP AF
+JP 0                     ; ← _ISRHANDLER 経由 patch、 SOUNDDRV_EXEC 等を書く
+.isr_entry_template_end:
