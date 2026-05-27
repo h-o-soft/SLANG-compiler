@@ -107,7 +107,7 @@ public class X1NativeEnvTests
     [InlineData("clear_screen")]   // text + attribute + kanji 3 plane 初期化
     [InlineData("_C8025L")]        // CRTC PARM 80 col Lo-res table
     [InlineData("_C4025L")]        // CRTC PARM 40 col Lo-res table
-    [InlineData("_CRTCD")]         // CRTC 現在設定 work area (= R1 から動的 width 取得)
+    [InlineData("X1CRT_WORK")]     // _CRTCD provider (= @works _CRTCD:16、 main __WORK__ allocate)
     public void Libx1NativeBase_DefinesRoutine(string name)
     {
         var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
@@ -532,6 +532,117 @@ public class X1NativeEnvTests
             // overlay 関連 intermediate も cleanup
             foreach (var ext in new[] { "._m0.ASM", "._m0.bin", "._m0.LST", "._m0.dummy.imports.asm",
                                         ".dummy.imports.asm", ".ASM", ".inc", ".sym" })
+                if (File.Exists(output + ext)) File.Delete(output + ext);
+        }
+    }
+
+    // === Issue #209 fix: Local overlay の sWORK BSS sym EXTERN + main __WORK__ 確保 ===
+
+    [Fact]
+    public void MtreadsmpLocalSample_BuildsSuccessfully()
+    {
+        // Local mode (= #MODULE $4000、 RESIDENT 省略) で overlay 内 PRINT 動作 pin
+        // (= Issue #209 fix の核心 sample)。 build success + 多段 .tap 構造確認。
+        var repoRoot = RepoRoot();
+        var sample = Path.Combine(repoRoot, "examples", "X1NATIVE_MTREAD", "MTREADSMP_LOCAL.SL");
+        var include = Path.Combine(repoRoot, "include");
+        var output = Path.Combine(Path.GetTempPath(), $"MTREADSMP_LOCAL_test_{Guid.NewGuid():N}");
+        try
+        {
+            var (rc, stdout, stderr) = RunSlangBuild(
+                $"-E x1native -I \"{include}\" \"{sample}\" -o \"{output}\" --emit tape");
+            Assert.True(rc == 0,
+                $"MTREADSMP_LOCAL build failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            Assert.True(File.Exists(output + ".tap"), "MTREADSMP_LOCAL.tap not generated");
+            // 多段 .tap 構造 (= main + overlay._m0、 stage 2 件) + load addr 確認
+            var tap = SLANGCompiler.Build.TapeFormats.TapFile.Load(output + ".tap");
+            var programs = SLANGCompiler.Build.TapeFormats.X1Program.DecodeAll(tap);
+            Assert.Equal(2, programs.Count);
+            Assert.Equal(0x1000, programs[0].Info.LoadAddress);  // main
+            Assert.Equal(0x4000, programs[1].Info.LoadAddress);  // overlay._m0
+            // overlay は Local mode で runtime routine 複製済 = RESIDENT (36 byte) より大きい
+            Assert.True(programs[1].Data.Length > 100,
+                $"Local mode overlay size too small (= {programs[1].Data.Length}, expected > 100)");
+        }
+        finally
+        {
+            CleanupBuildArtifacts(output);
+            foreach (var ext in new[] { "._m0.ASM", "._m0.bin", "._m0.LST", "._m0.dummy.imports.asm",
+                                        "._m0.imports.asm", ".dummy.imports.asm",
+                                        ".ASM", ".inc", ".sym" })
+                if (File.Exists(output + ext)) File.Delete(output + ext);
+        }
+    }
+
+    [Fact]
+    public void ModtestSample_BuildsOnX1Native()
+    {
+        // 既存 MODTEST.SL (= #MODULE $3000 Local、 LSX/x1 では動くが x1native では
+        // 既存 bug で fail してた) が Issue #209 fix 後 build success する pin
+        // (= 既存問題解消の最重要 test)
+        var repoRoot = RepoRoot();
+        var sample = Path.Combine(repoRoot, "examples", "MODTEST.SL");
+        var include = Path.Combine(repoRoot, "include");
+        var output = Path.Combine(Path.GetTempPath(), $"MODTEST_X1N_test_{Guid.NewGuid():N}");
+        try
+        {
+            var (rc, stdout, stderr) = RunSlangBuild(
+                $"-E x1native -I \"{include}\" \"{sample}\" -o \"{output}\" --emit tape");
+            Assert.True(rc == 0,
+                $"MODTEST.SL on x1native build failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            Assert.True(File.Exists(output + ".tap"), "MODTEST.tap not generated");
+        }
+        finally
+        {
+            CleanupBuildArtifacts(output);
+            foreach (var ext in new[] { "._m0.ASM", "._m0.bin", "._m0.LST", "._m0.dummy.imports.asm",
+                                        "._m0.imports.asm", ".dummy.imports.asm",
+                                        ".ASM", ".inc", ".sym" })
+                if (File.Exists(output + ext)) File.Delete(output + ext);
+        }
+    }
+
+    [Fact]
+    public void OverlayOnlyPrintSample_BuildsOnX1Native()
+    {
+        // 「main で PRINT 不使用、 overlay だけ PRINT 使う」 minimal ケース (= Codex
+        // 指摘の核心 test、 main.sym に sXYADR / AT_WIDTH が出る pin = main __WORK__
+        // allocate 確認の最重要 test)
+        var repoRoot = RepoRoot();
+        var include = Path.Combine(repoRoot, "include");
+        var slPath = Path.Combine(Path.GetTempPath(), $"overlay_only_print_{Guid.NewGuid():N}.SL");
+        var output = Path.Combine(Path.GetTempPath(), $"overlay_only_print_test_{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllText(slPath, @"
+MAIN()
+BEGIN
+    MODFUNC();
+END;
+
+#MODULE $4000
+MODFUNC()
+BEGIN
+    PRINT(""X"");
+END;
+#END
+");
+            var (rc, stdout, stderr) = RunSlangBuild(
+                $"-E x1native -I \"{include}\" \"{slPath}\" -o \"{output}\" --emit bin");
+            Assert.True(rc == 0,
+                $"overlay-only-PRINT build failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            // overlay._m0.bin 生成確認 (= main は MODFUNC call のみ、 overlay 側 PRINT が
+            // resolve できれば overlay._m0.bin が出る)
+            Assert.True(File.Exists(output + "._m0.bin"),
+                "overlay._m0.bin not generated — main __WORK__ に overlay 用 work sym 未 allocate 疑い");
+        }
+        finally
+        {
+            if (File.Exists(slPath)) File.Delete(slPath);
+            CleanupBuildArtifacts(output);
+            foreach (var ext in new[] { "._m0.ASM", "._m0.bin", "._m0.LST", "._m0.dummy.imports.asm",
+                                        "._m0.imports.asm", ".dummy.imports.asm",
+                                        ".ASM", ".inc", ".sym" })
                 if (File.Exists(output + ext)) File.Delete(output + ext);
         }
     }

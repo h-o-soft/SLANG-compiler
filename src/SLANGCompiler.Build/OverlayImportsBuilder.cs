@@ -22,6 +22,9 @@ public static class OverlayImportsBuilder
         "; === Shared Runtime References (resolved via two-stage assembly) ===",
         "; === Shared Symbols (from main) ===",
         "; === String references (from main) ===",
+        // Issue #209 fix: overlay local copy runtime function が参照する main 側
+        // sWORK BSS sym (sXYADR / AT_WIDTH 等) を EXTERN で列挙する section。
+        "; === Shared Work Labels (from main, for local copy runtime functions) ===",
     };
 
     // `; EXTERN <name>` または `; EXTERN <name>  ; <comment>`
