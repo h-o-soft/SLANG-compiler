@@ -1,4 +1,4 @@
-// X1 多段 tape ロード sample (= #MODULE overlay 経由)
+// X1 多段 tape ロード sample (= #MODULE overlay 経由、 RESIDENT mode)
 //
 // build: slangbuild -E x1native -I include examples/X1NATIVE_MTREAD/MTREADSMP.SL \
 //        -o /tmp/MTREADSMP --emit tape
@@ -9,23 +9,27 @@
 //   2) MTREAD($4000) で 2 段目 (overlay._m0) を $4000 に load
 //      (= 内部で MT_CTRL_PLAY で deck 再生再開、 info+data block read、 MT_CTRL_STOP)
 //   3) overlay_entry() call (= prelink が overlay 内 関数を addr 解決)
-//      → OVERLAY_RESULT に 42 を書込
+//      → "STAGE2 OVERLAY LOADED!" 表示 + OVERLAY_RESULT に 42 を書込
 //   4) main で "STAGE2 RESULT = 42" 表示 + INKEY(1) で stop 解除
 //
-// 注: overlay 内では PRINT 等 SLANG runtime call は使わない (= 既存 #MODULE +
-//      x1native の組合せで overlay 内から sXYADR / AT_WIDTH (= sWORK 内 BSS)
-//      参照が EXTERN 宣言されない既存問題のため別 issue 対応予定)。
-//      overlay は値計算 / VAR 書込のみ、 表示は main 側で。
+// 注: `#MODULE $4000 RESIDENT` で **RESIDENT mode** 指定 = overlay 内 runtime
+//     call (PRINT 等) は main 側 shared runtime への EXTERN 参照に変換され、
+//     overlay binary は大幅縮小 (= 例: 248 byte → 36 byte、 -85%)。
+//     RESIDENT 指定なし (= Local default) だと overlay 内に runtime routine が
+//     複製され、 さらに sWORK 内 BSS sym (sXYADR / AT_WIDTH) の EXTERN 宣言
+//     不足で assemble fail する。
 
 VAR OVERLAY_RESULT;
 
-#MODULE $4000
+#MODULE $4000 RESIDENT
 
 // overlay 内 関数 (= prelink で main から call 可能、 overlay binary は $4000 に
 //  load される前提、 関数の実 addr は SLANG runtime planner が解決)。
-// 注: PRINT 等 runtime call は本 sample では使用しない (= 上記既存問題)。
+// RESIDENT mode のため PRINT 等 runtime call OK (= shared promotion 経由)。
 overlay_entry()
 BEGIN
+    PRINT("STAGE2 OVERLAY LOADED!");
+    PRINT(/);
     OVERLAY_RESULT = 42;
 END;
 
