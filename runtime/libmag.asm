@@ -29,71 +29,12 @@ PDBUFE	EQU	PDBUF+PDSIZE
 HEADBF	EQU	PDBUFE
 PALBF	EQU	HEADBF+32
 
-; @name GRDISP
-; @resident shared
-; @lib MAGLIB
-    LD A,H
-    OR L
-    JR Z,GR_NODISP
-
-    ; Z �݊�(8�F)���[�h
-    LD	BC,$1FB0
-    DB	$ED,$71
-
-    ; $10xx��$AA(BLUE)
-    LD	BC,$10AA
-    OUT	(C),C
-    ; $11xx��$CC(RED)
-    LD	BC,$11CC
-    OUT	(C),C
-    ; $12xx��F0(GREEN)
-    LD	BC,$12F0
-    OUT	(C),C
-
-    ;; $13xx��0(�`��D��x�ݒ�)���Ƃ肠�����G��Ȃ�
-    ;INC	B
-    ;DB	$ED,$71
-
-    ; BANK0�I��(08h�Q����)�A�O���t�B�b�N�\��(80h�������Ă�Ɣ�\���A�Q�Ă���ƕ\���B����)
-    LD  A,(NAME_SPACE_DEFAULT._WK1FD0)
-    AND 77h
-    LD  BC,1FD0h
-    OUT (C),A
-    LD  (NAME_SPACE_DEFAULT._WK1FD0),A
-
-    RET
-
-GR_NODISP:
-    ; �p���b�g�ݒ��S��0�ɂ��Ĕ�\���ɂ���
-    LD	B,$10
-    DB	$ED,$71
-    INC	B
-    DB	$ED,$71
-    INC	B
-    DB	$ED,$71
-    INC	B
-    DB	$ED,$71
-    RET
-
-; @name GRCLS
-; @resident shared
-; @calls MAGBASE
-; @lib MAGLIB
-    ; ���݂�VRAM BANK�̂݃N���A����
-    XOR A
-    LD  C,A
-    LD  HL,$4003
-CLS1:
-    LD  B,H
-CLS2:
-    DB  $ED,$71 ; OUT   (C),0
-    INC B
-    JR  NZ,CLS2
-    ;
-    ADD A,L
-    LD  C,A
-    JR  NZ,CLS1
-    RET
+; GRDISP / GRCLS は libx1_grp.asm へ移動済 (= graphics 表示制御は graphics
+; library の責務として整理、 x1native env では libmag を使わないため
+; libx1_grp 側に新規追加した版を全 env で共通利用)。 MAGLOAD は @calls 経由で
+; GRCLS を依存 declare するため、 selective link で libx1_grp.GRCLS が link
+; される。 内部 label (GR_NODISP / CLS1 / CLS2) は libmag 内部のみ参照だった
+; ため一緒に削除。
 
 ; @name MAGLOAD
 ; @resident shared

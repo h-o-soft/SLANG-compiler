@@ -247,14 +247,25 @@ public class X1NativeEnvTests
     [Fact]
     public void Libx1Grp_DefinesGrdispAndGrclsForX1Native()
     {
-        // GRDISP / GRCLS は元々 libmag に定義されてたが、 x1native では libmag を
-        // 使わないため libx1_grp 側に新規追加 (= ユーザー指示「GRDISP/GRCLS は
-        // graphics 責務なので libx1_grp に移すのがスジ」)。 既存 x1 env では
-        // last-wins (= dictionary 上書き) で libmag.GRDISP/GRCLS が優先採用、
-        // 既存挙動 維持。
+        // GRDISP / GRCLS は graphics 表示制御 routine、 graphics library
+        // (libx1_grp) の責務として整理 (= ユーザー判断「libmag からは外すのが
+        // スジ」)。 全 env (x1 / sosx1 / x1native) で libx1_grp 経由で resolve
+        // される (= 旧 libmag 側 routine は削除済、 last-wins 依存解消)。
         var content = File.ReadAllText(RuntimeAsmPath("libx1_grp.asm"));
         Assert.Contains("; @name GRDISP", content);
         Assert.Contains("; @name GRCLS", content);
+    }
+
+    [Fact]
+    public void Libmag_DoesNotDefineGrdispGrcls()
+    {
+        // graphics 責務分離: 旧 libmag.asm 内の GRDISP / GRCLS routine は削除済
+        // (= libx1_grp 側へ移行)。 全 env で libx1_grp 経由 resolve され、 重複
+        // 定義による last-wins 依存も解消。 MAGLOAD は @calls listing に GRCLS
+        // を残しており、 selective link で libx1_grp.GRCLS が依存閉包される。
+        var content = File.ReadAllText(RuntimeAsmPath("libmag.asm"));
+        Assert.DoesNotContain("; @name GRDISP", content);
+        Assert.DoesNotContain("; @name GRCLS", content);
     }
 
     // === CLI spawn build smoke (= 実 slangbuild を Process で起動して exit 0 +
