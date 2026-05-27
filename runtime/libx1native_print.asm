@@ -80,7 +80,12 @@ LD HL, (sXYADR)
 .sp_putc:
 ; HL = (sXYADR.H << 8) | sXYADR.L = (Y, X)、 AT_VRCALC で Y*width+X (VRAM offset)
 CALL AT_VRCALC
-; port-mapped OUT (libx1_print.asm PRT sequence、 kanji=0 上書き含む)
+; port-mapped OUT (= libx1_print.asm PRT sequence と同じく、 attribute は触らない)
+; attribute を書込みすると PCG 用に設定された attribute (= PCG flag 含む) を
+; 消してしまうため、 LSX / S-OS 慣例通り sPRINT では text + kanji=0 のみ書込。
+; 初期 attribute ($07 = 白) は SLANGINIT 内 clear_screen で全 cell に fill 済、
+; scroll_up の最終行 fill / CLEAR ($0C) でも attribute $07 で塗り直されるため
+; 通常 text 表示には影響なし。
 LD B, H
 LD C, L
 LD A, B
@@ -89,10 +94,6 @@ LD B, A
 DB $ED, $71   ; OUT (C), 0 = kanji area に 0 (= ANK 文字、 Z80 未定義命令)
 RES 3, B      ; bit 3 clear ($38→$30、 text region)
 OUT (C), E    ; OUT text (= 文字コード)
-; attribute も白で書込 (= boot ROM 初期色依存を回避、 IPL_PUTCHAR 同戦略)
-RES 4, B      ; bit 4 clear ($30→$20、 attribute region)
-LD A, $07
-OUT (C), A
 ; cursor X 進行
 LD HL, sXYADR
 INC (HL)

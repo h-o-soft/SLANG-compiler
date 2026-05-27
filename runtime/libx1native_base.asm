@@ -230,3 +230,17 @@ DB	$00, $07                                     ; R8-R9
 DW	0 - 40 * 25, 0 - 40                          ; R10/R11 + LSX cache
 DB	$0D                                          ; 8255 port C
 DB	$A0                                          ; WK1FD0
+
+
+; @name X1WORK
+; @resident shared
+; LSX 系 libx1_print の X1WORK alias。 graphics 系 (libx1_grp / libx1_pcg 等) が
+; @calls X1WORK で link 上 declare する依存を満たす shim。
+; - AT_WIDTH: x1native の sWORK 内 BSS で provide 済 (= 重複定義回避のため
+;   X1WORK alias 側では持たない、 @works dedupe = 最初出現が勝ち)。
+; - _TXADR ($EE8E): LSX 固定 addr のため意図的に提供しない (= x1native の
+;   境界保持、 graphics 系で実参照無いことは grep 確認済)。
+; - AT_COLORF / _WK1FD0: 将来 libmag native 化 (= 別 PR) で reuse される予定の
+;   互換用 shim、 graphics pcg/grp 単独動作には実質使わないが保守的に provide。
+AT_COLORF: DB $07   ; 前景色 default (= 白、 既存 libx1_print と同初期値)
+_WK1FD0:   DB $00   ; 8255 WK1FD0 cache (= 既存 libx1_print と同初期値)

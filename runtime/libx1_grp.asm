@@ -2635,3 +2635,67 @@ CALL X1GLINE.SET320
 JP	X1PAINT.WIDTHPATCH
 
 
+; @name GRDISP
+; @resident shared
+; @calls X1WORK
+; H/L = 0 で graphics 非表示 (= palette を全 0)、 非 0 で graphics 表示 (= Z 互換
+; 8 色モード、 palette 設定 + bank 0 select)。
+; libmag 既存 GRDISP routine と同一実装、 ただし本 PR では x1native env で
+; libmag を使わないため libx1_grp 側にも提供 (= 既存 x1 env では last-wins で
+; libmag 側が優先される、 影響無し)。 _WK1FD0 は X1WORK alias 経由で provide。
+LD A,H
+OR L
+JR Z,.gr_nodisp
+; Z 互換 (8 色) モード
+LD	BC,$1FB0
+DB	$ED,$71         ; OUT (C), 0
+; $10xx = $AA (BLUE)
+LD	BC,$10AA
+OUT	(C),C
+; $11xx = $CC (RED)
+LD	BC,$11CC
+OUT	(C),C
+; $12xx = $F0 (GREEN)
+LD	BC,$12F0
+OUT	(C),C
+; BANK0 選択 (08h 系統)、 graphics 表示 (80h 立てると非表示、 落ちてると表示。 反転)
+LD  A,(_WK1FD0)
+AND 077h
+LD  BC,$1FD0
+OUT (C),A
+LD  (_WK1FD0),A
+RET
+.gr_nodisp:
+; palette を全 0 にして非表示
+LD	B,$10
+DB	$ED,$71         ; OUT (C), 0
+INC	B
+DB	$ED,$71
+INC	B
+DB	$ED,$71
+INC	B
+DB	$ED,$71
+RET
+
+
+; @name GRCLS
+; @resident shared
+; 現在の VRAM bank のみ port-mapped で 0 fill (= 単純消去、 エフェクト無し)。
+; libmag 既存 GRCLS と同一実装 (= MAGBASE 依存なし、 単純 inner/outer loop)。
+; bank 切替は GRDISP 側で行う想定、 GRCLS は現状 bank のみクリア。
+XOR A
+LD  C,A
+LD  HL,$4003
+.cls1:
+LD  B,H
+.cls2:
+DB  $ED,$71         ; OUT (C), 0
+INC B
+JR  NZ,.cls2
+;
+ADD A,L
+LD  C,A
+JR  NZ,.cls1
+RET
+
+
