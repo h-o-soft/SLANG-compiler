@@ -281,9 +281,18 @@ public class X1NativeEnvTests
             UseShellExecute = false,
         };
         using var proc = Process.Start(psi)!;
+        // pipe buffer 詰まり回避: WaitForExit より先に stdout/stderr の非同期 read 開始
+        // (= 大量出力 + 同期 ReadToEnd 後置きだと子プロセスが書込ブロックで止まり、
+        //  WaitForExit が timeout まで進まなくなる、 Codex review Low 指摘)
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
         var exited = proc.WaitForExit(120 * 1000);  // 2 min timeout
-        Assert.True(exited, "slangbuild process timeout (= 2 min)");
-        return (proc.ExitCode, proc.StandardOutput.ReadToEnd(), proc.StandardError.ReadToEnd());
+        if (!exited)
+        {
+            try { proc.Kill(entireProcessTree: true); } catch { /* 既に exit 済等は無視 */ }
+            Assert.Fail("slangbuild process timeout (= 2 min)、 kill 済み");
+        }
+        return (proc.ExitCode, stdoutTask.Result, stderrTask.Result);
     }
 
     private static void CleanupBuildArtifacts(string outputBase)
