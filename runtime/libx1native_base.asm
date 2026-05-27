@@ -173,7 +173,7 @@ PUSH HL
 XOR A
 LD (sXYADR), A
 LD (sXYADR+1), A
-LD A, 8            ; 8 block × 256 byte
+LD H, 8            ; 8 block × 256 byte (= outer counter、 inner で A 破壊するため H 退避)
 LD BC, $3000       ; B 走査 = $30 / $31 / ... / $37
 .cls_outer:
 .cls_inner:
@@ -192,7 +192,7 @@ LD B, D            ; B 復元 ($30xx-$37xx 範囲、 次 cell 用)
 INC C
 JR NZ, .cls_inner
 INC B              ; 次 256 byte block ($30 → $31 → ...)
-DEC A
+DEC H              ; outer counter (= A は inner で破壊されるので使えない)
 JR NZ, .cls_outer
 POP HL
 POP DE

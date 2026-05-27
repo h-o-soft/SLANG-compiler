@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using SLANGCompiler.Runtime;
 using Xunit;
 
@@ -165,5 +166,24 @@ public class X1NativeEnvTests
         // memory map 上の $10xx は port-mapped I/O では別 region を指す。
         var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
         Assert.DoesNotContain("RES 5, B", content);
+    }
+
+    [Fact]
+    public void ClearScreen_OuterCounterIsNotA()
+    {
+        // Codex review 2 巡目 で発覚した致命 bug の再発防止: clear_screen の
+        // outer block counter (= 8) を A に置くと、 inner cell loop の
+        // `LD A, B; OR $38` で破壊されて 8 回で抜けず周辺 I/O port を long に
+        // 叩き続けて画面破壊する。 A 以外 (= 推奨 H、 inner で touch しない reg)
+        // を outer counter にする。 pin: clear_screen routine 区間内に
+        // `LD H, 8` + `DEC H` が存在 + `LD A, 8` (= 旧 bug pattern) が無い。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        var match = Regex.Match(content, @"; @name clear_screen\b(.*?)(?=; @name |\z)",
+            RegexOptions.Singleline);
+        Assert.True(match.Success, "clear_screen routine 区間が見つからない");
+        var body = match.Groups[1].Value;
+        Assert.Contains("LD H, 8", body);
+        Assert.Contains("DEC H", body);
+        Assert.DoesNotContain("LD A, 8", body);
     }
 }
