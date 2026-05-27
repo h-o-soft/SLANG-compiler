@@ -115,7 +115,7 @@ JR .stop_halt
 
 ; @name INIT_CRTC
 ; @resident shared
-; @calls _CRTCD
+; @calls X1CRT_WORK
 ; CRTC 80 mode / 40 mode 切替 + 画面 mode 設定。
 ; HL = source PARM table (= _C8025L / _C4025L 等、 16 byte)、 _CRTCD work area
 ; に LDIR copy してから CRTC R0-R11 を $1800/$1801 経由 OUT + 8255 port C
@@ -147,7 +147,7 @@ RET
 
 ; @name AT_VRCALC
 ; @resident shared
-; @calls _CRTCD
+; @calls X1CRT_WORK
 ; H = Y、 L = X 入力 → HL = Y * width + X 出力 (= text VRAM 内 offset)。
 ; width は _CRTCD の R1 (byte 1) から動的取得 (= WIDTH() 切替に追従)。
 ; Russian peasant 乗算 (8 回 ADD HL,HL + carry 時 ADD DE)、 libx1_print fork。
@@ -219,14 +219,20 @@ POP AF
 RET
 
 
-; @name _CRTCD
+; @name X1CRT_WORK
 ; @resident shared
-; CRTC 設定 work area (= 16 byte、 INIT_CRTC で current PARM table を LDIR copy)。
-; layout: byte 0-11 = R0-R11 (CRTC reg)、 byte 12-13 = LSX 内部 cache 用 (OUT
-; しない)、 byte 14 = 8255 port C 値、 byte 15 = WK1FD0 値。
-; AT_VRCALC は byte 0-1 を WORD 読みして R1 (= width = byte 1) を取得する。
-; DS 16 で uninit、 SLANGINIT 内 INIT_CRTC で _C8025L から最初の copy が走る。
-DS 16
+; @param_count 0
+; @works _CRTCD:16
+; CRTC 設定 work area provider。 _CRTCD は INIT_CRTC で current PARM table を
+; LDIR copy する mutable shadow work (= 16 byte)。 layout: byte 0-11 = R0-R11
+; (CRTC reg)、 byte 12-13 = LSX 内部 cache 用 (OUT しない)、 byte 14 = 8255
+; port C 値、 byte 15 = WK1FD0 値。 AT_VRCALC は byte 0-1 を WORD 読みして
+; R1 (= width = byte 1) を取得する。
+;
+; @works 経由 main __WORK__ 内 BSS として確保 (= Local mode overlay からも
+; main 共有 EXTERN で参照、 SLANGINIT INIT_CRTC で init 済値を読める)。
+; 旧 `@name _CRTCD` DS 16 (= overlay 内 local copy で init 走らず壊滅) からの
+; refactor。
 
 
 ; @name _C8025L

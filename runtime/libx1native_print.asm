@@ -42,7 +42,7 @@
 ; @name sPRINT
 ; @resident shared
 ; @param_count 0
-; @calls sWORK, AT_VRCALC
+; @calls sWORK, AT_VRCALC, clear_screen
 ; A = char code
 ; - $0D (CR): sp_do_cr (= X=0, Y++、 Y=25 で scroll_up)
 ; - $0B (HOME): cursor を 0,0 へ (画面 clear なし)

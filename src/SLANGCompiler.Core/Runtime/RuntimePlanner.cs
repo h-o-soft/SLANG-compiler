@@ -119,6 +119,39 @@ public class RuntimePlan
         return set.OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>overlay i 用: local copy 出力される関数のうち @works を持つもの (LoadOrder 順)。
+    /// 各 function の Works property を呼出側で集めて overlay ASM の 「Shared Work
+    /// Labels」 EXTERN listing 構築に使う (= Issue #209、 main 側 sWORK BSS sym を
+    /// EXTERN 参照する形に変換)。</summary>
+    public IEnumerable<RuntimeFunction> GetOverlayWorksFunctions(int overlayIndex)
+    {
+        if (!OverlayLocalFunctions.TryGetValue(overlayIndex, out var set))
+            return Enumerable.Empty<RuntimeFunction>();
+        return set
+            .Select(n => _runtime.Functions.TryGetValue(n, out var f) ? f : null)
+            .Where(f => f != null && f!.Works != null && f.Works.Count > 0)
+            .Distinct()
+            .OrderBy(f => f!.LoadOrder)!;
+    }
+
+    /// <summary>main __WORK__ に allocate すべき @works を持つ関数 (= MainResident +
+    /// MainInline + 全 OverlayLocalFunctions の union、 LoadOrder 順)。
+    /// EmitWorkArea から呼ばれ、 overlay local copy runtime function の Works sym も
+    /// main __WORK__ に確保される (= Issue #209、 overlay からは EXTERN で main 側参照)。
+    /// main が当該 runtime call を使わなくても overlay のみ使う場合に main.sym へ EQU 出力
+    /// される保証。</summary>
+    public IEnumerable<RuntimeFunction> GetMainAllocatedWorksFunctions()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<RuntimeFunction>();
+        foreach (var f in GetMainWorksFunctions())
+            if (seen.Add(f.Name)) result.Add(f);
+        foreach (var kv in OverlayLocalFunctions)
+            foreach (var f in GetOverlayWorksFunctions(kv.Key))
+                if (seen.Add(f.Name)) result.Add(f);
+        return result.OrderBy(f => f.LoadOrder);
+    }
+
     internal static string Normalize(string name, RuntimeManager runtime)
     {
         // alias 名 → 正規名へ。RuntimeManager.Functions には alias 経由でも引けるよう

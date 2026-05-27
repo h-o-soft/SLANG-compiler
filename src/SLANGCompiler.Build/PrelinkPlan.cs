@@ -44,6 +44,10 @@ public class PrelinkPlan
         "; === Shared Runtime References (resolved via two-stage assembly) ===",
         "; === Shared Symbols (from main) ===",
         "; === String references (from main) ===",
+        // Issue #209 fix: overlay local copy runtime function が参照する main 側
+        // sWORK BSS sym (sXYADR / AT_WIDTH 等) を Pass 1 dummy imports でも認識
+        // するため (= 認識しないと Pass 1 overlay assemble で sym 未定義 fail)。
+        "; === Shared Work Labels (from main, for local copy runtime functions) ===",
     };
 
     /// <summary>

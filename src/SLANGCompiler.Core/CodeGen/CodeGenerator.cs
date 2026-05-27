@@ -265,6 +265,28 @@ public class CodeGenerator
                 _e.Raw($"; EXTERN {label}");
         }
 
+        // Issue #209 fix: Shared Work Labels — overlay local copy runtime function が
+        // 参照する main 側 sWORK BSS sym (sXYADR / AT_WIDTH 等) を EXTERN 宣言する。
+        // EmitWorkArea で GetMainAllocatedWorksFunctions 経由で main __WORK__ に
+        // allocate + main.sym に EQU 出力 → ここで EXTERN 宣言 → 2 段アセンブル
+        // (OverlayImportsBuilder / PrelinkPlan) で main.sym 経由解決される。
+        // 既存 overlay.Works は OverlayModule に未定義のため O = ∅ (= union だけで simpler)。
+        var overlayLocalWorksFuncs = _runtimePlan?.GetOverlayWorksFunctions(overlay.Index).ToList()
+                                     ?? new List<RuntimeFunction>();
+        var sharedWorkLabels = overlayLocalWorksFuncs
+            .SelectMany(f => f.Works!)
+            .Select(w => w.Label)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(l => l, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (sharedWorkLabels.Count > 0)
+        {
+            _e.Blank();
+            _e.Comment("=== Shared Work Labels (from main, for local copy runtime functions) ===");
+            foreach (var label in sharedWorkLabels)
+                _e.Raw($"; EXTERN {label}");
+        }
+
         var result = _e.ToAssembly();
 
         // エミッタを復元
@@ -806,7 +828,7 @@ public class CodeGenerator
             var seenLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var flatItems = new List<(string Label, int Size, string? LibName, int Alignment)>();
             var worksSourceFuncs = _runtimePlan != null
-                ? _runtimePlan.GetMainWorksFunctions()
+                ? _runtimePlan.GetMainAllocatedWorksFunctions()
                 : _runtimeManager.GetUsedFunctions();
 
             foreach (var func in worksSourceFuncs)
