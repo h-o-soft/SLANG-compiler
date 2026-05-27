@@ -156,10 +156,16 @@ RET
 ; @calls sWORK
 ; text + attribute + kanji 3 plane を全 cell 初期化 + sXYADR reset (= 0,0)。
 ; 80 col × 25 row = 2000 cell、 256 byte × 8 block = 2048 byte 走査 (= 余 48
-; byte は VRAM 領域内 hidden cell、 残骸あっても表示無影響)。 sPRINT は
-; kanji=0 / attribute=$07 を都度書込なので、 起動時 1 回 0 fill すれば後は
-; sPRINT の上書きで維持され、 scroll では kanji plane を触る必要が無くなる。
-; (= libx1_print.asm CTRL0C fork + kanji plane clear 追加)
+; byte は VRAM 領域内 hidden cell、 残骸あっても表示無影響)。
+;
+; X1 の VRAM plane 選択は port BC の上位 byte の bit pattern:
+;   bit 5 = 1 (= $20 set): kanji or text/attribute 領域選択 (実際は常に 1)
+;   bit 4 = 1 (text/kanji) / 0 (attribute)
+;   bit 3 = 1 (kanji selector、 次 OUT は kanji plane) / 0 (text/attribute)
+; sPRINT 同手順 (OR $38; DB $ED,$71; RES 3; text; RES 4; attribute) を 1 cell
+; ずつ実行。 「kanji plane = $10xx」 は誤解で、 既存 libx1_print CTRL0C / libx1_sgl
+; KANJI_VRAM_ADRS=$3800 と同じく kanji も $38xx 経由 (= text region の bit 3
+; set 状態で OUT 0 を出す Z80 未定義命令 DB $ED,$71 で実現)。
 PUSH AF
 PUSH BC
 PUSH DE
@@ -170,30 +176,21 @@ LD (sXYADR+1), A
 LD A, 8            ; 8 block × 256 byte
 LD BC, $3000       ; B 走査 = $30 / $31 / ... / $37
 .cls_outer:
-; text plane: space ($20)
+.cls_inner:
+LD D, B            ; D = 現在 block (= $30-$37) を保存
+LD A, B
+OR $38             ; bit 3 set → $38xx (kanji selector)
+LD B, A
+DB $ED, $71        ; OUT (C), 0 = kanji = 0 (= ANK 文字、 Z80 未定義命令)
+RES 3, B           ; bit 3 clear → text region ($30xx)
 LD E, $20
-.cls_t:
-OUT (C), E
-INC C
-JR NZ, .cls_t
-; text ($30) → attribute ($20): bit 4 clear
-RES 4, B
+OUT (C), E         ; text = space
+RES 4, B           ; bit 4 clear → attribute region ($20xx)
 LD E, $07
-.cls_a:
-OUT (C), E
+OUT (C), E         ; attribute = 白
+LD B, D            ; B 復元 ($30xx-$37xx 範囲、 次 cell 用)
 INC C
-JR NZ, .cls_a
-; attribute ($20) → kanji ($10): bit 5 clear + bit 4 set
-;  (intermediate $00 が一瞬出るが OUT は実行しないので I/O 副作用なし)
-RES 5, B
-SET 4, B
-LD E, 0
-.cls_k:
-OUT (C), E
-INC C
-JR NZ, .cls_k
-; kanji ($10) → text ($30): bit 5 set
-SET 5, B
+JR NZ, .cls_inner
 INC B              ; 次 256 byte block ($30 → $31 → ...)
 DEC A
 JR NZ, .cls_outer

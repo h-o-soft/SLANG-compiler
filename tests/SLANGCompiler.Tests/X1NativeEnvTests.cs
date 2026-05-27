@@ -142,4 +142,28 @@ public class X1NativeEnvTests
         Assert.Contains("LD A, (AT_WIDTH)", content);
         Assert.Contains("CALL AT_VRCALC", content);
     }
+
+    [Fact]
+    public void ClearScreen_UsesKanjiSelectorViaBit3()
+    {
+        // Codex review High fix: kanji plane は $10xx ではなく $38xx (= text
+        // region 上位 + bit 3 set) 経由でアクセス。 clear_screen 内に OR $38
+        // + DB $ED, $71 (= OUT (C), 0 で kanji=0 書込、 Z80 未定義命令) が
+        // 存在することで、 plane selector が正しく組み立てられてることを pin。
+        // 既存 libx1_print CTRL0C / libx1_sgl KANJI_VRAM_ADRS=$3800 と同戦略。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        Assert.Contains("OR $38", content);
+        Assert.Contains("DB $ED, $71", content);
+    }
+
+    [Fact]
+    public void ClearScreen_DoesNotUseLegacyBit5KanjiManipulation()
+    {
+        // 旧誤実装で RES 5, B (= $20 attribute → $00) してから SET 4, B
+        // (= $00 → $10) で「kanji plane」 を扱おうとしてた pattern が runtime
+        // asm から消えてることを pin。 正しい kanji 切替は bit 3 set ($38xx)、
+        // memory map 上の $10xx は port-mapped I/O では別 region を指す。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        Assert.DoesNotContain("RES 5, B", content);
+    }
 }
