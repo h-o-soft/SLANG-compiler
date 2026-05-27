@@ -256,6 +256,166 @@ public class X1NativeEnvTests
         Assert.Contains("; @name GRCLS", content);
     }
 
+    // === PSG / IRQ 基盤統合 関連 (= libx1_psg native 統合、 自前 IM2 vector) ===
+
+    [Fact]
+    public void Libx1NativeBase_DefinesIrqInfrastructure()
+    {
+        // IRQ 基盤 routine の存在 pin: SEARCHCTC (= CTC 検出) / SETUP_ISR_AREA
+        // (= IM2 vector table + ISR_DUMMY + ISR_ENTRY 構築)、 + 内部 template
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        Assert.Contains("; @name SEARCHCTC", content);
+        Assert.Contains("; @name SETUP_ISR_AREA", content);
+        Assert.Contains(".isr_dummy_template", content);
+        Assert.Contains(".isr_entry_template", content);
+    }
+
+    [Fact]
+    public void Sworks_IncludesIsrWorkArea()
+    {
+        // sWORK @works に _ISRADR:2 / _ISRHANDLER:2 が含まれる (= libx1_psg
+        // x1native path で _ISRADR / _ISRHANDLER 経由 indirect call に使う)
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        Assert.Matches(@"; @works .*_ISRADR:2", content);
+        Assert.Matches(@"; @works .*_ISRHANDLER:2", content);
+    }
+
+    [Fact]
+    public void Slanginit_SetupsIm2ButNoEi()
+    {
+        // SLANGINIT 内に IM 2 setup (= LD I, A + IM 2) は含むが、 EI は含まない
+        // (= IRQ 基盤と device 責任分割、 device library 側で EI)
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        var match = Regex.Match(content, @"; @name SLANGINIT\b(.*?)(?=; @name |\z)",
+            RegexOptions.Singleline);
+        Assert.True(match.Success, "SLANGINIT routine 区間が見つからない");
+        var body = match.Groups[1].Value;
+        Assert.Contains("LD I, A", body);
+        Assert.Contains("IM 2", body);
+        // SLANGINIT 内 単独 EI は存在しない (= device 側で EI、 IRQ 基盤責任分割)
+        Assert.DoesNotMatch(@"\nEI\b", body);
+        // SEARCHCTC を SLANGINIT 内では CALL しない (= device 側で CALL、 ただし
+        // @calls listing には declare する = link 対象に積むため)
+        Assert.DoesNotContain("CALL SEARCHCTC", body);
+    }
+
+    [Fact]
+    public void Libx1Psg_DefinesX1NativeOsTypeBranch()
+    {
+        // libx1_psg.asm に OS_TYPE == 4 (x1native) の #ELIF block が L698 / L746
+        // 両方に追加されてる (= L698 = CTC ch0 vector register 書込、 L746 =
+        // vector table ch1 slot + ISR_ENTRY 内 JP operand 書込)
+        var content = File.ReadAllText(RuntimeAsmPath("libx1_psg.asm"));
+        var elifMatches = Regex.Matches(content, @"#ELIF NAME_SPACE_DEFAULT\.OS_TYPE == 4");
+        Assert.True(elifMatches.Count >= 2,
+            $"OS_TYPE == 4 #ELIF が L698 + L746 両方に必要 (count={elifMatches.Count})");
+    }
+
+    [Fact]
+    public void Libx1Psg_X1NativePath_NoRetiToRetRewrite()
+    {
+        // x1native path で RETI → RET 書換 (= LD A,$C9; LD (SOUNDDRV_EXEC_END),A)
+        // を実行しない pin。 x1native ISR_ENTRY は JP handler 単純型、 SOUNDDRV_EXEC
+        // RETI で interrupt から直接帰る (= libx1_psg S-OS turbo path の RETI→RET
+        // 書換 pattern が x1native 側に紛れ込まないよう設計判断の再発防止)。
+        // 注: comment 行 (= ; で始まる行) は除外して instruction 行のみ判定
+        //     (= 私が書いた「実行しない」 旨の comment が文字列 match で誤 fail
+        //      しないよう)。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1_psg.asm"));
+        // OS_TYPE == 4 block の中身 (= 次の #ELIF or #ENDIF まで) を抽出。
+        // 単純な `(.*?)#ENDIF` だと OS_TYPE == 4 の後に他 #ELIF block が続く場合
+        // それらも巻き込む (= S-OS path の `LD A,$C9` を誤検出した bug)。
+        var match = Regex.Match(content,
+            @"#ELIF NAME_SPACE_DEFAULT\.OS_TYPE == 4(.*?)(?=#ELIF|#ENDIF)",
+            RegexOptions.Singleline);
+        while (match.Success)
+        {
+            var body = match.Groups[1].Value;
+            var instructions = string.Join("\n",
+                body.Split('\n').Where(line => !line.TrimStart().StartsWith(";")));
+            if (instructions.Contains("LD A,$C9") || instructions.Contains("LD A, $C9"))
+                Assert.Fail("x1native path instruction に RETI→RET 書換 (LD A,$C9) が含まれる");
+            if (instructions.Contains("SOUNDDRV_EXEC_END"))
+                Assert.Fail("x1native path instruction に SOUNDDRV_EXEC_END 書換が含まれる");
+            if (Regex.IsMatch(instructions, @"\n\s*EI\b") ||
+                Regex.IsMatch(instructions, @"^\s*EI\b"))
+                Assert.Fail("x1native path instruction に単独 EI が含まれる (= INITEND 共通 EI に任せる)");
+            match = match.NextMatch();
+        }
+    }
+
+    [Fact]
+    public void Libx1Psg_X1NativePath_CallsSearchctc()
+    {
+        // x1native path で SEARCHCTC を CALL する pin (= CTC 検出は device 側責任)
+        var content = File.ReadAllText(RuntimeAsmPath("libx1_psg.asm"));
+        var match = Regex.Match(content,
+            @"#ELIF NAME_SPACE_DEFAULT\.OS_TYPE == 4(.*?)(?=#ELIF|#ENDIF)",
+            RegexOptions.Singleline);
+        var foundCall = false;
+        while (match.Success)
+        {
+            if (match.Groups[1].Value.Contains("CALL NAME_SPACE_DEFAULT.SEARCHCTC"))
+            {
+                foundCall = true;
+                break;
+            }
+            match = match.NextMatch();
+        }
+        Assert.True(foundCall, "x1native path に CALL NAME_SPACE_DEFAULT.SEARCHCTC が必要");
+    }
+
+    [Fact]
+    public void X1NativeEnv_RegistersPsgLibrary()
+    {
+        // x1native env libraries に libx1_psg.asm 含む (= 本 PR で supported now 昇格)
+        var config = EnvironmentLoader.Load(EnvFilePath());
+        Assert.Contains("libx1_psg.asm", config.Libraries);
+    }
+
+    [Fact]
+    public void Libx1Psg_PsgEnd_HasX1NativeGuard()
+    {
+        // Codex review High fix: PSG_END で x1native の場合 ch1 vector slot が
+        // ISR_ENTRY 指してるかチェック、 違ったら early RET (= PSG_INIT(0) 後の
+        // _CTC=0 で `OUT (C),$03` が偽 port 書込、 CTC3BACKUP=0 で vector
+        // $FFE2/$FFE3 を 0 fill して想定外 interrupt $0000 飛び の bug 再発防止)。
+        // pin: PSG_END routine 区間内に OS_TYPE == 4 #IF block + _ISRADR 比較 +
+        // RET NZ early-return が存在 (= guard 構造)。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1_psg.asm"));
+        var match = Regex.Match(content,
+            @"; @name PSG_END\b(.*?)(?=; @name |\z)",
+            RegexOptions.Singleline);
+        Assert.True(match.Success, "PSG_END routine 区間が見つからない");
+        var body = match.Groups[1].Value;
+        Assert.Contains("#IF NAME_SPACE_DEFAULT.OS_TYPE == 4", body);
+        Assert.Contains("LD HL,(_ISRADR)", body);
+        Assert.Contains("RET NZ", body);
+    }
+
+    [Fact]
+    public void X1SglSample_BuildsSuccessfully()
+    {
+        // X1SGL.SL は PSG_INIT(0)/(1) + SGL sprite + PCG を全部使う最小 demo
+        // (= libx1_psg + libx1_sgl + libx1_pcg + libx1native 全 link 確認)
+        var repoRoot = RepoRoot();
+        var sample = Path.Combine(repoRoot, "examples", "X1SGL.SL");
+        var include = Path.Combine(repoRoot, "include");
+        var output = Path.Combine(Path.GetTempPath(), $"X1SGL_test_{Guid.NewGuid():N}");
+        try
+        {
+            var (rc, stdout, stderr) = RunSlangBuild(
+                $"-E x1native -I \"{include}\" \"{sample}\" -o \"{output}\" --emit tape");
+            Assert.True(rc == 0,
+                $"X1SGL build failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            Assert.True(File.Exists(output + ".tap"), "X1SGL.tap not generated");
+        }
+        finally
+        {
+            CleanupBuildArtifacts(output);
+        }
+    }
+
     [Fact]
     public void Libmag_DoesNotDefineGrdispGrcls()
     {
