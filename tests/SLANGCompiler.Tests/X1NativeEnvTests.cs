@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using SLANGCompiler.Runtime;
 using Xunit;
 
@@ -84,10 +85,105 @@ public class X1NativeEnvTests
         Assert.Null(config.OutputFormat);
     }
 
-    // 注: 「実 SLANG → asm 生成 + 内容 grep」 系 test (= MinimumPrint_BuildsSuccessfully /
-    // NoLsxBdosCall / HasNativeVramOut 等、 Codex review Medium 指摘) は本 PR scope 外。
-    // 理由: CodeGenerator が RuntimeManager + env runtime asm 解決 path を必要とし、
-    // unit test 内での setup が複雑。 別 PR で integration test として slangc CLI
-    // spawn ベースで追加予定。 現状は docs/X1.md の manual verification 手順
-    // (= grep / AILZ80ASM / emulator memory load) で代替。
+    // 注: 「実 SLANG → asm 生成 + 内容 grep」 系 test は CodeGenerator + RuntimeManager
+    // setup の複雑さで scope 外、 docs/X1.md の manual verification 手順で代替。
+    // ただし runtime/libx1native_*.asm の構造維持 (= @name annotation / @works 内
+    // AT_WIDTH 等) は static file inspect で pin 可能、 以下で push する。
+
+    private static string RuntimeAsmPath(string name)
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var dir = new DirectoryInfo(baseDir);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "runtime", name)))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        return Path.Combine(dir!.FullName, "runtime", name);
+    }
+
+    [Theory]
+    [InlineData("INIT_CRTC")]      // CRTC 80/40 mode 切替 helper
+    [InlineData("AT_VRCALC")]      // Y*width+X VRAM offset 計算
+    [InlineData("clear_screen")]   // text + attribute + kanji 3 plane 初期化
+    [InlineData("_C8025L")]        // CRTC PARM 80 col Lo-res table
+    [InlineData("_C4025L")]        // CRTC PARM 40 col Lo-res table
+    [InlineData("_CRTCD")]         // CRTC 現在設定 work area (= R1 から動的 width 取得)
+    public void Libx1NativeBase_DefinesRoutine(string name)
+    {
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        Assert.Contains($"; @name {name}", content);
+    }
+
+    [Theory]
+    [InlineData("WIDTH")]          // 40/80 動的切替 public API
+    [InlineData("LOCATE")]         // cursor 移動 public API
+    [InlineData("SCREEN")]         // char code read public API
+    [InlineData("PRMODE")]         // printer mode stub
+    public void Libx1NativePrint_DefinesPublicApi(string name)
+    {
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_print.asm"));
+        Assert.Contains($"; @name {name}", content);
+    }
+
+    [Fact]
+    public void Libx1NativeBase_DeclaresAtWidthInWorks()
+    {
+        // sWORK の @works listing に AT_WIDTH:1 (= __WORK__ 内 1 byte BSS) が含まれる
+        // (= WIDTH 動的化 / AT_VRCALC が読む現在 column 数 symbol、 既存 X1 系
+        //  libx1_print.asm と同名で graphics native 化時に流用可能)
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        Assert.Matches(@"; @works .*AT_WIDTH:1", content);
+    }
+
+    [Fact]
+    public void Libx1NativePrint_SprintCallsAtVrcalcAndAtWidth()
+    {
+        // sPRINT が wrap 判定で AT_WIDTH を読み、 VRAM offset 計算で AT_VRCALC を
+        // call するように更新されたか pin (= plan で hardcode 80 → 動的化を要求)
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_print.asm"));
+        Assert.Contains("LD A, (AT_WIDTH)", content);
+        Assert.Contains("CALL AT_VRCALC", content);
+    }
+
+    [Fact]
+    public void ClearScreen_UsesKanjiSelectorViaBit3()
+    {
+        // Codex review High fix: kanji plane は $10xx ではなく $38xx (= text
+        // region 上位 + bit 3 set) 経由でアクセス。 clear_screen 内に OR $38
+        // + DB $ED, $71 (= OUT (C), 0 で kanji=0 書込、 Z80 未定義命令) が
+        // 存在することで、 plane selector が正しく組み立てられてることを pin。
+        // 既存 libx1_print CTRL0C / libx1_sgl KANJI_VRAM_ADRS=$3800 と同戦略。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        Assert.Contains("OR $38", content);
+        Assert.Contains("DB $ED, $71", content);
+    }
+
+    [Fact]
+    public void ClearScreen_DoesNotUseLegacyBit5KanjiManipulation()
+    {
+        // 旧誤実装で RES 5, B (= $20 attribute → $00) してから SET 4, B
+        // (= $00 → $10) で「kanji plane」 を扱おうとしてた pattern が runtime
+        // asm から消えてることを pin。 正しい kanji 切替は bit 3 set ($38xx)、
+        // memory map 上の $10xx は port-mapped I/O では別 region を指す。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        Assert.DoesNotContain("RES 5, B", content);
+    }
+
+    [Fact]
+    public void ClearScreen_OuterCounterIsNotA()
+    {
+        // Codex review 2 巡目 で発覚した致命 bug の再発防止: clear_screen の
+        // outer block counter (= 8) を A に置くと、 inner cell loop の
+        // `LD A, B; OR $38` で破壊されて 8 回で抜けず周辺 I/O port を long に
+        // 叩き続けて画面破壊する。 A 以外 (= 推奨 H、 inner で touch しない reg)
+        // を outer counter にする。 pin: clear_screen routine 区間内に
+        // `LD H, 8` + `DEC H` が存在 + `LD A, 8` (= 旧 bug pattern) が無い。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        var match = Regex.Match(content, @"; @name clear_screen\b(.*?)(?=; @name |\z)",
+            RegexOptions.Singleline);
+        Assert.True(match.Success, "clear_screen routine 区間が見つからない");
+        var body = match.Groups[1].Value;
+        Assert.Contains("LD H, 8", body);
+        Assert.Contains("DEC H", body);
+        Assert.DoesNotContain("LD A, 8", body);
+    }
 }
