@@ -16,7 +16,11 @@
 ; は libsos_print.asm から copy 流用 (= 全部 PRT 経由、 PRT = JP sPRINT)。
 ;
 ; X1 text VRAM layout:
-;   port-mapped、 BC = $30xx (text) / $20xx (attribute) / $10xx (kanji)
+;   port-mapped、 BC = $30xx (text) / $20xx (attribute) / $38xx (kanji selector、
+;   = text region + bit 3 set、 OUT 0 用 Z80 未定義命令 DB $ED, $71 で kanji=0
+;   書込)。 kanji は memory map 上 $1000-$17FF / $3800-$3FFF にあるが、 port
+;   I/O 経由では $38xx で書込する (= 既存 libx1_print CTRL0C / libx1_sgl
+;   KANJI_VRAM_ADRS=$3800 と同戦略、 $10xx は port-mapped では別 region)。
 ;   80 col × 25 row = 2000 byte (= offset $0000-$07CF)
 ;
 ; Cursor: sXYADR (L=X 0-(width-1), H=Y 0-24)、 LSX 同名 work area を __WORK__ 内
