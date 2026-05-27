@@ -498,7 +498,8 @@ public class X1NativeEnvTests
     public void MtreadSmpSample_BuildsSuccessfully()
     {
         // 多段 tape sample (= #MODULE overlay 含む) が `--emit tape` で build 成功
-        // (= overlay reject 撤廃 + ORG parse + ConcatenatePrograms 経路の smoke)
+        // + 多段 .tap として正しく連結されてる pin (= overlay silent 抜けの再発防止、
+        //  Codex review Low 指摘反映で TapFile.Load + DecodeAll で stage 構造 assert)
         var repoRoot = RepoRoot();
         var sample = Path.Combine(repoRoot, "examples", "X1NATIVE_MTREAD", "MTREADSMP.SL");
         var include = Path.Combine(repoRoot, "include");
@@ -510,9 +511,20 @@ public class X1NativeEnvTests
             Assert.True(rc == 0,
                 $"MTREADSMP build failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
             Assert.True(File.Exists(output + ".tap"), "MTREADSMP.tap not generated");
-            // 多段 .tap であることの粗 check: tap size > 単独 .tap の通常 size
-            var info = new FileInfo(output + ".tap");
-            Assert.True(info.Length > 10000, $"multi-stage .tap should be > 10000 byte (got {info.Length})");
+
+            // 多段 .tap 構造 assert: TapFile.Load + DecodeAll で stage 2 件 + 各 stage
+            // load addr / data size 確認 (= overlay 抜け / 順序壊れ / addr 取り違え 検知)
+            var tap = SLANGCompiler.Build.TapeFormats.TapFile.Load(output + ".tap");
+            var programs = SLANGCompiler.Build.TapeFormats.X1Program.DecodeAll(tap);
+            Assert.Equal(2, programs.Count);
+            // stage 0 (= main): load = $1000 (= x1native default_org)
+            Assert.Equal(0x1000, programs[0].Info.LoadAddress);
+            Assert.True(programs[0].Data.Length > 100,
+                $"stage 0 (main) data size too small (= {programs[0].Data.Length})");
+            // stage 1 (= overlay._m0): load = $4000 (= #MODULE $4000 RESIDENT で指定)
+            Assert.Equal(0x4000, programs[1].Info.LoadAddress);
+            Assert.True(programs[1].Data.Length > 0,
+                $"stage 1 (overlay) data size = 0、 overlay 抜け 疑い");
         }
         finally
         {

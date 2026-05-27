@@ -50,6 +50,14 @@
 ;   POP AF
 ;   JP PO, skip → P/V = 0 (= 元 DI) なら EI skip
 ;   EI
+;
+; ただし MTREAD critical section 内の MT_CTRL_PLAY / MT_CTRL_STOP 呼出時、
+; 内部 MT_CTRL routine が **sub CPU 通信のため一時 EI** する (= X1_compatible_rom
+; 元 source 由来、 sub CPU $1900 への deck command 送出時の必要 sync)。 この間
+; (= 数十 cycle、 OUT (C), $E9 + WAIT_80C49_WR 1 回程度) は IRQ 入り得る。
+; 本 routine 全体としての設計は「MTREAD 中は DI で bit-level read 保護」 だが、
+; deck control 部分 (= bit-stream read ではない) は短い EI window あり = PSG IRQ
+; 等が間に入る可能性。 bit-stream read (= _mtload_block 内) は完全 DI 維持。
 LD A, I
 DI
 PUSH AF

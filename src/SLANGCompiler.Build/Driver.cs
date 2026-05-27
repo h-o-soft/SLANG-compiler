@@ -242,11 +242,16 @@ public class Driver
             // 次回以降のビルドで filename チェーン爆発を起こす。
             // `_m<digits>.ASM` 厳密一致の regex でフィルタする。
             var overlayPattern = new System.Text.RegularExpressions.Regex(
-                $"^{System.Text.RegularExpressions.Regex.Escape(prefix)}\\._m\\d+\\.ASM$",
+                $"^{System.Text.RegularExpressions.Regex.Escape(prefix)}\\._m(\\d+)\\.ASM$",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            // overlay 順序は **数値順** (= _m2 < _m10、 lexicographic だと _m10 < _m2 で
+            //  10+ overlay 時に多段 tape stage 順が壊れる、 Codex review 指摘)。
+            // regex group 1 (= _m の後の digit 列) を int parse して OrderBy。
             var overlayAsms = Directory.GetFiles(outputDir, prefix + "._m*.ASM")
-                                       .Where(p => overlayPattern.IsMatch(Path.GetFileName(p)))
-                                       .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                                       .Select(p => new { Path = p, Match = overlayPattern.Match(Path.GetFileName(p)) })
+                                       .Where(x => x.Match.Success)
+                                       .OrderBy(x => int.Parse(x.Match.Groups[1].Value))
+                                       .Select(x => x.Path)
                                        .ToList();
             foreach (var p in overlayAsms) intermediates.Add(p);
 
