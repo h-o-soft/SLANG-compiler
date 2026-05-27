@@ -2640,9 +2640,12 @@ JP	X1PAINT.WIDTHPATCH
 ; @calls X1WORK
 ; H/L = 0 で graphics 非表示 (= palette を全 0)、 非 0 で graphics 表示 (= Z 互換
 ; 8 色モード、 palette 設定 + bank 0 select)。
-; libmag 既存 GRDISP routine と同一実装、 ただし本 PR では x1native env で
-; libmag を使わないため libx1_grp 側にも提供 (= 既存 x1 env では last-wins で
-; libmag 側が優先される、 影響無し)。 _WK1FD0 は X1WORK alias 経由で provide。
+; graphics 表示制御の中核 routine、 全 env (= x1 / sosx1 / x1native 等) で
+; libx1_grp 経由で provide される (= 旧 libmag 側 GRDISP/GRCLS は削除済、
+; graphics 責務として library 整理)。 _WK1FD0 は env 毎に異なる場所で provide:
+;  - x1: libx1_print.asm の X1WORK 内 DB (= LSX-Dodgers 共有 work)
+;  - sosx1: libsosx1_base.asm の @works listing 内 BSS
+;  - x1native: libx1native_base.asm の X1WORK alias 内 DB (= libmag 互換 shim)
 LD A,H
 OR L
 JR Z,.gr_nodisp
@@ -2681,8 +2684,9 @@ RET
 ; @name GRCLS
 ; @resident shared
 ; 現在の VRAM bank のみ port-mapped で 0 fill (= 単純消去、 エフェクト無し)。
-; libmag 既存 GRCLS と同一実装 (= MAGBASE 依存なし、 単純 inner/outer loop)。
-; bank 切替は GRDISP 側で行う想定、 GRCLS は現状 bank のみクリア。
+; 旧 libmag 側 GRCLS から移植 + MAGBASE 依存削除 (= 単純 inner/outer loop)。
+; bank 切替は GRDISP 側で行う想定、 GRCLS は現状 bank のみクリア。 全 env で
+; 本 routine が使われる (= libmag 側 GRCLS は削除済)。
 XOR A
 LD  C,A
 LD  HL,$4003
