@@ -138,4 +138,141 @@ public sealed class X1Program
         };
         return new TapFile(header, samples);
     }
+
+    /// <summary>
+    /// 複数 X1Program を 1 TapFile に連結 encode (= 多段 tape load 対応)。
+    /// 全段で標準 sync 仕様 (= info 40/41 leader 8000、 data 20/21 leader 4000) を維持
+    /// (= Codex 指摘反映、 短い inter-stage gap で sync 見失い回避)。
+    /// 用途: SLANG #MODULE overlay → main + overlay._mN.bin を 1 .tap 自動連結。
+    /// </summary>
+    public static TapFile ConcatenatePrograms(
+        List<X1Program> programs, uint sampleRate = 8000, string? tapeName = null)
+    {
+        if (programs == null || programs.Count == 0)
+            throw new ArgumentException("programs list must contain at least one X1Program");
+
+        var bits = new List<byte>();
+        foreach (var program in programs)
+        {
+            // Keep info DataSize in sync with payload (= 各段独立 checksum + size)
+            program.Info.DataSize = (ushort)program.Data.Length;
+
+            var infoBytes = program.Info.ToBytes();   // 32 byte
+            ushort infoCk = X1TapeFraming.ComputeChecksum(infoBytes);
+            var infoWithCk = new byte[X1TapeFraming.InfoBlockTotalSize];
+            infoBytes.CopyTo(infoWithCk, 0);
+            BinaryPrimitives.WriteUInt16BigEndian(
+                infoWithCk.AsSpan(X1InfoBlock.FieldsSize), infoCk);
+
+            ushort dataCk = X1TapeFraming.ComputeChecksum(program.Data);
+            var dataWithCk = new byte[program.Data.Length + X1TapeFraming.ChecksumSize];
+            program.Data.CopyTo(dataWithCk, 0);
+            BinaryPrimitives.WriteUInt16BigEndian(
+                dataWithCk.AsSpan(program.Data.Length), dataCk);
+
+            // 各段 標準 sync 仕様で emit (= 全段同じ leader / sync 数、 inter-stage
+            // gap も 1 段目 と同 標準で実機 IPL の tolerance 範囲内)
+            bits.AddRange(X1TapeFraming.BuildSync(
+                X1TapeFraming.DefaultInfoLeaderOnes,    // = 8000
+                X1TapeFraming.InfoBlockSyncZeros,        // = 40
+                X1TapeFraming.InfoBlockSyncOnes));       // = 41
+            bits.AddRange(X1TapeFraming.WriteBytes(infoWithCk));
+
+            bits.AddRange(X1TapeFraming.BuildSync(
+                X1TapeFraming.DefaultDataLeaderOnes,    // = 4000
+                X1TapeFraming.DataBlockSyncZeros,        // = 20
+                X1TapeFraming.DataBlockSyncOnes));       // = 21
+            bits.AddRange(X1TapeFraming.WriteBytes(dataWithCk));
+        }
+
+        // trailing silence (= 全段共通、 tape stop 余裕)
+        for (int i = 0; i < 1000; i++) bits.Add(1);
+
+        var bitArr = bits.ToArray();
+        var samples = X1FskCodec.Modulate(bitArr, sampleRate);
+        var header = new TapHeader
+        {
+            Name = tapeName ?? "auto converted (multi-stage)",
+            WriteProtect = TapHeader.ProtectionWriteProtected,
+            Format = TapHeader.FormatSampling,
+            SampleRate = sampleRate,
+            DataSizeBits = (uint)samples.Length,
+            PositionBits = 0,
+        };
+        return new TapFile(header, samples);
+    }
+
+    /// <summary>
+    /// TapFile 内の 全 X1Program を順次 decode (= test 用、 ConcatenatePrograms 逆操作)。
+    /// 既存 Decode は first only、 多段 .tap roundtrip 検証では本 method を使う。
+    /// 各 program decode 失敗 (= 次 sync 見つからない) で break、 それまで取れた list 返却。
+    /// </summary>
+    public static List<X1Program> DecodeAll(TapFile tap)
+    {
+        var bits = X1FskCodec.Demodulate(tap.Samples, tap.Header.SampleRate);
+        var result = new List<X1Program>();
+        int pos = 0;
+        while (pos < bits.Length)
+        {
+            X1Program? program;
+            try
+            {
+                program = TryDecodeFromBits(bits, ref pos);
+            }
+            catch (InvalidDataException)
+            {
+                break;  // 次 sync 見つからない or block 不完全 = 終端
+            }
+            if (program == null) break;
+            result.Add(program);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// bits[pos..] から 1 X1Program decode、 pos を消費分進める (= DecodeAll 内部用)。
+    /// 既存 DecodeFromBits を base に、 position 追跡 + null 返却で終端通知する版。
+    /// </summary>
+    private static X1Program? TryDecodeFromBits(byte[] bits, ref int pos)
+    {
+        var infoSync = X1TapeFraming.FindNextSync(
+            bits, pos,
+            X1TapeFraming.InfoBlockMinSyncZeros,
+            X1TapeFraming.InfoBlockSyncOnes);
+        if (infoSync is null) return null;
+
+        var infoRaw = X1TapeFraming.ReadBytes(
+            bits, infoSync.DataStartIndex,
+            X1InfoBlock.FieldsSize + X1TapeFraming.ChecksumSize, out var afterInfo);
+        var info = X1InfoBlock.FromBytes(infoRaw.AsSpan(0, X1InfoBlock.FieldsSize));
+        ushort infoCkExpected = BinaryPrimitives.ReadUInt16BigEndian(
+            infoRaw.AsSpan(X1InfoBlock.FieldsSize, X1TapeFraming.ChecksumSize));
+        ushort infoCkActual = X1TapeFraming.ComputeChecksum(
+            infoRaw.AsSpan(0, X1InfoBlock.FieldsSize));
+        bool infoOk = infoCkExpected == infoCkActual;
+
+        var dataSync = X1TapeFraming.FindNextSync(
+            bits, afterInfo,
+            X1TapeFraming.DataBlockSyncZeros,
+            X1TapeFraming.DataBlockSyncOnes);
+        if (dataSync is null) return null;
+
+        int dataLen = info.DataSize;
+        var dataRaw = X1TapeFraming.ReadBytes(
+            bits, dataSync.DataStartIndex,
+            dataLen + X1TapeFraming.ChecksumSize, out var afterData);
+        ushort dataCkExpected = BinaryPrimitives.ReadUInt16BigEndian(
+            dataRaw.AsSpan(dataLen, 2));
+        ushort dataCkActual = X1TapeFraming.ComputeChecksum(dataRaw.AsSpan(0, dataLen));
+        bool dataOk = dataCkExpected == dataCkActual;
+
+        pos = afterData;  // 次 program decode 用に位置進める
+        return new X1Program
+        {
+            Info = info,
+            Data = dataRaw.AsSpan(0, dataLen).ToArray(),
+            InfoChecksumOk = infoOk,
+            DataChecksumOk = dataOk,
+        };
+    }
 }

@@ -438,6 +438,104 @@ public class X1NativeEnvTests
         Assert.DoesNotMatch(@"\bOR\s+038H\b", body);
     }
 
+    // === 多段 tape ロード関連 (= MTREAD/MTREADJP + #MODULE overlay → 自動連結) ===
+
+    [Fact]
+    public void X1NativeEnv_RegistersTapeLibrary()
+    {
+        // x1native env libraries に libx1native_tape.asm 含む
+        var config = EnvironmentLoader.Load(EnvFilePath());
+        Assert.Contains("libx1native_tape.asm", config.Libraries);
+    }
+
+    [Theory]
+    [InlineData("MTREAD")]        // 多段 read 主 API (= 引数 HL 優先で load)
+    [InlineData("MTREADJP")]      // raw stage 用 (= load + JP)
+    [InlineData("MT_CTRL_PLAY")]  // sub CPU 経由 deck PLAY
+    [InlineData("MT_CTRL_STOP")]  // sub CPU 経由 deck STOP
+    [InlineData("MT_CTRL")]       // sub CPU command sender (= 汎用)
+    public void Libx1NativeTape_DefinesRoutine(string name)
+    {
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_tape.asm"));
+        Assert.Contains($"; @name {name}", content);
+    }
+
+    [Fact]
+    public void Libx1NativeTape_HasIff2GuardInMtread()
+    {
+        // MTREAD entry で IFF2 復元 guard が `LD A, I` 直後 `DI` の順 (= Codex 指摘
+        // の DI 先順、 flags 維持 + 割り込み window 短縮)。 pin: MTREAD routine
+        // 区間内に `LD A, I` 直後 (= 次行 / 空行除く) `DI` 続くパターン。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_tape.asm"));
+        var match = Regex.Match(content,
+            @"; @name MTREAD\b(.*?)(?=; @name |\z)",
+            RegexOptions.Singleline);
+        Assert.True(match.Success, "MTREAD routine 区間が見つからない");
+        var body = match.Groups[1].Value;
+        Assert.Matches(@"LD A, I\s*\r?\n\s*DI\b", body);
+    }
+
+    [Fact]
+    public void OverlayAsm_OrgPrefixFormat()
+    {
+        // builder の overlay load addr regex parse (= Driver.cs) が依存する
+        // 前提: overlay ASM 冒頭近くに `^\s*ORG\s+\$XXXX` 行が出る
+        // (= CodeGenerator.cs L143 出力)。 既存 SLANG sample (= MODTEST.SL)
+        // を build した overlay ASM (or runtime asm 内 ORG 文字列) で format 維持確認。
+        // ここでは static asm grep で SLANG asm 内 `ORG $XXXX` の form 維持を緩く pin。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        // libx1native_base 内に CRTC PARM table 等で `$XXXX` 形式の hex literal が出る、
+        // ただ ORG 文字列 自体は overlay ASM 側 (= 動的生成)。 format pin は
+        // CodeGenerator.cs L143 の format spec 直接 grep で代替 (= source pin)。
+        var srcContent = File.ReadAllText(Path.Combine(
+            new DirectoryInfo(AppContext.BaseDirectory).Parent!.Parent!.Parent!.Parent!.Parent!.FullName,
+            "src", "SLANGCompiler.Core", "CodeGen", "CodeGenerator.cs"));
+        // L143 付近の `Instruction("ORG", $"${...:X4}")` pattern を pin
+        Assert.Matches(@"Instruction\(""ORG"",\s*\$""\$\{overlay\.OrgAddress:X4\}""\)", srcContent);
+    }
+
+    [Fact]
+    public void MtreadSmpSample_BuildsSuccessfully()
+    {
+        // 多段 tape sample (= #MODULE overlay 含む) が `--emit tape` で build 成功
+        // + 多段 .tap として正しく連結されてる pin (= overlay silent 抜けの再発防止、
+        //  Codex review Low 指摘反映で TapFile.Load + DecodeAll で stage 構造 assert)
+        var repoRoot = RepoRoot();
+        var sample = Path.Combine(repoRoot, "examples", "X1NATIVE_MTREAD", "MTREADSMP.SL");
+        var include = Path.Combine(repoRoot, "include");
+        var output = Path.Combine(Path.GetTempPath(), $"MTREADSMP_test_{Guid.NewGuid():N}");
+        try
+        {
+            var (rc, stdout, stderr) = RunSlangBuild(
+                $"-E x1native -I \"{include}\" \"{sample}\" -o \"{output}\" --emit tape");
+            Assert.True(rc == 0,
+                $"MTREADSMP build failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            Assert.True(File.Exists(output + ".tap"), "MTREADSMP.tap not generated");
+
+            // 多段 .tap 構造 assert: TapFile.Load + DecodeAll で stage 2 件 + 各 stage
+            // load addr / data size 確認 (= overlay 抜け / 順序壊れ / addr 取り違え 検知)
+            var tap = SLANGCompiler.Build.TapeFormats.TapFile.Load(output + ".tap");
+            var programs = SLANGCompiler.Build.TapeFormats.X1Program.DecodeAll(tap);
+            Assert.Equal(2, programs.Count);
+            // stage 0 (= main): load = $1000 (= x1native default_org)
+            Assert.Equal(0x1000, programs[0].Info.LoadAddress);
+            Assert.True(programs[0].Data.Length > 100,
+                $"stage 0 (main) data size too small (= {programs[0].Data.Length})");
+            // stage 1 (= overlay._m0): load = $4000 (= #MODULE $4000 RESIDENT で指定)
+            Assert.Equal(0x4000, programs[1].Info.LoadAddress);
+            Assert.True(programs[1].Data.Length > 0,
+                $"stage 1 (overlay) data size = 0、 overlay 抜け 疑い");
+        }
+        finally
+        {
+            CleanupBuildArtifacts(output);
+            // overlay 関連 intermediate も cleanup
+            foreach (var ext in new[] { "._m0.ASM", "._m0.bin", "._m0.LST", "._m0.dummy.imports.asm",
+                                        ".dummy.imports.asm", ".ASM", ".inc", ".sym" })
+                if (File.Exists(output + ext)) File.Delete(output + ext);
+        }
+    }
+
     [Fact]
     public void Libmag_DoesNotDefineGrdispGrcls()
     {

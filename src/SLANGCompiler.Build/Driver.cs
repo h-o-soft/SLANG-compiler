@@ -242,11 +242,16 @@ public class Driver
             // 次回以降のビルドで filename チェーン爆発を起こす。
             // `_m<digits>.ASM` 厳密一致の regex でフィルタする。
             var overlayPattern = new System.Text.RegularExpressions.Regex(
-                $"^{System.Text.RegularExpressions.Regex.Escape(prefix)}\\._m\\d+\\.ASM$",
+                $"^{System.Text.RegularExpressions.Regex.Escape(prefix)}\\._m(\\d+)\\.ASM$",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            // overlay 順序は **数値順** (= _m2 < _m10、 lexicographic だと _m10 < _m2 で
+            //  10+ overlay 時に多段 tape stage 順が壊れる、 Codex review 指摘)。
+            // regex group 1 (= _m の後の digit 列) を int parse して OrderBy。
             var overlayAsms = Directory.GetFiles(outputDir, prefix + "._m*.ASM")
-                                       .Where(p => overlayPattern.IsMatch(Path.GetFileName(p)))
-                                       .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                                       .Select(p => new { Path = p, Match = overlayPattern.Match(Path.GetFileName(p)) })
+                                       .Where(x => x.Match.Success)
+                                       .OrderBy(x => int.Parse(x.Match.Groups[1].Value))
+                                       .Select(x => x.Path)
                                        .ToList();
             foreach (var p in overlayAsms) intermediates.Add(p);
 
@@ -399,23 +404,51 @@ public class Driver
                 if (diskRc != 0) return diskRc;
             }
 
-            // === Step 4 (Phase B): --emit tape → X1 .tap (+ optional .wav) 組み立て ===
+            // === Step 4 (Phase B+): --emit tape → X1 .tap (+ optional .wav) 組み立て ===
+            //  + 多段 tape (= #MODULE overlay の自動連結) 対応
             if (_opts.EmitMode == "tape")
             {
-                // overlay 検出時は reject (= MVP scope 外、 silent に main だけ tape 化
-                //  すると事故るため明示)。 X1 tape = 1 binary per tape spec、
-                //  multi-overlay tape 対応は別 PR で検討。
+                var binBytes = File.ReadAllBytes(mainBin);
+                var mainCfg = TapeImageBuilder.MergeTapeConfig(envConfig, _opts, outputBase);
+
+                // overlay 検出時: 各 overlay を tape stage として収集
+                // (= overlay ASM 冒頭 `ORG $XXXX` (CodeGenerator.cs L143 出力) を
+                //  regex parse して overlay load addr 取得、 各 overlay bin を
+                //  tape stages list 化 → TapeImageBuilder で連結 .tap 生成)
+                List<(byte[] bin, TapeImageBuilder.ResolvedTapeConfig cfg)>? additionalStages = null;
                 if (renamedOverlayBins.Count > 0)
                 {
-                    Console.Error.WriteLine(
-                        $"slangbuild: --emit tape with overlay (got {renamedOverlayBins.Count} overlay) " +
-                        "is not supported (= X1 tape は 1 binary per tape 仕様、 multi-overlay tape は未対応)");
-                    return 1;
+                    additionalStages = new();
+                    var orgRegex = new System.Text.RegularExpressions.Regex(
+                        @"^\s*ORG\s+\$([0-9A-Fa-f]+)\b",
+                        System.Text.RegularExpressions.RegexOptions.Multiline);
+                    for (int i = 0; i < renamedOverlayBins.Count; i++)
+                    {
+                        var overlayAsmText = File.ReadAllText(overlayAsms[i]);
+                        var orgMatch = orgRegex.Match(overlayAsmText);
+                        if (!orgMatch.Success)
+                        {
+                            Console.Error.WriteLine(
+                                $"slangbuild: overlay {i} ASM の冒頭 `ORG $XXXX` parse 失敗 " +
+                                $"(file: {overlayAsms[i]})、 多段 tape 連結不能");
+                            return 1;
+                        }
+                        var orgAddr = Convert.ToInt32(orgMatch.Groups[1].Value, 16);
+                        var bytes = File.ReadAllBytes(renamedOverlayBins[i]);
+                        // overlay stage の exec addr は header 上 formality (= load と同値書込)、
+                        // MTREAD は次 block の data を読むだけで exec は使わない (= docs 明記)。
+                        var overlayCfg = new TapeImageBuilder.ResolvedTapeConfig(
+                            Name: $"M{i}",
+                            Load: orgAddr,
+                            Exec: orgAddr,
+                            WavSampleRate: mainCfg.WavSampleRate,
+                            WavBits: mainCfg.WavBits);
+                        additionalStages.Add((bytes, overlayCfg));
+                    }
                 }
-                var binBytes = File.ReadAllBytes(mainBin);
-                var tapeCfg = TapeImageBuilder.MergeTapeConfig(envConfig, _opts, outputBase);
+
                 int tapeRc = new TapeImageBuilder().Build(
-                    binBytes, tapeCfg, outputBase, _opts.EmitWav, _opts.Verbose);
+                    binBytes, mainCfg, additionalStages, outputBase, _opts.EmitWav, _opts.Verbose);
                 if (tapeRc != 0) return tapeRc;
             }
 
