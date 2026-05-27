@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using SLANGCompiler.Runtime;
 using Xunit;
@@ -185,5 +186,166 @@ public class X1NativeEnvTests
         Assert.Contains("LD H, 8", body);
         Assert.Contains("DEC H", body);
         Assert.DoesNotContain("LD A, 8", body);
+    }
+
+    // === graphics 系 library reuse 関連 (= libx1_pcg / grp / magic / sgl) ===
+
+    [Fact]
+    public void Libx1NativeBase_DefinesX1WorkAlias()
+    {
+        // graphics 系 (libx1_grp / libx1_pcg 等) が @calls X1WORK で link 上
+        // declare する依存を満たす shim alias。 AT_COLORF / _WK1FD0 は libmag
+        // (= 後続 PR) で reuse される予定の互換用 DB、 AT_WIDTH は sWORK 内
+        // BSS で既に provide 済のため X1WORK alias には含めない。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_base.asm"));
+        Assert.Contains("; @name X1WORK", content);
+        Assert.Contains("AT_COLORF: DB", content);
+        Assert.Contains("_WK1FD0:", content);
+    }
+
+    [Theory]
+    [InlineData("libx1_pcg.asm")]    // supported now: PCGDEF (X1GRP / STARS_X1 で使用)
+    [InlineData("libx1_grp.asm")]    // supported now: LINE / PAINT / GRPSETUP / GRDISP / GRCLS
+    [InlineData("libx1_magic.asm")]  // registered (= 未使用時は selective link で無害)
+    [InlineData("libx1_sgl.asm")]    // registered (= 動作確認は psg 整備後の別 PR)
+    public void X1NativeEnv_RegistersGraphicsLibraries(string lib)
+    {
+        var config = EnvironmentLoader.Load(EnvFilePath());
+        Assert.Contains(lib, config.Libraries);
+    }
+
+    [Fact]
+    public void X1NativeEnv_DoesNotRegisterSglLsx()
+    {
+        // libx1_sgl_lsx は LSX 専用 wrapper、 x1native では使わない (= 境界保持、
+        // x1native は libx1_sgl 本体のみ使う)。
+        var config = EnvironmentLoader.Load(EnvFilePath());
+        Assert.DoesNotContain("libx1_sgl_lsx.asm", config.Libraries);
+    }
+
+    [Fact]
+    public void Sprint_DoesNotOverwriteAttribute()
+    {
+        // LSX / S-OS 慣例 + 既存 libx1_print.asm PRT 同様、 sPRINT は attribute
+        // plane を上書きしない (= text + kanji=0 のみ書込)。 attribute は SLANGINIT
+        // の clear_screen で初期 $07 fill 済、 scroll / CLEAR でも reset されるため
+        // 通常表示影響なし。 attribute 上書きすると PCG flag 等 attribute 経由設定
+        // (= STARS_X1.SL の PCG 表示等) が消えるため厳禁。
+        // pin: sPRINT routine 区間内に attribute 書込 sequence (= RES 4, B
+        // + LD A, $07) が無い (= scroll_up / clear_screen 等 他 routine では使用 OK)。
+        // sPRINT 区間切り出し: `; @name sPRINT` から sPRINT 最終 `\nRET\n` まで
+        // (= sp_do_cr / scroll_up 等 後続 routine は除外、 行頭 RET で区切る)。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1native_print.asm"));
+        var match = Regex.Match(content, @"; @name sPRINT\b(.*?)\nRET\n",
+            RegexOptions.Singleline);
+        Assert.True(match.Success, "sPRINT routine 区間が見つからない (= 最終 RET まで)");
+        var body = match.Groups[1].Value;
+        Assert.DoesNotContain("RES 4, B", body);
+        Assert.DoesNotContain("LD A, $07", body);
+    }
+
+    [Fact]
+    public void Libx1Grp_DefinesGrdispAndGrclsForX1Native()
+    {
+        // GRDISP / GRCLS は元々 libmag に定義されてたが、 x1native では libmag を
+        // 使わないため libx1_grp 側に新規追加 (= ユーザー指示「GRDISP/GRCLS は
+        // graphics 責務なので libx1_grp に移すのがスジ」)。 既存 x1 env では
+        // last-wins (= dictionary 上書き) で libmag.GRDISP/GRCLS が優先採用、
+        // 既存挙動 維持。
+        var content = File.ReadAllText(RuntimeAsmPath("libx1_grp.asm"));
+        Assert.Contains("; @name GRDISP", content);
+        Assert.Contains("; @name GRCLS", content);
+    }
+
+    // === CLI spawn build smoke (= 実 slangbuild を Process で起動して exit 0 +
+    //     .tap 生成を pin、 user review feedback で「build smoke も入れる」 要求) ===
+
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "runtime", "env", "x1native.env")))
+            dir = dir.Parent;
+        Assert.NotNull(dir);
+        return dir!.FullName;
+    }
+
+    private static (int exitCode, string stdout, string stderr) RunSlangBuild(string args)
+    {
+        var repoRoot = RepoRoot();
+        var slangbuildProj = Path.Combine(repoRoot, "src", "SLANGCompiler.Build", "SLANGCompiler.Build.csproj");
+        var psi = new ProcessStartInfo("dotnet", $"run --project \"{slangbuildProj}\" --no-build -- {args}")
+        {
+            WorkingDirectory = repoRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        using var proc = Process.Start(psi)!;
+        // pipe buffer 詰まり回避: WaitForExit より先に stdout/stderr の非同期 read 開始
+        // (= 大量出力 + 同期 ReadToEnd 後置きだと子プロセスが書込ブロックで止まり、
+        //  WaitForExit が timeout まで進まなくなる、 Codex review Low 指摘)
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        var exited = proc.WaitForExit(120 * 1000);  // 2 min timeout
+        if (!exited)
+        {
+            try { proc.Kill(entireProcessTree: true); } catch { /* 既に exit 済等は無視 */ }
+            Assert.Fail("slangbuild process timeout (= 2 min)、 kill 済み");
+        }
+        return (proc.ExitCode, stdoutTask.Result, stderrTask.Result);
+    }
+
+    private static void CleanupBuildArtifacts(string outputBase)
+    {
+        foreach (var ext in new[] { ".bin", ".tap", ".wav", ".LST", ".ASM" })
+            if (File.Exists(outputBase + ext)) File.Delete(outputBase + ext);
+    }
+
+    [Fact]
+    public void X1GrpSample_BuildsSuccessfully()
+    {
+        // examples/X1GRP.SL は libx1_grp + libx1_pcg + libx1native 全部を使う最小
+        // graphics demo。 GRDISP / GRCLS / LINE / BFILL / PAINT / PCGDEF / WIDTH /
+        // LOCATE / PRINT 等 全部 link されて tap 生成成功する pin (= regression
+        // 検出価値高、 ユーザー review feedback 反映)。
+        var repoRoot = RepoRoot();
+        var sample = Path.Combine(repoRoot, "examples", "X1GRP.SL");
+        var include = Path.Combine(repoRoot, "include");
+        var output = Path.Combine(Path.GetTempPath(), $"X1GRP_test_{Guid.NewGuid():N}");
+        try
+        {
+            var (rc, stdout, stderr) = RunSlangBuild(
+                $"-E x1native -I \"{include}\" \"{sample}\" -o \"{output}\" --emit tape");
+            Assert.True(rc == 0,
+                $"X1GRP build failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            Assert.True(File.Exists(output + ".tap"), "X1GRP.tap not generated");
+        }
+        finally
+        {
+            CleanupBuildArtifacts(output);
+        }
+    }
+
+    [Fact]
+    public void StarsX1Sample_BuildsSuccessfully()
+    {
+        // examples/STARS_X1.SL は PCGDEF (= libx1_pcg) で星型 PCG 文字定義 +
+        // STARS.SL 風 動作。 libx1_pcg + libx1native の最小組合せで動く pin。
+        var repoRoot = RepoRoot();
+        var sample = Path.Combine(repoRoot, "examples", "STARS_X1.SL");
+        var include = Path.Combine(repoRoot, "include");
+        var output = Path.Combine(Path.GetTempPath(), $"STARS_X1_test_{Guid.NewGuid():N}");
+        try
+        {
+            var (rc, stdout, stderr) = RunSlangBuild(
+                $"-E x1native -I \"{include}\" \"{sample}\" -o \"{output}\" --emit tape");
+            Assert.True(rc == 0,
+                $"STARS_X1 build failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            Assert.True(File.Exists(output + ".tap"), "STARS_X1.tap not generated");
+        }
+        finally
+        {
+            CleanupBuildArtifacts(output);
+        }
     }
 }
