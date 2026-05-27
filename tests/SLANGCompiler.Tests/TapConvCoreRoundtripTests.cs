@@ -79,6 +79,86 @@ public class TapConvCoreRoundtripTests
     }
 
     [Fact]
+    public void X1Program_ConcatenatePrograms_Roundtrip()
+    {
+        // 多段 tape の bit-exact roundtrip: 2 段 encode → DecodeAll で各段独立復元
+        var bin1 = new byte[8];
+        for (int i = 0; i < bin1.Length; i++) bin1[i] = (byte)(i + 10);
+        var bin2 = new byte[12];
+        for (int i = 0; i < bin2.Length; i++) bin2[i] = (byte)(i ^ 0x33);
+
+        var prog1 = new X1Program
+        {
+            Data = bin1,
+            Info = new X1InfoBlock
+            {
+                BootFlag = 0x01,
+                FileName = "STAGE1".PadRight(13),
+                Extension = "BIN",
+                Password = 0x20,
+                DataSize = (ushort)bin1.Length,
+                LoadAddress = 0x1000,
+                ExecuteAddress = 0x1000,
+            },
+        };
+        var prog2 = new X1Program
+        {
+            Data = bin2,
+            Info = new X1InfoBlock
+            {
+                BootFlag = 0x01,
+                FileName = "M0".PadRight(13),
+                Extension = "BIN",
+                Password = 0x20,
+                DataSize = (ushort)bin2.Length,
+                LoadAddress = 0x4000,
+                ExecuteAddress = 0x4000,
+            },
+        };
+
+        var tap = X1Program.ConcatenatePrograms(
+            new List<X1Program> { prog1, prog2 }, sampleRate: 8000, tapeName: "MULTI");
+        var decoded = X1Program.DecodeAll(tap);
+
+        Assert.Equal(2, decoded.Count);
+        Assert.Equal(bin1.Length, decoded[0].Data.Length);
+        Assert.Equal(bin2.Length, decoded[1].Data.Length);
+        for (int i = 0; i < bin1.Length; i++)
+            Assert.Equal(bin1[i], decoded[0].Data[i]);
+        for (int i = 0; i < bin2.Length; i++)
+            Assert.Equal(bin2[i], decoded[1].Data[i]);
+        Assert.Equal(0x1000, decoded[0].Info.LoadAddress);
+        Assert.Equal(0x4000, decoded[1].Info.LoadAddress);
+    }
+
+    [Fact]
+    public void X1Program_ConcatenatePrograms_StandardSyncOrder()
+    {
+        // 各段で標準 sync 仕様 (= info 40/41 leader 8000、 data 20/21 leader 4000) 維持
+        // (= Codex 指摘反映、 短い inter-stage gap で sync 見失い回避)。
+        // bit-stream を再 demodulate して 各段 sync が見つかる確認。
+        var prog = new X1Program
+        {
+            Data = new byte[16],
+            Info = new X1InfoBlock
+            {
+                BootFlag = 0x01,
+                FileName = "T".PadRight(13),
+                Extension = "BIN",
+                Password = 0x20,
+                DataSize = 16,
+                LoadAddress = 0x2000,
+                ExecuteAddress = 0x2000,
+            },
+        };
+        var tap = X1Program.ConcatenatePrograms(
+            new List<X1Program> { prog, prog, prog }, sampleRate: 8000, tapeName: "T");
+        // 3 段全部 decode 成功 = 各段 sync が標準 仕様で取れてる
+        var decoded = X1Program.DecodeAll(tap);
+        Assert.Equal(3, decoded.Count);
+    }
+
+    [Fact]
     public void WavWriter_RiffHeader_Valid()
     {
         var bin = new byte[10];
