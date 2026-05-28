@@ -75,6 +75,12 @@ public static class Program
             return 2;
         }
 
+        // --header 指定時は **D88 build より先に header validate** (= identifier
+        // collision で fail しても .d88 だけ書かれる事故防止、 Codex Medium 指摘 fix)
+        string? hdr = null;
+        if (headerPath != null)
+            hdr = SlfsHeaderBuilder.Build(assets);
+
         var opts = new SlfsPackerLibrary.Options
         {
             MainBinary = File.ReadAllBytes(mainBinPath),
@@ -89,13 +95,9 @@ public static class Program
         File.WriteAllBytes(outputPath, img);
         Console.Error.WriteLine($"slfs-pack pack: wrote {outputPath} ({img.Length} byte, {assets.Count} asset(s))");
 
-        // --header 指定時は SLANG CONST 形式 .inc を出力 (= SlfsHeaderBuilder static、
-        // 空 assets は空 string 返却 = file 内容空、 caller skip 判断は標準化のため
-        // ここでは file は常に書く)
-        if (headerPath != null)
+        if (hdr != null)
         {
-            var hdr = SlfsHeaderBuilder.Build(assets);
-            File.WriteAllText(headerPath, hdr);
+            File.WriteAllText(headerPath!, hdr);
             Console.Error.WriteLine($"slfs-pack pack: wrote header {headerPath} ({hdr.Length} byte)");
         }
         return 0;

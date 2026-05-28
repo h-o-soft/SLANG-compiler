@@ -24,13 +24,24 @@ public static class SlfsHeaderBuilder
         // SortedAssets と同 logic (= normalized filename ordinal 昇順) を inline 化
         // (= packer 構築前でも呼べる static、 BuildHeader が SlfsPackerLibrary 構築に
         //  依存しないため main binary 不要)
-        var sorted = assets
+        var withNorm = assets
             .Select(a => (Asset: a, NormName: SlfsDirEntry.NormalizeFileName(a.Name)))
             .OrderBy(x => x.NormName, Comparer<byte[]>.Create(SlfsDirEntry.CompareNormalizedFileName))
-            .Select(x => x.Asset)
             .ToList();
 
-        if (sorted.Count == 0) return "";
+        if (withNorm.Count == 0) return "";
+
+        // normalized filename collision check (= packer 側 SortedAssets と同 axis、
+        // identifier collision とは別、 packer build より早く detect する Codex Low 指摘 fix)
+        for (int i = 1; i < withNorm.Count; i++)
+        {
+            if (SlfsDirEntry.CompareNormalizedFileName(withNorm[i - 1].NormName, withNorm[i].NormName) == 0)
+                throw new InvalidOperationException(
+                    $"asset filename collision (= 11 byte normalized): " +
+                    $"'{withNorm[i - 1].Asset.Name}' and '{withNorm[i].Asset.Name}'");
+        }
+
+        var sorted = withNorm.Select(x => x.Asset).ToList();
 
         // identifier 化 + collision check
         var entries = new List<(string Identifier, int Id)>();
