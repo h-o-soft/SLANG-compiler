@@ -1,0 +1,32 @@
+#!/bin/sh
+# SLANG-compiler pre-commit hook: 大量 file 巻込防止
+#
+# PR #215 で `git add -A` 事故 (= 1166 file 巻込、 第三者 IP / backup 含む) が
+# 起きたため、 50 file 超の staged commit を reject する safety net。 通常 PR
+# では多くて 20-30 file、 50 超は明らかに「全部 add してしまった」 状態。
+#
+# Setup (= 一度だけ):
+#   git config core.hooksPath scripts/githooks
+#
+# 意図的な大量 commit (= initial commit / 大規模 refactor 等) は
+# `git commit --no-verify` で bypass 可能、 ただし全 file の origin を
+# `git diff --cached --stat` で必ず確認すること。
+
+STAGED_COUNT=$(git diff --cached --name-only | wc -l | tr -d ' ')
+
+if [ "$STAGED_COUNT" -gt 50 ]; then
+    cat >&2 <<EOF
+ERROR: pre-commit hook: $STAGED_COUNT files staged (threshold = 50).
+
+This is likely an accidental \`git add -A\` / \`git add .\` capture.
+Review staged files:
+  git diff --cached --stat
+
+If intentional (= initial commit / massive refactor), bypass with:
+  git commit --no-verify
+
+To unstage everything and start over:
+  git reset HEAD
+EOF
+    exit 1
+fi

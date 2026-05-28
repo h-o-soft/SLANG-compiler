@@ -73,3 +73,76 @@ apps/PROG.*
 # で書き換えられる作業ファイル)。pristine template は images/templates/ に
 # 分離済み (PR #157)。
 images/LSXPROG.d88
+
+# ============================================================
+# PR #215 事故 (= git add -A で 1166 file 巻込) 再発防止
+# ============================================================
+# 個別 file を tracked にしたい場合は `git add -f <path>` で強制可能。
+# ここに list された path は全て「事故防止 ignore」 で、 user の意図的な
+# commit を妨げる意図はない。
+
+# 配布 zip (= リリース ZIP、 GitHub release で別配布)
+SLANG-compiler-*.zip
+publish/
+publish-new/
+
+# build artifacts (= 拡張子 base、 既存 *.ASM / *.bin / *.com を拡張)
+*.tap
+*.wav
+*.CMT
+*.int
+*.lbl
+*.map
+*.prg
+*.dsk
+examples/**/*.d88
+examples/**/*.bin
+examples/**/*.zip
+examples/MODTEST.inc
+
+# emulator logs
+*_d3d10.log
+even-terminal-*.log
+
+# user 個人 dir / scratch (= experimental sample / backup / harness state)
+.backup-api-cleanup/
+.harness-mem/
+apps/
+refs/
+SLTEST.SL
+install
+lineasm.sh
+run_old.sh
+check_sizes.sh
+P.COM
+BattleBattleUpwards.tap
+examples/127.0.0.1:*
+examples/CFUNCTEST.*
+examples/FURUI.d88
+examples/INDTEST.SL
+examples/PROG
+examples/PRTEST.*
+examples/STARS.*
+examples/STARS_X1.d88
+examples/WIDTHTEST.SL
+examples/X1GRP.d88
+examples/X1NATIVE_HELLO.tap
+examples/X1NATIVE_HELLO.wav
+examples/X1NATIVE_MTREAD/MTREADSMP_LOCAL.*
+examples/X1SGL.d88
+examples/XBIOS.CMT
+examples/disp_hello.c
+examples/vice-screen-*.png
+
+# 第三者 binary / 外部 image (= license 別、 重複配置済 or 別 path で管理)
+tools/AILZ80ASM
+tools/HuDisk.exe
+tools/ndc
+tools/ndcmsg.txt
+images/SOSPROG.D88
+images/dosformsx.dsk
+images/templates/SOSPROG.D88
+
+# misc
+include/.source.txt
+src/src.sln
