@@ -554,9 +554,7 @@ public class DiskImageBuilder
         try
         {
             var mainBinary = File.ReadAllBytes(mainBinPath);
-            var assets = new List<SlfsPackerLibrary.AssetEntry>();
-            foreach (var spec in _slfsAddSpecs)
-                ResolveSlfsAddSpec(spec, assets);
+            var assets = SlfsAssetResolver.Resolve(_slfsAddSpecs);
 
             var opts = new SlfsPackerLibrary.Options
             {
@@ -593,39 +591,4 @@ public class DiskImageBuilder
         }
     }
 
-    /// <summary>
-    /// --slfs-add の引数を解決:
-    ///   "name:path[:type]" = 単一 file
-    ///   "dir/" or "dir"    = directory (= non-recursive walk、 各 file の name = basename)
-    /// </summary>
-    private static void ResolveSlfsAddSpec(string arg, List<SlfsPackerLibrary.AssetEntry> assets)
-    {
-        if (Directory.Exists(arg))
-        {
-            var files = Directory.GetFiles(arg);
-            Array.Sort(files, StringComparer.Ordinal);
-            foreach (var f in files)
-                assets.Add(new SlfsPackerLibrary.AssetEntry
-                {
-                    Name = Path.GetFileName(f),
-                    Data = File.ReadAllBytes(f),
-                    Type = 0,
-                });
-            return;
-        }
-
-        var parts = arg.Split(':', 3);
-        if (parts.Length < 2)
-            throw new ArgumentException(
-                $"--slfs-add: invalid format '{arg}' (expected 'name:path[:type]' or dir)");
-        var name = parts[0];
-        var path = parts[1];
-        byte type = parts.Length >= 3 ? byte.Parse(parts[2]) : (byte)0;
-        assets.Add(new SlfsPackerLibrary.AssetEntry
-        {
-            Name = name,
-            Data = File.ReadAllBytes(path),
-            Type = type,
-        });
-    }
 }

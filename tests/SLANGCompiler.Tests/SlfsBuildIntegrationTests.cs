@@ -99,6 +99,73 @@ public class SlfsBuildIntegrationTests
     }
 
     [Fact]
+    public void SlfsDemo_Phase3_GeneratedHeader_IncludeAndCompile()
+    {
+        // SLFS Phase 3: SLFSDEMO.SL は #INCLUDE SLFSDEMO.assets.inc + CONST FILE_XXX
+        // を使う。 slangbuild が compile 前に .inc 生成 + -I outputDir 追加で解決、
+        // compile pass + D88 生成を pin。
+        var repo = RepoRoot();
+        var sample = Path.Combine(repo, "examples", "X1NATIVE_SLFS", "SLFSDEMO.SL");
+        var assetsDir = Path.Combine(repo, "examples", "X1NATIVE_SLFS", "assets");
+        var include = Path.Combine(repo, "include");
+        var output = Path.Combine(Path.GetTempPath(), $"SLFSDEMO_p3_{Guid.NewGuid():N}");
+        var incPath = Path.Combine(Path.GetTempPath(), "SLFSDEMO.assets.inc");
+        try
+        {
+            // 旧残 cleanup
+            if (File.Exists(incPath)) File.Delete(incPath);
+
+            var (rc, stdout, stderr) = RunSlangbuild(
+                $"-E x1native_slfs -I {include} {sample} -o {output} --emit disk --slfs-add {assetsDir} --keep-asm");
+            Assert.True(rc == 0, $"slangbuild failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            Assert.True(File.Exists(output + ".d88"), "SLFSDEMO.d88 not generated");
+
+            // generated .inc が input SL stem 基準で生成された事 確認
+            Assert.True(File.Exists(incPath), "SLFSDEMO.assets.inc not generated (input SL stem 基準)");
+            var hdr = File.ReadAllText(incPath);
+            Assert.Contains("FILE_GREETING_TXT", hdr);
+            Assert.Contains("FILE_NUMBERS_BIN", hdr);
+            Assert.Contains("CONST", hdr);
+        }
+        finally
+        {
+            foreach (var ext in new[] { ".d88", ".bin", ".sym", ".ASM", ".LST", ".inc" })
+                if (File.Exists(output + ext)) File.Delete(output + ext);
+            if (File.Exists(incPath)) File.Delete(incPath);
+        }
+    }
+
+    [Fact]
+    public void SlfsDemo_Phase3_OutputBasename_DiffersFromSourceStem()
+    {
+        // Codex Medium 指摘の最重要 case: -o /tmp/OTHER ≠ source SL stem の場合、
+        // generated .inc 名は **source SL stem 基準** (= SLFSDEMO.assets.inc)、
+        // -o basename 「OTHER」 に依存しない事 pin。
+        var repo = RepoRoot();
+        var sample = Path.Combine(repo, "examples", "X1NATIVE_SLFS", "SLFSDEMO.SL");
+        var assetsDir = Path.Combine(repo, "examples", "X1NATIVE_SLFS", "assets");
+        var include = Path.Combine(repo, "include");
+        var outDir = Path.Combine(Path.GetTempPath(), $"slfs_other_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outDir);
+        var output = Path.Combine(outDir, "OTHER");                 // -o basename = OTHER
+        var expectedIncPath = Path.Combine(outDir, "SLFSDEMO.assets.inc");  // source SL stem 基準
+        try
+        {
+            var (rc, stdout, stderr) = RunSlangbuild(
+                $"-E x1native_slfs -I {include} {sample} -o {output} --emit disk --slfs-add {assetsDir} --keep-asm");
+            Assert.True(rc == 0, $"slangbuild failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            Assert.True(File.Exists(output + ".d88"), "OTHER.d88 not generated");
+            Assert.True(File.Exists(expectedIncPath),
+                $"SLFSDEMO.assets.inc not generated at expected path {expectedIncPath} " +
+                "(input SL stem 基準でなく -o basename 依存になってる疑い、 Codex 指摘の事故 case)");
+        }
+        finally
+        {
+            if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SlfsDemoSave_BuildsViaSlangbuild()
     {
         // Phase 2: FS_SAVE_R / FS_SAVE_W を呼ぶ sample (= SLFSDEMO_SAVE.SL) が

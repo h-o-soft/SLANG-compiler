@@ -44,6 +44,7 @@ public static class Program
     {
         string? outputPath = null;
         string? mainBinPath = null;
+        string? headerPath = null;
         ushort mainLoad = 0x1000;
         ushort mainExec = 0x1000;
         string volume = "GAMEDISK";
@@ -56,6 +57,7 @@ public static class Program
             {
                 case "-o": outputPath = args[++i]; break;
                 case "--main": mainBinPath = args[++i]; break;
+                case "--header": headerPath = args[++i]; break;
                 case "--main-load": mainLoad = ParseAddress(args[++i]); break;
                 case "--main-exec": mainExec = ParseAddress(args[++i]); break;
                 case "--main-name": mainName = args[++i]; break;
@@ -73,6 +75,12 @@ public static class Program
             return 2;
         }
 
+        // --header 指定時は **D88 build より先に header validate** (= identifier
+        // collision で fail しても .d88 だけ書かれる事故防止、 Codex Medium 指摘 fix)
+        string? hdr = null;
+        if (headerPath != null)
+            hdr = SlfsHeaderBuilder.Build(assets);
+
         var opts = new SlfsPackerLibrary.Options
         {
             MainBinary = File.ReadAllBytes(mainBinPath),
@@ -86,6 +94,12 @@ public static class Program
         var img = packer.Build();
         File.WriteAllBytes(outputPath, img);
         Console.Error.WriteLine($"slfs-pack pack: wrote {outputPath} ({img.Length} byte, {assets.Count} asset(s))");
+
+        if (hdr != null)
+        {
+            File.WriteAllText(headerPath!, hdr);
+            Console.Error.WriteLine($"slfs-pack pack: wrote header {headerPath} ({hdr.Length} byte)");
+        }
         return 0;
     }
 
@@ -264,5 +278,6 @@ public static class Program
         Console.Error.WriteLine("  --volume <name>             disk volume name (default GAMEDISK)");
         Console.Error.WriteLine("  --add <name>:<path>[:<type>]  add single file as asset (repeatable)");
         Console.Error.WriteLine("  --add <dir_path>            add all files in dir (non-recursive, repeatable)");
+        Console.Error.WriteLine("  --header <path>             write SLANG CONST 形式 .inc header (= asset name → id map)");
     }
 }
