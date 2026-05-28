@@ -97,4 +97,39 @@ public class SlfsBuildIntegrationTests
                 if (File.Exists(output + ext)) File.Delete(output + ext);
         }
     }
+
+    [Fact]
+    public void SlfsDemoSave_BuildsViaSlangbuild()
+    {
+        // Phase 2: FS_SAVE_R / FS_SAVE_W を呼ぶ sample (= SLFSDEMO_SAVE.SL) が
+        // slangbuild --emit disk 経由で build 通る pin (= runtime link + 3 引数 ABI
+        // + ARRAY BYTE buffer 渡しの assemble 確認、 emulator 動作確認は別途 user)。
+        var repo = RepoRoot();
+        var sample = Path.Combine(repo, "examples", "X1NATIVE_SLFS", "SLFSDEMO_SAVE.SL");
+        var assetsDir = Path.Combine(repo, "examples", "X1NATIVE_SLFS", "assets");
+        var include = Path.Combine(repo, "include");
+        var output = Path.Combine(Path.GetTempPath(), $"SLFSSAVE_test_{Guid.NewGuid():N}");
+        var d88 = output + ".d88";
+
+        try
+        {
+            var (rc, stdout, stderr) = RunSlangbuild(
+                $"-E x1native_slfs -I {include} {sample} -o {output} --emit disk --slfs-add {assetsDir}");
+            Assert.True(rc == 0, $"slangbuild failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            Assert.True(File.Exists(d88), "SLFSSAVE.d88 not generated");
+
+            var r = D88Reader.FromFile(d88);
+            // superblock の save_area fields 確認 (= save_start > 0, save_count > 0)
+            var sb = r.ReadSector(0, 0, 2);
+            int saveStart = sb[0x0E] | (sb[0x0F] << 8);
+            int saveCount = sb[0x10] | (sb[0x11] << 8);
+            Assert.True(saveStart > 0, $"save_area_start_sector = {saveStart} (expected > 0)");
+            Assert.True(saveCount > 0, $"save_sector_count = {saveCount} (expected > 0)");
+        }
+        finally
+        {
+            foreach (var ext in new[] { ".d88", ".bin", ".sym", ".ASM", ".LST", ".inc" })
+                if (File.Exists(output + ext)) File.Delete(output + ext);
+        }
+    }
 }
