@@ -35,13 +35,16 @@
 ; FS_SB_CACHE_FLAG (1 byte): superblock cache 済 flag (0=未init、非0=init済)
 ; FS_SB_DIR_START (2 byte): superblock の directory_start_sector
 ; FS_SB_ENTRY_COUNT (2 byte): superblock の directory_entry_count
+; FS_SB_SAVE_START (2 byte): superblock の save_area_start_sector (= Phase 2)
+; FS_SB_SAVE_COUNT (2 byte): superblock の save_sector_count (= Phase 2)
 ; FS_SAVED_ID (1 byte): FS_READ_BY_ID call 間の id 保持
-; FS_SAVED_BUFFER (2 byte): FS_READ_BY_ID call 間の buffer addr 保持
+; FS_SAVED_BUFFER (2 byte): FS_READ_BY_ID / FS_SAVE_R/W call 間の buffer addr 保持
+; FS_SAVED_COUNT (1 byte): FS_SAVE_R/W call 間の sector count 保持
 
 ; @name X1FDC_WORK
 ; @resident shared
 ; @param_count 0
-; @works FS_SECTOR_BUF:256,FS_SB_CACHE_FLAG:1,FS_SB_DIR_START:2,FS_SB_ENTRY_COUNT:2,FS_SAVED_ID:1,FS_SAVED_BUFFER:2
+; @works FS_SECTOR_BUF:256,FS_SB_CACHE_FLAG:1,FS_SB_DIR_START:2,FS_SB_ENTRY_COUNT:2,FS_SB_SAVE_START:2,FS_SB_SAVE_COUNT:2,FS_SAVED_ID:1,FS_SAVED_BUFFER:2,FS_SAVED_COUNT:1
 RET
 
 
@@ -287,12 +290,16 @@ LD      DE, 1
 LD      HL, FS_SECTOR_BUF
 LD      A, 1
 CALL    FDC_LOAD_SECTORS_SLFS
-JR      C, .fsrb_fail
-; cache essential fields: +08 dir_start (2), +0A entry_count (2)
+JP      C, .fsrb_fail
+; cache essential fields: +08 dir_start, +0A entry_count, +0E save_start, +10 save_count
 LD      HL, (FS_SECTOR_BUF + 08h)
 LD      (FS_SB_DIR_START), HL
 LD      HL, (FS_SECTOR_BUF + 0Ah)
 LD      (FS_SB_ENTRY_COUNT), HL
+LD      HL, (FS_SECTOR_BUF + 0Eh)
+LD      (FS_SB_SAVE_START), HL
+LD      HL, (FS_SECTOR_BUF + 10h)
+LD      (FS_SB_SAVE_COUNT), HL
 LD      A, 1
 LD      (FS_SB_CACHE_FLAG), A
 .fsrb_cache_ok:
@@ -304,7 +311,7 @@ LD      L, A
 LD      DE, (FS_SB_ENTRY_COUNT)
 OR      A                       ; clear Cy
 SBC     HL, DE                  ; HL = id - entry_count
-JR      NC, .fsrb_fail          ; id >= entry_count = 範囲外
+JP      NC, .fsrb_fail          ; id >= entry_count = 範囲外
 
 ; --- dir sector を load ---
 ; dir sector # = FS_SB_DIR_START + (id >> 4)
@@ -321,7 +328,7 @@ EX      DE, HL                  ; DE = lsec (= FDC_LOAD_SECTORS_SLFS 入力)
 LD      HL, FS_SECTOR_BUF
 LD      A, 1
 CALL    FDC_LOAD_SECTORS_SLFS
-JR      C, .fsrb_fail
+JP      C, .fsrb_fail
 
 ; --- entry offset = (id & 15) * 16 ---
 LD      A, (FS_SAVED_ID)
@@ -349,7 +356,7 @@ LD      B, (HL)                 ; BC = byte_size
 ; byte_size 0 check (= packer reject 済だが念のため)
 LD      A, B
 OR      C
-JR      Z, .fsrb_fail
+JP      Z, .fsrb_fail
 
 ; --- sector count = ceil(byte_size / 256) = (byte_size + 255) >> 8 ---
 ; 計算: DEC BC; INC B; A = B  (= ceil(BC / 256)、 BC=0 で破綻、 上で 0 check 済)
@@ -363,7 +370,7 @@ LD      A, B                    ; A = sector count (= 1..256、 256 は 0 入力
 LD      HL, (FS_SAVED_BUFFER)
 CALL    FDC_LOAD_SECTORS_SLFS
 POP     BC                      ; byte_size 復元
-JR      C, .fsrb_fail2
+JP      C, .fsrb_fail2
 
 ; --- success: HL = byte_size ---
 LD      H, B
@@ -383,6 +390,328 @@ POP     AF                      ; IFF2 restore
 JP      PO, .fsrb_skip_ei_fail
 EI
 .fsrb_skip_ei_fail:
+LD      HL, 0
+SCF
+RET
+
+
+; ========================================================================
+; FDC_WRITE_SLFS: 1 sector 書込み (= track 移動済前提)
+; ========================================================================
+; パラメータ A = sector 番号 (0-origin)、 HL = 書込み source buffer addr
+; 戻り値 A = status reg
+; FDC_READ_SLFS の対称版、 MB8877A cmd $A0 = write sector
+
+; @name FDC_WRITE_SLFS
+; @resident shared
+; @param_count 0
+; @calls WAIT_FDC_BUSY_SLFS,WAIT_SLFS1
+LD      BC, $0FFA               ; sector レジスタ
+INC     A                       ; 1-origin に変換
+OUT     (C), A
+LD      C, LOW($0FF8)
+CALL    WAIT_FDC_BUSY_SLFS
+
+LD      D, LOW($0FF8)
+LD      E, LOW($0FFB)
+LD      BC, $0FF8
+
+LD      A, 0A0h                 ; write sector cmd
+OUT     (C), A
+CALL    WAIT_SLFS1
+.fdc_write_slfs_1:
+IN      A, (C)                  ; status
+RRCA                            ; bit 0 = BUSY → Cy
+JR      NC, .fdc_write_slfs_2   ; not busy = 終了
+RRCA                            ; bit 1 = DRQ → Cy
+JR      NC, .fdc_write_slfs_1   ; DRQ 未 ready = wait
+LD      C, E                    ; data port
+LD      A, (HL)
+OUT     (C), A
+INC     HL
+LD      C, D                    ; status port
+JR      .fdc_write_slfs_1
+.fdc_write_slfs_2:
+RLCA                            ; restore status bit
+RET
+
+
+; ========================================================================
+; FDC_WRITE_SECTORS_SLFS: 連続 sector 書込み (= FDC_LOAD_SECTORS_SLFS 対称版)
+; ========================================================================
+; パラメータ:
+;   A  = sector 数 (1..255、 0 入力時は 256 として処理)
+;   DE = logical sector index (= 2D 限定で X1_compatible_rom 「レコード番号
+;        encoding」 と完全一致、 そのまま渡せる):
+;          bit 3-0:  sector_0origin、 bit 4: side、 bit 15-5: cyl
+;   HL = 書込み source buffer addr
+; 戻り値:
+;   Cy = エラー時 1、 成功時 0
+
+; @name FDC_WRITE_SECTORS_SLFS
+; @resident shared
+; @param_count 0
+; @calls FDC_SEEK_SLFS,FDC_WRITE_SLFS
+OR      A                       ; clear Cy
+EX      AF, AF'                 ; sector count を A' に退避
+
+LD      A, E
+RLCA
+RL      D
+RLCA
+RL      D
+RLCA
+RL      D
+RLCA
+RL      D
+LD      A, E
+AND     0Fh
+LD      E, A
+
+.fdc_write_sectors_slfs_1:
+LD      A, 1
+AND     D                       ; side
+LD      A, 0
+JR      Z, .fdc_write_sectors_slfs_2
+OR      10h
+.fdc_write_sectors_slfs_2:
+OR      80h                     ; motor ON
+LD      BC, $0FFC
+OUT     (C), A
+
+LD      A, D
+SRL     A
+CALL    FDC_SEEK_SLFS
+JP      NZ, .fdc_write_sectors_slfs_err
+
+.fdc_write_sectors_slfs_3:
+PUSH    DE
+LD      A, E
+CALL    FDC_WRITE_SLFS
+POP     DE
+AND     0FCh                    ; error bits: write protect / write fault / RNF / CRC / lost
+JP      NZ, .fdc_write_sectors_slfs_err
+
+EX      AF, AF'
+DEC     A
+JP      Z, .fdc_write_sectors_slfs_done
+EX      AF, AF'
+
+LD      A, E
+INC     A
+AND     0Fh
+LD      E, A
+JR      NZ, .fdc_write_sectors_slfs_3
+
+LD      A, D
+INC     A
+LD      D, A
+JR      .fdc_write_sectors_slfs_1
+
+.fdc_write_sectors_slfs_done:
+LD      A, 0
+LD      BC, $0FFC
+OUT     (C), A
+OR      A                       ; Cy = 0
+RET
+
+.fdc_write_sectors_slfs_err:
+LD      A, 0
+LD      BC, $0FFC
+OUT     (C), A
+SCF
+RET
+
+
+; ========================================================================
+; ENSURE_SB_CACHE_SLFS: superblock cache 確保 (= FS_SAVE_R / FS_SAVE_W 共通)
+; ========================================================================
+; 戻り値: Cy = エラー時 1、 成功時 0
+
+; @name ENSURE_SB_CACHE_SLFS
+; @resident shared
+; @param_count 0
+; @calls X1FDC_WORK,FDC_LOAD_SECTORS_SLFS
+LD      A, (FS_SB_CACHE_FLAG)
+OR      A
+JR      Z, .ensure_sb_load
+OR      A                       ; Cy = 0
+RET
+.ensure_sb_load:
+LD      DE, 1                   ; logical sector 1 = superblock
+LD      HL, FS_SECTOR_BUF
+LD      A, 1
+CALL    FDC_LOAD_SECTORS_SLFS
+RET     C
+LD      HL, (FS_SECTOR_BUF + 08h)
+LD      (FS_SB_DIR_START), HL
+LD      HL, (FS_SECTOR_BUF + 0Ah)
+LD      (FS_SB_ENTRY_COUNT), HL
+LD      HL, (FS_SECTOR_BUF + 0Eh)
+LD      (FS_SB_SAVE_START), HL
+LD      HL, (FS_SECTOR_BUF + 10h)
+LD      (FS_SB_SAVE_COUNT), HL
+LD      A, 1
+LD      (FS_SB_CACHE_FLAG), A
+OR      A                       ; Cy = 0
+RET
+
+
+; ========================================================================
+; FS_SAVE_R / FS_SAVE_W: SLFS save area read / write
+; ========================================================================
+; SLANG public ABI (= 3 引数):
+;   arg1 HL = offset_sec (L 使用、 H 無視、 save area 内 sector 単位 offset)
+;   arg2 DE = count_sec  (E 使用、 D 無視、 1..255 sector)
+;   arg3 BC = buffer addr
+;   戻り値 HL = 実 byte_size (= count_sec * 256)、 失敗時 HL = 0
+;   成功時 CY = 0、 失敗時 CY = 1
+;
+; range check: (offset_sec + count_sec) <= FS_SB_SAVE_COUNT、 違反で fail
+; absolute sector = FS_SB_SAVE_START + offset_sec
+; (= asset / boot / dir 領域への意図しない write を防止)
+
+; @name FS_SAVE_R
+; @resident shared
+; @param_count 3
+; @calls X1FDC_WORK,ENSURE_SB_CACHE_SLFS,FDC_LOAD_SECTORS_SLFS
+; --- IFF2 guard entry ---
+LD      A, I
+DI
+PUSH    AF
+
+; save arguments to work area
+LD      A, L
+LD      (FS_SAVED_ID), A        ; reuse field for offset_sec
+LD      A, E
+LD      (FS_SAVED_COUNT), A
+LD      (FS_SAVED_BUFFER), BC
+
+; count_sec = 0 reject (= FDC_LOAD/WRITE_SECTORS_SLFS で A=0 → 256 sector 扱い
+; になり save area 外まで読書する危険、 Codex High 指摘 fix)
+OR      A
+JP      Z, .fssr_fail
+
+CALL    ENSURE_SB_CACHE_SLFS
+JR      C, .fssr_fail
+
+; range check: offset + count <= save_count
+LD      A, (FS_SAVED_ID)
+LD      H, 0
+LD      L, A
+LD      A, (FS_SAVED_COUNT)
+LD      E, A
+LD      D, 0
+ADD     HL, DE                  ; HL = offset + count
+LD      DE, (FS_SB_SAVE_COUNT)
+EX      DE, HL
+OR      A                       ; clear Cy
+SBC     HL, DE                  ; HL = save_count - (offset + count)、 Cy = 1 なら範囲外
+JR      C, .fssr_fail
+
+; absolute lsec = save_start + offset_sec
+LD      A, (FS_SAVED_ID)
+LD      H, 0
+LD      L, A
+LD      DE, (FS_SB_SAVE_START)
+ADD     HL, DE
+EX      DE, HL                  ; DE = absolute lsec
+
+LD      A, (FS_SAVED_COUNT)     ; A = sector count
+LD      BC, (FS_SAVED_BUFFER)
+LD      H, B
+LD      L, C                    ; HL = buffer
+CALL    FDC_LOAD_SECTORS_SLFS
+JR      C, .fssr_fail
+
+; success: HL = count_sec * 256 (= byte_size)
+LD      A, (FS_SAVED_COUNT)
+LD      H, A
+LD      L, 0
+POP     AF
+JP      PO, .fssr_skip_ei
+EI
+.fssr_skip_ei:
+OR      A                       ; Cy = 0
+RET
+
+.fssr_fail:
+POP     AF
+JP      PO, .fssr_skip_ei_fail
+EI
+.fssr_skip_ei_fail:
+LD      HL, 0
+SCF
+RET
+
+
+; @name FS_SAVE_W
+; @resident shared
+; @param_count 3
+; @calls X1FDC_WORK,ENSURE_SB_CACHE_SLFS,FDC_WRITE_SECTORS_SLFS
+; --- IFF2 guard entry ---
+LD      A, I
+DI
+PUSH    AF
+
+LD      A, L
+LD      (FS_SAVED_ID), A
+LD      A, E
+LD      (FS_SAVED_COUNT), A
+LD      (FS_SAVED_BUFFER), BC
+
+; count_sec = 0 reject (= FDC_WRITE_SECTORS_SLFS で A=0 → 256 sector 暴走防止、
+; Codex High 指摘 fix)
+OR      A
+JP      Z, .fssw_fail
+
+CALL    ENSURE_SB_CACHE_SLFS
+JR      C, .fssw_fail
+
+; range check
+LD      A, (FS_SAVED_ID)
+LD      H, 0
+LD      L, A
+LD      A, (FS_SAVED_COUNT)
+LD      E, A
+LD      D, 0
+ADD     HL, DE
+LD      DE, (FS_SB_SAVE_COUNT)
+EX      DE, HL
+OR      A
+SBC     HL, DE
+JR      C, .fssw_fail
+
+; absolute lsec
+LD      A, (FS_SAVED_ID)
+LD      H, 0
+LD      L, A
+LD      DE, (FS_SB_SAVE_START)
+ADD     HL, DE
+EX      DE, HL
+
+LD      A, (FS_SAVED_COUNT)
+LD      BC, (FS_SAVED_BUFFER)
+LD      H, B
+LD      L, C
+CALL    FDC_WRITE_SECTORS_SLFS
+JR      C, .fssw_fail
+
+LD      A, (FS_SAVED_COUNT)
+LD      H, A
+LD      L, 0
+POP     AF
+JP      PO, .fssw_skip_ei
+EI
+.fssw_skip_ei:
+OR      A
+RET
+
+.fssw_fail:
+POP     AF
+JP      PO, .fssw_skip_ei_fail
+EI
+.fssw_skip_ei_fail:
 LD      HL, 0
 SCF
 RET

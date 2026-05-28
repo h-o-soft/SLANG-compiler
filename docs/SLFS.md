@@ -22,7 +22,7 @@
 
 データ領域 (= data_area_start_sector 以降): asset 連続配置 (= sorted by filename、 READ ONLY)
 
-セーブ領域 (= save_area_start_sector 以降): free area (= Phase 2 で FS_SAVE_R / FS_SAVE_W 予定)
+セーブ領域 (= save_area_start_sector 以降): free area (= FS_SAVE_R / FS_SAVE_W で read/write、 アプリ自前 slot 管理)
 ```
 
 ## boot sector (= sector 0、 HuBASIC IPL header)
@@ -70,17 +70,50 @@ X1 IPL ROM (= X1_compatible_rom 等) が起動時に sector 0 を `$FE00` に lo
 - ファイル名 sort 前提 (= 11 byte normalized ordinal 昇順、 packer が保証)
 - ID = sorted directory entry index、 範囲 **0..255** (= Phase 1、 SLANG `FS_READ_BY_ID(id, buf)` の id 8-bit)
 
-## SLANG API (= Phase 1)
+## SLANG API
+
+### Phase 1: `FS_READ_BY_ID`
 
 ```sl
-LET SIZE = FS_READ_BY_ID(id, buffer);   // id: 0..255、 buffer: addr
-IF SIZE == 0 THEN ... END                // 失敗判定 (HL = 0)
+SIZE = FS_READ_BY_ID(id, buffer);   // id: 0..255、 buffer: addr
+IF SIZE == 0 THEN ... END            // 失敗判定 (HL = 0)
 ```
 
 - 入力: HL = id (L 使用、 H 無視)、 DE = buffer
 - 戻り値: **HL = 実 byte_size (1..65535)、 失敗時 HL = 0**
 - buffer 容量: **sector round-up 分必要** (= `ceil(byte_size / 256) * 256 byte`)
-- ID = packer の normalized filename sort 順依存 (= Phase 1 は数値直書き、 generated header は Phase 2 以降)
+- ID = packer の normalized filename sort 順依存 (= Phase 1 は数値直書き、 generated header は Phase 3 以降)
+
+### Phase 2: `FS_SAVE_R` / `FS_SAVE_W` (= save area read/write)
+
+```sl
+SIZE = FS_SAVE_W(offset_sec, count_sec, buffer);  // save area へ書込み
+SIZE = FS_SAVE_R(offset_sec, count_sec, buffer);  // save area から読込み
+IF SIZE == 0 THEN ... END                          // 失敗判定
+```
+
+- 入力 (= 3 引数): HL = offset_sec (= save area 内 sector 単位 offset、 L 使用)、 DE = count_sec (= 1..255 sector、 E 使用)、 BC = buffer addr
+- 戻り値: **HL = 実 byte_size (= count_sec × 256)、 失敗時 HL = 0**
+- buffer 容量: count_sec × 256 byte 必要 (= SLANG `ARRAY BYTE BUF[count_sec * 256 - 1]` で確保、 SLANG ARRAY[N] = N+1 要素)
+- range check: `(offset_sec + count_sec) <= save_sector_count` (= asset / boot / dir 領域への意図しない書込を防止、 違反で fail)
+- save 領域 = aplication 自前 slot 管理 (= packer は中身知らない、 spec 通り)
+
+#### save slot 例
+
+```sl
+ARRAY BYTE SLOT1[255];   // 256 byte = 1 sector
+ARRAY BYTE SLOT2[511];   // 512 byte = 2 sector
+
+// slot 1 = save offset 0, 1 sector
+FS_SAVE_W(0, 1, SLOT1);
+FS_SAVE_R(0, 1, SLOT1);
+
+// slot 2 = save offset 1, 2 sector
+FS_SAVE_W(1, 2, SLOT2);
+FS_SAVE_R(1, 2, SLOT2);
+```
+
+sample: `examples/X1NATIVE_SLFS/SLFSDEMO_SAVE.SL` (= 1 sector save/load + sum 比較)
 
 ### sample (= 数値 ID 直書き)
 
@@ -186,13 +219,12 @@ save 抽出は **raw dump** (= slot 解釈はアプリ側責任、 spec 通り)�
 - 2D 固定 (= 2 sides × 40 tracks × 16 sectors × 256 bytes = 320 KB)、 2HD は Phase 2 以降
 - asset 最大 **256 file** (= ID 8-bit)
 - 1 file 最大 **65535 byte** (= byte_size 16-bit、 0 / 上限超は packer reject)
-- save area 未実装 (= superblock fields は確保済、 Phase 2 で `FS_SAVE_R / FS_SAVE_W`)
-- name lookup 未実装 (= Phase 1 は数値 ID 直書き、 Phase 3 で `FS_OPEN`)
+- save area read/write は `FS_SAVE_R` / `FS_SAVE_W` で対応 (= Phase 2 で実装済、 アプリ自前 slot 管理)
+- name lookup 未実装 (= 数値 ID 直書き、 Phase 3 で `FS_OPEN` 予定)
 - buffer = sector round-up 分必要 (= byte_size mod 256 切詰めなし、 呼出側責任)
 
-## Phase 2 以降 (= scope 外)
+## Phase 3 以降 (= scope 外)
 
-- save area relative `FS_SAVE_R` / `FS_SAVE_W`
 - `FS_OPEN` name lookup + `FS_READ` low-level API
 - 圧縮 type 内部処理 / 物理 CHS API / 2HD geometry
 - env include 機構 (= x1native_slfs.env と x1native.env の drift 解消)
