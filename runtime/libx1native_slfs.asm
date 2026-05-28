@@ -587,6 +587,11 @@ LD      A, E
 LD      (FS_SAVED_COUNT), A
 LD      (FS_SAVED_BUFFER), BC
 
+; count_sec = 0 reject (= FDC_LOAD/WRITE_SECTORS_SLFS で A=0 → 256 sector 扱い
+; になり save area 外まで読書する危険、 Codex High 指摘 fix)
+OR      A
+JP      Z, .fssr_fail
+
 CALL    ENSURE_SB_CACHE_SLFS
 JR      C, .fssr_fail
 
@@ -654,6 +659,11 @@ LD      (FS_SAVED_ID), A
 LD      A, E
 LD      (FS_SAVED_COUNT), A
 LD      (FS_SAVED_BUFFER), BC
+
+; count_sec = 0 reject (= FDC_WRITE_SECTORS_SLFS で A=0 → 256 sector 暴走防止、
+; Codex High 指摘 fix)
+OR      A
+JP      Z, .fssw_fail
 
 CALL    ENSURE_SB_CACHE_SLFS
 JR      C, .fssw_fail
