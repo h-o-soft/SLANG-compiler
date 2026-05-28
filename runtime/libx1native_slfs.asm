@@ -166,8 +166,13 @@ RET
 ; ========================================================================
 ; パラメータ:
 ;   A  = sector 数 (1..255、 0 入力時は 256 として処理)
-;   DE = レコード番号 = (track << 9) | (side << 8) | sector_0origin
-;        bit 15-9: track (0..127)、 bit 8: side、 bit 3-0: sector (0..15)
+;   DE = **logical sector index** (= 2D 限定で X1_compatible_rom 「レコード
+;        番号 encoding」 と完全一致 = そのまま渡せる):
+;          bit 3-0:  sector_0origin (0..15)
+;          bit 4:    side (0..1)
+;          bit 15-5: cyl (0..127、 2D で 0..39)
+;        内部の RLCA × 4 で「track + side byte」 と sector に再分解する。
+;        2HD 等 別 geometry 対応は Phase 2 以降 (= logical→encoding 変換必要)。
 ;   HL = 読込み buffer addr
 ; 戻り値:
 ;   Cy = エラー時 1、 成功時 0
