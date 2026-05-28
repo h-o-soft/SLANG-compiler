@@ -18,3 +18,17 @@ CONST VCOL_MED_GREY  = 12;
 CONST VCOL_LT_GREEN  = 13;
 CONST VCOL_LT_BLUE   = 14;
 CONST VCOL_LT_GREY   = 15;
+
+// === v0.25.0 追加: VIC mode + 標準 address ===
+// VIC-II mode constants (= oscar64 c64/vic.h VicMode enum と同期、 手動メンテ)
+CONST VICM_TEXT      = 0,    // standard text mode
+      VICM_TEXT_MC   = 1,    // text multicolor
+      VICM_TEXT_ECM  = 2,    // text extended color mode
+      VICM_HIRES     = 3,    // hires bitmap
+      VICM_HIRES_MC  = 4;    // hires multicolor bitmap
+
+// 標準 memory addresses (= oscar64 sample 慣例、 user 自由 override 可)
+// VIC bank 0 ($0000-$3FFF) 想定。 別 bank は VIC_SETBANK で切替後 再計算。
+CONST VIC_SCREEN_DEFAULT = $0400,    // 1KB screen RAM (= default bank 0、 BASIC 慣例)
+      VIC_FONT_ROM       = $1000,    // VIC bank 0 から見える CHAR ROM shadow
+      VIC_COLOR_RAM      = $D800;    // 1KB color RAM (= 固定 addr、 I/O visible mmap 必須)
