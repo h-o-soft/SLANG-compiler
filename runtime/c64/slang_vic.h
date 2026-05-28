@@ -1,7 +1,7 @@
 #ifndef SLANG_VIC_H
 #define SLANG_VIC_H
 
-// SLFS bridge: oscar64 c64/vic.h の薄い wrapper。
+// SLANG bridge: oscar64 c64/vic.h の薄い wrapper。
 // vic_setmode は (VicMode mode, char* screen, char* font) → SLANG では
 // (byte, word, word) で渡す。
 

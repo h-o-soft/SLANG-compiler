@@ -48,14 +48,15 @@ CONST SCR_COL   = 19;        // 表示 開始 col
 CONST SCR_COUNT = 3;         // 並べる char 数
 
 VAR K;
+VAR OLD_MAP;     // mmap restore 用 (= oscar64 exit path が default mmap 想定)
 
 MAIN()
 BEGIN
     // 1. trampoline install (= IRQ/NMI が mmap 切替中も動作維持)
     MMAP_TRAMPOLINE();
 
-    // 2. BASIC ROM disable (= I/O visible に維持)
-    MMAP_SET(MMAP_NO_BASIC);
+    // 2. BASIC ROM disable (= I/O visible に維持、 旧 mmap 値を保存)
+    OLD_MAP = MMAP_SET(MMAP_NO_BASIC);
 
     // 3. 自前 char data を font area に書込 (= SLANG ARRAY → RAM、 src/dst 別で安全)
     MEMCPY(FONT_AREA + 32 * 8, BLANK_CHAR, 8);    // char 32 (= space) = 黒
@@ -82,4 +83,8 @@ BEGIN
     // 9. 再 wait (= '@' 3 個表示確認後 終了)
     K = 0;
     WHILE K == 0 { K = INKEY(0); }
+
+    // 10. mmap restore (= oscar64 exit path / BASIC return が default mmap 想定、
+    //     MMAP_NO_BASIC のまま return すると runtime 副作用 risk あり、 Codex 指摘 fix)
+    MMAP_SET(OLD_MAP);
 END;
