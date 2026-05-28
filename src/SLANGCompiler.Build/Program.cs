@@ -97,6 +97,9 @@ internal class Program
                     }
                     opts.TapeExec = texec;
                     break;
+                case "--slfs-add" when i + 1 < args.Length:
+                    opts.SlfsAddSpecs.Add(args[++i]);
+                    break;
                 case "-I" when i + 1 < args.Length:
                     opts.IncludePaths.Add(args[++i]);
                     break;

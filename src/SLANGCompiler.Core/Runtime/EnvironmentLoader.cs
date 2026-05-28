@@ -337,6 +337,10 @@ public class EnvironmentLoader
             if (!string.IsNullOrEmpty(raw.Disk.Title))
                 config.Disk.Title = raw.Disk.Title;
 
+            // slfs-pack の volume (= D88 disk volume name、 16 byte ASCII)
+            if (!string.IsNullOrEmpty(raw.Disk.Volume))
+                config.Disk.Volume = raw.Disk.Volume;
+
             // mzd88 の extra_files (= 起動用 BASIC ローダ等の追加ファイル)。
             // system_files と同じく env file dir 基準で絶対化。
             if (raw.Disk.ExtraFiles != null && raw.Disk.ExtraFiles.Count > 0)
@@ -617,6 +621,10 @@ public class EnvironmentLoader
         // mzd88 driver 用: --title 引数 (= MZ-2500 D88 image label、optional)
         [YamlMember(Alias = "title")]
         public string? Title { get; set; }
+
+        // slfs-pack driver 用: D88 disk volume name (= 16 byte ASCII)
+        [YamlMember(Alias = "volume")]
+        public string? Volume { get; set; }
 
         // mzd88 driver 用: main 書込後に -add する追加ファイル群
         // (= 起動用 BASIC ローダ等)。env file dir 基準の相対 path を絶対化。
