@@ -22,7 +22,7 @@
 
 データ領域 (= data_area_start_sector 以降): asset 連続配置 (= sorted by filename、 READ ONLY)
 
-セーブ領域 (= save_area_start_sector 以降): free area (= Phase 2 で FS_SAVE_R / FS_SAVE_W 予定)
+セーブ領域 (= save_area_start_sector 以降): free area (= FS_SAVE_R / FS_SAVE_W で read/write、 アプリ自前 slot 管理)
 ```
 
 ## boot sector (= sector 0、 HuBASIC IPL header)
@@ -219,13 +219,12 @@ save 抽出は **raw dump** (= slot 解釈はアプリ側責任、 spec 通り)�
 - 2D 固定 (= 2 sides × 40 tracks × 16 sectors × 256 bytes = 320 KB)、 2HD は Phase 2 以降
 - asset 最大 **256 file** (= ID 8-bit)
 - 1 file 最大 **65535 byte** (= byte_size 16-bit、 0 / 上限超は packer reject)
-- save area 未実装 (= superblock fields は確保済、 Phase 2 で `FS_SAVE_R / FS_SAVE_W`)
-- name lookup 未実装 (= Phase 1 は数値 ID 直書き、 Phase 3 で `FS_OPEN`)
+- save area read/write は `FS_SAVE_R` / `FS_SAVE_W` で対応 (= Phase 2 で実装済、 アプリ自前 slot 管理)
+- name lookup 未実装 (= 数値 ID 直書き、 Phase 3 で `FS_OPEN` 予定)
 - buffer = sector round-up 分必要 (= byte_size mod 256 切詰めなし、 呼出側責任)
 
-## Phase 2 以降 (= scope 外)
+## Phase 3 以降 (= scope 外)
 
-- save area relative `FS_SAVE_R` / `FS_SAVE_W`
 - `FS_OPEN` name lookup + `FS_READ` low-level API
 - 圧縮 type 内部処理 / 物理 CHS API / 2HD geometry
 - env include 機構 (= x1native_slfs.env と x1native.env の drift 解消)
