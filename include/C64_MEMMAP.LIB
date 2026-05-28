@@ -1,0 +1,11 @@
+// C64 memory map switching constants (= oscar64 c64/memmap.h と同期、 手動メンテ)
+// SLANG コードから #INCLUDE "C64_MEMMAP.LIB" で取り込めば
+// CONST MMAP_* + MMAP_SET / MMAP_TRAMPOLINE binding (= env c_bindings) が使える。
+// Z80 backend で include しても CONST 定義のみで害なし (= binding 側 env 経由のみ)。
+
+CONST MMAP_RAM       = $30,    // ALL RAM (I/O 不可視、 mmap 状態切替 user 責任)
+      MMAP_CHAR_ROM  = $31,    // CHAR ROM のみ (= $D000-$DFFF に char ROM、 残り RAM、 I/O 不可視)
+      MMAP_ALL_ROM   = $33,    // BASIC + CHAR + KERNAL (I/O 不可視)
+      MMAP_NO_ROM    = $35,    // I/O + COLOR RAM のみ ROM、 残り RAM (= I/O visible)
+      MMAP_NO_BASIC  = $36,    // I/O + KERNAL (BASIC ROM のみ disable、 I/O visible)
+      MMAP_ROM       = $37;    // default power-on (= BASIC + I/O + KERNAL、 I/O visible)

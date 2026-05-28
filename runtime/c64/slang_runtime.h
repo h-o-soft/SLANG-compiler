@@ -33,6 +33,12 @@
  * audio/sidfx.c 実体は user の oscar64 install からリンク時解決。 */
 #include "slang_sidfx.h"
 
+/* v0.25.0: 最低限ゲーム作成 API (oscar64 c64/memmap.h / c64/vic.h / string.h
+ * 経由の薄い wrapper)。 mmap / vic_setmode / memcpy を SLANG から呼べる。 */
+#include "slang_memmap.h"
+#include "slang_vic.h"
+#include "slang_mem.h"
+
 /* === PRINT === */
 
 void slang_print_str(const char *s);          /* NUL-terminated 文字列 */
