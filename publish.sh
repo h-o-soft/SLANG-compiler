@@ -16,11 +16,12 @@ createRelease() {
   cp -r ../../runtime .
   # examples: SLANGソースのみ（ビルド成果物除外）
   # top-level の *.SL と、サブディレクトリ chip / spr / tile / tilespr / ui /
-  # pc80mk2 から *.SL / *.sl / README.md / *.json / *.mml のみ whitelist 方式で
-  # 拾う。*.ASM / *.LST / *.SYM / *.bin / PROG.com 等のビルド成果物は含めない。
+  # pc80mk2 / c64 / X1NATIVE_MTREAD から *.SL / *.sl / README.md / *.json /
+  # *.mml のみ whitelist 方式で拾う。*.ASM / *.LST / *.SYM / *.bin / PROG.com
+  # 等のビルド成果物は含めない。
   mkdir -p examples
   cp ../../examples/*.SL examples/ 2>/dev/null
-  for sub in chip spr tile tilespr ui pc80mk2; do
+  for sub in chip spr tile tilespr ui pc80mk2 c64 X1NATIVE_MTREAD; do
     if [ -d "../../examples/$sub" ]; then
       mkdir -p "examples/$sub"
       cp ../../examples/$sub/*.SL        "examples/$sub/" 2>/dev/null
@@ -30,6 +31,16 @@ createRelease() {
       cp ../../examples/$sub/*.mml       "examples/$sub/" 2>/dev/null
     fi
   done
+
+  # examples/X1NATIVE_SLFS: SLFS demo の SL + asset (= 任意 binary、 *.TXT /
+  # *.BIN 等)。 SLANG runtime 同梱の slfs-pack が pack するための材料。
+  # asset は whitelist 拡張子に当てはまらないため assets/ subdir を丸ごと拾う
+  # (= 現状 GREETING.TXT / NUMBERS.BIN のみ、 将来 asset 追加時も拡張不要)。
+  if [ -d "../../examples/X1NATIVE_SLFS" ]; then
+    mkdir -p examples/X1NATIVE_SLFS/assets
+    cp ../../examples/X1NATIVE_SLFS/*.SL          examples/X1NATIVE_SLFS/         2>/dev/null
+    cp ../../examples/X1NATIVE_SLFS/assets/*      examples/X1NATIVE_SLFS/assets/  2>/dev/null
+  fi
 
   # examples/zxn は ZX Spectrum Next 用 (= asset binary も配布対象)。
   # NextDAW Runtime Player (= NextDAW_RuntimePlayer_E000.bin) は
