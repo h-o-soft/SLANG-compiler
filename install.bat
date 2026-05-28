@@ -60,7 +60,7 @@ REM   do_install
 REM ============================================================
 REM Run sanity check only on the install path. (uninstall does not need
 REM to be run from an extracted distribution dir.)
-for %%F in (bin\slangc.exe bin\slangbuild.exe include runtime images tools) do (
+for %%F in (bin\slangc.exe bin\slangbuild.exe bin\slfs-pack.exe include runtime images tools) do (
   if not exist "%%F" (
     echo Error: '%%F' not found in %SCRIPT_DIR%. 1>&2
     echo. 1>&2
@@ -86,6 +86,7 @@ if "%DRY_RUN%"=="1" (
   echo DRY: mkdir %CONFIG_DIR%
   echo DRY: copy bin\slangc.exe -^> %BINDIR%\
   echo DRY: copy bin\slangbuild.exe -^> %BINDIR%\
+  echo DRY: copy bin\slfs-pack.exe -^> %BINDIR%\
   for %%D in (include runtime images tools) do (
     echo DRY: rd /s /q %CONFIG_DIR%\%%D
     echo DRY: xcopy /E /Y /I %%D -^> %CONFIG_DIR%\%%D
@@ -102,6 +103,9 @@ if errorlevel 1 ( echo Error: failed to copy slangc.exe 1>&2 & exit /b 1 )
 if "%VERBOSE%"=="1" echo   copy bin\slangbuild.exe -^> %BINDIR%\ 1>&2
 copy /Y bin\slangbuild.exe "%BINDIR%\" >nul
 if errorlevel 1 ( echo Error: failed to copy slangbuild.exe 1>&2 & exit /b 1 )
+if "%VERBOSE%"=="1" echo   copy bin\slfs-pack.exe -^> %BINDIR%\ 1>&2
+copy /Y bin\slfs-pack.exe  "%BINDIR%\" >nul
+if errorlevel 1 ( echo Error: failed to copy slfs-pack.exe 1>&2 & exit /b 1 )
 
 REM Ghost-file safety: remove the existing subdir with rd /s /q before xcopy /E /Y /I.
 for %%D in (include runtime images tools) do (
@@ -121,7 +125,7 @@ REM   do_uninstall
 REM ============================================================
 :do_uninstall
 echo Uninstalling SLANG from:
-echo   Binaries:  %BINDIR%\slangc.exe, slangbuild.exe
+echo   Binaries:  %BINDIR%\slangc.exe, slangbuild.exe, slfs-pack.exe
 echo   Libraries: %CONFIG_DIR% (entire directory)
 
 REM Dangerous-path guard:
@@ -157,13 +161,14 @@ if "%FORCE%"=="0" (
 )
 
 if "%DRY_RUN%"=="1" (
-  echo DRY: del %BINDIR%\slangc.exe %BINDIR%\slangbuild.exe
+  echo DRY: del %BINDIR%\slangc.exe %BINDIR%\slangbuild.exe %BINDIR%\slfs-pack.exe
   echo DRY: rd /s /q %P%
   exit /b 0
 )
 
 if exist "%BINDIR%\slangc.exe"     del /f /q "%BINDIR%\slangc.exe"     >nul 2>nul
 if exist "%BINDIR%\slangbuild.exe" del /f /q "%BINDIR%\slangbuild.exe" >nul 2>nul
+if exist "%BINDIR%\slfs-pack.exe"  del /f /q "%BINDIR%\slfs-pack.exe"  >nul 2>nul
 if exist "%P%"                     rd  /s /q "%P%"
 
 echo Uninstallation complete!

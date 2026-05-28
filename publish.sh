@@ -3,6 +3,7 @@
 
 CSPROJ=src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj
 CSPROJ_BUILD=src/SLANGCompiler.Build/SLANGCompiler.Build.csproj
+CSPROJ_SLFS=src/SLANGCompiler.SlfsPack/SLANGCompiler.SlfsPack.csproj
 TFM=net8.0
 
 createRelease() {
@@ -10,6 +11,7 @@ createRelease() {
   mkdir bin
   mv slangc* bin
   mv slangbuild* bin
+  mv slfs-pack* bin
   cp -r ../../include .
   cp -r ../../runtime .
   # examples: SLANGソースのみ（ビルド成果物除外）
@@ -132,6 +134,7 @@ rm -rf publish-new
 for RID in osx-x64 osx-arm64 win-x64 linux-x64; do
   dotnet publish $CSPROJ       -c Release -r $RID --self-contained true /p:PublishSingleFile=true
   dotnet publish $CSPROJ_BUILD -c Release -r $RID --self-contained true /p:PublishSingleFile=true
+  dotnet publish $CSPROJ_SLFS  -c Release -r $RID --self-contained true /p:PublishSingleFile=true
 done
 
 mkdir -p publish-new/osx-x64
@@ -148,6 +151,11 @@ cp src/SLANGCompiler.Build/bin/Release/$TFM/osx-x64/publish/slangbuild        pu
 cp src/SLANGCompiler.Build/bin/Release/$TFM/osx-arm64/publish/slangbuild      publish-new/osx-arm64
 cp src/SLANGCompiler.Build/bin/Release/$TFM/win-x64/publish/slangbuild.exe    publish-new/win-x64
 cp src/SLANGCompiler.Build/bin/Release/$TFM/linux-x64/publish/slangbuild      publish-new/linux-x64
+
+cp src/SLANGCompiler.SlfsPack/bin/Release/$TFM/osx-x64/publish/slfs-pack       publish-new/osx-x64
+cp src/SLANGCompiler.SlfsPack/bin/Release/$TFM/osx-arm64/publish/slfs-pack     publish-new/osx-arm64
+cp src/SLANGCompiler.SlfsPack/bin/Release/$TFM/win-x64/publish/slfs-pack.exe   publish-new/win-x64
+cp src/SLANGCompiler.SlfsPack/bin/Release/$TFM/linux-x64/publish/slfs-pack     publish-new/linux-x64
 
 createRelease osx-x64 sh $VERSION
 createRelease osx-arm64 sh $VERSION
