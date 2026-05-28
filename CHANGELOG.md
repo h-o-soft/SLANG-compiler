@@ -1,22 +1,38 @@
 # 更新履歴
 
-## Unreleased
+## Version 0.25.0
 
-- Commodore 64 (6502) 対応 (experimental) を追加。oscar64 を別途インストールして `SLANG → C ソース → .prg` の二段変換、 詳細は [docs/C64.md](docs/C64.md) 参照。
-- env file の `c_bindings:` セクションで ホスト C 関数を SLANG 標準 API として一括公開できる仕組みを導入 (= CFUNC 宣言不要、 SLANG コードからそのまま呼べる)。
-- SLANG → C transpiler 実装 (`CFUNC` 宣言 + `VOID` 型 + `BACKEND` const + `slangbuild --c-source` 等)。
-- oscar_c backend で `ARRAY BYTE NAME[N] = { 値, %値, ... }` 初期化対応 (= `%` 前置で WORD を LE 2 byte に展開)。
-- c64 backend に VIC sprite + VSYNC 同期 + joystick + KERNAL file I/O + SID 音源 (register direct + 単発 SFX + HVSC `.sid` BGM 再生 + oscar64 `audio/sidfx` priority SFX overlay) の bridge と sample 一式を追加。
-- 既存 Z80 backend の codegen / runtime の挙動は無変更 (= 言語側で `VOID` 予約語追加・`CFUNC` 構文追加が入っているため Parser には影響あり、 ただし既存 Z80 SLANG コードへの regression は確認なし)。
-- ARRAY initializer の容量超過 check / ARRAY symbol 代入 guard を SemanticAnalyzer に集約し全 backend で揃えた (Closes #190、 oscar_c の非 BYTE InitialCode emit 対応は別 PR 候補)。
-- oscar_c backend で `ARRAY WORD W[N] = { 値, %値, ... }` 初期化対応 (= CODE byte stream を 2 byte ずつ little-endian で WORD literal に grouping、 容量埋めは C implicit zero fill 任せ、 #194 配下 v3b-E first PR)。
-- oscar_c backend で `ARRAY BYTE S[N] = { "..." }` の StringLiteral 単独初期化対応 (= C string literal `static unsigned char V_S[N+1] = "...";` で emit、 oscar64 `-psci` で PETSCII 自動変換、 #194 配下 v3b-E (3a))。mixed (= StringLiteral + 数値) と ARRAY WORD への StringLiteral は scope 外で error。
-- oscar_c backend の ARRAY initializer で `%FUNC` / `%ARRAY` の address 参照 (= jump table / pointer table 用途) を **permanent backend gap** として明示 reject + workaround メッセージ (= MAIN 冒頭等で runtime 初期化に書き換え) を出すよう更新 (= oscar64 が static integer initializer で address-to-integer cast を constant initializer と認めない、 error 3008 を実機検証で確認、 #194 配下 v3b-E (3b))。Z80 backend は `DW LABEL` で linker reloc 解決可能、 backend gap として明示。
-- oscar_c CEmitter の `ARRAY ...:address = { ... }` (= fixed addr + InitialCode) 防衛 error を削除 (= SLANG parser が文法レベルで reject するため到達不能、 #194 配下 v3b-E (5))。 parser reject を pin する test を追加。
-- oscar_c backend で `ARRAY FLOAT FA[N] = { 1.0, 2.0, ... }` 初期化対応 (= oscar64 native float32 で `static float V_FA[N+1] = {1.0, 2.0};` emit、 整数 element は自動的に float promote、 容量未満は C implicit zero fill、 #194 配下 v3b-E (1b))。非定数 element は oscar64 制約で reject + runtime 初期化 hint message。 `ARRAY BYTE/WORD` 内の `%%` FLOAT prefix は SLANG parser 文法上未対応 + oscar_c は f24 byte stream 表現を持たないため意味的にも対応不能、 ARRAY FLOAT を使う旨を CEmitter defensive guard で diagnose (= #194 配下 v3b-E (2))。
-- oscar_c backend で `ARRAY BYTE/WORD A[][M] = { ... }` (= multi-dim 第 1 次元省略) の InitialCode 対応 (= C99 auto dim 推論 `static T V_A[][M+1] = {flat init};` で emit、 第 1 次元は C compiler が init 量から推定、 #194 配下 v3b-E (4))。ARRAY FLOAT multi-dim および第 2 次元以降の `[]` 省略は scope 外で error (= C99 仕様で第 1 次元のみ省略可)。これで #194 配下 v3b-E は完了。
-- X1 環境に **OS 非依存の `x1native` env** を新設 (= Phase A、 将来 .tap / .wav テープ出力対応のための土台)。 既存 `x1.env` / `sosx1.env` (= LSX-Dodgers / S-OS 依存) は完全無触、 新規 `libx1native_base/input/print.asm` 3 ファイルで SLANGINIT / sGETKY (X1 sub CPU $1900 polling) / sPRINT (text VRAM $3000 直書き) を native 実装、 `libx1_base.asm` (VSYNC) のみ既存 reuse。 file I/O は linker undefined symbol で reject (= 必要なら lsx / sosx1 env を使う)、 D88 boot / graphics / PSG / PCG は Phase A scope 外。 出典: LSX-Dodgers (MIT) / X1_compatible_rom (CC0) を参考実装、 各 asm header に attribution。 詳細は [docs/X1.md](docs/X1.md) 参照。
-- slangbuild に `--emit tape` を追加 (= x1native env の bin → X1 cassette tape `.tap` + optional PCM `.wav` 自動生成)。 env file の `tape:` section または CLI option (`--tape-name` / `--tape-load` / `--tape-exec` / `--wav`) で tape header の name / load / exec address を指定、 IPL 経由で OS なし auto boot。 X1 tape は 1 binary per tape 仕様のため overlay 多段ロードは未対応 (= 検出時 reject)。 WAV は default 48kHz/8bit/mono (= xmil 互換)、 16bit option あり。 詳細は [docs/X1.md](docs/X1.md) 参照。
+- Commodore 64 (6502) backend 正式対応 — oscar64 を別途インストールして `SLANG → C ソース → .prg` の二段変換、 詳細は [docs/C64.md](docs/C64.md)
+  - SLANG → C transpiler (`CFUNC` 宣言 + `VOID` 予約語 + `BACKEND` const + `slangbuild --c-source`)、 env file `c_bindings:` でホスト C 関数を SLANG 標準 API として一括公開 (= CFUNC 宣言不要、 SLANG コードからそのまま呼べる)
+  - VIC sprite (1 個 + VSYNC 同期) / joystick / KERNAL file I/O / SID 音源 (register direct + 単発 SFX + HVSC `.sid` BGM 再生 + oscar64 `audio/sidfx` priority SFX overlay) の bridge と sample
+  - 最低限ゲーム API: mmap 切替 (`MMAP_SET` / `MMAP_TRAMPOLINE`)、 VIC mode / bank 切替 (`VIC_SETMODE` / `VIC_SETBANK`)、 memory 操作 (`MEMCPY` / `MEMSET`) の bridge と sample (`examples/c64/MMAPVIC.SL`)
+  - ARRAY initializer: `ARRAY BYTE/WORD/FLOAT NAME[N] = { ... }`、 `%値` で WORD LE 2 byte 展開、 `"..."` で string literal (= `-psci` で PETSCII 自動変換)、 `[][M]` 形式 multi-dim (= 第 1 次元省略)。 ARRAY initializer 内の address 参照や ARRAY FLOAT 内の非定数 element は backend 上の制約として明示診断 + workaround メッセージ
+  - ARRAY initializer 容量超過 check / ARRAY symbol への代入 guard を `SemanticAnalyzer` に集約し全 backend で揃えた (#190)
+  - 40 桁版 mandelbrot demo (`examples/c64/FMANDEL.SL`)、 sprite / joystick / SID / file I/O の sample 一式 (`examples/c64/`)
+  - 既存 Z80 backend の codegen / runtime 挙動は無変更だが、 `VOID` 予約語追加 + `CFUNC` 構文追加で Parser には影響あり (= 既存 Z80 SLANG コードへの regression は確認なし)
+
+- X1 環境に OS 非依存の `x1native` env を新設 — D88 boot 不要、 cassette tape (`.tap` / `.wav`) 直接対応、 詳細は [docs/X1.md](docs/X1.md)
+  - 新規 `libx1native_*.asm` で SLANGINIT / sGETKY (sub CPU `$1900` polling) / sPRINT (text VRAM `$3000` 直書き) を native 実装、 既存 `x1.env` / `sosx1.env` (= LSX-Dodgers / S-OS 依存) は完全無触
+  - text 周り: CRTC init + `WIDTH` / `LOCATE` / `SCREEN` + scroll + `HOME` / `CLEAR` + kanji selector 修正
+  - graphics: 既存 graphics 4 library reuse + `GRDISP` / `GRCLS` + sPRINT attribute 修正、 `x1.env` / `sosx1.env` でも `GRDISP` / `GRCLS` を `libmag` → `libx1_grp` に migrate (= libmag 非同梱でも `GRDISP` / `GRCLS` が使える)
+  - PSG: `libx1_psg` 統合 + CTC IM2 vector + 高位 RAM ISR trampoline、 `PSG_INIT(0)` 後の不正 OUT を guard
+  - file I/O は linker undefined symbol で reject (= 必要なら lsx / sosx1 env を使う)
+  - 出典: LSX-Dodgers (MIT) / X1_compatible_rom (CC0) 参考実装、 各 asm header に attribution
+
+- X1turbo: text VRAM 計算 bug 修正 (#207) — `SGL_VRCALC` の text VRAM addr を `$038H` → `$030H` に (= X1turbo で text 表示が崩れていた)
+
+- slangbuild に `--emit tape` を追加 — x1native env の bin → X1 cassette tape `.tap` + optional PCM `.wav` 自動生成
+  - env file `tape:` section または CLI option (`--tape-name` / `--tape-load` / `--tape-exec` / `--wav`) で tape header の name / load / exec address を指定、 IPL 経由で OS なし auto boot
+  - 多段 cassette tape ロード: `MTREAD` / `MTREADJP` runtime API + `#MODULE` overlay の自動連結対応
+  - WAV は default 48kHz/8bit/mono (= xmil 互換)、 16bit option あり
+  - `.tap` format は純正 / 互換 IPL の両方で boot 可能 (= sync 41/21 全 9 bit/byte + popcount mod 65536 BE checksum)
+
+- Z80 backend: Local mode overlay の sWORK BSS sym EXTERN + `_CRTCD` 共有を修正 (#209) — overlay 経由で生成された `_CRTCD` が main 側と別実体となり、 環境によっては text I/O / scroll が overlay 側で動作しないことがあった
+
+- SLANG File System (SLFS) を追加 — x1native 環境向けの minimal file I/O
+  - 2D D88 disk image に asset を packed file system として収納、 SLANG 側 API `FS_READ_BY_ID` / `FS_SAVE_R` / `FS_SAVE_W` (= read-only main 領域 + read/write save 領域) で読み書き
+  - ホスト側ツール `slfs-pack` を同梱 — asset を D88 に pack + `list` / `info` / `extract` / `extract-main` / `extract-save` subcommand
+  - generated header — SL コード上から symbol 名で asset を参照可能 (= numeric ID 直書き不要)
 
 ## Version 0.24.1
 

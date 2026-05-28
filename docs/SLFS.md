@@ -1,78 +1,40 @@
 # SLFS (SLANG File System)
 
-ゲーム専用 minimal file I/O system。 x1native env で D88 disk image から asset を読込む。
+ゲーム専用 minimal file I/O system。 x1native env で D88 disk image から asset を読込む。 HuBASIC IPL 互換 boot sector + 独自 file system 構成で、 X1 IPL ROM がそのまま起動できる。
 
-- target: **x1native のみ** (= sosx1 / pc88 等への展開は scope 外)
-- spec: Issue #212
+## Quick start
 
-## 設計思想
+```sh
+# 1. ホスト側で asset を D88 に pack + SLANG プログラム build
+slangbuild --emit disk -E x1native_slfs examples/X1NATIVE_SLFS/SLFSDEMO.SL -o SLFSDEMO \
+  --slfs-add examples/X1NATIVE_SLFS/assets/
+# → SLFSDEMO.d88 (= 2D 320 KB、 IPL + main + asset 入り) を生成
+#   (= asset ID 用の SLFSDEMO.assets.inc は slangbuild が compile 前に生成し、
+#    sample 内の #INCLUDE で取り込まれる。 通常は build 後に cleanup される。
+#    inc を残したい場合は --keep-asm を追加する)
 
-- **read-only main + small save area + 256 file 上限** で割り切る (= libmag / libm8a 互換は重い)
-- HuBASIC IPL 互換 boot sector のみで起動性確保、 中身は独自 FS
-- 「program loader」 化しない (= load/exec addr 等 program 属性は dir entry に入れない、 asset FS に徹する)
-
-## 全体 layout (= 2D 320 KB 固定)
-
-```
-予約領域 (= logical sector 0 〜 data_area_start_sector - 1):
-  sector 0: ブートセクタ (= HuBASIC IPL header 32 byte + 残り 0 fill、 X1 IPL ROM が読込)
-  sector 1: SLFS スーパーブロック ("SLFS" magic + fields)
-  sector 2〜: ディレクトリ (= 16 byte entry × 16 / sector)
-  sector M〜: main program 本体 (= packer が data_area_start_sector の手前に配置)
-
-データ領域 (= data_area_start_sector 以降): asset 連続配置 (= sorted by filename、 READ ONLY)
-
-セーブ領域 (= save_area_start_sector 以降): free area (= FS_SAVE_R / FS_SAVE_W で read/write、 アプリ自前 slot 管理)
+# 2. emulator で起動 (= IPL が D88 を読んで auto boot)
+xmil -fd SLFSDEMO.d88
 ```
 
-## boot sector (= sector 0、 HuBASIC IPL header)
+SLANG 側は generated header を `#INCLUDE` して symbol 名で asset を参照:
 
-X1 IPL ROM (= X1_compatible_rom 等) が起動時に sector 0 を `$FE00` に load → header parse → main program 本体を `LoadAddress` に連続 read → IPL ROM OFF → `ExecuteAddress` に jp。 **boot loader Z80 code は不要**。
+```sl
+#INCLUDE SLFSDEMO.assets.inc   // slfs-pack が出力 = CONST FILE_<NAME>
 
-| offset | size | name | 説明 |
-|---|---|---|---|
-| +00 | 1 | BootFlag | $01 = 起動可 |
-| +01 | 13 | FileName | ASCII space-padded |
-| +0E | 3 | Extension | "Sys" 推奨 |
-| +11 | 1 | Password | $20 = none |
-| +12 | 2 | DataSize | byte (LE)、 main program 全 size |
-| +14 | 2 | LoadAddress | LE、 default $1000 |
-| +16 | 2 | ExecuteAddress | LE、 default $1000 |
-| +18 | 5 | Date | 0 fill OK |
-| +1D | 3 | DiskOffset | byte (LE)、 main program の disk image 内 byte 開始位置 |
+VAR SIZE;
+MAIN()
+BEGIN
+    SIZE = FS_READ_BY_ID(FILE_GREETING_TXT, $4000);
+    IF SIZE != 0 THEN PRINT("OK SIZE=", SIZE, /);
+END;
+```
 
-## superblock (= sector 1、 256 byte)
-
-| offset | size | name | 説明 |
-|---|---|---|---|
-| +00 | 4 | Magic | "SLFS" |
-| +04 | 1 | Version | 1 |
-| +05 | 1 | Sides | 2 (= 2D 固定) |
-| +06 | 1 | Tracks | 40 |
-| +07 | 1 | SectorsPerTrack | 16 |
-| +08 | 2 | DirStartSector | logical sector index (LE) |
-| +0A | 2 | DirEntryCount | LE |
-| +0C | 2 | DataAreaStartSector | LE |
-| +0E | 2 | SaveAreaStartSector | LE |
-| +10 | 2 | SaveSectorCount | LE |
-| +12 | 16 | VolumeName | ASCII space-padded |
-| +22 | 0xDE | Reserved | 0 fill |
-
-## directory entry (= 16 byte、 16 entry / sector)
-
-| offset | size | name | 説明 |
-|---|---|---|---|
-| +00 | 11 | FileName | ASCII space-padded (= 8.3 風 or 自由、 11 char 超 切詰め) |
-| +0B | 1 | Type | 0 = raw、 1+ = reserved |
-| +0C | 2 | StartSector | logical sector index (LE) |
-| +0E | 2 | ByteSize | LE、 範囲 **1..65535** (= 0 / 64 KB 超は packer reject) |
-
-- ファイル名 sort 前提 (= 11 byte normalized ordinal 昇順、 packer が保証)
-- ID = sorted directory entry index、 範囲 **0..255** (= Phase 1、 SLANG `FS_READ_BY_ID(id, buf)` の id 8-bit)
+sample: `examples/X1NATIVE_SLFS/SLFSDEMO.SL`。 詳細は以下の各節を参照。
 
 ## SLANG API
 
-### Phase 1: `FS_READ_BY_ID`
+### `FS_READ_BY_ID` (= asset 読込)
 
 ```sl
 SIZE = FS_READ_BY_ID(id, buffer);   // id: 0..255、 buffer: addr
@@ -83,9 +45,9 @@ IF SIZE == 0 THEN ... END            // 失敗判定 (HL = 0)
 - 戻り値: **HL = 実 byte_size (1..65535)、 失敗時 HL = 0**
 - buffer 容量: **sector round-up 分必要** (= `ceil(byte_size / 256) * 256 byte`)
 - ID = packer の normalized filename sort 順依存
-  - Phase 3 で **generated header (= `#INCLUDE <stem>.assets.inc`)** で `CONST FILE_<NAME>` 経由が推奨、 numeric 直書きは非推奨
+  - **generated header (= `#INCLUDE <stem>.assets.inc`)** で `CONST FILE_<NAME>` 経由が推奨、 numeric 直書きは非推奨
 
-### Phase 2: `FS_SAVE_R` / `FS_SAVE_W` (= save area read/write)
+### `FS_SAVE_R` / `FS_SAVE_W` (= save area read/write)
 
 ```sl
 SIZE = FS_SAVE_W(offset_sec, count_sec, buffer);  // save area へ書込み
@@ -97,7 +59,7 @@ IF SIZE == 0 THEN ... END                          // 失敗判定
 - 戻り値: **HL = 実 byte_size (= count_sec × 256)、 失敗時 HL = 0**
 - buffer 容量: count_sec × 256 byte 必要 (= SLANG `ARRAY BYTE BUF[count_sec * 256 - 1]` で確保、 SLANG ARRAY[N] = N+1 要素)
 - range check: `(offset_sec + count_sec) <= save_sector_count` (= asset / boot / dir 領域への意図しない書込を防止、 違反で fail)
-- save 領域 = aplication 自前 slot 管理 (= packer は中身知らない、 spec 通り)
+- save 領域 = application 自前 slot 管理 (= packer は中身知らない)
 
 #### save slot 例
 
@@ -116,11 +78,11 @@ FS_SAVE_R(1, 2, SLOT2);
 
 sample: `examples/X1NATIVE_SLFS/SLFSDEMO_SAVE.SL` (= 1 sector save/load + sum 比較)
 
-### Phase 3: generated header (= `#INCLUDE` で `CONST FILE_<NAME>`)
+## asset ID と generated header
 
 asset id を numeric 直書きでなく **compile-time `CONST`** で扱う仕組み。 packer 側で asset id 順を `CONST FILE_GREETING_TXT = 0, FILE_NUMBERS_BIN = 1;` 形式の `.inc` に出力、 SLANG sample で `#INCLUDE` で取り込む。
 
-#### sample (Phase 3)
+### sample
 
 ```sl
 #INCLUDE SLFSDEMO.assets.inc   // generated by slfs-pack
@@ -133,7 +95,7 @@ BEGIN
 END;
 ```
 
-#### identifier 規則
+### identifier 規則
 
 - prefix `FILE_` + user 入力 file 名ベース (= packer 内部 11 byte 切詰めは隠蔽)
 - `ToUpperInvariant()` (= locale 非依存)
@@ -144,13 +106,13 @@ END;
   - `MY ASSET-1.BIN` → `FILE_MY_ASSET_1_BIN`
 - **identifier collision** (= 例 `FILE-A.BIN` / `FILE_A.BIN` 両方 `FILE_FILE_A_BIN`) は packer reject (= rename で回避)
 
-#### header 名 + 配置
+### header 名 + 配置
 
 - header 名 = **input SL stem 基準** (= 例 `SLFSDEMO.SL` → `SLFSDEMO.assets.inc`)、 `-o` basename と decoupling
 - 配置 = `outputDir` (= `-o` の dir)、 slangc に `-I <outputDir>` 自動追加で `#INCLUDE` 解決
 - `--keep-asm` 指定なければ build 成功後 cleanup
 
-#### slfs-pack standalone での `--header`
+### slfs-pack standalone での `--header`
 
 ```sh
 slfs-pack pack -o game.d88 --main main.bin \
@@ -158,7 +120,7 @@ slfs-pack pack -o game.d88 --main main.bin \
   --header game.assets.inc
 ```
 
-### sample (= 数値 ID 直書き)
+### sample (= 数値 ID 直書き、 非推奨)
 
 ```sl
 VAR SIZE;
@@ -170,11 +132,11 @@ BEGIN
 END;
 ```
 
-## slangbuild 使い方
+## slfs-pack CLI
 
-### env file 設定
+### slangbuild 経由
 
-`runtime/env/x1native_slfs.env` (= x1native.env fork + disk: section):
+`runtime/env/x1native_slfs.env` (= `x1native.env` の disk variant):
 
 ```yaml
 defines:
@@ -191,20 +153,20 @@ libraries:
   - ... (= x1native.env と同期、 末尾に libx1native_slfs.yml 追加)
 ```
 
-**注意**: `x1native_slfs.env` は `x1native.env` の disk variant、 **env include 機構未実装のため libraries 同期が必要**。 x1native.env を変更したら slfs.env も合わせて更新する。 将来的 env include は別 issue。
+**注意**: `x1native_slfs.env` は `x1native.env` の disk variant、 env include 機構が未対応のため libraries 同期が必要。 `x1native.env` を変更したら `x1native_slfs.env` も合わせて更新する。
 
-### build
+build:
 
 ```sh
-slangbuild --emit disk -E x1native_slfs SLFSDEMO.SL -o SLFSDEMO \
-  --slfs-add GREETING:examples/X1NATIVE_SLFS/GREETING.TXT \
-  --slfs-add NUMBERS:examples/X1NATIVE_SLFS/NUMBERS.BIN
+slangbuild --emit disk -E x1native_slfs examples/X1NATIVE_SLFS/SLFSDEMO.SL -o SLFSDEMO \
+  --slfs-add GREETING:examples/X1NATIVE_SLFS/assets/GREETING.TXT \
+  --slfs-add NUMBERS:examples/X1NATIVE_SLFS/assets/NUMBERS.BIN
 # または dir 指定で一括 (= non-recursive walk、 各 file の name = basename を 11 char に切詰め)
-slangbuild --emit disk -E x1native_slfs SLFSDEMO.SL -o SLFSDEMO \
+slangbuild --emit disk -E x1native_slfs examples/X1NATIVE_SLFS/SLFSDEMO.SL -o SLFSDEMO \
   --slfs-add examples/X1NATIVE_SLFS/assets/
 ```
 
-### slfs-pack (standalone CLI、 subcommand 構成)
+### standalone CLI
 
 ```sh
 slfs-pack pack    -o <out.d88> --main <main.bin> [--add <spec>] [options]
@@ -247,33 +209,101 @@ slfs-pack extract-save game.d88 -o save_full.bin               # save 全 dump
 slfs-pack extract-save game.d88 --offset 0 --count 2 -o slot1.bin  # 特定 slot
 ```
 
-save 抽出は **raw dump** (= slot 解釈はアプリ側責任、 spec 通り)。 Phase 2 で `FS_SAVE_R/W` API 追加時に同 slot spec で対称化予定。
+save 抽出は **raw dump** (= slot 解釈はアプリ側責任、 spec 通り)。 `FS_SAVE_R` / `FS_SAVE_W` API が同 slot spec で対称化されている。
 
-## 実装
+## 制約
 
-- runtime/libx1native_slfs.asm (= FDC + FS_READ_BY_ID + X1FDC_WORK)
-- runtime/env/x1native_slfs.env
-- src/SLANGCompiler.SlfsPack/ (= packer library + standalone CLI、 C# net8.0)
-- src/SLANGCompiler.Build/DiskImageBuilder.cs (= BuildSlfsPack 分岐、 library 直接呼出)
-- examples/X1NATIVE_SLFS/ (= SLFSDEMO.SL + assets/)
-
-## 制約 (Phase 1)
-
-- 2D 固定 (= 2 sides × 40 tracks × 16 sectors × 256 bytes = 320 KB)、 2HD は Phase 2 以降
+- 2D 固定 (= 2 sides × 40 tracks × 16 sectors × 256 bytes = 320 KB)、 2HD は現状未対応
 - asset 最大 **256 file** (= ID 8-bit)
 - 1 file 最大 **65535 byte** (= byte_size 16-bit、 0 / 上限超は packer reject)
-- save area read/write は `FS_SAVE_R` / `FS_SAVE_W` で対応 (= Phase 2 で実装済、 アプリ自前 slot 管理)
-- name lookup 未実装 (= 数値 ID 直書き、 Phase 3 で `FS_OPEN` 予定)
+- save area read/write は `FS_SAVE_R` / `FS_SAVE_W` で対応 (= アプリ自前 slot 管理)
+- name lookup (`FS_OPEN`) 未実装。 数値 ID 直書きを避けたい場合は generated header (= `#INCLUDE <stem>.assets.inc`) で asset 名 → numeric ID の compile-time 変換が利用可能
 - buffer = sector round-up 分必要 (= byte_size mod 256 切詰めなし、 呼出側責任)
 
-## Phase 3 以降 (= scope 外)
+## ディスク形式
+
+### 全体 layout (= 2D 320 KB 固定)
+
+```
+予約領域 (= logical sector 0 〜 data_area_start_sector - 1):
+  sector 0: ブートセクタ (= HuBASIC IPL header 32 byte + 残り 0 fill、 X1 IPL ROM が読込)
+  sector 1: SLFS スーパーブロック ("SLFS" magic + fields)
+  sector 2〜: ディレクトリ (= 16 byte entry × 16 / sector)
+  sector M〜: main program 本体 (= packer が data_area_start_sector の手前に配置)
+
+データ領域 (= data_area_start_sector 以降): asset 連続配置 (= sorted by filename、 READ ONLY)
+
+セーブ領域 (= save_area_start_sector 以降): free area (= FS_SAVE_R / FS_SAVE_W で read/write、 アプリ自前 slot 管理)
+```
+
+### boot sector (= sector 0、 HuBASIC IPL header)
+
+X1 IPL ROM (= X1_compatible_rom 等) が起動時に sector 0 を `$FE00` に load → header parse → main program 本体を `LoadAddress` に連続 read → IPL ROM OFF → `ExecuteAddress` に jp。 **boot loader Z80 code は不要**。
+
+| offset | size | name | 説明 |
+|---|---|---|---|
+| +00 | 1 | BootFlag | $01 = 起動可 |
+| +01 | 13 | FileName | ASCII space-padded |
+| +0E | 3 | Extension | "Sys" 推奨 |
+| +11 | 1 | Password | $20 = none |
+| +12 | 2 | DataSize | byte (LE)、 main program 全 size |
+| +14 | 2 | LoadAddress | LE、 default $1000 |
+| +16 | 2 | ExecuteAddress | LE、 default $1000 |
+| +18 | 5 | Date | 0 fill OK |
+| +1D | 3 | DiskOffset | byte (LE)、 main program の disk image 内 byte 開始位置 |
+
+### superblock (= sector 1、 256 byte)
+
+| offset | size | name | 説明 |
+|---|---|---|---|
+| +00 | 4 | Magic | "SLFS" |
+| +04 | 1 | Version | 1 |
+| +05 | 1 | Sides | 2 (= 2D 固定) |
+| +06 | 1 | Tracks | 40 |
+| +07 | 1 | SectorsPerTrack | 16 |
+| +08 | 2 | DirStartSector | logical sector index (LE) |
+| +0A | 2 | DirEntryCount | LE |
+| +0C | 2 | DataAreaStartSector | LE |
+| +0E | 2 | SaveAreaStartSector | LE |
+| +10 | 2 | SaveSectorCount | LE |
+| +12 | 16 | VolumeName | ASCII space-padded |
+| +22 | 0xDE | Reserved | 0 fill |
+
+### directory entry (= 16 byte、 16 entry / sector)
+
+| offset | size | name | 説明 |
+|---|---|---|---|
+| +00 | 11 | FileName | ASCII space-padded (= 8.3 風 or 自由、 11 char 超 切詰め) |
+| +0B | 1 | Type | 0 = raw、 1+ = reserved |
+| +0C | 2 | StartSector | logical sector index (LE) |
+| +0E | 2 | ByteSize | LE、 範囲 **1..65535** (= 0 / 64 KB 超は packer reject) |
+
+- ファイル名 sort 前提 (= 11 byte normalized ordinal 昇順、 packer が保証)
+- ID = sorted directory entry index、 範囲 **0..255** (= SLANG `FS_READ_BY_ID(id, buf)` の id 8-bit)
+
+## 内部情報
+
+### 設計思想
+
+- **read-only main + small save area + 256 file 上限** で割り切る (= libmag / libm8a 互換は重い)
+- HuBASIC IPL 互換 boot sector のみで起動性確保、 中身は独自 FS
+- 「program loader」 化しない (= load/exec addr 等 program 属性は dir entry に入れない、 asset FS に徹する)
+
+### 実装
+
+- `runtime/libx1native_slfs.asm` (= FDC + FS_READ_BY_ID + X1FDC_WORK)
+- `runtime/env/x1native_slfs.env`
+- `src/SLANGCompiler.SlfsPack/` (= packer library + standalone CLI、 C# net8.0)
+- `src/SLANGCompiler.Build/DiskImageBuilder.cs` (= BuildSlfsPack 分岐、 library 直接呼出)
+- `examples/X1NATIVE_SLFS/` (= SLFSDEMO.SL + assets/)
+
+### 将来の拡張 (= 現状未対応)
 
 - `FS_OPEN` name lookup + `FS_READ` low-level API
 - 圧縮 type 内部処理 / 物理 CHS API / 2HD geometry
 - env include 機構 (= x1native_slfs.env と x1native.env の drift 解消)
-- 数値 ID → generated `#define` header (= compile 前 packer 走らせて #include)
 
-## reference
+### 出典 / spec
 
 - Issue #212: spec 確定
 - X1 互換 IPL ROM: https://github.com/meister68k/X1_compatible_rom (CC0)、 FDC routine / boot sector spec の fork 元

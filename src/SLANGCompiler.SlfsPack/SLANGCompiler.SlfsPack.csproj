@@ -8,7 +8,7 @@
     <AssemblyName>slfs-pack</AssemblyName>
     <Copyright>Copyright (c) 2022-2026 OGINO Hiroshi / H.O SOFT</Copyright>
     <Company>H.O SOFT</Company>
-    <Version>0.1.0</Version>
+    <Version>0.25.0</Version>
     <AssemblyTitle>SLFS packer (SLANG ゲーム専用 file system)</AssemblyTitle>
   </PropertyGroup>
   <ItemGroup>
