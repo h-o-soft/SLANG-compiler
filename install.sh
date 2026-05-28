@@ -124,7 +124,7 @@ guard_path() {
 do_install() {
   # sanity check は install 経路でだけ走らせる (= uninstall は配布 zip
   # 解凍 dir から実行する必要がない)。Codex 指摘の Medium fix。
-  for required in bin/slangc bin/slangbuild include runtime images tools; do
+  for required in bin/slangc bin/slangbuild bin/slfs-pack include runtime images tools; do
     if [ ! -e "$required" ]; then
       cat >&2 <<EOF
 Error: '$required' not found in $SCRIPT_DIR.
@@ -140,7 +140,7 @@ EOF
   echo "  Binaries:  $BINDIR"
   echo "  Libraries: $CONFIG_DIR"
 
-  if [ -e "$BINDIR/slangc" ] || [ -e "$BINDIR/slangbuild" ] || [ -d "$CONFIG_DIR" ]; then
+  if [ -e "$BINDIR/slangc" ] || [ -e "$BINDIR/slangbuild" ] || [ -e "$BINDIR/slfs-pack" ] || [ -d "$CONFIG_DIR" ]; then
     confirm "Existing installation found. Overwrite?"
   fi
 
@@ -152,6 +152,9 @@ EOF
   log "copy bin/slangbuild -> $BINDIR/"
   run cp bin/slangbuild "$BINDIR/"
   run chmod +x          "$BINDIR/slangbuild"
+  log "copy bin/slfs-pack -> $BINDIR/"
+  run cp bin/slfs-pack  "$BINDIR/"
+  run chmod +x          "$BINDIR/slfs-pack"
 
   # ghost file 対策: サブディレクトリは staging copy → 既存削除 → rename
   # で原子的置換 (= 古い env file 等が残らない)
@@ -187,14 +190,14 @@ EOF
 # ---- uninstall ----
 do_uninstall() {
   echo "Uninstalling SLANG from:"
-  echo "  Binaries:  $BINDIR/{slangc,slangbuild}"
+  echo "  Binaries:  $BINDIR/{slangc,slangbuild,slfs-pack}"
   echo "  Libraries: $CONFIG_DIR (entire directory)"
 
   guard_path "$CONFIG_DIR"
   confirm "Continue?"
 
-  log "rm -f $BINDIR/slangc $BINDIR/slangbuild"
-  run rm -f  "$BINDIR/slangc" "$BINDIR/slangbuild"
+  log "rm -f $BINDIR/slangc $BINDIR/slangbuild $BINDIR/slfs-pack"
+  run rm -f  "$BINDIR/slangc" "$BINDIR/slangbuild" "$BINDIR/slfs-pack"
   log "rm -rf $CONFIG_DIR"
   run rm -rf "$CONFIG_DIR"
 

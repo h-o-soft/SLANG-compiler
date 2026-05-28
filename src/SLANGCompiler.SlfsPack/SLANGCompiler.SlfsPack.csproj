@@ -4,16 +4,14 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>SLANGCompiler.Build</RootNamespace>
-    <AssemblyName>slangbuild</AssemblyName>
+    <RootNamespace>SLANGCompiler.SlfsPack</RootNamespace>
+    <AssemblyName>slfs-pack</AssemblyName>
     <Copyright>Copyright (c) 2022-2026 OGINO Hiroshi / H.O SOFT</Copyright>
     <Company>H.O SOFT</Company>
-    <Version>0.13.0</Version>
-    <AssemblyTitle>SLANG Build Driver (two-stage assembler)</AssemblyTitle>
+    <Version>0.1.0</Version>
+    <AssemblyTitle>SLFS packer (SLANG ゲーム専用 file system)</AssemblyTitle>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\SLANGCompiler.Core\SLANGCompiler.Core.csproj" />
-    <ProjectReference Include="..\SLANGCompiler.SlfsPack\SLANGCompiler.SlfsPack.csproj" />
     <InternalsVisibleTo Include="SLANGCompiler.Tests" />
   </ItemGroup>
 </Project>

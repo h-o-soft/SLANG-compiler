@@ -285,6 +285,12 @@ public class DiskConfig
     public string? Title { get; set; }
 
     /// <summary>
+    /// slfs-pack 専用: D88 disk volume name (= 16 byte ASCII)。
+    /// 他 tool では null/空 (= 無視)。
+    /// </summary>
+    public string? Volume { get; set; }
+
+    /// <summary>
     /// mzd88 専用: main 書込後に <c>-add</c> で追加格納するファイル群
     /// (= MZ-2500 起動用 BASIC ローダ等、load/exec 指定なしで disk に格納)。
     /// EnvironmentLoader 側で env file dir 基準の相対 path を絶対化済み。

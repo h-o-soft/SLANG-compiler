@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using SLANGCompiler.Runtime;
+using SLANGCompiler.SlfsPack;
 
 namespace SLANGCompiler.Build;
 
@@ -29,6 +30,7 @@ public class DiskImageBuilder
     private readonly ResolvedTool? _mzd88;
     private readonly string? _templateOverride;
     private readonly bool _verbose;
+    private readonly IList<string> _slfsAddSpecs;
 
     // udostool は flag を大文字で受ける仕様 (= -IPL/-SUB/-SYS)。
     // Ordinal 比較で大文字固定、エラー文に "uppercase only" を明記して原因把握を助ける。
@@ -50,7 +52,8 @@ public class DiskImageBuilder
                             ResolvedTool? udostool = null,
                             ResolvedTool? mzd88 = null,
                             bool verbose = false,
-                            string? templateOverride = null)
+                            string? templateOverride = null,
+                            IList<string>? slfsAddSpecs = null)
     {
         _disk = disk;
         _ndc = ndc;
@@ -59,6 +62,7 @@ public class DiskImageBuilder
         _mzd88 = mzd88;
         _verbose = verbose;
         _templateOverride = templateOverride;
+        _slfsAddSpecs = slfsAddSpecs ?? new List<string>();
     }
 
     /// <summary>
@@ -70,6 +74,11 @@ public class DiskImageBuilder
         // -add で 1 ファイルずつ追加するため、フローが大きく異なる。早期 dispatch。
         if (_disk.Tool == "mzd88")
             return BuildMzd88(mainBinPath, overlayBinPaths, outputDiskPath);
+
+        // slfs-pack 経路は library を直接呼出 (= external process 不要)。
+        // template / staging dir 不要、 main + asset list を packer に渡して D88 直接生成。
+        if (_disk.Tool == "slfs-pack")
+            return BuildSlfsPack(mainBinPath, outputDiskPath);
 
         // === 事前チェック ===
         var templatePath = !string.IsNullOrEmpty(_templateOverride)
@@ -523,5 +532,100 @@ public class DiskImageBuilder
         }
 
         return proc.ExitCode;
+    }
+
+    // ========================================================================
+    // BuildSlfsPack: SLFS (= SLANG ゲーム専用 file system) 経路
+    // ========================================================================
+    // SlfsPackerLibrary を直接呼出 (= external process 不要)。
+    // template / staging dir 不要、 main + asset list を library に渡して
+    // D88 image を直接出力。
+    //
+    // env.disk.main_load / main_exec / main_name / volume を反映、 asset 指定は
+    // CLI --slfs-add 経由 (= _slfsAddSpecs)。
+    private int BuildSlfsPack(string mainBinPath, string outputDiskPath)
+    {
+        if (!File.Exists(mainBinPath))
+        {
+            Console.Error.WriteLine($"slangbuild: main bin not found: {mainBinPath}");
+            return 1;
+        }
+
+        try
+        {
+            var mainBinary = File.ReadAllBytes(mainBinPath);
+            var assets = new List<SlfsPackerLibrary.AssetEntry>();
+            foreach (var spec in _slfsAddSpecs)
+                ResolveSlfsAddSpec(spec, assets);
+
+            var opts = new SlfsPackerLibrary.Options
+            {
+                MainBinary = mainBinary,
+                MainLoadAddress = (ushort)(_disk.MainLoad ?? 0x1000),
+                MainExecuteAddress = (ushort)(_disk.MainExec ?? _disk.MainLoad ?? 0x1000),
+                MainFileName = string.IsNullOrEmpty(_disk.MainName) ? "SLFSMAIN" : _disk.MainName,
+                VolumeName = string.IsNullOrEmpty(_disk.Volume) ? "GAMEDISK" : _disk.Volume,
+                Assets = assets,
+            };
+
+            if (_verbose)
+                Console.Error.WriteLine(
+                    $"slangbuild: slfs-pack: main={mainBinary.Length} byte, assets={assets.Count}, " +
+                    $"load=${opts.MainLoadAddress:X4}, exec=${opts.MainExecuteAddress:X4}");
+
+            var packer = new SlfsPackerLibrary(opts);
+            var d88 = packer.Build();
+
+            var outputDir = Path.GetDirectoryName(Path.GetFullPath(outputDiskPath));
+            if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
+                Directory.CreateDirectory(outputDir);
+            File.WriteAllBytes(outputDiskPath, d88);
+
+            if (_verbose)
+                Console.Error.WriteLine(
+                    $"slangbuild: slfs-pack: wrote {outputDiskPath} ({d88.Length} byte)");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"slangbuild: slfs-pack error: {ex.Message}");
+            return 1;
+        }
+    }
+
+    /// <summary>
+    /// --slfs-add の引数を解決:
+    ///   "name:path[:type]" = 単一 file
+    ///   "dir/" or "dir"    = directory (= non-recursive walk、 各 file の name = basename)
+    /// </summary>
+    private static void ResolveSlfsAddSpec(string arg, List<SlfsPackerLibrary.AssetEntry> assets)
+    {
+        if (Directory.Exists(arg))
+        {
+            var files = Directory.GetFiles(arg);
+            Array.Sort(files, StringComparer.Ordinal);
+            foreach (var f in files)
+                assets.Add(new SlfsPackerLibrary.AssetEntry
+                {
+                    Name = Path.GetFileName(f),
+                    Data = File.ReadAllBytes(f),
+                    Type = 0,
+                });
+            return;
+        }
+
+        var parts = arg.Split(':', 3);
+        if (parts.Length < 2)
+            throw new ArgumentException(
+                $"--slfs-add: invalid format '{arg}' (expected 'name:path[:type]' or dir)");
+        var name = parts[0];
+        var path = parts[1];
+        byte type = parts.Length >= 3 ? byte.Parse(parts[2]) : (byte)0;
+        assets.Add(new SlfsPackerLibrary.AssetEntry
+        {
+            Name = name,
+            Data = File.ReadAllBytes(path),
+            Type = type,
+        });
     }
 }

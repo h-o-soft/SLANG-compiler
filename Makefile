@@ -269,16 +269,20 @@ ifeq ($(OS),Windows_NT)
 	-mkdir bin 2>nul
 	$(DOTNET) publish src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
 	$(DOTNET) publish src/SLANGCompiler.Build/SLANGCompiler.Build.csproj -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
+	$(DOTNET) publish src/SLANGCompiler.SlfsPack/SLANGCompiler.SlfsPack.csproj -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
 	copy /Y src\SLANGCompiler.CLI\bin\Release\net8.0\$(RID)\publish\slangc.exe bin
 	copy /Y src\SLANGCompiler.Build\bin\Release\net8.0\$(RID)\publish\slangbuild.exe bin
+	copy /Y src\SLANGCompiler.SlfsPack\bin\Release\net8.0\$(RID)\publish\slfs-pack.exe bin
 else
 	mkdir -p bin
 	$(DOTNET) publish src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
 	$(DOTNET) publish src/SLANGCompiler.Build/SLANGCompiler.Build.csproj -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
+	$(DOTNET) publish src/SLANGCompiler.SlfsPack/SLANGCompiler.SlfsPack.csproj -c Release -r $(RID) --self-contained true /p:PublishSingleFile=true
 	cp src/SLANGCompiler.CLI/bin/Release/net8.0/$(RID)/publish/slangc bin/
 	cp src/SLANGCompiler.Build/bin/Release/net8.0/$(RID)/publish/slangbuild bin/
+	cp src/SLANGCompiler.SlfsPack/bin/Release/net8.0/$(RID)/publish/slfs-pack bin/
 endif
-	@echo "publish-local done. bin/ now has slangc(.exe) and slangbuild(.exe) for $(RID)."
+	@echo "publish-local done. bin/ now has slangc(.exe), slangbuild(.exe), slfs-pack(.exe) for $(RID)."
 	@echo "Use them via Makefile.dist: make -f Makefile.dist TARGET=examples/MODTEST_RESIDENT ENV=x1 run"
 
 # === 開発ツールのダウンロード ===

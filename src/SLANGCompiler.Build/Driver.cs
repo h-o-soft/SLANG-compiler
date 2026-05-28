@@ -65,6 +65,12 @@ public class Driver
         public int? TapeLoad { get; set; }
         /// <summary>`--tape-exec &lt;addr&gt;`。env.Tape.Exec (or load) を CLI override。</summary>
         public int? TapeExec { get; set; }
+
+        // === Phase B+: SLFS (= --emit disk + disk.tool: slfs-pack) 関連 ===
+        /// <summary>`--slfs-add <name>:<path>` or `--slfs-add <dir>` (repeatable)。
+        /// disk.tool == "slfs-pack" 時の asset list (= SLFS dir entry)。
+        /// 各要素: (name, path)。 dir 指定なら BuildDisk 側で展開。</summary>
+        public List<string> SlfsAddSpecs { get; } = new();
     }
 
     private readonly Options _opts;
@@ -987,10 +993,11 @@ public class Driver
         if (envConfig.Disk.Tool != "ndc"
             && envConfig.Disk.Tool != "hudisk"
             && envConfig.Disk.Tool != "udostool"
-            && envConfig.Disk.Tool != "mzd88")
+            && envConfig.Disk.Tool != "mzd88"
+            && envConfig.Disk.Tool != "slfs-pack")
         {
             Console.Error.WriteLine(
-                $"slangbuild: only disk.tool: ndc / hudisk / udostool / mzd88 supported "
+                $"slangbuild: only disk.tool: ndc / hudisk / udostool / mzd88 / slfs-pack supported "
                 + $"(got: {envConfig.Disk.Tool})");
             return 1;
         }
@@ -1046,7 +1053,7 @@ public class Driver
             Console.Error.WriteLine($"slangbuild: disk template override: {templateOverride}");
 
         var builder = new DiskImageBuilder(envConfig.Disk, ndc, hudisk, udostool, mzd88,
-                                           _opts.Verbose, templateOverride);
+                                           _opts.Verbose, templateOverride, _opts.SlfsAddSpecs);
         return builder.Build(mainBin, overlayBins, diskOut);
     }
 
