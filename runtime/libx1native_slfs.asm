@@ -248,51 +248,6 @@ RET
 
 
 ; ========================================================================
-; LOGICAL_TO_DE_SLFS: logical sector index → LOADFILE DE encoding 変換
-; ========================================================================
-; 2D 固定 (= sides=2, sec_per_track=16) で hardcoded 計算:
-;   track = lsec / 32 = ((H << 3) | (L >> 5))
-;   side = (lsec / 16) & 1 = (L >> 4) & 1
-;   sector_0origin = lsec & 15 = L & 0x0F
-;
-; DE encoding = (track << 9) | (side << 8) | sector_0origin
-;   D.bit7-1 = track (= ((H << 3) | (L >> 5)) & 0x7F)
-;   D.bit0 = side = (L >> 4) & 1
-;   E.bit3-0 = sector_0origin
-;
-; 簡略化:
-;   D = (H << 4) | (L >> 4) = HL を 4 bit 右 shift の low byte
-;   E = L & 0x0F
-;
-; パラメータ HL = logical sector index
-; 戻り値 DE = encoding
-; 破壊 A
-
-; @name LOGICAL_TO_DE_SLFS
-; @resident shared
-; @param_count 0
-LD      A, H
-RLCA
-RLCA
-RLCA
-RLCA
-AND     0F0h                    ; H の bit 3-0 → bit 7-4
-LD      D, A
-LD      A, L
-RRCA
-RRCA
-RRCA
-RRCA
-AND     0Fh                     ; L の bit 7-4 → bit 3-0
-OR      D
-LD      D, A
-LD      A, L
-AND     0Fh
-LD      E, A
-RET
-
-
-; ========================================================================
 ; FS_READ_BY_ID: SLFS public API (= asset 読込み)
 ; ========================================================================
 ; SLANG public ABI:
@@ -305,11 +260,11 @@ RET
 ; @name FS_READ_BY_ID
 ; @resident shared
 ; @param_count 2
-; @calls X1FDC_WORK,FDC_LOAD_SECTORS_SLFS,LOGICAL_TO_DE_SLFS
-; --- IFF2 guard entry ---
+; @calls X1FDC_WORK,FDC_LOAD_SECTORS_SLFS
+; --- IFF2 guard entry (= 設計順 LD A,I; DI; PUSH AF) ---
 LD      A, I
-PUSH    AF
 DI
+PUSH    AF
 
 ; --- save id + buffer to work area ---
 LD      A, L
@@ -321,8 +276,9 @@ LD      A, (FS_SB_CACHE_FLAG)
 OR      A
 JR      NZ, .fsrb_cache_ok
 ; load superblock (= logical sector 1 = cyl 0 head 0 sector 2)
-LD      HL, 1
-CALL    LOGICAL_TO_DE_SLFS      ; DE = encoding
+; logical sector index = FDC_LOAD_SECTORS_SLFS の DE 入力と同じ encoding
+; (= 2D 限定で lsec.bit 3-0 = sector_0origin、 bit 4 = side、 bit 15-5 = cyl)
+LD      DE, 1
 LD      HL, FS_SECTOR_BUF
 LD      A, 1
 CALL    FDC_LOAD_SECTORS_SLFS
@@ -356,8 +312,7 @@ LD      H, 0
 LD      L, A
 LD      DE, (FS_SB_DIR_START)
 ADD     HL, DE                  ; HL = dir sector logical index
-
-CALL    LOGICAL_TO_DE_SLFS      ; DE = encoding
+EX      DE, HL                  ; DE = lsec (= FDC_LOAD_SECTORS_SLFS 入力)
 LD      HL, FS_SECTOR_BUF
 LD      A, 1
 CALL    FDC_LOAD_SECTORS_SLFS
@@ -381,7 +336,7 @@ ADD     HL, DE                  ; HL → +0C
 LD      E, (HL)
 INC     HL
 LD      D, (HL)
-INC     HL                      ; DE = start_sector
+INC     HL                      ; DE = start_sector (= logical sector index)
 LD      C, (HL)
 INC     HL
 LD      B, (HL)                 ; BC = byte_size
@@ -392,19 +347,14 @@ OR      C
 JR      Z, .fsrb_fail
 
 ; --- sector count = ceil(byte_size / 256) = (byte_size + 255) >> 8 ---
-; BC = byte_size、 (BC + 255) の high byte
-; 計算: DEC BC; INC B; A = B  (= ceil(BC / 256)、 ただし BC=0 で破綻、 上で 0 check)
+; 計算: DEC BC; INC B; A = B  (= ceil(BC / 256)、 BC=0 で破綻、 上で 0 check 済)
 PUSH    BC                      ; byte_size 保存
 DEC     BC
 INC     B
 LD      A, B                    ; A = sector count (= 1..256、 256 は 0 入力扱い)
 
 ; --- data sector 連続 read ---
-; logical sector index = start_sector = DE
-EX      DE, HL                  ; HL = start_sector
-PUSH    AF                      ; sector count 退避
-CALL    LOGICAL_TO_DE_SLFS      ; DE = LOADFILE encoding
-POP     AF
+; DE = start_sector (= logical sector index、 そのまま FDC_LOAD_SECTORS_SLFS に渡す)
 LD      HL, (FS_SAVED_BUFFER)
 CALL    FDC_LOAD_SECTORS_SLFS
 POP     BC                      ; byte_size 復元

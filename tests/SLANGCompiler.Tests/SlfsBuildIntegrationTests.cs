@@ -9,8 +9,10 @@ public class SlfsBuildIntegrationTests
 {
     private static string RepoRoot()
     {
+        // clean checkout 安全 marker = runtime/env/x1native.env (= tracked)。
+        // 旧実装の src/src.sln は untracked のため clean checkout で壊れる。
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "src", "src.sln")))
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "runtime", "env", "x1native.env")))
             dir = dir.Parent;
         Assert.NotNull(dir);
         return dir!.FullName;
@@ -35,8 +37,18 @@ public class SlfsBuildIntegrationTests
             psi.ArgumentList.Add(a);
 
         using var proc = Process.Start(psi)!;
-        proc.WaitForExit(120000);
-        return (proc.ExitCode, proc.StandardOutput.ReadToEnd(), proc.StandardError.ReadToEnd());
+
+        // async read で stdout/stderr を吸い続けつつ timeout 監視 (= subprocess hang
+        // で ReadToEnd 永久待ちを回避、 timeout 時は kill して fail)
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+
+        if (!proc.WaitForExit(120000))
+        {
+            try { proc.Kill(entireProcessTree: true); } catch { }
+            Assert.Fail("slangbuild timed out after 120s");
+        }
+        return (proc.ExitCode, stdoutTask.GetAwaiter().GetResult(), stderrTask.GetAwaiter().GetResult());
     }
 
     [Fact]
