@@ -222,11 +222,37 @@ public class Driver
 
         try
         {
+            // === Step 0.5: SLFS Phase 3 - compile 前 generated header 出力 ===
+            // EmitMode == disk && disk.tool == slfs-pack && --slfs-add 指定済 の case で
+            // asset list → SLANG CONST 形式 .inc 生成。 SLANG sample が
+            // `#INCLUDE <input SL stem>.assets.inc` で取り込んで FILE_XXX identifier
+            // で asset id を書ける。 `-o` basename と decoupling (= header 名は input
+            // SL stem 基準で固定、 -o /tmp/OTHER 等で source stem と異なっても OK)。
+            List<string>? slfsExtraIncludes = null;
+            if (_opts.EmitMode == "disk"
+                && envConfig.Disk?.Tool == "slfs-pack"
+                && _opts.SlfsAddSpecs.Count > 0)
+            {
+                var slStem = Path.GetFileNameWithoutExtension(_opts.InputPath);
+                var slfsIncPath = Path.Combine(outputDir, slStem + ".assets.inc");
+                var slfsAssets = SlfsAssetResolver.Resolve(_opts.SlfsAddSpecs);
+                var hdr = SlfsPack.SlfsHeaderBuilder.Build(slfsAssets);
+                if (!string.IsNullOrEmpty(hdr))
+                {
+                    if (!Directory.Exists(outputDir)) Directory.CreateDirectory(outputDir);
+                    File.WriteAllText(slfsIncPath, hdr);
+                    intermediates.Add(slfsIncPath);
+                    slfsExtraIncludes = new List<string> { outputDir };
+                    if (_opts.Verbose)
+                        Console.Error.WriteLine($"slangbuild: slfs: wrote generated header {slfsIncPath} ({hdr.Length} byte, {slfsAssets.Count} asset(s))");
+                }
+            }
+
             // === Step 1: slangc spawn ===
             var slangc = _resolver.ResolveSlangc(_opts.SlangcPath);
             if (_opts.Verbose) Console.Error.WriteLine($"slangbuild: using slangc: {slangc}");
 
-            var slangcResult = SpawnSlangc(slangc, _opts.InputPath, mainAsm, _opts.Environment);
+            var slangcResult = SpawnSlangc(slangc, _opts.InputPath, mainAsm, _opts.Environment, slfsExtraIncludes);
             if (slangcResult != 0)
             {
                 Console.Error.WriteLine($"slangbuild: slangc failed (exit {slangcResult})");
@@ -1057,7 +1083,8 @@ public class Driver
         return builder.Build(mainBin, overlayBins, diskOut);
     }
 
-    private int SpawnSlangc(ResolvedTool slangc, string inputPath, string outAsmPath, string env)
+    private int SpawnSlangc(ResolvedTool slangc, string inputPath, string outAsmPath, string env,
+                            IList<string>? extraIncludePaths = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -1087,6 +1114,16 @@ public class Driver
         {
             psi.ArgumentList.Add("-I");
             psi.ArgumentList.Add(p);
+        }
+        // extraIncludePaths: caller 指定の追加 -I (= 例 SLFS Phase 3 で
+        // generated header 配置 outputDir、 常時 add 副作用回避のため明示渡し)
+        if (extraIncludePaths != null)
+        {
+            foreach (var p in extraIncludePaths)
+            {
+                psi.ArgumentList.Add("-I");
+                psi.ArgumentList.Add(p);
+            }
         }
         foreach (var p in _opts.LibraryPaths)
         {
