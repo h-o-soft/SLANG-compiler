@@ -1,20 +1,41 @@
 # SLANG-compiler
-SLANG Compiler (Z80) 0.24.1
+SLANG Compiler (Z80 + C64/oscar64) 0.25.0
 
 # 概要
 
 これは主に国産8bit PCで使われたOS「S-OS」オリジナルの構造型コンパイラ言語「SLANG」のクロスコンパイラです。
 
-コンパイルする事で、Z80のアセンブラソースを出力するため、柔軟な活用が可能です。
+コンパイルする事で、 Z80 backend ではアセンブラソースを、 C64 backend では oscar64 向けの C ソースを出力するため、 柔軟な活用が可能です。
 
-現状、LSX-Dodgers及びS-OSで動作するように作られていますが、OS依存部分を個々作る事で、CPUにZ80を採用している様々な環境で動かす事が出来るはずです。
+現状、 Z80 backend は LSX-Dodgers / S-OS / X1 / PC-8001mkII / PC-8801mkIISR / MZ-2500 等の各種 8bit 環境で、 C64 backend は oscar64 経由で Commodore 64 で動作します。 OS 依存部分を個々作る事で、 様々な環境を追加できる設計です。
 
 > **Note:** 旧コンパイラ(SLANGCompiler)のソースは `obsolete/` フォルダに移動しています。旧コンパイラを使用する場合は `obsolete/Makefile` を参照してください。
 
 # 使い方
 
+主要なビルドコマンドの例:
+
+```sh
+# Z80 (= LSX-Dodgers disk image)
+slangbuild -E lsx -I include examples/STARS.SL -o STARS --emit disk
+
+# Z80 + X1 OS なし (= cassette tape)
+slangbuild -E x1native -I include examples/X1NATIVE_HELLO.SL -o HELLO --emit tape
+
+# Z80 + X1 OS なし (= D88 disk image with SLFS asset)
+slangbuild --emit disk -E x1native_slfs examples/X1NATIVE_SLFS/SLFSDEMO.SL -o SLFSDEMO \
+  --slfs-add examples/X1NATIVE_SLFS/assets/
+
+# 6502 + Commodore 64 (= .prg via oscar64)
+slangbuild -E c64 -I include examples/c64/SPRITE.SL -o SPRITE
 ```
-SLANG Compiler v0.24.1
+
+環境別の詳細: [docs/X1.md](docs/X1.md) (x1native / SLFS) / [docs/SLFS.md](docs/SLFS.md) (SLFS) / [docs/C64.md](docs/C64.md) (Commodore 64)。
+
+## slangc 単体 (= compile のみ、 link しない)
+
+```
+SLANG Compiler v0.25.0
 Usage: slangc [options] <input.sl>
 
 Options:
@@ -77,6 +98,20 @@ WIDTH関数が正常に動作し、文字表示について高速化されます
 ただし、LSX-Dodgers側との整合性は取っていないので、入力関連や、OSに戻ってからの挙動については保証しません。
 
 また、PCG定義関数が追加されます。
+
+## x1native ( SHARP X1 native - OS なし環境 )
+
+OS (LSX-Dodgers / S-OS) に依存せず X1 hardware を直接叩く環境です。 cassette tape (`.tap` / `.wav`) でのゲーム配布を主目的とした最小構成で、 text VRAM 直接書き込み + sub CPU `$1900` polling での key 入力、 CRTC 初期化 + WIDTH / LOCATE / SCREEN / HOME / CLEAR + scroll、 graphics (GRDISP / GRCLS)、 PSG (CTC IM2 vector + 高位 RAM ISR trampoline) に対応します。
+
+file I/O は linker error で reject されます (= 必要なら `lsx` / `sosx1` 環境を選択)。
+
+`slangbuild --emit tape` で X1 cassette tape (`.tap` + optional `.wav`) を生成、 X1 標準 IPL 経由で OS なし auto boot します。 多段 cassette tape ロード (`MTREAD` / `MTREADJP` runtime API + `#MODULE` overlay の自動連結) にも対応します。 詳細は [docs/X1.md](docs/X1.md) を参照してください。
+
+## x1native_slfs ( x1native + SLANG File System )
+
+`x1native` 環境をベースに、 ゲーム asset を 2D D88 disk image に packed file system として収納する **SLANG File System (SLFS)** を利用する環境です。 SLANG 側 API (`FS_READ_BY_ID` / `FS_SAVE_R` / `FS_SAVE_W`) で asset の読み込みと save area の read/write を行います。
+
+ホスト側ツール `slfs-pack` を同梱、 asset を D88 に pack するほか `list` / `info` / `extract` / `extract-main` / `extract-save` subcommand に対応します。 詳細は [docs/SLFS.md](docs/SLFS.md) を参照してください。
 
 ## sos ( S-OS )
 
@@ -178,7 +213,7 @@ Layer 2グラフィックス、タイルマップ、スプライト、パレッ�
 
 > **注**: `examples/zxn/Makefile` の `make build` (default) は NextDAW なし版 (`game_nomusic.nex`) を build します。NextDAW を含む完全版 (`game.nex`) を build するには `make music` を使い、`examples/zxn/NextDAW_RuntimePlayer_E000.bin` (= NextDAW Runtime Player) を `examples/zxn/` 配下に配置してください。NextDAW ([https://nextdaw.biasillo.com/](https://nextdaw.biasillo.com/)) は外部製品のため配布物には含まれません。**2026-04-30 時点で公式サイトでの入手はできない状態**で、再公開された場合も driver の仕様変更等により `examples/zxn/game.cfg` や `game.sl` の修正が必要となる可能性があります。
 
-## c64 (Commodore 64 / oscar64) — experimental
+## c64 (Commodore 64 / oscar64)
 
 Commodore 64 (6502) 用の環境です。本環境のみ SLANG コンパイラは 6502 アセンブラを直接出力せず、**SLANG → C ソース → oscar64 → .prg** の二段変換で 6502 バイナリを生成します。oscar64 ([https://github.com/drmortalwombat/oscar64](https://github.com/drmortalwombat/oscar64)) は本配布物に含まれないため別途インストールが必要です。drmortalwombat 氏 + oscar64 project に感謝。
 
@@ -363,6 +398,8 @@ make TARGET=examples/STARS ENV=x1 run
 |-----|---------|
 | lsx | LSX-Dodgers (標準) |
 | x1 | SHARP X1 (LSX-Dodgers + X1専用最適化) |
+| x1native | SHARP X1 (OS なし、 cassette tape boot) |
+| x1native_slfs | SHARP X1 (OS なし、 SLFS disk image 出力) |
 | sos | S-OS（機種非依存） |
 | sosx1 | S-OS for SHARP X1（X1固有ライブラリ同梱・従来のsos互換） |
 | msx2 | MSX-DOS2 |
@@ -398,6 +435,7 @@ template の入手:
 | lsx / x1 | `images/LSXPROG.d88` | `images/templates/LSXPROG.D88` | repo 同梱 |
 | sos / sosx1 / sosmz2500 | `images/SOSPROG.D88` | `images/templates/SOSPROG.D88` | `make setup-tools` で取得 (S-OS 配布物 + AUTOEXEC.BAT 注入)。MZ-2500 では本ディスクを B ドライブに挿入し X1 用 SOSPROG から呼び出す運用 |
 | pc88mk2sr | `images/PC88MK2SR.d88` | `images/templates/PC88MK2SR.D88` | repo 同梱 (Bookworm's Library 由来、`THIRD_PARTY_NOTICES.md` 参照) |
+| x1native_slfs | (slfs-pack による生成) | (template 不要) | `slfs-pack` で都度生成 (= pristine 2D D88 を内部生成し、 main + asset を pack) |
 | mz25iocs | `<output dir>/M25PROG.d88` | (template 不要) | `mzd88 -blank` で都度生成、`runtime/mz2500/J8000.bas.bsd` を起動用 BASIC ローダとして格納 |
 | MSX-DOS 系 | `images/dosformsx.dsk` | `tools/disk-add-overlays.py` 経路 | `make setup-tools` で取得 |
 
