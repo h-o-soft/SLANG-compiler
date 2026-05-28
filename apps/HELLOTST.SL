@@ -1,0 +1,5 @@
+MAIN()
+{
+  PRINT("HELLO FROM SUBMIT", /);
+  PRINT("LINE 2", /);
+}

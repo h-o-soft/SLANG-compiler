@@ -1,0 +1,49 @@
+; "An der schoenen blauen Donau" (Blue Danube), Op. 314 - main theme excerpt
+; Johann Strauss II (1866)
+;
+; The most iconic 7-bar phrase of the main waltz melody.
+; Key: D major, Time: 3/4 waltz.
+;
+;   m.1: D F# A           <- rising arpeggio ("da-da-DA")
+;   m.2: A.               <- dotted half held high
+;   m.3: r A A            <- rest, then "ah-ah"
+;   m.4: A.               <- held A again
+;   m.5: r F# F#          <- rest, then "ee-ee" (drops a third)
+;   m.6: F#.              <- held F#
+;   m.7: r.               <- rest (breath)
+;
+; CH2 = bass on beat 1   (waltz "oom")
+; CH3 = chord tone on 2-3 (waltz "pah-pah")
+;
+; Convert at default tempo (~225 BPM, brisk):
+;   python3 tools/mml2sound.py examples/PC80mk2_BlueDanube2.mml
+;
+; For slower waltz feel (~180 BPM):
+;   python3 tools/mml2sound.py examples/PC80mk2_BlueDanube2.mml --quarter 20
+
+@1 o4 l4
+d f+ a
+a2.
+r a a
+a2.
+r f+ f+
+f+2.
+r2.
+
+@2 o2 l4
+d r r
+d r r
+d r r
+d r r
+a r r
+a r r
+d r r
+
+@3 o3 l4
+r f+ a
+r f+ a
+r f+ a
+r f+ a
+r c+ e
+r c+ e
+r f+ a

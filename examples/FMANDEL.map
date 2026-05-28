@@ -1,0 +1,79 @@
+sections
+0880 - 0ea2 : DATA, code
+0ea2 - 0eb2 : DATA, data
+0eb2 - 0eb2 : BSS, bss
+0eb8 - 9000 : HEAP, heap
+9000 - 9ff2 : STACK, stack
+00f7 - 00f7 : ZEROPAGE, zeropage
+0801 - 0853 : DATA, startup
+a000 - a000 : SSTACK, sstack
+a000 - a000 : SSTACK, putpch@stack
+a000 - a000 : SSTACK, putch@stack
+a000 - a000 : SSTACK, slang_print_chr_w@stack
+a000 - a000 : SSTACK, put_str@stack
+a000 - a000 : SSTACK, slang_print_str@stack
+a000 - a000 : SSTACK, slang_println@stack
+9ff2 - a000 : SSTACK, F_MAIN@stack
+9ff2 - 9ff2 : SSTACK, main@stack
+
+regions
+00f7 - 00ff : 0000, 0000, zeropage
+0801 - 0880 : 0853, 0052, startup
+0880 - 9000 : 0eb2, 0632, main
+
+objects
+00f7 - 00f7 : ZeroStart, START:zeropage
+00f7 - 00f7 : ZeroEnd, END:zeropage
+0801 - 0853 : startup, NATIVE_CODE:startup
+0880 - 088a : main, NATIVE_CODE:code
+088a - 0b1b : F_MAIN, NATIVE_CODE:code
+0b1b - 0b27 : slang_print_chr_w, NATIVE_CODE:code
+0b27 - 0b8a : putpch, NATIVE_CODE:code
+0b8a - 0bb1 : put_str, NATIVE_CODE:code
+0bb1 - 0bb3 : *, DATA:code
+0bb3 - 0bf8 : freg, NATIVE_CODE:code
+0bf8 - 0ce5 : faddsub, NATIVE_CODE:code
+0ce5 - 0d7f : crt_fmul, NATIVE_CODE:code
+0d7f - 0dad : crt_fmul8, NATIVE_CODE:code
+0dad - 0e5b : crt_fdiv, NATIVE_CODE:code
+0e5b - 0e79 : sint16_to_float, NATIVE_CODE:code
+0e79 - 0ea2 : uint16_to_float, NATIVE_CODE:code
+0ea2 - 0ea3 : spentry, DATA:data
+0ea3 - 0ea5 : V_Y, DATA:data
+0ea5 - 0ea7 : V_X, DATA:data
+0ea7 - 0eab : V_A, DATA:data
+0eab - 0eaf : V_B, DATA:data
+0eaf - 0eb1 : V_I, DATA:data
+0eb1 - 0eb2 : giocharmap, DATA:data
+0eb2 - 0eb2 : BSSStart, START:bss
+0eb2 - 0eb2 : BSSEnd, END:bss
+9ff2 - a000 : F_MAIN@stack, BSS:F_MAIN@stack
+9ff2 - 9ff2 : StackEnd, END:stack
+
+objects by size
+088a (0291) : F_MAIN, NATIVE_CODE:code
+0bf8 (00ed) : faddsub, NATIVE_CODE:code
+0dad (00ae) : crt_fdiv, NATIVE_CODE:code
+0ce5 (009a) : crt_fmul, NATIVE_CODE:code
+0b27 (0063) : putpch, NATIVE_CODE:code
+0801 (0052) : startup, NATIVE_CODE:startup
+0bb3 (0045) : freg, NATIVE_CODE:code
+0d7f (002e) : crt_fmul8, NATIVE_CODE:code
+0e79 (0029) : uint16_to_float, NATIVE_CODE:code
+0b8a (0027) : put_str, NATIVE_CODE:code
+0e5b (001e) : sint16_to_float, NATIVE_CODE:code
+9ff2 (000e) : F_MAIN@stack, BSS:F_MAIN@stack
+0b1b (000c) : slang_print_chr_w, NATIVE_CODE:code
+0880 (000a) : main, NATIVE_CODE:code
+0ea7 (0004) : V_A, DATA:data
+0eab (0004) : V_B, DATA:data
+0ea3 (0002) : V_Y, DATA:data
+0ea5 (0002) : V_X, DATA:data
+0eaf (0002) : V_I, DATA:data
+0ea2 (0001) : spentry, DATA:data
+0eb1 (0001) : giocharmap, DATA:data
+00f7 (0000) : ZeroStart, START:zeropage
+00f7 (0000) : ZeroEnd, END:zeropage
+0eb2 (0000) : BSSStart, START:bss
+0eb2 (0000) : BSSEnd, END:bss
+9ff2 (0000) : StackEnd, END:stack

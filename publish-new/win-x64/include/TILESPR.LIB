@@ -1,0 +1,21 @@
+///
+/// TILESPR.LIB — TILELIB + SPRLIB 統合 shim
+///
+/// 注意: これは TILELIB と SPRLIB の内部シンボル (_SPR_PAGEOFS, _TILE_PAGEOFS) に
+/// 意図的に依存する統合専用 shim です。両ライブラリのバージョンが揃っている前提で使う。
+/// 公開 API ライブラリではなく、TILELIB+SPRLIB を組み合わせるアプリ向けの薄いブリッジ。
+///
+
+#include TILELIB.LIB
+#include SPRLIB.LIB
+
+// SPRLIB の現在の描画ページを TILELIB に同期する。
+// 毎フレーム TILE_FILL_MAP の前に呼ぶこと。
+MACHINE TILE_SYNC_SPR_PAGE(0): _TileSyncSprPage;
+
+#ASM
+_TileSyncSprPage:
+	ld a,(_SPR_PAGEOFS)
+	ld (_TILE_PAGEOFS),a
+	ret
+#END

@@ -1,0 +1,90 @@
+sections
+0880 - 0d58 : DATA, code
+0d58 - 0de2 : DATA, data
+0de2 - 1108 : BSS, bss
+1108 - 9000 : HEAP, heap
+9000 - 9ffc : STACK, stack
+00f7 - 00f7 : ZEROPAGE, zeropage
+0801 - 0853 : DATA, startup
+a000 - a000 : SSTACK, sstack
+a000 - a000 : SSTACK, rand@stack
+a000 - a000 : SSTACK, slang_rnd@stack
+a000 - a000 : SSTACK, F_INITSTARS@stack
+a000 - a000 : SSTACK, slang_inkey@stack
+a000 - a000 : SSTACK, gotoxy@stack
+a000 - a000 : SSTACK, slang_locate@stack
+a000 - a000 : SSTACK, itoa@stack
+a000 - a000 : SSTACK, putpch@stack
+a000 - a000 : SSTACK, putch@stack
+a000 - a000 : SSTACK, put_str@stack
+a000 - a000 : SSTACK, slang_print_sint@stack
+a000 - a000 : SSTACK, slang_print_str@stack
+9ffc - a000 : SSTACK, F_MAIN@stack
+9ffc - 9ffc : SSTACK, main@stack
+
+regions
+00f7 - 00ff : 0000, 0000, zeropage
+0801 - 0880 : 0853, 0052, startup
+0880 - 9000 : 0de2, 0888, main
+
+objects
+00f7 - 00f7 : ZeroEnd, END:zeropage
+00f7 - 00f7 : ZeroStart, START:zeropage
+0801 - 0853 : startup, NATIVE_CODE:startup
+0880 - 088a : main, NATIVE_CODE:code
+088a - 0a25 : F_MAIN, NATIVE_CODE:code
+0a25 - 0b2f : F_INITSTARS, NATIVE_CODE:code
+0b2f - 0b51 : slang_rnd, NATIVE_CODE:code
+0b51 - 0b78 : rand, NATIVE_CODE:code
+0b78 - 0b98 : slang_inkey, NATIVE_CODE:code
+0b98 - 0ba1 : gotoxy, NATIVE_CODE:code
+0ba1 - 0bbf : slang_print_sint, NATIVE_CODE:code
+0bbf - 0c45 : itoa, NATIVE_CODE:code
+0c45 - 0c6c : put_str, NATIVE_CODE:code
+0c6c - 0ccf : putpch, NATIVE_CODE:code
+0ccf - 0cd1 : *, DATA:code
+0cd1 - 0cd3 : *, DATA:code
+0cd3 - 0d58 : divmod, NATIVE_CODE:code
+0d58 - 0d59 : spentry, DATA:data
+0d59 - 0d5b : V_I, DATA:data
+0d5b - 0d5d : seed, DATA:data
+0d5d - 0d5f : V_J, DATA:data
+0d5f - 0d61 : V_CNT, DATA:data
+0d61 - 0de1 : keyb_codes, DATA:data
+0de1 - 0de2 : giocharmap, DATA:data
+0de2 - 0de2 : BSSStart, START:bss
+0de2 - 1100 : V_STARS, DATA:bss
+1100 - 1108 : slang_num_buf, DATA:bss
+1108 - 1108 : BSSEnd, END:bss
+9ffc - 9ffc : StackEnd, END:stack
+9ffc - a000 : F_MAIN@stack, BSS:F_MAIN@stack
+
+objects by size
+0de2 (031e) : V_STARS, DATA:bss
+088a (019b) : F_MAIN, NATIVE_CODE:code
+0a25 (010a) : F_INITSTARS, NATIVE_CODE:code
+0bbf (0086) : itoa, NATIVE_CODE:code
+0cd3 (0085) : divmod, NATIVE_CODE:code
+0d61 (0080) : keyb_codes, DATA:data
+0c6c (0063) : putpch, NATIVE_CODE:code
+0801 (0052) : startup, NATIVE_CODE:startup
+0b51 (0027) : rand, NATIVE_CODE:code
+0c45 (0027) : put_str, NATIVE_CODE:code
+0b2f (0022) : slang_rnd, NATIVE_CODE:code
+0b78 (0020) : slang_inkey, NATIVE_CODE:code
+0ba1 (001e) : slang_print_sint, NATIVE_CODE:code
+0880 (000a) : main, NATIVE_CODE:code
+0b98 (0009) : gotoxy, NATIVE_CODE:code
+1100 (0008) : slang_num_buf, DATA:bss
+9ffc (0004) : F_MAIN@stack, BSS:F_MAIN@stack
+0d59 (0002) : V_I, DATA:data
+0d5b (0002) : seed, DATA:data
+0d5d (0002) : V_J, DATA:data
+0d5f (0002) : V_CNT, DATA:data
+0d58 (0001) : spentry, DATA:data
+0de1 (0001) : giocharmap, DATA:data
+00f7 (0000) : ZeroEnd, END:zeropage
+00f7 (0000) : ZeroStart, START:zeropage
+0de2 (0000) : BSSStart, START:bss
+1108 (0000) : BSSEnd, END:bss
+9ffc (0000) : StackEnd, END:stack

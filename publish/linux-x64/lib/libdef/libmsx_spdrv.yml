@@ -1,0 +1,86 @@
+
+SPDRV_INCLUDE:
+  lib_name: MSXSPDRV
+  include:
+    - spdrv/msx_constant.asm
+
+SPDRV_WORK:
+  lib_name: MSXSPDRV
+  calls:
+    - SPDRV_INCLUDE
+  extlib: spdrv/sprite_driver_work.asm:SPDRV_DUMMY
+  works:
+    sprite_page: 1
+    sprite_index: 1
+    sprite_attribute: 128
+
+SPDRV_INITIALIZE:
+  calls:
+    - SPDRV_WORK
+  lib_name: MSXSPDRV
+  extlib: spdrv/sprite_driver.asm:SPDRV_INITIALIZE
+
+SPDRV_FLIP:
+  calls:
+    - SPDRV_WORK
+  lib_name: MSXSPDRV
+  extlib: spdrv/sprite_driver.asm:SPDRV_FLIP
+
+SPDRV_SET:
+  calls:
+    - SPDRV_WORK
+  lib_name: MSXSPDRV
+  extlib: spdrv/sprite_driver.asm:SPDRV_SET
+
+SPDRV_MOVE:
+  calls:
+    - SPDRV_WORK
+  lib_name: MSXSPDRV
+  extlib: spdrv/sprite_driver.asm:SPDRV_MOVE
+
+SPDRV_UPDATE:
+  calls:
+    - SPDRV_WORK
+  lib_name: MSXSPDRV
+  extlib: spdrv/sprite_driver.asm:SPDRV_UPDATE
+
+SPDRV2_WORK:
+  lib_name: MSXSPDRV
+  calls:
+    - SPDRV_INCLUDE
+  extlib: spdrv2/sprite_driver_work.asm:SPDRV2_DUMMY
+  works:
+    sprite_page: 1
+    sprite_index: 1
+    sprite_color_work: 32
+    sprite_attribute: 256
+
+SPDRV2_INITIALIZE:
+  calls:
+    - SPDRV2_WORK
+  lib_name: MSXSPDRV
+  extlib: spdrv2/sprite_driver.asm:SPDRV2_INITIALIZE
+
+SPDRV2_FLIP:
+  calls:
+    - SPDRV2_WORK
+  lib_name: MSXSPDRV
+  extlib: spdrv2/sprite_driver.asm:SPDRV2_FLIP
+
+SPDRV2_SET:
+  calls:
+    - SPDRV2_WORK
+  lib_name: MSXSPDRV
+  extlib: spdrv2/sprite_driver.asm:SPDRV2_SET
+
+SPDRV2_MOVE:
+  calls:
+    - SPDRV2_WORK
+  lib_name: MSXSPDRV
+  extlib: spdrv2/sprite_driver.asm:SPDRV2_MOVE
+
+SPDRV2_UPDATE:
+  calls:
+    - SPDRV2_WORK
+  lib_name: MSXSPDRV
+  extlib: spdrv2/sprite_driver.asm:SPDRV2_UPDATE

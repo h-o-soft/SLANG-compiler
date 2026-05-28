@@ -1,0 +1,13 @@
+# Generated files
+*.ASM
+*.bin
+*.nex
+*.lst
+*.sym
+PROG
+
+# NextDAW runtime player (cannot be distributed)
+NextDAW_RuntimePlayer_E000.bin
+
+# Emulator folder
+Emu/

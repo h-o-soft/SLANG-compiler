@@ -1,0 +1,646 @@
+MULHLDE:
+  function_type: Machine
+  param_count: 2
+  code: |
+    LD A, L
+    SUB E
+    LD A, H
+    SBC A, D
+    JR NC, .mul1
+    EX DE, HL
+    .mul1
+    LD B, H
+    LD C, L
+    LD HL, 0000
+    LD A, D
+    OR A
+    JR Z, .mul2
+    .mul4
+    RRA
+    RR E
+    JR NC, .mul3
+    ADD HL, BC
+    .mul3
+    SLA C
+    RL B
+    OR A
+    JR NZ, .mul4
+    .mul2
+    LD A, E
+    .mul6
+    RRA
+    JR NC, .mul5
+    ADD HL, BC
+    .mul5
+    SLA C
+    RL B
+    OR A
+    JR NZ, .mul6
+    RET
+
+DIVHLDE:
+  calls:
+    - DIVHLDE8
+  code: |
+    LD A, L
+    SUB E
+    LD A, H
+    SBC A, D
+    JR NC, .div1
+    EX DE, HL
+    LD HL, 0000
+    RET
+    .div1
+    INC D
+    DEC D
+    JR Z, DIVHLDE8
+    LD C, L
+    LD L, H
+    XOR A
+    LD H, A
+    LD B, 08
+    .div3
+    ADD A, A
+    SLA C
+    ADC HL, HL
+    SBC HL, DE
+    JR NC, .div2
+    ADD HL, DE
+    DEC A
+    .div2
+    INC A
+    DJNZ .div3
+    EX DE, HL
+    LD H, B
+    LD L, A
+    RET
+
+DIVHLDE8:
+  code: |
+    INC E
+    DEC E
+    JR NZ, .div81
+    EX DE, HL
+    LD HL, 0000
+    RET
+    .div81
+    XOR A
+    LD B, $10
+    .div84
+    ADD HL, HL
+    ADC A, A
+    JR C, .div82
+    CP E
+    JR C, .div83
+    .div82
+    SUB E
+    INC L
+    .div83
+    DJNZ .div84
+    LD E, A
+    RET
+
+SDIVHLDE:
+  calls:
+    - "NEGHL"
+    - "DIVHLDE"
+  code: |
+    LD A, H
+    XOR D
+    LD B, A
+    BIT 7, H
+    CALL NZ, NEGHL
+    EX DE, HL
+    BIT 7, H
+    CALL NZ, NEGHL
+    EX DE, HL
+    BIT 7, B
+    JR Z, DIVHLDE
+    CALL DIVHLDE
+    JR NEGHL
+
+MODHLDE:
+  calls:
+    - DIVHLDE
+  code: |
+    CALL DIVHLDE
+    EX DE,HL
+    RET
+
+SMODHLDE:
+  calls:
+    - NEGHL
+    - MODHLDE
+  code: |
+    EX DE, HL
+    BIT 7, H
+    CALL NZ, NEGHL
+    EX DE, HL
+    BIT 7, H
+    JR Z, MODHLDE
+    CALL NEGHL
+    CALL MODHLDE
+
+NEGHL:
+  calls:
+    - CPLHL
+  code: |
+    DEC HL
+
+CPLHL:
+  code: |
+    LD A, H
+    CPL
+    LD H, A
+    LD A, L
+    CPL
+    LD L, A
+    RET
+
+NOTHL:
+  calls:
+    - OPEQHLDE
+  code: |
+
+OPEQHL:
+  code: |
+    LD A, H
+    OR L
+    LD HL, 0000
+    RET NZ
+    INC L
+    RET
+
+OPNEQHL:
+  code: |
+    LD A, H
+    OR L
+    RET Z
+    LD HL, 0001
+    RET
+
+OPGTHLDE:
+  calls:
+    - OPLTHLDE
+  code: |
+    EX DE,HL
+
+OPLTHLDE:
+  code: |
+    OR A
+    SBC HL, DE
+    LD HL, 0000
+    RET NC
+    INC L
+    RET   
+
+OPLEHLDE:
+  calls:
+    - OPGEHLDE
+  code: |
+    EX DE,HL
+
+OPGEHLDE:
+  code: |
+    OR A
+    SBC HL, DE
+    LD HL, 0000
+    RET C
+    INC L
+    RET
+
+OPSGTHLDE:
+  calls:
+    - OPSLTHLDE
+  code: |
+    EX DE,HL
+
+OPSLTHLDE:
+  calls:
+    - OPLTHLDE
+  code: |
+    BIT 7, H
+    JR NZ, .opslt1
+    BIT 7, D
+    JR Z, OPLTHLDE
+    LD HL, 0000
+    RET
+    .opslt1
+    BIT 7, D
+    JR NZ, OPLTHLDE
+    LD HL, 0001
+    RET
+
+OPSLEHLDE:
+  calls:
+    - OPSGEHLDE
+  code: |
+    EX DE,HL
+
+OPSGEHLDE:
+  calls:
+    - OPGEHLDE
+  code: |
+    BIT 7, H
+    JR NZ, .opsge1
+    BIT 7, D
+    JR Z, OPGEHLDE
+    LD HL, 0001
+    RET
+    .opsge1
+    BIT 7, D
+    JR NZ, OPGEHLDE
+    LD HL, 0000
+    RET   
+
+SLSHIFTHLDE:
+  calls:
+    - LSHIFTHLDE
+  code: |
+
+LSHIFTHLDE:
+  code: |
+    LD A, E
+    AND $0F
+    RET Z
+    .lshift1
+    ADD HL, HL
+    DEC A
+    JR NZ, .lshift1
+    RET
+
+
+RSHIFTHLDE:
+  code: |
+    LD A, E
+    AND $0F
+    RET Z
+    .rshift1
+    SRL H
+    RR L
+    DEC A
+    JR NZ, .rshift1
+    RET   
+
+SRSHIFTHLDE:
+  code: |
+    LD A, E
+    AND $0F
+    RET Z
+    .srshift1
+    SRA H
+    RR L
+    DEC A
+    JR NZ, .srshift1
+    RET
+
+ORHLDE:
+  code: |
+    LD A, L
+    OR E
+    LD L, A
+    LD A, H
+    OR D
+    LD H, A
+    RET
+
+ANDHLDE:
+  code: |
+    LD A, L
+    AND E
+    LD L, A
+    LD A, H
+    AND D
+    LD H, A
+    RET
+
+XORHLDE:
+  code: |
+    LD A, L
+    XOR E
+    LD L, A
+    LD A, H
+    XOR D
+    LD H, A
+    RET
+
+BIT:
+  inside_name: RBIT
+  param_count: 2
+  calls:
+    - RSHIFTHLDE
+  code: |
+    CALL RSHIFTHLDE
+    BIT 0,L
+    LD HL,0
+    RET Z
+    INC HL
+    RET 
+
+SET:
+  inside_name: RSET
+  param_count: 2
+  calls:
+    - ORHLDE
+  code: |
+    EX DE,HL
+    LD A,L
+    AND $0F
+    LD HL,1
+    JR Z,.set1
+    .set2
+    ADD HL,HL
+    DEC A
+    JR NZ,.set2
+    .set1
+    JP ORHLDE
+
+RESET:
+  param_count: 2
+  calls:
+    - ANDHLDE
+  code: |
+    EX DE,HL
+    LD A,L
+    AND $0F
+    LD HL,$FFFE
+    JR Z,.reset1
+    .reset2
+    SCF
+    ADC HL, HL
+    DEC A
+    JR NZ,.reset2
+    .reset1
+    JP ANDHLDE
+
+ABS:
+  param_count: 1
+  calls:
+    - NEGHL
+  code: |
+    BIT 7,H
+    ABSNEGCALL:
+    CALL NZ,NEGHL
+    RET
+
+SGN:
+  param_count: 1
+  calls:
+    - ABS
+  code: |
+    LD A,H
+    OR L
+    RET Z
+    BIT 7,H
+    LD HL,1
+    JR ABSNEGCALL
+    BIT 7,L
+    LD H,0
+    RET Z
+    DEC H
+    RET
+
+SEX:
+  param_count: 1
+  code: |
+    BIT 7,L
+    LD H,0
+    RET Z
+    DEC H
+    RET
+
+SRAND:
+  param_count: 1
+  calls:
+    - RND
+  code: |
+    LD (RND_SEED1),HL
+    RET
+
+RND:
+  param_count: 1
+  calls:
+    - MULHLDE
+    - MODHLDE
+  initialize_code: |
+    LD HL,$E933
+    LD (RND_SEED2),HL
+    LD A,R
+    LD L,A
+    LD (RND_SEED1),A
+    XOR H
+    LD (RND_SEED1+1),A
+    RET
+  code: |
+    PUSH HL
+    LD HL,(RND_SEED1)
+    LD B,H
+    LD C,L
+    ADD HL,HL
+    ADD HL,HL
+    INC L
+    ADD HL,BC
+    LD (RND_SEED1),HL
+    LD HL,(RND_SEED2)
+    ADD HL,HL
+    SBC A,A
+    AND %00101101
+    XOR L
+    LD L,A
+    LD (RND_SEED2),HL
+    ADD HL,BC
+    POP DE
+    LD A,D
+    OR E
+    JR NZ,.RND1
+    EX DE,HL
+    RET
+    .RND1
+    JP MODHLDE
+    RET
+  works:
+    RND_SEED1: 2
+    RND_SEED2: 2
+
+VTOS:
+  function_type: Machine
+  param_count: 2
+  calls:
+    - DIVHLDE8
+  code: |
+    PUSH HL
+    EXX
+    POP HL
+    EXX
+    LD HL, $0005
+    ADD HL, DE
+    LD (HL), $00
+    LD B, $05
+    .vtos1
+    EXX
+    LD E, $0A
+    CALL DIVHLDE8
+    LD A, E
+    ADD A, $30
+    EXX
+    DEC HL
+    LD (HL), A
+    DJNZ .vtos1
+    LD B, $04
+    .vtos3
+    LD A, (HL)
+    CP $30
+    JR NZ, .vtos2
+    LD (HL), $20
+    INC HL
+    DJNZ .vtos3
+    .vtos2
+    RET
+
+CALL:
+  inside_name: RCALL
+  calls:
+    - GETREG
+  code: |
+    PUSH IY
+    LD DE,.call1
+    PUSH DE
+    PUSH HL
+    LD A,(___AF+1)
+    LD BC,(___BC)
+    LD DE,(___DE)
+    LD HL,(___HL)
+    LD IX,(___IX)
+    LD IY,(___IY)
+    RET
+    .call1
+    PUSH HL
+    CALL GETREG
+    LD HL,0006
+    ADD HL,SP
+    POP HL
+    POP IY
+    RET
+
+GETREG:
+  code: |
+    PUSH HL
+    LD (_IY), IY
+    LD (_IX), IX
+    LD (_HL), HL
+    LD (_DE), DE
+    LD (_BC), BC
+    PUSH AF
+    POP HL
+    LD (_AF), HL
+    LD HL, 0000
+    JR NC, .getreg1
+    INC HL
+    .getreg1
+    LD (_CARRY), HL
+    LD HL, 0000
+    JR NZ, .getreg2
+    INC HL
+    .getreg2
+    LD (_ZERO), HL
+    LD HL, 0004
+    ADD HL, SP
+    LD (_SP), HL
+    POP HL
+    RET
+
+SASC:
+  code: |
+    AND	$0F
+    ADD	A,'0'
+    CP	3AH
+    CCF
+    RET	NC
+    ADD	A,'A'-$3A
+    RET
+
+MEMCPY:
+  code: |
+    ; hl = dst, de = source, bc = size
+    ex de,hl
+    ldir
+    ret
+
+MEMSET:
+  code: |
+    ; hl = addr, de = value, bc = count
+    push bc
+    push de
+
+    ld e,l
+    ld d,h
+    inc de
+
+    ; value to (addr)
+    pop bc
+    ld (hl),c
+
+    ; pop count
+    pop bc
+    dec bc
+
+    ldir
+    ret
+
+STRLEN:
+  code: |
+    PUSH BC
+    LD B, 0
+    .COUNT_LOOP
+    LD A, (HL)
+    OR A
+    JR Z,.END_OF_STRING
+    INC HL
+    INC B
+    JR .COUNT_LOOP
+    .END_OF_STRING
+    LD L,B
+    LD H,0
+    POP BC
+    RET
+
+MIN:
+  code: |
+    ; HL = value 1
+    ; DE = value 2
+    ld a,h
+    cp d
+    jr c,.HL_is_Smaller
+    jr nz,.DE_is_Smaller
+    ; 上位バイトが等しい場合、下位バイトを比較
+    ld a,l        ; HL の下位バイトを A にロード
+    cp e          ; DE の下位バイトと比較
+    jr c,.HL_is_Smaller ; キャリーがセットされていれば HL < DE
+    jr .DE_is_Smaller   ; HL > DE（キャリーなし）
+    .HL_is_Smaller
+    ; HL はそのまま小さい
+    ret           ; そのまま戻る
+    .DE_is_Smaller:
+    ; 入れ替える
+    ex de,hl
+    ret
+
+MAX:
+  code: |
+    ld a,h        ; HL の上位バイトを A にロード
+    cp d          ; DE の上位バイトと比較
+    jr c,.DE_is_Greater ; キャリーがセットされていれば HL < DE
+    jr nz,.HL_is_Greater ; キャリーがなく、上位バイトが等しくない場合 HL > DE
+    ; 上位バイトが等しい場合、下位バイトを比較
+    ld a,l        ; HL の下位バイトを A にロード
+    cp e          ; DE の下位バイトと比較
+    jr c,.DE_is_Greater ; キャリーがセットされていれば HL < DE
+    jr .HL_is_Greater   ; HL > DE（キャリーなし）
+    .HL_is_Greater
+    ; HL はそのまま大きい
+    ret           ; そのまま戻る
+    .DE_is_Greater
+    ; 入れ替える
+    ex de,hl
+    ret
+

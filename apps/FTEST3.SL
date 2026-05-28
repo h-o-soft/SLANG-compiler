@@ -1,0 +1,20 @@
+VAR FLOAT FA, FLOAT FB;
+
+MAIN()
+{
+	FA=1.234;
+	FB=3.456;
+	FA = FA * FB;
+	PRINT(FL$(FA),/);
+	FA = 5.678;
+	FB = FFUNC(FA);
+	PRINT(FL$(FB),/);
+}
+
+FFUNC:FLOAT(FLOAT X)
+{
+	X=X*0.5;
+	RETURN X;
+}
+
+

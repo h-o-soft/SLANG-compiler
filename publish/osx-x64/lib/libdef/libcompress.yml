@@ -1,0 +1,16 @@
+
+LZE_DECODE:
+  lib_name: lze
+  extlib: compress/dlze_small.asm:LZE_DECODE
+
+LZEE_DECODE:
+  lib_name: lzee
+  extlib: compress/dlzee_small.asm:LZEE_DECODE
+
+LZEEE_DECODE:
+  lib_name: lzeee
+  extlib: compress/lzeee_fast.asm:LZEEE_DECODE
+
+ZX0_DECODE:
+  lib_name: zx0
+  extlib: compress/dzx0_standard.asm:ZX0_DECODE

@@ -1,0 +1,15 @@
+
+
+
+
+VAR VERCODE;
+
+// S-OSの機種コードを表示する
+MAIN()
+BEGIN
+  // #VER
+  VERCODE = CALL(1FF7H);
+  PRINT(HEX4$(VERCODE));
+
+  INPUT();
+END;

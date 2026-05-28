@@ -1,0 +1,57 @@
+
+PSG_BASE:
+  lib_name: PSGLIB
+  extlib: psg/psgdriverx1.asm:PSG_COMMON
+  works:
+    CTC3BACKUP: 2
+
+PSG_INIT:
+  calls:
+    - PSG_BASE
+    - PSG_PROC
+  lib_name: PSGLIB
+  extlib: psg/psgdriverx1.asm:PSG_INIT
+
+PSG_PLAY:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psg/psgdriverx1.asm:PSG_PLAY
+
+PSG_SFX:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psg/psgdriverx1.asm:PSG_SFX
+
+PSG_STOP:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psg/psgdriverx1.asm:PSG_STOP
+
+PSG_PAUSE:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psg/psgdriverx1.asm:PSG_PAUSE
+
+PSG_RESUME:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psg/psgdriverx1.asm:PSG_RESUME
+
+PSG_PROC:
+  calls:
+    - PSG_BASE
+  lib_name: PSGLIB
+  extlib: psg/psgdriverx1.asm:PSG_PROC
+
+PSG_END:
+  calls:
+    - PSG_BASE
+    - PSG_STOP
+  lib_name: PSGLIB
+  extlib: psg/psgdriverx1.asm:PSG_END
+

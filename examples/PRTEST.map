@@ -1,0 +1,102 @@
+sections
+0880 - 0d1b : DATA, code
+0d1b - 0d1f : DATA, data
+0d1f - 0e28 : BSS, bss
+0e28 - 9000 : HEAP, heap
+9000 - 9ff6 : STACK, stack
+00f7 - 00f7 : ZEROPAGE, zeropage
+0801 - 0853 : DATA, startup
+9ffe - a000 : SSTACK, sstack
+9ffe - 9ffe : SSTACK, utoa@stack
+9ffe - 9ffe : SSTACK, putpch@stack
+9ffe - 9ffe : SSTACK, putch@stack
+9ffe - 9ffe : SSTACK, put_str@stack
+9ffe - 9ffe : SSTACK, slang_print_int@stack
+9ffe - 9ffe : SSTACK, slang_println@stack
+9ffe - 9ffe : SSTACK, slang_print_str@stack
+9ffe - 9ffe : SSTACK, itoa@stack
+9ff6 - 9ffe : SSTACK, slang_print_deci@stack
+9ffe - 9ffe : SSTACK, slang_print_str_n@stack
+9ffe - 9ffe : SSTACK, slang_print_spc@stack
+9ffe - 9ffe : SSTACK, gotoxy@stack
+9ffe - 9ffe : SSTACK, convch@stack
+9ffe - 9ffe : SSTACK, getch@stack
+9ffe - 9ffe : SSTACK, slang_readline@stack
+9ffe - 9ffe : SSTACK, slang_getlin@stack
+9ffe - 9ffe : SSTACK, slang_getl@stack
+9ff6 - 9ff6 : SSTACK, F_MAIN@stack
+9ff6 - 9ff6 : SSTACK, main@stack
+
+regions
+00f7 - 00ff : 0000, 0000, zeropage
+0801 - 0880 : 0853, 0052, startup
+0880 - 9000 : 0d1f, 05a8, main
+
+objects
+00f7 - 00f7 : ZeroEnd, END:zeropage
+00f7 - 00f7 : ZeroStart, START:zeropage
+0801 - 0853 : startup, NATIVE_CODE:startup
+0880 - 088a : main, NATIVE_CODE:code
+088a - 094e : F_MAIN, NATIVE_CODE:code
+094e - 096c : slang_print_int, NATIVE_CODE:code
+096c - 09c7 : utoa, NATIVE_CODE:code
+09c7 - 09ee : put_str, NATIVE_CODE:code
+09ee - 0a51 : putpch, NATIVE_CODE:code
+0a51 - 0a61 : *, DATA:code
+0a61 - 0aa8 : slang_print_deci, NATIVE_CODE:code
+0aa8 - 0b2e : itoa, NATIVE_CODE:code
+0b2e - 0b30 : *, DATA:code
+0b30 - 0b32 : *, DATA:code
+0b32 - 0b53 : slang_print_str_n, NATIVE_CODE:code
+0b53 - 0b6a : slang_print_spc, NATIVE_CODE:code
+0b6a - 0b6c : *, DATA:code
+0b6c - 0b7f : slang_getl, NATIVE_CODE:code
+0b7f - 0b9a : slang_getlin, NATIVE_CODE:code
+0b9a - 0c48 : slang_readline, NATIVE_CODE:code
+0c48 - 0c51 : gotoxy, NATIVE_CODE:code
+0c51 - 0c5d : getch, NATIVE_CODE:code
+0c5d - 0c8f : convch, NATIVE_CODE:code
+0c8f - 0c96 : *, DATA:code
+0c96 - 0d1b : divmod, NATIVE_CODE:code
+0d1b - 0d1c : spentry, DATA:data
+0d1c - 0d1e : V_I, DATA:data
+0d1e - 0d1f : giocharmap, DATA:data
+0d1f - 0d27 : slang_num_buf, DATA:bss
+0d1f - 0d1f : BSSStart, START:bss
+0d27 - 0e28 : V_BUF, DATA:bss
+0e28 - 0e28 : BSSEnd, END:bss
+9ff6 - 9ffe : tmp, BSS:slang_print_deci@stack
+9ff6 - 9ff6 : StackEnd, END:stack
+9ffe - a000 : sstack, STACK:sstack
+
+objects by size
+0d27 (0101) : V_BUF, DATA:bss
+088a (00c4) : F_MAIN, NATIVE_CODE:code
+0b9a (00ae) : slang_readline, NATIVE_CODE:code
+0aa8 (0086) : itoa, NATIVE_CODE:code
+0c96 (0085) : divmod, NATIVE_CODE:code
+09ee (0063) : putpch, NATIVE_CODE:code
+096c (005b) : utoa, NATIVE_CODE:code
+0801 (0052) : startup, NATIVE_CODE:startup
+0a61 (0047) : slang_print_deci, NATIVE_CODE:code
+0c5d (0032) : convch, NATIVE_CODE:code
+09c7 (0027) : put_str, NATIVE_CODE:code
+0b32 (0021) : slang_print_str_n, NATIVE_CODE:code
+094e (001e) : slang_print_int, NATIVE_CODE:code
+0b7f (001b) : slang_getlin, NATIVE_CODE:code
+0b53 (0017) : slang_print_spc, NATIVE_CODE:code
+0b6c (0013) : slang_getl, NATIVE_CODE:code
+0c51 (000c) : getch, NATIVE_CODE:code
+0880 (000a) : main, NATIVE_CODE:code
+0c48 (0009) : gotoxy, NATIVE_CODE:code
+0d1f (0008) : slang_num_buf, DATA:bss
+9ff6 (0008) : tmp, BSS:slang_print_deci@stack
+0d1c (0002) : V_I, DATA:data
+9ffe (0002) : sstack, STACK:sstack
+0d1b (0001) : spentry, DATA:data
+0d1e (0001) : giocharmap, DATA:data
+00f7 (0000) : ZeroEnd, END:zeropage
+00f7 (0000) : ZeroStart, START:zeropage
+0d1f (0000) : BSSStart, START:bss
+0e28 (0000) : BSSEnd, END:bss
+9ff6 (0000) : StackEnd, END:stack

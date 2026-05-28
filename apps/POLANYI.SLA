@@ -1,0 +1,1525 @@
+//
+//  P  O  L  A  N  Y  I
+//
+
+offset $9000-$3000;
+org    $3000;
+work   $8000;
+
+const stringdata = $7000,
+
+      difficulty = 340;
+
+array byte tenkeycode[9] = ["\n246813795"],
+
+      word string[]:stringdata+2,
+      byte kuribuf[2][76],
+      byte area[4][4],
+      byte wholemap[4][4],
+      word allfield[24][127],
+      byte enemyx[2][9], byte enemyy[2][8],
+      word enemye[2][8],
+      byte linepos[16][1],
+      byte gun1line[16][1],
+      byte gun2line[16][1],
+      byte missileline[16][1],
+      byte spearline[16][1];
+
+var   kanji:stringdata,
+      kurix, kuriy,
+      byte field[][15],
+      process,
+      flags,
+      energy,
+      missiles,
+      polanyifx, polanyify,
+      polanyix, polanyiy,
+      shadowx, shadowy;
+
+
+main()
+  begin
+    makescreen();
+    initvar();
+    opening();
+    loop [
+      field = allfield+(polanyify*5+polanyifx)*256;
+      field[polanyiy][polanyix] = 2;
+      showwholemap();
+      showfield();
+      eventa();
+      if (wholemap[polanyify][polanyifx] != $fe) [
+        if (fight()) [
+          survey();
+          eventb();
+          navigate();
+        ]
+      ] else [
+        navigate();
+      ]
+    ]
+  end;
+
+
+makescreen()
+  var i, j;
+
+  begin
+    width(kanji ? 80:40);
+    print("\c");
+    loc(0,0);
+    prints(29);
+    dhline(8);
+    loc(21,3);
+    prints(30);
+    dhline(10);
+    loc(21,17);
+    prints(31);
+    dhline(4);
+    printspc();
+    prints(32);
+    dhline(3);
+    loc(0,19);
+    dhline(40);
+    loc(20,1);
+    vline(2);
+    print("\d");
+    vline(13);
+    print("\d");
+    vline(1);
+    loc(31,18);
+    vline(1);
+    loc(2,1);
+    hline(16);
+    loc(2,18);
+    hline(16);
+    loc(1,2);
+    vline(16);
+    loc(18,2);
+    vline(16);
+    loc(24,1);
+    prints(33);
+    i = 9;
+    repeat [
+      loc(24,5+i);
+      j = 5;
+      repeat [
+        if (i and 1) [
+          prints(23);
+          prints(27);
+        ] else [
+          hline(2);
+          printspc();
+        ]
+      ] until (--j == 0);
+    ] until (--i == 0);
+    loc(24,5);
+    hline(14);
+    loc(24,15);
+    hline(14);
+    loc(23,6);
+    vline(9);
+    loc(38,6);
+    vline(9);
+  end;
+
+
+initvar()
+  array byte addc[9] = [0,1,4,6,8,9,12,13,14,19];
+
+  var   i, j, k, l, m, n;
+
+  begin
+    i = wholemap-1;
+    j = area-1;
+    k = 25;
+    repeat [
+      mem[++i] = $ff;
+      mem[++j] = 1;
+    ] until (--k == 0);
+    if ((i = rnd(6)) < 3) [
+      area[j = 0][i = i+1] = 3;
+      area[j][++i] = 3;
+      area[++j][i] = 3;
+      area[j][--i] = 3;
+    ] else [
+      area[j = 0][i = i-3] = 3;
+      area[j][++i] = 3;
+      area[j][++i] = 3;
+      area[++j][--i] = 3;
+    ]
+    i = 9;
+    j = 4;
+    repeat [
+      k = 5;
+      repeat [
+        if (area[j][--k] == 3) [
+          l = k-1;
+          m = j;
+          n = 4;
+          repeat [
+            if ((l <= 4) and (m <= 4)) [
+              if (area[m][l] == 1) [
+                area[m][l] = 2;
+                i--;
+              ]
+            ]
+            if (n == 3) [
+              m = m-2;
+            ] else [
+              l++;
+              m++;
+            ]
+          ] until (--n == 0);
+        ]
+      ] until (k == 0);
+    ] until (j-- == 0);
+    j = addc-1;
+    while (i) [
+      if (mem[area+mem[++j]] == 1) [
+        mem[area+mem[j]] = 2;
+        i--;
+      ]
+    ]
+    area[3][0] = area[4][0] = area[4][1] = 0;
+    if (rnd(2)) [
+      i = 2;
+      repeat [
+        k = 4-i;
+        j = k-1;
+        repeat [
+          m = area[i][j];
+          area[i][j] = area[l = 4-j][k];
+          area[l][k] = m;
+        ] until (j-- == 0);
+      ] until (i-- == 0);
+    ]
+    i = allfield-1;
+    j = 256*25;
+    repeat [
+      mem[++i] = 0;
+    ] until (--j == 0);
+    i = 24;
+    repeat [
+      field = allfield+i*256;
+      if (i == 20) [
+        field[rnd(7)+1][rnd(7)+8] = 5;
+      ] else [
+        case (mem[area+i]) [
+          0:[
+            putunit(1,1,5);
+          ]
+          1:[
+            putunit(0,1,3);
+            putunit(1,2,4);
+            putunit(1,1,5);
+          ]
+          2:[
+            putunit(4,1,3);
+            putunit(1,1,4);
+            putunit(2,1,5);
+          ]
+          others:[
+            putunit(7,2,3);
+            putunit(0,1,4);
+            putunit(1,0,5);
+          ]
+        ]
+      ]
+      putunit(4,4,1);
+    ] until (i-- == 0);
+    wholemap[4][0] = process = flags = polanyifx = polanyix = 0;
+    energy = 217;
+    missiles = 2;
+    polanyify = 4;
+    polanyiy = 15;
+  end;
+
+
+putunit(b,a,uno)
+  var n, x, y;
+
+  begin
+    n = b+rnd(a+1)+1;
+    while (--n) [
+      repeat [
+        x = rnd(14)+1;
+        y = rnd(14)+1;
+      ] until (field[y][x] == 0);
+      field[y][x] = uno;
+    ]
+  end;
+
+
+opening()
+  begin
+    printenergy();
+    printmissiles();
+    clearkuri();
+    beep();
+    printkuri(36);
+    wait(100);
+    printkuri(37);
+    kuriwork(5);
+    printkuri(38);
+    wait(20);
+    printkuriret(39);
+  end;
+
+
+showfield()
+  var i, j;
+
+  begin
+    i = 16;
+    repeat [
+      loc(2,18-i);
+      j = 16;
+      repeat [
+        case (rnd(3)) [
+          0     : printspc();
+          1     : prints(25);
+          others: prints(26);
+        ]
+      ] until (--j == 0);
+      wait(1);
+      j = 16;
+      repeat [
+        printpart(--j,16-i);
+      ] until (j == 0);
+    ] until (--i == 0);
+  end;
+
+
+fight()
+  begin
+    setenemydata();
+    loop [
+      printkuri(40);
+      shadowx = polanyix;
+      shadowy = polanyiy;
+      loop [
+        case (move()) [
+          0: exit;
+          2: return(false);
+        ]
+      ]
+      enemyattack();
+      if (chkwin())  return(true);
+      printkuri(42);
+      loop [
+        shadowx = polanyix;
+        shadowy = polanyiy;
+        case (move()) [
+          0:[
+            enemyattack();
+            if (chkwin())  return(true);
+          ]
+          1:[
+            beep();
+            if (bit(flags,4)) [
+              printkuri(41);
+              wait(10);
+              beep();
+              enemymove();
+              commandattack();
+            ] else [
+              commandattack();
+              enemymove();
+            ]
+            attack();
+            if (chkwin())  return(true);
+            else           exit;
+          ]
+          others: return(false);
+        ]
+      ]
+    ]
+  end;
+
+
+setenemydata()
+  array byte n[2];
+
+  var   i, type;
+
+  begin
+    n[0] = n[1] = n[2] = 0;
+    i = 256;
+    repeat [
+      if ((type = mem[field+(--i)]-3) < 128) [
+        enemyx[type][n[type]] = i and $f;
+        enemyy[type][n[type]] = i/$10;
+        enemye[type][n[type]++] = (3-type)*225;
+      ]
+    ] until (i == 0);
+    enemyx[0][n[0]] = enemyx[1][n[1]] = enemyx[2][n[2]] = 0;
+  end;
+
+
+enemyattack()
+  var type, i;
+
+  begin
+    type = 2;
+    repeat [
+      i = -1;
+      while (enemyx[type][++i]) [
+        if ((type != 2) or (enemye[2][i] > 200)) [
+          if ((process < 6) or (rnd(5) == 0)) [
+            line(enemyx[type][i],enemyy[type][i],shadowx,shadowy,0);
+            if (chkfriend())  shootgun(linepos);
+          ] else [
+            line(enemyx[type][i],enemyy[type][i],shadowx,shadowy,2);
+            if (chkfriend()) [
+              if (shootspear(linepos))  eventd();
+            ]
+          ]
+        ]
+      ]
+    ] until (type-- == 0);
+  end;
+
+
+chkfriend()
+  var i;
+
+  begin
+    i = -1;
+    while (linepos[++i][0] != 255) [
+      if (field[linepos[i][1]][linepos[i][0]] >= 3)  return(false);
+    ]
+  end(true);
+
+
+enemymove()
+  var x, y, i;
+
+  begin
+    i = -1;
+    while (x = enemyx[0][++i]) [
+      y = enemyy[0][i];
+      if (rnd(2))  x = x-1+rnd(2)*2;
+      else         y = y-1+rnd(2)*2;
+      if ((x-1 < 14) and (y-1 < 14)) [
+        if (field[y][x] == 0) [
+          field[enemyy[0][i]][enemyx[0][i]] = 0;
+          field[y][x] = 3;
+          enemyx[0][i] = x;
+          enemyy[0][i] = y;
+        ]
+      ]
+    ]
+    y = 14;
+    repeat [
+      x = 14;
+      repeat [
+        printpart(x,y);
+      ] until (--x == 0);
+    ] until (--y == 0);
+  end;
+
+
+commandattack()
+  begin
+    printkuri(44);
+    printkuri(43);
+    inputline(0);
+    trnsline(gun1line);
+    printkuri(45);
+    printkuri(43);
+    inputline(0);
+    trnsline(gun2line);
+    if (missiles) [
+      printkuri(46);
+      printkuri(43);
+      inputline(1);
+      trnsline(missileline);
+    ] else [
+      missileline[0][0] = 255;
+    ]
+    if (bit(flags,3)) [
+      printkuri(47);
+      printkuri(43);
+      inputline(2);
+      trnsline(spearline);
+    ] else [
+      spearline[0][0] = 255;
+    ]
+  end;
+
+
+inputline(mode)
+  var   x, y, t, k;
+
+  begin
+    x = polanyix;
+    y = polanyiy;
+    linepos[0][0] = 255;
+    t = 1;
+    loop [
+      if ((k = tenkey()) == 1)  exit;
+      if (k) [
+        lineoff();
+        printpart(x,y);
+        case (k) [
+          2: y++;
+          3: x--;
+          4: x++;
+          5: y--;
+          6:[x--; y++;]
+          7:[x++; y++;]
+          8:[x--; y--;]
+          9:[x++; y--;]
+        ]
+        if (x == -1)  x = 0;
+        ef (x == 16)  x = 15;
+        if (y == -1)  y = 0;
+        ef (y == 16)  y = 15;
+        line(polanyix,polanyiy,x,y,mode);
+        t = 1;
+      ]
+      case (--t) [
+        0:[
+          lineon();
+          loc(2+x,2+y);
+          prints(17);
+          t = 800;
+        ]
+        400:[
+          lineoff();
+          printpart(x,y);
+        ]
+      ]
+    ]
+    lineoff();
+    printpart(x,y);
+    beep();
+  end;
+
+
+lineon()
+  var i;
+
+  begin
+    i = -1;
+    while (linepos[++i][0] != 255) [
+      loc(linepos[i][0]+2,linepos[i][1]+2);
+      prints(16);
+    ]
+  end;
+
+
+lineoff()
+  var i;
+
+  begin
+    i = -1;
+    while (linepos[++i][0] != 255) [
+      printpart(linepos[i][0],linepos[i][1]);
+    ]
+  end;
+
+
+trnsline(b)
+  var lp;
+
+  begin
+    b = b-2;
+    lp = linepos-2;
+    while (((memw[b = b+2] = memw[lp = lp+2]) and $ff) != 255) []
+  end;
+
+
+attack()
+  begin
+    printkuri(48);
+    if (shootgun(gun1line))  reduceenergy(30);
+    if (shootgun(gun2line))  reduceenergy(30);
+    if (shootmissile(missileline)) [
+      missiles--;
+      printmissiles();
+    ]
+    if (shootspear(spearline))  reduceenergy(100);
+  end;
+
+
+chkwin()
+  var type;
+
+  begin
+    type = 3;
+    repeat [
+      if (enemyx[--type][0])  return(false);
+    ] until (type == 0);
+  end(true);
+
+
+line(sx,sy,ex,ey,mode)
+  var dx, dy, atr, dist,
+      i, j, k, l, m;
+
+  begin
+    atr = 0;
+    if ((dx = ex-sx) > 127) [
+      atr = atr or 1;
+      dx = -dx;
+    ]
+    if ((dy = ey-sy) > 127) [
+      atr = atr or 2;
+      dy = -dy;
+    ]
+    if ((dx or dy) == 0) [
+      linepos[0][0] = 255;
+      return;
+    ]
+    if (dy > dx) [
+      atr = atr or 4;
+      i = dx;
+      dx = dy;
+      dy = i;
+    ]
+    case (mode) [
+      0     : dist = 3;
+      1     : dist = 7;
+      others: dist = 5;
+    ]
+    if (distance(dx,dy) < dist) [
+      linepos[0][0] = 255;
+      return;
+    ]
+    i = dx;
+    dx = dx*2;
+    dy = dy*2;
+    j = k = 0;
+    loop [
+      if ((i = i-dy) > 127) [
+        i = i+dx;
+        j++;
+      ]
+      if (distance(k+1,j) < dist)  exit;
+      if (atr and 4) [
+        l = j;
+        m = k+1;
+      ] else [
+        l = k+1;
+        m = j;
+      ]
+      if (atr and 1)  l = -l;
+      if (atr and 2)  m = -m;
+      l = l+sx;
+      m = m+sy;
+      if (l > 15)  exit;
+      if (m > 15)  exit;
+      linepos[k][0] = l;
+      linepos[k++][1] = m;
+    ]
+    linepos[k][0] = 255;
+    if (mode != 2) [
+      i = -1;
+      while (linepos[++i][0] != 255) [
+        if (field[linepos[i][1]][linepos[i][0]] == 1) [
+          linepos[++i][0] = 255;
+          exit;
+        ]
+      ]
+    ]
+    if (mode) [
+      i = -1;
+      while (linepos[++i][0] != 255) [
+        if ((linepos[i][0] == ex) and (linepos[i][1] == ey)) [
+          linepos[++i][0] = 255;
+          exit;
+        ]
+      ]
+    ] else [
+      linepos[i][1] = sy*16+sx;
+    ]
+  end;
+
+
+distance(x,y)
+  var l, l2;
+
+  begin
+    l2 = x*x+y*y;
+    l = 1;
+    repeat [
+      if (l2 <= l*(l+1))  exit;
+    ] until (++l == 15);
+  end(15-l);
+
+
+shootgun(byte lp[][1])
+  var hit, x, y, i, j, k;
+
+  begin
+    if (lp[0][0] == 255)  return(false);
+    i = 0;
+    hit = false;
+    repeat [
+      if (field[lp[i][1]][lp[i][0]]) [
+        hit = true;
+        i++;
+        exit;
+      ]
+    ] until (lp[++i][0] == 255);
+    j = 4;
+    repeat [
+      k = 0;
+      repeat [
+        loc(lp[k][0]+2,lp[k][1]+2);
+        prints(18);
+        wait(2);
+        printpart(lp[k][0],lp[k][1]);
+      ] until (++k == i);
+    ] until (--j == 0);
+    if (hit) [
+      wait(10);
+      x = lp[--i][0];
+      y = lp[i][1];
+      j = 10;
+      repeat [
+        loc(x+2,y+2);
+        prints(21);
+        wait(2);
+        printpart(x,y);
+        wait(2);
+      ] until (--j == 0);
+      while (lp[++i][0] != 255) []
+      if ((j = x-((i = lp[i][1]) and $f)) > 127)  j = -j;
+      if ((k = y-i/$10) > 127)  k = -k;
+      damage(x,y,(distance(j,k)-2)*25);
+    ]
+  end(true);
+
+
+shootmissile(byte lp[][1])
+  var i, j, k, l, m, n;
+
+  begin
+    if (lp[0][0] == 255)  return(false);
+    i = 0;
+    while ((field[lp[i][1]][lp[i][0]] == 0) and (lp[i+1][0] != 255)) [
+      loc(lp[i][0]+2,lp[i][1]+2);
+      prints(19);
+      prints(28);
+      wait(8);
+      printspc();
+      i++;
+    ]
+    j = lp[i][0];
+    k = lp[i][1];
+    loc(j+2,k+2);
+    prints(21);
+    wait(15);
+    l = 10;
+    repeat [
+      m = k+2;
+      repeat [
+        n = j+2;
+        repeat [
+          if (((n-1) or (m-1)) <= 15) [
+            loc(n+1,m+1);
+            prints(21);
+          ]
+        ] until (n-- == j);
+      ] until (m-- == k);
+      wait(2);
+      m = k+2;
+      repeat [
+        n = j+2;
+        repeat [
+          if (((n-1) or (m-1)) <= 15)  printpart(n-1,m-1);
+        ] until (n-- == j);
+      ] until (m-- == k);
+      wait(2);
+    ] until (--l == 0);
+    l = 2;
+    repeat [
+      m = 3;
+      repeat [
+        if ((l and --m) == 1)  damage(j,k,400);
+        ef (((j+m-1) or (k+l-1)) <= 15)  damage(j+m-1,k+l-1,200);
+      ] until (m == 0);
+    ] until (l-- == 0);
+  end(true);
+
+
+shootspear(byte lp[][1])
+  var i, j;
+
+  begin
+    if (lp[0][0] == 255)  return(false);
+    i = 0;
+    repeat [
+      loc(lp[i][0]+2,lp[i][1]+2);
+      prints(20);
+      wait(3);
+    ] until (lp[++i][0] == 255);
+    i = 10;
+    repeat [
+      j = 0;
+      repeat [
+        if (field[lp[j][1]][lp[j][0]]) [
+          loc(lp[j][0]+2,lp[j][1]+2);
+          prints(21);
+        ]
+      ] until (lp[++j][0] == 255);
+      wait(2);
+      j = 0;
+      repeat [
+        if (field[lp[j][1]][lp[j][0]])  printpart(lp[j][0],lp[j][1]);
+      ] until (lp[++j][0] == 255);
+      wait(2);
+    ] until (--i == 0);
+    i = 0;
+    repeat [
+      damage(lp[i][0],lp[i][1],500);
+    ] until (lp[++i][0] == 255);
+    while (j--) [
+      printpart(lp[j][0],lp[j][1]);
+      wait(3);
+    ]
+  end(true);
+
+
+damage(x,y,t)
+  var type, d, i;
+
+  begin
+    d = t*11/10-rnd(t/5);
+    case (type = field[y][x]) [
+      2:[
+        beep();
+        printkuri(49);
+        printkuridec(d);
+        printkuri(50);
+        reduceenergy(d);
+      ]
+      3 to 5:[
+        type = type-3;
+        i = 0;
+        while ((enemyx[type][i] != x) or (enemyy[type][i] != y))  i++;
+        if (enemye[type][i] > d)  enemye[type][i] = enemye[type][i]-d;
+        else                      eraseenemy(x,y,type);
+      ]
+    ]
+  end;
+
+
+reduceenergy(e)
+  begin
+    if (energy > e)  energy = energy-e;
+    else             energy = 0;
+    printenergy();
+    if (energy == 0)  gameover();
+  end;
+
+
+survey()
+  var  x, y, n, i;
+
+  begin
+    n = 0;
+    x = polanyifx-1;
+    y = polanyify;
+    i = 4;
+    repeat [
+      if ((x <= 4) and (y <= 4)) [
+        if (wholemap[y][x] == $ff) [
+          surveyfield(x,y);
+          n++;
+        ]
+      ]
+      if (i == 3) [
+        y = y-2;
+      ] else [
+        x++;
+        y++;
+      ]
+    ] until (--i == 0);
+    if (n) [
+      printkuri(51);
+      kuriwork(n+1);
+      printkuri(52);
+      wait(60);
+      showwholemap();
+    ]
+  end;
+
+
+navigate()
+  begin
+    printkuri(53);
+    while (move() != 2) []
+  end;
+
+
+move()
+  var x, y, fx, fy, t;
+
+  begin
+    t = 1;
+    loop loop [
+      case (--t) [
+        0:[
+          printpart(polanyix,polanyiy);
+          t = 800;
+        ]
+        400:[
+          loc(polanyix+2,polanyiy+2);
+          printspc();
+        ]
+      ]
+      x = polanyix;
+      y = polanyiy;
+      case (tenkey()) [
+        1:[
+          printpart(polanyix,polanyiy);
+          return(1);
+        ]
+        10:[
+          printpart(polanyix,polanyiy);
+          return(0);
+        ]
+        2     : y++;
+        3     : x--;
+        4     : x++;
+        5     : y--;
+        others: exit;
+      ]
+      printpart(polanyix,polanyiy);
+      t = 1;
+      fx = polanyifx;
+      fy = polanyify;
+      case (x) [
+        -1:[
+          fx--;
+          x = 15;
+        ]
+        16:[
+          fx++;
+          x = 0;
+        ]
+        others:[
+          case (y) [
+            -1:[
+              fy--;
+              y = 15;
+            ]
+            16:[
+              fy++;
+              y = 0;
+            ]
+            others:[
+              case (field[y][x]) [
+                0:[
+                  field[polanyiy][polanyix] = 0;
+                  field[y][x] = 2;
+                  printpart(polanyix,polanyiy);
+                  printpart(x,y);
+                  polanyix = x;
+                  polanyiy = y;
+                  return(0);
+                ]
+                5:[
+                  if (bit(flags,5)) [
+                    beep();
+                    printkuri(54);
+                    exit;
+                  ] else [
+                    plunder(x,y);
+                    return(0);
+                  ]
+                ]
+                others: exit;
+              ]
+            ]
+          ]
+        ]
+      ]
+      if ((fx > 4) or (fy > 4)) [
+        beep();
+        printkuri(55);
+        exit;
+      ]
+      if (wholemap[fy][fx] == $ff) [
+        beep();
+        printkuri(56);
+        exit;
+      ]
+      exit(2);
+    ]
+    field[polanyiy][polanyix] = 0;
+    surveyfield(polanyifx,polanyify);
+    polanyifx = fx;
+    polanyify = fy;
+    polanyix = x;
+    polanyiy = y;
+  end(2);
+
+
+plunder(x,y)
+  var i;
+
+  begin
+    beep();
+    printkuri(57);
+    kuriwork(4);
+    printkuri(58);
+    wait(20);
+    printkuri(59);
+    energy = energy+(i = difficulty*11/10-rnd(difficulty/5));
+    printkuridec(i);
+    printkuri(60);
+    missiles = missiles+(i = 1+rnd(3));
+    printkuridec(i);
+    printkuriret(61);
+    printenergy();
+    printmissiles();
+    eventc();
+    printkuri(62);
+    loc(2+x,2+y);
+    i = 10;
+    repeat [
+      prints(21);
+      prints(28);
+      wait(2);
+      prints(15);
+      prints(28);
+      wait(2);
+    ] until (--i == 0);
+    eraseenemy(x,y,2);
+  end;
+
+
+eventa()
+  begin
+    clearkuri();
+    case (process) [
+      0:[
+        beep();
+        printcont(65,2);
+        process++;
+      ]
+      1:[
+        beep();
+        printcont(67,5);
+        process++;
+      ]
+      4:[
+        beep();
+        printcont(67,2);
+        printcont(72,3);
+        printkuriret(71);
+        process++;
+        if (area[polanyify][polanyifx] == 2)  process++;
+      ]
+      5:[
+        if (area[polanyify][polanyifx] == 2)  process++;
+      ]
+      8:[
+        if (area[polanyify][polanyifx] == 3) [
+          beep();
+          printcont(67,2);
+          printcont(75,3);
+          printkuriret(71);
+          process++;
+        ]
+      ]
+    ]
+    clearkuri();
+  end;
+
+
+eventb()
+  var i, j, k;
+
+  begin
+    clearkuri();
+      case (process) [
+        2:[
+          if (bit(flags,0)) [
+            beep();
+            printcont(78,6);
+          ]
+          process++;
+        ]
+        3:[
+          if (area[polanyify][polanyifx] == 1) [
+            if (bit(flags,0)) [
+              beep();
+              printcont(78,2);
+              printcont(84,4);
+              flags = flags or $2;
+            ]
+            process++;
+          ]
+        ]
+        6,7:[
+          if (area[polanyify][polanyifx] >= 2)  process++;
+        ]
+        9:[
+          i = 0;
+          j = wholemap-1;
+          k = 25;
+          repeat [
+            if (mem[++j] == $fe)  i++;
+          ] until (--k == 0);
+          if (i == 24) [
+            beep();
+            beep();
+            beep();
+            printkuriret(93);
+            printcont(67,2);
+            printcont(94,3);
+            gameend();
+          ]
+          if (i >= 21) [
+            if ((flags and $30) == $10) [
+              beep();
+              printkuriret(78);
+              printcont(88,5);
+              flags = flags or $20;
+            ]
+          ]
+        ]
+      ]
+    clearkuri();
+  end;
+
+
+eventc()
+  var i, j, k;
+
+  begin
+    if (bit(flags,0) == false) [
+      beep();
+      printcont(97,2);
+      flags = flags or $1;
+      return;
+    ]
+    if (process >= 8) [
+      if (area[polanyify][polanyifx] >= 2) [
+        if (bit(flags,3) == false) [
+          beep();
+          if (bit(flags,1))  printkuriret(99);
+          else               printcont(100,2);
+          printkuriret(102);
+          printkuri(103);
+          kuriwork(3);
+          printkuriret(104);
+          flags = flags or $8;
+          return;
+        ]
+      ]
+    ]
+    if (area[polanyify][polanyifx] == 2) [
+      i = 0;
+      j = 25;
+      repeat [
+        if (mem[area+(--j)] == 2) [
+          if (mem[wholemap+j] == $fe)  i++;
+        ]
+      ] until (j == 0);
+      if (i >= 6) [
+        if (bit(flags,4) == false) [
+          beep();
+          printkuriret(105);
+          printkuri(106);
+          kuriwork(4);
+          printcont(107,2);
+          flags = flags or $10;
+        ]
+      ]
+    ]
+  end;
+
+
+eventd()
+  begin
+    if (bit(flags,2) == false) [
+      beep();
+      if (bit(flags,1))  printkuriret(109);
+      else               printkuriret(110);
+      printkuriret(111);
+      flags = flags or $4;
+    ]
+  end;
+
+
+gameover()
+  var x, y, i;
+
+  begin
+    beep();
+    beep();
+    printkuri(63);
+    wait(100);
+    printkuri(64);
+    i = 3;
+    repeat [
+      wait(10);
+      beep();
+    ] until (--i == 0);
+    i = 1500;
+    repeat [
+      if (((x = rnd(40)) != 39) or ((y = rnd(24)) != 23)) [
+        loc(x,y);
+        prints(21);
+      ]
+    ] until (--i == 0);
+    wait(100);
+    gameend();
+  end;
+
+
+gameend()
+  var i;
+
+  begin
+    i = 3;
+    repeat [
+      loc(15+i,12);
+      printspc();
+      hline(7-i-i);
+      printspc();
+      wait(5);
+    ] until (--i == 0);
+    i = 2;
+    repeat [
+      loc(16,9+i);
+      printspc();
+      hline(5);
+      printspc();
+      loc(16,10+i);
+      prints(27);
+      hspc(5);
+      prints(27);
+      loc(16,15-i);
+      printspc();
+      hline(5);
+      printspc();
+      loc(16,14-i);
+      prints(27);
+      hspc(5);
+      prints(27);
+      wait(5);
+    ] until (--i == 0);
+    wait(60);
+    loc(18,12);
+    prints(34);
+    loop  tenkey();
+  end;
+
+
+surveyfield(x,y)
+  var f, a, b, c, i;
+
+  begin
+    f = allfield+(y*5+x)*256-1;
+    a = b = c = 0;
+    i = 256;
+    repeat [
+      case (mem[++f]) [
+        3: a++;
+        4: b++;
+        5: c++;
+      ]
+    ] until (--i == 0);
+    if (a+b+c)  i = a*$10+b;
+    else        i = $fe;
+    wholemap[y][x] = i;
+  end;
+
+
+showwholemap()
+  var i, j, k;
+
+  begin
+    i = 4;
+    repeat [
+      j = 5;
+      repeat [
+        loc(24+(--j)*3,6+i*2);
+        if ((j == polanyifx) and (i == polanyify)) [
+          prints(22);
+        ] else [
+          case (k = wholemap[i][j]) [
+            $ff: ;
+            $fe: prints(24);
+            others: [
+              prints(k/$10);
+              prints(k and $f);
+            ]
+          ]
+        ]
+      ] until (j == 0);
+    ] until (i-- == 0);
+  end;
+
+
+eraseenemy(x,y,type)
+  var i;
+
+  begin
+    i = 0;
+    while ((x != enemyx[type][i]) or (y != enemyy[type][i]))  i++;
+    while (enemyx[type][i] = enemyx[type][i+1]) [
+      enemyy[type][i] = enemyy[type][i+1];
+      enemye[type][i] = enemye[type][i+1];
+      i++;
+    ]
+    field[y][x] = 0;
+    printpart(x,y);
+    beep();
+  end;
+
+
+printpart(x,y)
+  begin
+    loc(2+x,2+y);
+    prints(field[y][x]+10);
+  end;
+
+
+printenergy()
+  begin
+    loc(25,18);
+    printdec(energy);
+  end;
+
+
+printmissiles()
+  begin
+    loc(34,18);
+    printdec(missiles);
+  end;
+
+
+printdec(n)
+  array byte b[5];
+
+  var   bp, chr;
+
+  begin
+    vtos(n,b);
+    bp = b-1;
+    loop [
+      case (chr = mem[++bp]) [
+        0     : exit;
+        ' '   : printspc();
+        others: prints(chr-'0');
+      ]
+    ]
+  end;
+
+
+kuriwork(t)
+  begin
+    repeat [
+      wait(40);
+      printkuri(35);
+    ] until (--t == 0);
+    wait(40);
+  end;
+
+
+printkuridec(n)
+  array byte b[5];
+
+  var   bp, chr;
+
+  begin
+    vtos(n,b);
+    bp = b-1;
+    loop [
+      case (chr = mem[++bp]) [
+        0     : exit;
+        ' '   : ;
+        others: printkuri(chr-'0');
+      ]
+    ]
+  end;
+
+
+printcont(no,n)
+  begin
+    repeat [
+      printkuriret(no++);
+    ] until (--n == 0);
+  end;
+
+
+printkuriret(no)
+  begin
+    printkuri(no);
+    returnkey();
+  end;
+
+
+clearkuri()
+  var s, i, j;
+
+  begin
+    i = 4;
+    repeat [
+      loc(1,19+i);
+      hspc(38);
+    ] until (--i == 0);
+    kurix = kuriy = 0;
+    s = 38;
+    if (kanji)  s = s+s;
+    i = 3;
+    repeat [
+      j = s;
+      kuribuf[--i][j] = 0;
+      repeat [
+        kuribuf[i][--j] = ' ';
+      ] until (j == 0);
+    ] until (i == 0);
+  end;
+
+
+printkuri(no)
+  var ptr, chr, i, j;
+
+  begin
+    locate(kurix+1+kanji,kuriy+20);
+    ptr = string[no];
+    while (chr = mem[ptr++]) [
+      if (chr == '\n') [
+        if (kurix) [
+          kurix = 0;
+          if (kuriy == 3) [
+            loc(1,23);
+            hspc(38);
+            i = 3;
+            repeat [
+              loc(1,20+(--i));
+              print(msx$(&kuribuf[i][0]));
+            ] until (i == 0);
+            i = 154;
+            j = kuribuf;
+            repeat [
+              mem[j] = mem[j+77];
+              j++;
+            ] until (--i == 0);
+            i = 0;
+            while (kuribuf[2][i]) [
+              kuribuf[2][i++] = ' ';
+            ]
+          ] else [
+            kuriy++;
+          ]
+          loc(1,kuriy+20);
+        ]
+      ] else [
+        print(str$(chr,1));
+        if (kuriy)  kuribuf[kuriy-1][kurix] = chr;
+        kurix++;
+      ]
+    ]
+  end;
+
+
+loc(x,y)
+  begin
+    locate((kanji ? x*2:x),y);
+  end;
+
+
+dhline(l)
+  begin
+    repeat [
+      prints(25);
+    ] until (--l == 0);
+  end;
+
+
+hline(l)
+  begin
+    repeat [
+      prints(26);
+    ] until (--l == 0);
+  end;
+
+
+hspc(l)
+  begin
+    repeat [
+      printspc();
+    ] until (--l == 0);
+  end;
+
+
+vline(l)
+  begin
+    repeat [
+      prints(27);
+      print("\d");
+      prints(28);
+    ] until (--l == 0);
+  end;
+
+
+printspc()
+  begin
+    prints(10);
+  end;
+
+
+prints(no)
+  begin
+    print(msx$(string[no]));
+  end;
+
+
+tenkey()
+  var f = true, key, i;
+
+  begin
+    if ((key = inkey(0)) == $1b)  system();
+    if (f) [
+      if (key == 0)  f = false;
+    ] else [
+      i = 10;
+      repeat [
+        if (key == tenkeycode[--i]) [
+          f = true;
+          return(i+1);
+        ]
+      ] until (i == 0);
+    ]
+  end(0);
+
+
+returnkey()
+  var key;
+
+  begin
+    repeat [
+      key = inkey(1);
+      if (key == $1b)  system();
+    ] until (key == tenkeycode[0]);
+  end;
+
+
+wait(t)
+  var i;
+
+  begin
+    repeat [
+      i = 1100;
+      repeat [
+      ] until (--i == 0);
+    ] until (--t == 0);
+  end;
+
+
+system()
+  begin
+    print("\c");
+    stop();
+  end;

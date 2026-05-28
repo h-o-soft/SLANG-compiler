@@ -1,0 +1,70 @@
+sections
+0880 - 0adf : DATA, code
+0adf - 0ae1 : DATA, data
+0ae1 - 0aef : BSS, bss
+0af0 - 9000 : HEAP, heap
+9000 - a000 : STACK, stack
+00f7 - 00f7 : ZEROPAGE, zeropage
+0801 - 0853 : DATA, startup
+a000 - a000 : SSTACK, sstack
+a000 - a000 : SSTACK, putpch@stack
+a000 - a000 : SSTACK, putch@stack
+a000 - a000 : SSTACK, put_str@stack
+a000 - a000 : SSTACK, slang_print_str@stack
+a000 - a000 : SSTACK, slang_println@stack
+a000 - a000 : SSTACK, puts@stack
+a000 - a000 : SSTACK, itoa@stack
+a000 - a000 : SSTACK, disp_hello@stack
+a000 - a000 : SSTACK, disp_helloptr@stack
+a000 - a000 : SSTACK, F_MAIN@stack
+a000 - a000 : SSTACK, main@stack
+
+regions
+00f7 - 00ff : 0000, 0000, zeropage
+0801 - 0880 : 0853, 0052, startup
+0880 - 9000 : 0ae1, 026f, main
+
+objects
+00f7 - 00f7 : ZeroStart, START:zeropage
+00f7 - 00f7 : ZeroEnd, END:zeropage
+0801 - 0853 : startup, NATIVE_CODE:startup
+0880 - 088a : main, NATIVE_CODE:code
+088a - 08bd : F_MAIN, NATIVE_CODE:code
+08bd - 08e4 : put_str, NATIVE_CODE:code
+08e4 - 0947 : putpch, NATIVE_CODE:code
+0947 - 0953 : *, DATA:code
+0953 - 0982 : disp_hello, NATIVE_CODE:code
+0982 - 0995 : puts, NATIVE_CODE:code
+0995 - 099c : *, DATA:code
+099c - 0a22 : itoa, NATIVE_CODE:code
+0a22 - 0a54 : disp_helloptr, NATIVE_CODE:code
+0a54 - 0a5a : *, DATA:code
+0a5a - 0adf : divmod, NATIVE_CODE:code
+0adf - 0ae0 : spentry, DATA:data
+0ae0 - 0ae1 : giocharmap, DATA:data
+0ae1 - 0ae9 : mybuf, DATA:bss
+0ae1 - 0ae1 : BSSStart, START:bss
+0ae9 - 0aef : V_AR, DATA:bss
+0aef - 0aef : BSSEnd, END:bss
+a000 - a000 : StackEnd, END:stack
+
+objects by size
+099c (0086) : itoa, NATIVE_CODE:code
+0a5a (0085) : divmod, NATIVE_CODE:code
+08e4 (0063) : putpch, NATIVE_CODE:code
+0801 (0052) : startup, NATIVE_CODE:startup
+088a (0033) : F_MAIN, NATIVE_CODE:code
+0a22 (0032) : disp_helloptr, NATIVE_CODE:code
+0953 (002f) : disp_hello, NATIVE_CODE:code
+08bd (0027) : put_str, NATIVE_CODE:code
+0982 (0013) : puts, NATIVE_CODE:code
+0880 (000a) : main, NATIVE_CODE:code
+0ae1 (0008) : mybuf, DATA:bss
+0ae9 (0006) : V_AR, DATA:bss
+0adf (0001) : spentry, DATA:data
+0ae0 (0001) : giocharmap, DATA:data
+00f7 (0000) : ZeroStart, START:zeropage
+00f7 (0000) : ZeroEnd, END:zeropage
+0ae1 (0000) : BSSStart, START:bss
+0aef (0000) : BSSEnd, END:bss
+a000 (0000) : StackEnd, END:stack

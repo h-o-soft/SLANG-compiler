@@ -1,0 +1,672 @@
+/*                              */
+/* GRAPHIC LIBRARY V2.1         */
+/*                              */
+/*  Programed by Junichi Kuroki */
+/*                              */
+
+/*
+
+         Â¶ÜÅ² ¶Ý½³ Ê 6Â É Ã²½³ ÃÞ SELECT ÃÞ·Ï½¡
+
+                1...ON 0...OFF
+
+                _SINCOS: ¾²½³ »Ý¶¸ ¶Ý½³
+                _FLOAT:  SOROBAN Êß¯¹°¼Þ
+                _PLOTSW: ÌßÛ¯À ¶Ý¹²
+                _THREE:  MAGIC É 3D ¶Ý¹²
+
+                _GHIN:   16ËÞ¯Ä ÌÞÝ É ³Á ¶² 8ËÞ¯Ä
+
+                [FEDC BA89 7654 3210]
+                 |||| |||| |||| |||+--- : @SPLINE
+                 |||| |||| |||| ||+---- : @CPOLY
+                 |||| |||| |||| |+----- : @ROAD
+                 |||| |||| |||| +------ : @CFULL
+                 |||| |||| ||||
+                 |||| |||| |||+-------- : --------
+                 |||| |||| ||+--------- : @TLINE
+                 |||| |||| |+---------- : @CLINE
+                 |||| |||| +----------- : @CBOX
+                 |||| ||||
+                 |||| |||+------------- : --------
+                 |||| ||+-------------- : --------
+                 |||| |+--------------- : --------
+                 |||| +---------------- : --------
+                 ||||
+                 |||+------------------ : --------
+                 ||+------------------- : --------
+                 |+-------------------- : --------
+                 +--------------------- : --------
+
+*/
+
+CONST   _HEAD=6,_PITCH=7,_BANK=8;
+
+#IF (_FLOAT==1)
+
+#INCLUDE SOROBAN.LIB
+
+#ENDIF
+
+ARRAY   BYTE           _CO[31],
+        WORD    _ZAHYO[255][2]:MAGIC^OBJ_BUF,   // $C6B6,
+        BYTE     _WIRE[255][1]:MAGIC^LINE_BUF,  // $CCB6,
+        BYTE          _LPCT[1]:MAGIC^PCT,       // $C6B4,
+        WORD           _PAL[7],
+        WORD     _DISP[255][1]:MAGIC^DISP_BUF,  //$C2B4,
+        WORD           _PAR[8]:MAGIC^CX,        // $C203,
+        WORD        _BUFPAR[8];
+
+#IF (_TILESW==1)
+
+ARRAY   WORD      _ROADY[7][1]=[
+                 %00,%31,%32,%53,%54,%68,%69,%78,
+                 %79,%86,%87,%91,%92,%96,%97,%99],
+        WORD        _GRDTN[15]=[
+                 $00,$00,$00,$00,$88,$00,$00,$00,
+                 $88,$00,$22,$00,$88,$55,$22,$55,
+                 $AA,$55,$AA,$55,$77,$AA,$DD,$AA,
+                 $77,$FF,$DD,$FF,$FF,$FF,$FF,$FF];
+
+#ENDIF
+
+#IF (_SINCOS==1)
+
+ARRAY   WORD    _STABLE[89]=[
+                 $00,$00, $3B,$02, $77,$04, $B2,$06, $ED,$08, $27,$0B,
+                 $61,$0D, $99,$0F, $D0,$11, $05,$14, $39,$16, $6C,$18,
+                 $9C,$1A, $CA,$1C, $F7,$1E, $20,$21, $47,$23, $6C,$25,
+                 $8D,$27, $AB,$29, $C6,$2B, $DE,$2D, $F2,$2F, $03,$32,
+                 $0F,$34, $17,$36, $1C,$38, $1B,$3A, $17,$3C, $0D,$3E,
+                 $FF,$3F, $EC,$41, $D3,$43, $B6,$45, $93,$47, $6A,$49,
+                 $3B,$4B, $07,$4D, $CD,$4E, $8C,$50, $46,$52, $F9,$53,
+                 $A5,$55, $4B,$57, $E9,$58, $81,$5A, $12,$5C, $9C,$5D,
+                 $1E,$5F, $99,$60, $0C,$62, $78,$63, $DC,$64, $38,$66,
+                 $8D,$67, $D9,$68, $1D,$6A, $58,$6B, $8B,$6C, $B6,$6D,
+                 $D9,$6E, $F2,$6F, $03,$71, $0B,$72, $0A,$73, $00,$74,
+                 $EE,$74, $D2,$75, $AD,$76, $7E,$77, $46,$78, $05,$79,
+                 $BB,$79, $67,$7A, $09,$7B, $A2,$7B, $31,$7C, $B7,$7C,
+                 $32,$7D, $A4,$7D, $0D,$7E, $6B,$7E, $C0,$7E, $0A,$7F,
+                 $4B,$7F, $82,$7F, $AF,$7F, $D2,$7F, $EB,$7F, $FA,$7F],
+
+        WORD    _ATNTBL[63]=[
+                 %00, %01, %02, %03, %04, %04, %05, %06,
+                 %07, %08, %09, %10, %11, %11, %12, %13,
+                 %14, %15, %16, %17, %17, %18, %19, %20,
+                 %21, %21, %22, %23, %24, %24, %25, %26,
+                 %27, %27, %28, %29, %29, %30, %31, %31,
+                 %32, %33, %33, %34, %35, %35, %36, %36,
+                 %37, %37, %38, %39, %39, %40, %40, %41,
+                 %41, %42, %42, %43, %43, %44, %44, %45];
+
+#ENDIF
+
+VAR     _TILE1=65535,_TILE2=65535,_MSCREEN=0,
+        _SPITCH=0,_SHEAD=0,_SBANK=0,_OFSX=0,_OFSY=0,_OFSZ=0,_BSWITCH,
+        _OBFAD,_WBFAD,_OBUFF,_WBUFF,_DEMODE=2,_KSTEP=15,_SBLUE=7,_SRED=4,
+        _SGREEN=4,_LX=30,_LY=10,_LZ=10,_WSEL,_GMASK=7;
+
+
+@LINE(X1,Y1,X2,Y2)
+  BEGIN
+    _CO[0]=0;
+    _CO[1]=2;
+    MEMW[&_CO+2 ]=X1;
+    MEMW[&_CO+4 ]=Y1;
+    MEMW[&_CO+6 ]=X2;
+    MEMW[&_CO+8 ]=Y2;
+    _CO[10]=15;
+    ^IX=&_CO;
+    CALLMAGIC();
+  END;
+
+#IF ((_GHIN AND 1)==1)
+
+@SPLINE(X1,Y1,X2,Y2,X3,Y3)
+  BEGIN
+    _CO[0]=1;
+    MEMW[&_CO+1 ]=X1;
+    MEMW[&_CO+3 ]=Y1;
+    MEMW[&_CO+5 ]=X2;
+    MEMW[&_CO+7 ]=Y2;
+    MEMW[&_CO+9 ]=X3;
+    MEMW[&_CO+11]=Y3;
+    _CO[13]=15;
+    ^IX=&_CO;
+    CALLMAGIC();
+  END;
+
+#ENDIF
+
+@BOX(X1,Y1,X2,Y2)
+  BEGIN
+    _CO[0]=2;
+    MEMW[&_CO+1 ]=X1;
+    MEMW[&_CO+3 ]=Y1;
+    MEMW[&_CO+5 ]=X2;
+    MEMW[&_CO+7 ]=Y2;
+    _CO[9]=15;
+    ^IX=&_CO;
+    CALLMAGIC();
+  END;
+
+#IF (_TILESW==1)
+
+@TRIANGLE(X1,Y1,X2,Y2,X3,Y3)
+  BEGIN
+    _CO[0]=3;
+    MEMW[&_CO+1 ]=_TILE1;
+    MEMW[&_CO+3 ]=_TILE2;
+    MEMW[&_CO+5 ]=X1;
+    MEMW[&_CO+7 ]=Y1;
+    MEMW[&_CO+9 ]=X2;
+    MEMW[&_CO+11]=Y2;
+    MEMW[&_CO+13]=X3;
+    MEMW[&_CO+15]=Y3;
+    _CO[17]=15;
+    ^IX=&_CO;
+    CALLMAGIC();
+  END;
+
+#ENDIF
+
+#IF (_TILESW==1)
+
+@FULL(X1,Y1,X2,Y2)
+  BEGIN
+    _CO[0]=4;
+    MEMW[&_CO+1 ]=_TILE1;
+    MEMW[&_CO+3 ]=_TILE2;
+    MEMW[&_CO+5 ]=X1;
+    MEMW[&_CO+7 ]=Y1;
+    MEMW[&_CO+9 ]=X2;
+    MEMW[&_CO+11]=Y2;
+    _CO[13]=15;
+    ^IX=&_CO;
+    CALLMAGIC();
+  END;
+
+#ENDIF
+
+#IF (_TILESW==1)
+
+@CIRCLE(X1,Y1,R1)
+  BEGIN
+    _CO[0]=5;
+    MEMW[&_CO+1 ]=_TILE1;
+    MEMW[&_CO+3 ]=_TILE2;
+    MEMW[&_CO+5 ]=X1;
+    MEMW[&_CO+7 ]=Y1;
+    MEMW[&_CO+9 ]=R1;
+    _CO[11]=15;
+    ^IX=&_CO;
+    CALLMAGIC();
+  END;
+
+#ENDIF
+
+@WINDOW(X1,Y1,X2,Y2)
+  BEGIN
+    _CO[0]=6;
+    MEMW[&_CO+1 ]=X1;
+    MEMW[&_CO+3 ]=Y1;
+    MEMW[&_CO+5 ]=X2;
+    MEMW[&_CO+7 ]=Y2;
+    _CO[9]=15;
+    ^IX=&_CO;
+    CALLMAGIC();
+  END;
+
+@MODE(MODE,PLANE)
+  BEGIN
+    _CO[0]=7;
+    _CO[1]=MODE;
+    _CO[2]=PLANE;
+    _CO[3]=15;
+    ^IX=&_CO;
+    CALLMAGIC();
+  END;
+
+@CLS()
+  BEGIN
+    _CO[0]=9;
+    _CO[1]=15;
+    ^IX=&_CO;
+    CALLMAGIC();
+  END;
+
+@PALET(A0,A1,A2,A3,A4,A5,A6,A7)
+  BEGIN
+    _CO[0]=10;  _PAL[0]=A0;
+    _CO[1]=A0;  _PAL[1]=A1;
+    _CO[2]=A1;  _PAL[2]=A2;
+    _CO[3]=A2;  _PAL[3]=A3;
+    _CO[4]=A3;  _PAL[4]=A4;
+    _CO[5]=A4;  _PAL[5]=A5;
+    _CO[6]=A5;  _PAL[6]=A6;
+    _CO[7]=A6;  _PAL[7]=A7;
+    _CO[8]=A7;
+    _CO[9]=15;
+    ^IX=&_CO;
+    CALLMAGIC();
+  END;
+
+@INIT()
+  BEGIN
+    @WINDOW(0,0,639,199);
+    @MODE(2,2); @CLS();
+    @MODE(2,1); @CLS();
+    @MODE(2,0); @CLS();
+
+#IF (_TILESW==1)
+
+    @GRAD(7);
+
+#ENDIF
+
+#IF (_THREE==1)
+
+    _WSEL=1;
+
+#ENDIF
+
+    _MSCREEN=0;
+    _BSWITCH=0; _DEMODE=2;
+    @PALET(0,1,2,3,4,5,6,7);
+    PRINT("\C");
+
+#IF (_FLOAT==1)
+
+    @SINGLE();
+
+#ENDIF
+
+  END;
+
+#IF (_THREE==1)
+
+@SETOD(POSIT,LENGTH)
+  VAR   I,K;
+  BEGIN
+    FOR I=0 TO LENGTH [
+      FOR K=0 TO 2 [
+        _ZAHYO[I][K]=MEMW[POSIT+I*6+K*2];
+      ]
+    ]
+    _LPCT[0]=LENGTH+1;
+  END;
+
+@SETWD(POSIT,LENGTH)
+  VAR   I,K;
+  BEGIN
+    FOR I=0 TO LENGTH [
+      FOR K=0 TO 1 [
+        _WIRE[I][K]=MEM[POSIT+I*2+K];
+      ]
+    ]
+    _LPCT[1]=LENGTH+1;
+  END;
+
+@MAGIC(COM)
+  BEGIN
+    _CO[0]=13+COM;
+    _CO[1]=15;
+    ^IX=&_CO;
+    CALLMAGIC();
+  END;
+
+#ENDIF
+
+@CRTKN(COLOR,GR,PRW)
+  VAR   A,B,C,D;
+  BEGIN
+    @MODE(_DEMODE,_MSCREEN);
+    IF (_MSCREEN==0) [A=0; B=COLOR; C=GR; D=COLOR;]
+    IF (_MSCREEN==1) [A=COLOR; B=0; C=COLOR; D=GR;]
+    _MSCREEN=(_MSCREEN XOR 1);
+    IF (PRW==0) [@PALET(0,A,B,A+B,GR,C,D,A+B);]
+    IF (PRW==1) [@PALET(0,A,B,A+B,GR,GR,GR,GR);]
+  END;
+
+#IF (_TILESW==1)
+
+@GRAD(GR)
+  VAR   I;
+  BEGIN
+    I=GR*2;
+    _TILE1=_GRDTN[I  ];
+    _TILE2=_GRDTN[I+1];
+  END;
+
+#ENDIF
+
+#IF (_TILESW==1) AND ((_GHIN AND 4)==4)
+
+@ROAD(AA)
+  VAR   I,J;
+  BEGIN
+    AA=AA AND 7;
+    @GRAD(7-AA);
+    I=_ROADY[AA][0]; J=_ROADY[AA][1];
+    @FULL(0,I,639,J);
+    @FULL(0,199-I,639,199-J);
+  END;
+
+#ENDIF
+
+@FLASH(C1,C2)
+  BEGIN
+    _CO[0]=10;
+    _CO[   1]=_PAL[0];
+    _CO[   2]=_PAL[1];
+    _CO[   3]=_PAL[2];
+    _CO[   4]=_PAL[3];
+    _CO[   5]=_PAL[4];
+    _CO[   6]=_PAL[5];
+    _CO[   7]=_PAL[6];
+    _CO[   8]=_PAL[7];
+    _CO[C1+1]=MEM[&C2];
+    _CO[9   ]=15;
+    _PAL[C1 ]=C2;
+    ^IX=&_CO;
+    CALLMAGIC();
+  END;
+
+#IF (_PLOTSW==1)
+
+@PLINIT()
+  BEGIN
+    PRMODE(2);
+    PRINT("H"); PRINT("\N");
+    PRINT("J1"); PRINT("\N");
+    PRMODE(0);
+  END;
+
+@PLINE(X1,Y1,X2,Y2)
+  BEGIN
+    PRMODE(2);
+    PRINT("M "); PRINT((X1-319)*5+2000); PRINT(","); PRINT(1000-(Y1-99)*10); PRINT("\N");
+    PRINT("D "); PRINT((X2-319)*5+2000); PRINT(","); PRINT(1000-(Y2-99)*10); PRINT("\N");
+    PRMODE(0);
+  END;
+
+@PLOT()
+  VAR   I,J,K;
+  BEGIN
+    @PLINIT();
+    FOR I=0 TO _LPCT[1]-1 [
+      J=_WIRE[I][0]; K=_WIRE[I][1];
+      @PLINE(_DISP[J][0],_DISP[J][1],_DISP[K][0],_DISP[K][1]);
+      ]
+  END;
+
+#ENDIF
+
+#IF (_THREE==1) AND ((_GHIN AND 32)==32)
+
+@TLINE(XS,YS,ZS,XE,YE,ZE)
+  VAR   I;
+  BEGIN
+    FOR I=0 TO 8 [_BUFPAR[I]=_PAR[I];]
+    MEMW[&_ZAHYO  ]=XS; MEMW[&_ZAHYO+2]=YS; MEMW[&_ZAHYO+4]=ZS;
+    MEMW[&_ZAHYO+6]=XE; MEMW[&_ZAHYO+8]=YE; MEMW[&_ZAHYO+10]=ZE;
+    _WIRE[0][0]=0; _WIRE[0][1]=1;
+    _LPCT[0]=2; _LPCT[1]=1;
+    _PAR[0]=_OFSX;      _PAR[1]=_OFSY;        _PAR[2]=_OFSZ;
+    _PAR[3]=0;          _PAR[4]=0;            _PAR[5]=0;
+    _PAR[_HEAD]=_SHEAD; _PAR[_PITCH]=_SPITCH; _PAR[_BANK]=_SBANK;
+    @MAGIC(0);          @MAGIC(1);
+    IF (_BSWITCH==1) [@FUKUGEN();]
+    FOR I=0 TO 8 [_PAR[I]=_BUFPAR[I];]
+  END;
+
+@FUKUGEN()
+  VAR   I;
+  BEGIN
+    @SETOD(_OBFAD,1);
+    @SETWD(_WBFAD,0);
+    _LPCT[0]=_OBUFF;
+    _LPCT[1]=_WBUFF;
+    IF (_BSWITCH==1) [FOR I=0 TO 8 [_PAR[I]=_BUFPAR[I];]]
+  END;
+
+#ENDIF
+
+#IF ((_GHIN AND 64)==64)
+
+@CLINE(X1,Y1,X2,Y2,C)
+  BEGIN
+    IF ((C AND 1)==1) [  @MODE(_DEMODE,0);   @LINE(X1,Y1,X2,Y2);  ]
+                ELSE  [  @MODE(2-_DEMODE,0); @LINE(X1,Y1,X2,Y2);  ]
+    IF ((C AND 2)==2) [  @MODE(_DEMODE,1);   @LINE(X1,Y1,X2,Y2);  ]
+                ELSE  [  @MODE(2-_DEMODE,1); @LINE(X1,Y1,X2,Y2);  ]
+    IF ((C AND 4)==4) [  @MODE(_DEMODE,2);   @LINE(X1,Y1,X2,Y2);  ]
+                ELSE  [  @MODE(2-_DEMODE,2); @LINE(X1,Y1,X2,Y2);  ]
+  END;
+
+#ENDIF
+
+#IF ((_GHIN AND 128)==128)
+
+@CBOX(X1,Y1,X2,Y2,C)
+  BEGIN
+    IF ((C AND 1)==1) [  @MODE(_DEMODE,0);   @BOX(X1,Y1,X2,Y2);  ]
+                ELSE  [  @MODE(2-_DEMODE,0); @BOX(X1,Y1,X2,Y2);  ]
+    IF ((C AND 2)==2) [  @MODE(_DEMODE,1);   @BOX(X1,Y1,X2,Y2);  ]
+                ELSE  [  @MODE(2-_DEMODE,1); @BOX(X1,Y1,X2,Y2);  ]
+    IF ((C AND 4)==4) [  @MODE(_DEMODE,2);   @BOX(X1,Y1,X2,Y2);  ]
+                ELSE  [  @MODE(2-_DEMODE,2); @BOX(X1,Y1,X2,Y2);  ]
+  END;
+
+#ENDIF
+
+#IF (_TILESW==1) AND ((_GHIN AND 8)==8)
+
+@CFULL(X1,Y1,X2,Y2,C1,C2,C3)
+  BEGIN
+    IF ((_GMASK AND 1)==1) [ @MODE(2,0); @GRAD(C1); @FULL(X1,Y1,X2,Y2); ]
+    IF ((_GMASK AND 2)==2) [ @MODE(2,1); @GRAD(C2); @FULL(X1,Y1,X2,Y2); ]
+    IF ((_GMASK AND 4)==4) [ @MODE(2,2); @GRAD(C3); @FULL(X1,Y1,X2,Y2); ]
+  END;
+
+#ENDIF
+
+#IF (_THREE==1) AND ((_GHIN AND 2)==2)
+
+@CPOLY( XV[], YV[] , ZV[] )
+    VAR I,NX,NY,NZ,PX0,PX1,PX2,PX3,PY0,PY1,PY2,PY3,LV;
+    ARRAY BYTE  JO[3][1]=[ 0,1, 1,2, 2,3, 3,0 ],
+                plx[4],ply[4],plz[4],lg[4],ax[4],ay[4],az[4],yg[4];
+    [
+        FOR I=0 TO 8 [_BUFPAR[I]=_PAR[I];]
+        _PAR[    0]= _OFSX; _PAR[     1]=  _OFSY; _PAR[    2]= _OFSZ;
+        _PAR[    3]=     0; _PAR[     4]=      0; _PAR[    5]=     0;
+        _PAR[_HEAD]=_SHEAD; _PAR[_PITCH]=_SPITCH; _PAR[_BANK]=_SBANK;
+        FOR I=0 TO 3
+        [
+            _ZAHYO[I][0]=XV[I];
+            _ZAHYO[I][1]=YV[I];
+            _ZAHYO[I][2]=ZV[I];
+        ]
+        _LPCT[0]=4;
+        @SETWD(&JO,3);
+        @MAGIC(0);
+        PX0=_DISP[0][0]; PX1=_DISP[1][0]; PX2=_DISP[2][0]; PX3=_DISP[3][0];
+        PY0=_DISP[0][1]; PY1=_DISP[1][1]; PY2=_DISP[2][1]; PY3=_DISP[3][1];
+        NZ=(PX1-PX0).*.(PY2-PY1)-(PY1-PY0).*.(PX2-PX1);
+        IF ((_WSEL AND 1)==1) @MAGIC(1);
+        IF ((_WSEL AND 2)==2) [ FOR I=0 TO 8 [_PAR[I]=_BUFPAR[I];] RETURN; ]
+        IF (NZ.<.-4) [ FOR I=0 TO 8 [_PAR[I]=_BUFPAR[I];] RETURN; ]
+        IF ((_WSEL AND 4)==4)
+        [ @MAGIC(1); FOR I=0 TO 8 [_PAR[I]=_BUFPAR[I];] RETURN; ]
+        NX=(YV[1]-YV[0]).*.(ZV[2]-ZV[1])-(ZV[1]-ZV[0]).*.(YV[2]-YV[1]);
+        NY=(ZV[1]-ZV[0]).*.(XV[2]-XV[1])-(XV[1]-XV[0]).*.(ZV[2]-ZV[1]);
+        NZ=(XV[1]-XV[0]).*.(YV[2]-YV[1])-(YV[1]-YV[0]).*.(XV[2]-XV[1]);
+
+#ENDIF
+
+#IF (_TILESW==1)  AND ((_GHIN AND 2)==2) AND (_FLOAT==1) AND (_THREE==1)
+
+        @CVITF(plx,_LX); @CVITF(ply,_LY); @CVITF(plz,_LZ); @CVITF(lg,_LX);
+        @MUL(lg,lg,lg); @MUL(ply,ply,ply); @MUL(plz,plz,plz);
+        @ADD(lg,lg,ply); @ADD(lg,lg,plz);
+        @SQR(lg,lg);
+        @CVITF(ply,_LY); @CVITF(plz,_LZ);
+        @DIV(plx,plx,lg); @DIV(ply,ply,lg); @DIV(plz,plz,lg);
+        @CVITF(ax,NX); @CVITF(ay,NY); @CVITF(az,NZ);
+        @CVITF(lg,0); @CVITF(yg,0);
+        @MUL(ax,ax,ax); @MUL(ay,ay,ay); @MUL(az,az,az);
+        @ADD(lg,lg,ax); @ADD(lg,lg,ay); @ADD(lg,lg,az);
+        @SQR(lg,lg);
+        @CVITF(ax,NX); @CVITF(ay,NY); @CVITF(az,NZ);
+        @MUL(ax,ax,plx); @MUL(ay,ay,ply); @MUL(az,az,plz);
+        @ADD(yg,yg,ax); @ADD(yg,yg,ay); @ADD(yg,yg,az);
+        @DIV(yg,yg,lg); @CVITF(lg,7);
+        @MUL(yg,yg,lg); LV=(@CVFTI(yg)+7)./.2;
+        IF (LV.<.0) LV=0;
+        IF ((_GMASK AND 1)==1)
+        [
+            @MODE(2,0); @GRAD(LV*_SBLUE/7);
+            @TRIANGLE(PX0,PY0,PX1,PY1,PX2,PY2);
+            @TRIANGLE(PX2,PY2,PX3,PY3,PX0,PY0);
+        ]
+        IF ((_GMASK AND 2)==2)
+        [
+            @MODE(2,1); @GRAD(LV*_SRED/7);
+            @TRIANGLE(PX0,PY0,PX1,PY1,PX2,PY2);
+            @TRIANGLE(PX2,PY2,PX3,PY3,PX0,PY0);
+        ]
+        IF ((_GMASK AND 4)==4)
+        [
+            @MODE(2,2); @GRAD(LV*_SGREEN/7);
+            @TRIANGLE(PX0,PY0,PX1,PY1,PX2,PY2);
+            @TRIANGLE(PX2,PY2,PX3,PY3,PX0,PY0);
+        ]
+
+#ENDIF
+
+#IF (_THREE==1) AND ((_GHIN AND 2)==2)
+
+        IF ((_WSEL AND 8)==8) @MAGIC(1);
+        FOR I=0 TO 8 [_PAR[I]=_BUFPAR[I];]
+    ]
+
+#ENDIF
+
+#IF (_THREE==1) AND (_SINCOS==1) AND ((_GHIN AND 2)==2)
+
+@KYU(MDX,MDY,MDZ,HNK)
+    VAR I,J,K,L;
+    ARRAY KYUX[3],KYUY[3],KYUZ[3];
+    [
+        I=0;
+        WHILE(I<180)
+        [
+            J=0;
+            K=@ISIN(I,HNK); L=@ISIN(I+_KSTEP,HNK);
+            KYUY[0]=@ICOS(I,HNK)+MDY;        KYUY[1]=KYUY[0];
+            KYUY[2]=@ICOS(I+_KSTEP,HNK)+MDY; KYUY[3]=KYUY[2];
+            WHILE(J<360)
+            [
+                KYUX[0]=MDX+@ISIN(J,K);
+                KYUX[1]=MDX+@ISIN(J+_KSTEP,K);
+                KYUX[2]=MDX+@ISIN(J+_KSTEP,L);
+                KYUX[3]=MDX+@ISIN(J,L);
+                KYUZ[0]=MDZ+@ICOS(J,K);
+                KYUZ[1]=MDZ+@ICOS(J+_KSTEP,K);
+                KYUZ[2]=MDZ+@ICOS(J+_KSTEP,L);
+                KYUZ[3]=MDZ+@ICOS(J,L);
+                @CPOLY(KYUX,KYUY,KYUZ);
+                J=J+_KSTEP;
+            ]
+            I=I+_KSTEP;
+        ]
+    ]
+
+#ENDIF
+
+#IF (_SINCOS==1)
+
+@ISIN(KAKU,HAN)
+  VAR   I,J;
+  BEGIN
+    WHILE(KAKU.<.0) KAKU=KAKU+360;
+    KAKU=KAKU MOD 360;
+    J=KAKU MOD 90;
+    CASE KAKU OF [
+          0 TO  89      I=_STABLE[J];
+         90 TO 179      I=_STABLE[89-J];
+        180 TO 269      I=-_STABLE[J];
+        270 TO 359      I=-_STABLE[89-J];
+        ]
+    I=(I./.(32767./.HAN));
+  END(I);
+
+@ICOS(KAKU,HAN)
+  BEGIN
+    KAKU=@ISIN(KAKU+90,HAN);
+  END(KAKU);
+
+@IATN(XX,YY)
+  VAR   X,Y,DATA;
+  BEGIN
+    X=ABS(XX); Y=ABS(YY);
+    IF (X>Y) DATA=   _ATNTBL[(Y*64)/X];
+    ELSE     DATA=90-_ATNTBL[(X*64)/Y];
+    IF (YY.<.0)
+    [
+      IF (XX.<.0) RETURN(180+DATA); ELSE RETURN(360-DATA);
+    ]
+    ELSE
+    [
+      IF (XX.<.0) RETURN(180-DATA); ELSE RETURN(DATA);
+    ]
+  END;
+
+#ENDIF
+
+#IF (_THREE==1) AND (_SINCOS==1) AND ((_GHIN AND 2)==2)
+
+@SCTL(I,J,POSY,SNP)
+    ARRAY       PX[3],PY[3],PZ[3];
+    VAR         K;
+    [
+        PX[3]=I-_KSTEP; PX[2]=PX[3]; PX[1]=I; PX[0]=PX[1];
+        PZ[3]=J; PZ[2]=J-_KSTEP; PZ[1]=PZ[2]; PZ[0]=PZ[3];
+        K=@ISIN(I,SNP);
+        PY[0]=@ISIN(J,K)+POSY;
+        PY[1]=@ISIN(J-_KSTEP,K)+POSY;
+        K=@ISIN(I-_KSTEP,SNP);
+        PY[3]=@ISIN(J,K)+POSY;
+        PY[2]=@ISIN(J-_KSTEP,K)+POSY;
+        @CPOLY(PX,PY,PZ);
+    ]
+
+@WAVE(XSIZE,ZSIZE,POSY,SNP)
+    VAR I,J;
+    [
+        I=-XSIZE;
+        WHILE(I.<._KSTEP)
+        [
+            J=ZSIZE;
+            WHILE(J.>.0)
+            [
+                @SCTL(I,J,POSY,SNP);
+                J=J-_KSTEP;
+            ]
+            I=I+_KSTEP;
+        ]
+        I=XSIZE;
+        WHILE(I.>.-_KSTEP)
+        [
+            J=ZSIZE;
+            WHILE(J.>.0)
+            [
+                @SCTL(I,J,POSY,SNP);
+                J=J-_KSTEP;
+            ]
+            I=I-_KSTEP;
+        ]
+    ]
+
+#ENDIF

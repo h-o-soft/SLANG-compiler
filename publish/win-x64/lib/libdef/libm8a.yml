@@ -1,0 +1,4 @@
+
+M8ALOAD:
+    lib_name: M8ALIB
+    extlib: m8a/m8a_decorder.asm:M8ALOAD

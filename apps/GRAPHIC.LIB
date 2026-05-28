@@ -1,0 +1,1155 @@
+/*                              */
+/* GRAPHIC LIBRARY V3.0         */
+/*                              */
+/*  Programed by Junichi Kuroki */
+/*                              */
+
+/*
+
+         ﾂｶﾜﾅｲ ｶﾝｽｳ ﾊ 6ﾂ ﾉ ﾃｲｽｳ ﾃﾞ SELECT ﾃﾞｷﾏｽ｡
+
+                ｶﾝｼﾞ ｶﾝﾉｲ (1993/07/21 [ADD])
+
+                _KPRINTF : 0...OFF  1...JACK WRITE  2...KPRINT2
+
+
+                1...ON 0...OFF
+
+                _SINCOS  : ｾｲｽｳ ｻﾝｶｸ ｶﾝｽｳ
+                _FLOAT   : SOROBAN ﾊﾟｯｹｰｼﾞ
+                _PLOTSW  : ﾌﾟﾛｯﾀ ｶﾝｹｲ
+                _THREE   : MAGIC ﾉ 3D ｶﾝｹｲ
+                _TILESW  : ﾀｲﾘﾝｸﾞﾊﾟﾀ-ﾝ ｶﾝｹｲ
+
+                _GHIN:   16ﾋﾞｯﾄ ﾌﾞﾝ ﾉ ｳﾁ ｶｲ 8ﾋﾞｯﾄ
+
+                [FEDC BA89 7654 3210]
+                 |||| |||| |||| |||+--- : @SPLINE
+                 |||| |||| |||| ||+---- : @CPOLY
+                 |||| |||| |||| |+----- : @ROAD
+                 |||| |||| |||| +------ : @CFULL
+                 |||| |||| ||||
+                 |||| |||| |||+-------- : --------
+                 |||| |||| ||+--------- : @TLINE
+                 |||| |||| |+---------- : @CLINE
+                 |||| |||| +----------- : @CBOX
+                 |||| ||||
+                 |||| |||+------------- : --------
+                 |||| ||+-------------- : --------
+                 |||| |+--------------- : --------
+                 |||| +---------------- : --------
+                 ||||
+                 |||+------------------ : --------
+                 ||+------------------- : --------
+                 |+-------------------- : --------
+                 +--------------------- : --------
+
+*/
+
+#IF (_KPRINTF == 1)       (* 1993 / 07 / 21  [ADD] *)
+
+CONST   _KPINIT = $AB00 , _KPRINT = $AB03 , _KMPRNT = $AB06 ,
+        _KSPRNT = $AB09 , _KLTNL  = $AB0C , _KPCLS  = $AB0F ,
+        _STSCRN = $AB12 , _SETWIN = $AB15 , _SETPAL = $AB18 ,
+        _STSIZE = $AB1B ,
+        _STPICH = $AB1E , _SETDIR = $AB21 , _SETLOC = $AB24 ;
+
+#ENDIF
+
+#IF (_KPRINTF == 2)       (* 1993 / 07 / 21  [ADD] *)
+
+CONST   _KPINIT = $A800 , _KPRINT = $A803 , _KMPRNT = $A806 ,
+        _KSPRNT = $A809 , _KLTNL  = $A80C , _KPCLS  = $A80F ,
+        _STSCRN = $A812 , _SETWIN = $A815 , _SETPAL = $A818 ,
+        _STSIZE = $A81B ,
+        _STPICH = $A81E , _SETDIR = $A821 , _SETLOC = $A824 ;
+
+#ENDIF
+
+
+CONST   _HEAD = 6      ,  _PITCH = 7    ,  _BANK = 8     ,
+        _@SPLINE = 1   ,  _@CPOLY = 2   ,  _@ROAD = 4    , (* 93/01/31 ADD *)
+        _@CFULL = 8    ,                   _@TLINE = 32  , (* 93/01/31 ADD *)
+        _@CBOX = 64;                                       (* 93/01/31 ADD *)
+
+#IF (_FLOAT==1)
+
+#INCLUDE SOROBAN.LIB
+
+#ENDIF
+
+ARRAY   BYTE           _CO[31],
+        WORD    _ZAHYO[255][2]:$C6B6,
+        BYTE     _WIRE[255][1]:$CCB6,
+        BYTE          _LPCT[1]:$C6B4,
+        WORD           _PAL[7],
+        WORD     _DISP[255][1]:$C2B4,
+        WORD           _PAR[8]:$C203,
+        WORD        _BUFPAR[8];
+
+#IF (_TILESW==1)
+
+
+//      _ROADY[][] is deleted.  1993 / 02 / 19
+
+
+ARRAY   WORD        _GRDTN[15]=[
+                 $00,$00,$00,$00,$88,$00,$00,$00,
+                 $88,$00,$22,$00,$88,$55,$22,$55,
+                 $AA,$55,$AA,$55,$77,$AA,$DD,$AA,
+                 $77,$FF,$DD,$FF,$FF,$FF,$FF,$FF],
+        WORD       _NGRDTN[65]=[                        (* 93/01/31 [ADD] *)
+                 $00,$00,$00,$00,$80,$00,$00,$00,
+                 $80,$00,$08,$00,$80,$04,$20,$00,
+                 $88,$00,$88,$00,$84,$10,$84,$00,
+                 $84,$10,$42,$08,$88,$22,$84,$10,
+                 $88,$22,$88,$22,$88,$44,$92,$24,
+                 $94,$22,$88,$52,$A4,$4A,$24,$4A,
+                 $92,$49,$94,$4A,$92,$49,$AA,$49,
+                 $A2,$55,$2A,$55,$AA,$49,$AA,$55,
+                 $AA,$55,$AA,$55,$AB,$55,$AA,$55,
+                 $BA,$55,$AB,$55,$AB,$75,$AE,$55,
+                 $BA,$57,$BA,$57,$BB,$A7,$BA,$57,
+                 $D6,$BB,$EE,$B5,$EE,$BB,$EE,$AB,
+                 $EE,$BB,$EE,$BB,$EF,$BB,$EE,$BB,
+                 $F7,$BD,$EF,$7B,$F7,$BD,$FF,$BD,
+                 $FF,$77,$FF,$77,$FF,$DF,$FB,$7F,
+                 $FF,$F7,$FF,$7F,$FF,$FF,$FF,$7F,
+                 $FF,$FF,$FF,$FF];
+
+#ENDIF
+
+#IF (_SINCOS==1)
+
+ARRAY   WORD    _STABLE[89]=[
+                 $00,$00, $3B,$02, $77,$04, $B2,$06, $ED,$08, $27,$0B,
+                 $61,$0D, $99,$0F, $D0,$11, $05,$14, $39,$16, $6C,$18,
+                 $9C,$1A, $CA,$1C, $F7,$1E, $20,$21, $47,$23, $6C,$25,
+                 $8D,$27, $AB,$29, $C6,$2B, $DE,$2D, $F2,$2F, $03,$32,
+                 $0F,$34, $17,$36, $1C,$38, $1B,$3A, $17,$3C, $0D,$3E,
+                 $FF,$3F, $EC,$41, $D3,$43, $B6,$45, $93,$47, $6A,$49,
+                 $3B,$4B, $07,$4D, $CD,$4E, $8C,$50, $46,$52, $F9,$53,
+                 $A5,$55, $4B,$57, $E9,$58, $81,$5A, $12,$5C, $9C,$5D,
+                 $1E,$5F, $99,$60, $0C,$62, $78,$63, $DC,$64, $38,$66,
+                 $8D,$67, $D9,$68, $1D,$6A, $58,$6B, $8B,$6C, $B6,$6D,
+                 $D9,$6E, $F2,$6F, $03,$71, $0B,$72, $0A,$73, $00,$74,
+                 $EE,$74, $D2,$75, $AD,$76, $7E,$77, $46,$78, $05,$79,
+                 $BB,$79, $67,$7A, $09,$7B, $A2,$7B, $31,$7C, $B7,$7C,
+                 $32,$7D, $A4,$7D, $0D,$7E, $6B,$7E, $C0,$7E, $0A,$7F,
+                 $4B,$7F, $82,$7F, $AF,$7F, $D2,$7F, $EB,$7F, $FA,$7F],
+
+        WORD    _ATNTBL[63]=[
+                 %00, %01, %02, %03, %04, %04, %05, %06,
+                 %07, %08, %09, %10, %11, %11, %12, %13,
+                 %14, %15, %16, %17, %17, %18, %19, %20,
+                 %21, %21, %22, %23, %24, %24, %25, %26,
+                 %27, %27, %28, %29, %29, %30, %31, %31,
+                 %32, %33, %33, %34, %35, %35, %36, %36,
+                 %37, %37, %38, %39, %39, %40, %40, %41,
+                 %41, %42, %42, %43, %43, %44, %44, %45];
+
+#ENDIF
+
+#IF (_KPRINTF == 1)
+
+ARRAY   WORD    _SETLOCD[04] = [ 0 , $CD , $24 , $AB , 0,0 , 0,0 , $C9 , 0 ];
+
+#ENDIF
+
+#IF (_KPRINTF == 2)
+
+ARRAY   WORD    _SETLOCD[04] = [ 0 , $CD , $24 , $A8 , 0,0 , 0,0 , $C9 , 0 ];
+
+#ENDIF
+
+VAR     _TILE1 = 65535 ,        _TILE2 = 65535 ,
+        _MSCREEN = 0 ,          _WSEL ,                 _GMASK = 7 ,
+        _SPITCH = 0 ,           _SHEAD = 0 ,            _SBANK=0 ,
+        _OFSX = 0 ,             _OFSY = 0 ,             _OFSZ = 0 ,
+        _BSWITCH ,              _DEMODE = 2 ,           _KSTEP = 15,
+        _OBFAD ,                _WBFAD ,
+        _OBUFF ,                _WBUFF ,
+        _LX = 30 ,              _LY = 10 ,              _LZ = 10 ,
+        _SBLUE = 32 ,           _SRED = 8 ,             _SGREEN = 8 ,
+        _POLADR ,               _POLMAX,        (* 1992 / 10 / 28  [ADD] *)
+        _ATRADR ,               _ATRMAX,        (* 1992 / 10 / 28  [ADD] *)
+        _PX0 , _PX1 , _PX2 , _PX3,              (* 1993 / 02 / 14  [ADD] *)
+        _PY0 , _PY1 , _PY2 , _PY3,              (* 1993 / 02 / 14  [ADD] *)
+        _RETX1 , _RETY1 , _RETX2 , _RETY2,      (* 1993 / 02 / 19  [ADD] *)
+        _SPEC  , _SPEC_LV  ,                    (* 1993 / 04 / 03  [ADD] *)
+        _KDEVICE ;                              (* 1993 / 07 / 22  [ADD] *)
+
+@LINE(X1,Y1,X2,Y2)
+[
+    _CO[ 0 ] = 0;
+    _CO[ 1 ] = 2;
+    MEMW[ &_CO+2 ] = X1;
+    MEMW[ &_CO+4 ] = Y1;
+    MEMW[ &_CO+6 ] = X2;
+    MEMW[ &_CO+8 ] = Y2;
+    _CO[ 10 ] = 15;
+    ^IX = &_CO;
+    CALL($B004);
+]
+
+
+
+
+#IF ((_GHIN AND 1) == 1)
+
+@SPLINE(X1,Y1,X2,Y2,X3,Y3)
+[
+    _CO[ 0 ] = 1;
+    MEMW[ &_CO+1 ] = X1;
+    MEMW[ &_CO+3 ] = Y1;
+    MEMW[ &_CO+5 ] = X2;
+    MEMW[ &_CO+7 ] = Y2;
+    MEMW[ &_CO+9 ] = X3;
+    MEMW[ &_CO+11] = Y3;
+    _CO[ 13 ] = 15;
+    ^IX = &_CO;
+    CALL($B004);
+]
+
+#ENDIF
+
+
+
+
+@BOX(X1,Y1,X2,Y2)
+[
+    _CO[ 0 ] = 2;
+    MEMW[ &_CO+1 ] = X1;
+    MEMW[ &_CO+3 ] = Y1;
+    MEMW[ &_CO+5 ] = X2;
+    MEMW[ &_CO+7 ] = Y2;
+    _CO[ 9 ] = 15;
+    ^IX = &_CO;
+    CALL($B004);
+]
+
+
+
+
+#IF (_TILESW == 1)
+
+@TRIANGLE(X1,Y1,X2,Y2,X3,Y3)
+[
+    _CO[ 0 ] = 3;
+    MEMW[ &_CO+1 ] = _TILE1;
+    MEMW[ &_CO+3 ] = _TILE2;
+    MEMW[ &_CO+5 ] = X1;
+    MEMW[ &_CO+7 ] = Y1;
+    MEMW[ &_CO+9 ] = X2;
+    MEMW[ &_CO+11] = Y2;
+    MEMW[ &_CO+13] = X3;
+    MEMW[ &_CO+15] = Y3;
+    _CO[ 17 ] = 15;
+    ^IX = &_CO;
+    CALL($B004);
+]
+
+#ENDIF
+
+
+
+
+#IF (_TILESW==1)
+
+@FULL(X1,Y1,X2,Y2)
+[
+    _CO[ 0 ] = 4;
+    MEMW[ &_CO+1 ] = _TILE1;
+    MEMW[ &_CO+3 ] = _TILE2;
+    MEMW[ &_CO+5 ] = X1;
+    MEMW[ &_CO+7 ] = Y1;
+    MEMW[ &_CO+9 ] = X2;
+    MEMW[ &_CO+11] = Y2;
+    _CO[ 13 ] = 15;
+    ^IX = &_CO;
+    CALL($B004);
+]
+
+#ENDIF
+
+
+
+
+#IF (_TILESW == 1)
+
+@CIRCLE(X1,Y1,R1)
+[
+    _CO[0] = 5;
+    MEMW[ &_CO+1 ] = _TILE1;
+    MEMW[ &_CO+3 ] = _TILE2;
+    MEMW[ &_CO+5 ] = X1;
+    MEMW[ &_CO+7 ] = Y1;
+    MEMW[ &_CO+9 ] = R1;
+    _CO[ 11 ] = 15;
+    ^IX = &_CO;
+    CALL($B004);
+]
+
+#ENDIF
+
+
+
+
+@WINDOW(X1,Y1,X2,Y2)
+[
+    _CO[0] = 6;
+    MEMW[ &_CO+1 ] = X1;
+    MEMW[ &_CO+3 ] = Y1;
+    MEMW[ &_CO+5 ] = X2;
+    MEMW[ &_CO+7 ] = Y2;
+    _CO[ 9 ] = 15;
+    ^IX = &_CO;
+    CALL($B004);
+]
+
+
+
+
+@MODE(MODE,PLANE)
+[
+    _CO[ 0 ] = 7;
+    _CO[ 1 ] = MODE;
+    _CO[ 2 ] = PLANE;
+    _CO[ 3 ] = 15;
+    ^IX = &_CO;
+    CALL($B004);
+]
+
+
+
+
+@CLS()
+[
+    _CO[ 0 ] = 9;
+    _CO[ 1 ] = 15;
+    ^IX = &_CO;
+    CALL($B004);
+]
+
+
+
+
+@PALET(A0,A1,A2,A3,A4,A5,A6,A7)
+[
+    _CO[ 0 ] = 10;  _PAL[ 0 ] = A0;
+    _CO[ 1 ] = A0;  _PAL[ 1 ] = A1;
+    _CO[ 2 ] = A1;  _PAL[ 2 ] = A2;
+    _CO[ 3 ] = A2;  _PAL[ 3 ] = A3;
+    _CO[ 4 ] = A3;  _PAL[ 4 ] = A4;
+    _CO[ 5 ] = A4;  _PAL[ 5 ] = A5;
+    _CO[ 6 ] = A5;  _PAL[ 6 ] = A6;
+    _CO[ 7 ] = A6;  _PAL[ 7 ] = A7;
+    _CO[ 8 ] = A7;
+    _CO[ 9 ] = 15;
+    ^IX = &_CO;
+    CALL($B004);
+]
+
+
+
+
+@INIT()
+
+#IF (_KPRINTF > 0)
+
+VAR     BDSK;
+
+#ENDIF
+
+[
+
+#IF (_KPRINTF > 0)                              (* 1993 / 07 / 21  [ADD] *)
+
+    CALL( $2024 );      (* CALL #RDVSW *)
+    BDSK = ^A;
+    ^A = _KDEVICE;
+    CALL( $2027 );      (* CALL #SDVSW *)
+    CALL( _KPINIT );
+    ^A = BDSK;
+    CALL( $2027 );      (* CALL #SDVSW *)
+
+#ENDIF
+
+    @WINDOW(0,0,639,199);
+    @MODE(2,2); @CLS();
+    @MODE(2,1); @CLS();
+    @MODE(2,0); @CLS();
+
+#IF (_TILESW == 1)
+
+    @GRAD(7);
+
+#ENDIF
+
+#IF (_THREE == 1)
+
+    _WSEL = 1;
+
+#ENDIF
+
+    _MSCREEN = 0;
+    _BSWITCH = 0;
+    _DEMODE  = 2;
+    @PALET(0,1,2,3,4,5,6,7);
+    PRINT("\C");
+
+#IF (_FLOAT == 1)
+
+    @single();
+
+#ENDIF
+
+]
+
+
+
+
+#IF (_THREE == 1)
+
+@SETOD(POSIT,LENGTH)
+VAR     I,K;
+[
+    FOR I = 0 TO LENGTH [
+      FOR K = 0 TO 2 [
+        _ZAHYO[ I ][ K ] = MEMW[ POSIT + I*6 + K*2 ];
+      ]
+    ]
+    _LPCT[ 0 ] = LENGTH + 1;
+]
+
+
+
+
+@SETWD(POSIT,LENGTH)
+VAR     I,K;
+[
+    FOR I = 0 TO LENGTH [
+      FOR K = 0 TO 1 [
+        _WIRE[ I ][ K ] = MEM[ POSIT + I*2 + K ];
+      ]
+    ]
+    _LPCT[1]=LENGTH+1;
+]
+
+
+
+
+@SETPD(POSIT,LENGTH)                    (* 1992 / 10 / 28  [ADD] *)
+[
+    _POLADR = POSIT;
+    _POLMAX = LENGTH;
+]
+
+
+
+
+@SETAD(POSIT,LENGTH)                    (* 1992 / 10 / 28  [ADD] *)
+[
+    _ATRADR = POSIT;
+    _ATRMAX = LENGTH;
+]
+
+
+
+#ENDIF
+
+
+
+@MAGIC(COM)
+[
+    _CO[ 0 ] = 13 + COM;
+    _CO[ 1 ] = 15;
+    ^IX = &_CO;
+    CALL($B004);
+]
+
+
+
+
+@POINT(GX,GY)                                   (* 1993 / 04 / 18  [ADD] *)
+[
+    _CO[ 0]          =  8;
+    MEMW[ &_CO + 1 ] = GX;
+    MEMW[ &_CO + 3 ] = GY;
+    _CO[ 5]          = 15;
+    ^IX = &_CO;
+    CALL($B004);
+    RETURN( MEM[ $C202 ] );
+]
+
+
+
+
+@CRTKN(COLOR,GR,PRW)
+VAR     A,B,C,D;
+[
+    @MODE(_DEMODE , _MSCREEN);
+    IF (_MSCREEN == 0) [
+        A = 0;
+        B = COLOR;
+        C = GR;
+        D = COLOR;
+    ]
+    IF (_MSCREEN==1) [
+        A = COLOR;
+        B = 0;
+        C = COLOR;
+        D = GR;
+    ]
+    _MSCREEN = (_MSCREEN XOR 1);
+    IF (PRW == 0) [ @PALET(0 , A , B , A+B , GR , C  , D  , A+B); ]
+    IF (PRW == 1) [ @PALET(0 , A , B , A+B , GR , GR , GR , GR ); ]
+]
+
+
+
+
+#IF (_TILESW == 1)
+
+@GRAD(GR)
+VAR     I;
+[
+    IF (GR>7) GR = 7;
+    I = GR*2;
+    _TILE1 = _GRDTN[ I   ];
+    _TILE2 = _GRDTN[ I+1 ];
+]
+
+
+
+
+@NGRAD(GR)                              (* 1993 / 01 / 31  [ADD] *)
+VAR     I;
+[
+    IF (GR>32) GR = 32;
+    I = GR*2;
+    _TILE1 = _NGRDTN[ I   ];
+    _TILE2 = _NGRDTN[ I+1 ];
+]
+
+
+#ENDIF
+
+
+
+
+#IF (_TILESW == 1) AND ((_GHIN AND 4) == 4) AND (_THREE == 1)
+
+@ROAD(AA)                                       (* 1993 / 02 / 19  [UPD] *)
+  VAR   I,J;
+[
+    AA = AA AND 7;
+    @GRAD(7-AA);
+    @GETTXY(
+        0 ,  150 ,  AA   * 330 ,
+        0 ,  150 , (AA+1)* 330
+    );
+    @FULL(0 , _DISP[0][1] , 639 , _DISP[1][1]);
+    @GETTXY(
+        0 , -150 ,  AA   * 330 ,
+        0 , -150 , (AA+1)* 330
+    );
+    @FULL(0 , _DISP[0][1] , 639 , _DISP[1][1]);
+]
+
+#ENDIF
+
+
+
+
+@FLASH(C1,C2)
+[
+    _CO[    0 ] =        10;
+    _CO[    1 ] = _PAL[   0 ];
+    _CO[    2 ] = _PAL[   1 ];
+    _CO[    3 ] = _PAL[   2 ];
+    _CO[    4 ] = _PAL[   3 ];
+    _CO[    5 ] = _PAL[   4 ];
+    _CO[    6 ] = _PAL[   5 ];
+    _CO[    7 ] = _PAL[   6 ];
+    _CO[    8 ] = _PAL[   7 ];
+    _CO[ C1+1 ] =  MEM[ &C2 ];
+    _CO[    9 ] =        15;
+    _PAL[  C1 ] =        C2;
+    ^IX         =      &_CO;
+    CALL($B004);
+]
+
+
+
+
+#IF (_PLOTSW == 1)
+
+@PLINIT()
+[
+    PRMODE( 2 );
+    PRINT("H\N");
+    PRINT("J1\N");
+    PRMODE( 0 );
+]
+
+
+
+
+@PLINE(X1,Y1,X2,Y2)
+[
+    PRMODE(2);
+    PRINT("M " , (X1-319)*5+2000 , "," , 1000-(Y1-99)*10 , "\N");
+    PRINT("D " , (X2-319)*5+2000 , "," , 1000-(Y2-99)*10 , "\N");
+    PRMODE(0);
+]
+
+
+
+
+@PLOT()
+VAR     I,J,K;
+[
+    @PLINIT();
+    FOR I = 0 TO _LPCT[1]-1 [
+        J = _WIRE[ I ][ 0 ];
+        K = _WIRE[ I ][ 1 ];
+        @PLINE( _DISP[J][0] , _DISP[J][1] , _DISP[K][0] , _DISP[K][1] );
+    ]
+]
+
+#ENDIF
+
+
+
+
+#IF (_THREE==1) AND ((_GHIN AND 32)==32)
+
+@TLINE(XS,YS,ZS,XE,YE,ZE)
+VAR     I;
+[
+    FOR I=0 TO 8 [ _BUFPAR[ I ] = _PAR[ I ]; ]
+    MEMW[ &_ZAHYO      ] = XS;
+    MEMW[ &_ZAHYO +  2 ] = YS;
+    MEMW[ &_ZAHYO +  4 ] = ZS;
+    MEMW[ &_ZAHYO +  6 ] = XE;
+    MEMW[ &_ZAHYO +  8 ] = YE;
+    MEMW[ &_ZAHYO + 10 ] = ZE;
+    _WIRE[ 0 ][ 0 ] = 0;
+    _WIRE[ 0 ][ 1 ] = 1;
+    _LPCT[ 0 ]      = 2;
+    _LPCT[ 1 ]      = 1;
+    _PAR[ 0 ]       = _OFSX;
+    _PAR[ 1 ]       = _OFSY;
+    _PAR[ 2 ]       = _OFSZ;
+    _PAR[ 3 ]       = 0;
+    _PAR[ 4 ]       = 0;
+    _PAR[ 5 ]       = 0;
+    _PAR[ _HEAD  ]  = _SHEAD;
+    _PAR[ _PITCH ]  = _SPITCH;
+    _PAR[ _BANK  ]  = _SBANK;
+    @MAGIC(0);
+    @MAGIC(1);
+    IF (_BSWITCH == 1) [ @FUKUGEN(); ]
+    FOR I = 0 TO 8     [ _PAR[I] = _BUFPAR[ I ]; ]
+]
+
+
+#ENDIF
+
+#IF (_THREE==1)
+
+
+@FUKUGEN()
+VAR     I;
+[
+    @SETOD(_OBFAD , 1);
+    @SETWD(_WBFAD , 0);
+    _LPCT[ 0 ] = _OBUFF + 1;
+    _LPCT[ 1 ] = _WBUFF + 1;
+]
+
+
+#ENDIF
+
+#IF ((_GHIN AND 64) == 64)
+
+@CLINE(X1,Y1,X2,Y2,C)
+[
+    IF ((C AND 1) == 1) [  @MODE(  _DEMODE,0); @LINE(X1,Y1,X2,Y2);  ]
+                  ELSE  [  @MODE(2-_DEMODE,0); @LINE(X1,Y1,X2,Y2);  ]
+    IF ((C AND 2) == 2) [  @MODE(  _DEMODE,1); @LINE(X1,Y1,X2,Y2);  ]
+                  ELSE  [  @MODE(2-_DEMODE,1); @LINE(X1,Y1,X2,Y2);  ]
+    IF ((C AND 4) == 4) [  @MODE(  _DEMODE,2); @LINE(X1,Y1,X2,Y2);  ]
+                  ELSE  [  @MODE(2-_DEMODE,2); @LINE(X1,Y1,X2,Y2);  ]
+]
+
+#ENDIF
+
+
+
+
+#IF ((_GHIN AND 128) == 128)
+
+@CBOX(X1,Y1,X2,Y2,C)
+[
+    IF ((C AND 1) == 1) [  @MODE(  _DEMODE,0); @BOX(X1,Y1,X2,Y2);  ]
+                  ELSE  [  @MODE(2-_DEMODE,0); @BOX(X1,Y1,X2,Y2);  ]
+    IF ((C AND 2) == 2) [  @MODE(  _DEMODE,1); @BOX(X1,Y1,X2,Y2);  ]
+                  ELSE  [  @MODE(2-_DEMODE,1); @BOX(X1,Y1,X2,Y2);  ]
+    IF ((C AND 4) == 4) [  @MODE(  _DEMODE,2); @BOX(X1,Y1,X2,Y2);  ]
+                  ELSE  [  @MODE(2-_DEMODE,2); @BOX(X1,Y1,X2,Y2);  ]
+]
+
+#ENDIF
+
+
+
+
+#IF (_TILESW == 1) AND ((_GHIN AND 8) == 8)
+
+@CFULL(X1,Y1,X2,Y2,C1,C2,C3)
+[
+    IF ((_GMASK AND 1) == 1) [ @MODE(2,0); @NGRAD(C1); @FULL(X1,Y1,X2,Y2); ]
+    IF ((_GMASK AND 2) == 2) [ @MODE(2,1); @NGRAD(C2); @FULL(X1,Y1,X2,Y2); ]
+    IF ((_GMASK AND 4) == 4) [ @MODE(2,2); @NGRAD(C3); @FULL(X1,Y1,X2,Y2); ]
+]
+
+#ENDIF
+
+
+
+
+#IF (_THREE == 1) AND ((_GHIN AND 2) == 2)
+
+@CPOLY( XV[] , YV[] , ZV[] )                    (* 1993 / 02 / 19  [UPD] *)
+                                                (* 1993 / 04 / 02  [UPD] *)
+VAR     I    , LV   ,
+        NX   , NY   , NZ  ,
+        SLV  ;                                  (* 1993 / 04 / 03  [ADD] *)
+
+
+ARRAY
+  BYTE  JO[3][1] = [ 0,1, 1,2, 2,3, 3,0 ] ,
+        plx[4] , ply[4] , plz[4] , lg[4] ,
+        ax[4]  , ay[4]  , az[4]  , yg[4] ,
+        hx[4]  , hy[4]  , hz[4]  , pg[4] ,      (* 1993 / 04 / 02  [add] *)
+        sx[4]  , sy[4]  , sz[4]  ;              (* 1993 / 04 / 03  [add] *)
+[
+    FOR I = 0 TO 8 [ _BUFPAR[I] = _PAR[I]; ]
+    _PAR[      0] =   _OFSX;
+    _PAR[      1] =   _OFSY;
+    _PAR[      2] =   _OFSZ;
+    _PAR[      3] =       0;
+    _PAR[      4] =       0;
+    _PAR[      5] =       0;
+    _PAR[  _HEAD] =  _SHEAD;
+    _PAR[ _PITCH] = _SPITCH;
+    _PAR[  _BANK] =  _SBANK;
+    FOR I = 0 TO 3
+    [
+        _ZAHYO[ I ][ 0 ] = XV[ I ];
+        _ZAHYO[ I ][ 1 ] = YV[ I ];
+        _ZAHYO[ I ][ 2 ] = ZV[ I ];
+    ]
+    _LPCT[0] = 4;
+    @SETWD(&JO,3);
+    @MAGIC(0);
+    _PX0 = _DISP[ 0 ][ 0 ];
+    _PX1 = _DISP[ 1 ][ 0 ];
+    _PX2 = _DISP[ 2 ][ 0 ];
+    _PX3 = _DISP[ 3 ][ 0 ];
+    _PY0 = _DISP[ 0 ][ 1 ];
+    _PY1 = _DISP[ 1 ][ 1 ];
+    _PY2 = _DISP[ 2 ][ 1 ];
+    _PY3 = _DISP[ 3 ][ 1 ];
+    NZ  = ( _PX1-_PX0 ) .*. ( _PY2-_PY1 ) - ( _PY1-_PY0 ) .*. (_PX2-_PX1);
+    IF ((_WSEL AND 1) == 1) @MAGIC(1);
+
+    IF ((_WSEL AND 2) == 2) [
+        FOR I=0 TO 8 [
+            _PAR[I] = _BUFPAR[I];
+        ]
+        RETURN;
+    ]
+
+    IF (NZ.<.-4) [
+        FOR I=0 TO 8 [
+            _PAR[I] = _BUFPAR[I];
+        ]
+        RETURN;
+     ]
+
+    IF ((_WSEL AND 4) == 4) [
+        @MAGIC(1);
+        FOR I = 0 TO 8 [
+            _PAR[I] = _BUFPAR[I];
+        ]
+        RETURN;
+    ]
+    NX = (YV[1]-YV[0]).*.(ZV[2]-ZV[1])-(ZV[1]-ZV[0]).*.(YV[2]-YV[1]);
+    NY = (ZV[1]-ZV[0]).*.(XV[2]-XV[1])-(XV[1]-XV[0]).*.(ZV[2]-ZV[1]);
+    NZ = (XV[1]-XV[0]).*.(YV[2]-YV[1])-(YV[1]-YV[0]).*.(XV[2]-XV[1]);
+
+#ENDIF
+
+#IF (_TILESW==1)  AND ((_GHIN AND 2)==2) AND (_FLOAT==1) AND (_THREE==1)
+
+    @cvitf(plx,_LX);            (* ﾀﾝｲ ｺｳｾﾝ ﾍﾞｸﾄﾙ ｦ ﾓﾄﾒﾙ START *)
+    @cvitf(ply,_LY);
+    @cvitf(plz,_LZ);
+        @mul( lg,plx,plx);
+        @mul(ply,ply,ply);
+        @mul(plz,plz,plz);
+        @add(lg,lg,ply);
+        @add(lg,lg,plz);
+        @sqr(lg,lg);
+    @cvitf(ply,_LY);
+    @cvitf(plz,_LZ);
+        @div(plx,plx,lg);
+        @div(ply,ply,lg);
+        @div(plz,plz,lg);       (* ﾀﾝｲ ｺｳｾﾝ ﾍﾞｸﾄﾙ ｦ ﾓﾄﾒﾙ END *)
+
+    @cvitf(ax,NX);              (* ﾎｳｾﾝ ﾍﾞｸﾄﾙ ﾆｭｳﾘｮｸ *)
+    @cvitf(ay,NY);
+    @cvitf(az,NZ);
+    @cvitf(lg,0);
+    @cvitf(yg,0);
+
+        @mul(lg,ax,ax);         (* ﾎｳｾﾝ ﾍﾞｸﾄﾙ ﾉ ﾅｶﾞｻ ｦ ﾓﾄﾒﾙ start *)
+        @mul(hy,ay,ay);
+        @mul(hz,az,az);
+        @add(lg,lg,hy);
+        @add(lg,lg,hz);
+        @sqr(lg,lg);            (* ﾎｳｾﾝ ﾍﾞｸﾄﾙ ﾉ ﾅｶﾞｻ ｦ ﾓﾄﾒﾙ end *)
+
+    @cvitf(hx,NX);              (* ﾎｳｾﾝ ﾀﾝｲ ﾍﾞｸﾄﾙ ﾉ ﾅｶﾞｻ ｦ ﾓﾄﾒﾙ start *)
+    @cvitf(hy,NY);
+    @cvitf(hz,NZ);
+
+        @div(hx,hx,lg);
+        @div(hy,hy,lg);
+        @div(hz,hz,lg);         (* ﾎｳｾﾝ ﾀﾝｲ ﾍﾞｸﾄﾙ ﾉ ﾅｶﾞｻ ｦ ﾓﾄﾒﾙ end *)
+
+        @mul(ax,ax,plx);        (*  ｺｳｾﾝ･ﾎｳｾﾝ ﾍﾞｸﾄﾙ ﾉ ｶｸ ｾｲﾌﾞﾝ ｦ ｶｹ､*)
+        @mul(ay,ay,ply);        (* ｿﾚ ｦ ﾀｼﾃ､ﾎｳｾﾝ ﾍﾞｸﾄﾙ ﾉ ﾅｶﾞｻ ﾃﾞ ﾜﾙ｡*)
+        @mul(az,az,plz);
+        @add(yg,yg,ax);
+        @add(yg,yg,ay);
+        @add(yg,yg,az);
+        @div(yg,yg,lg);
+    @cvitf(lg,32);
+        @mul(yg,yg,lg);         (* ﾃﾞﾓｯﾃ 32 ｶｹﾙ｡ *)
+
+    LV = (@cvfti(yg) + 32) ./. 2;
+
+    @cvitf(lg,0);
+        @add(sx,hx,lg);
+        @add(sy,hy,lg);
+
+//  @cvitf(lg,1);                       (* pt1 *)
+//      @add(sx,hx,lg);                 (* pt1 *)
+
+        @add(sx,hx,plx);                (* pt2 *)
+        @add(sy,hx,ply);                (* pt2 *)
+        @add(sz,hz,plz);                (* pt2 *)
+
+        @mul(lg,sx,sx);
+        @mul(pg,sy,sy);
+        @add(lg,lg,pg);
+        @mul(pg,sz,sz);
+        @add(lg,lg,pg);
+        @sqr(lg,lg);
+
+        @mul(pg,hx,sx);
+        @mul(yg,hy,sy);
+        @add(pg,pg,yg);
+        @mul(yg,hz,sz);
+        @add(pg,pg,yg);
+
+        @div(pg,pg,lg);
+
+    @cvitf(lg,_SPEC);
+        @mul(pg,pg,lg);
+
+    SLV = @cvfti(pg);
+
+    IF (SLV.<._SPEC_LV) SLV=0;
+    IF (SLV.>.33) SLV=33;
+
+    IF (LV.<.0) LV=0;
+    IF (LV.>.33) LV=33;
+
+    IF ((_GMASK AND 1) == 1) [
+        @MODE( 2 , 0 );
+        @NGRAD( @MAX( LV * _SBLUE / 33  , SLV ) );
+        @TRIANGLE( _PX0,_PY0,_PX1,_PY1,_PX2,_PY2 );
+        @TRIANGLE( _PX2,_PY2,_PX3,_PY3,_PX0,_PY0 );
+    ]
+    IF ((_GMASK AND 2) == 2) [
+        @MODE( 2 , 1 );
+        @NGRAD( @MAX( LV * _SRED / 33   , SLV ) );
+        @TRIANGLE( _PX0,_PY0,_PX1,_PY1,_PX2,_PY2 );
+        @TRIANGLE( _PX2,_PY2,_PX3,_PY3,_PX0,_PY0 );
+    ]
+    IF ((_GMASK AND 4) == 4)
+    [
+        @MODE( 2 , 2 );
+        @NGRAD( @MAX( LV * _SGREEN / 33 , SLV ) );
+        @TRIANGLE( _PX0,_PY0,_PX1,_PY1,_PX2,_PY2 );
+        @TRIANGLE( _PX2,_PY2,_PX3,_PY3,_PX0,_PY0 );
+    ]
+
+#ENDIF
+
+#IF (_THREE == 1) AND ((_GHIN AND 2) == 2)
+
+    IF ((_WSEL AND 8) == 8) @MAGIC( 1 );
+    FOR I=0 TO 8 [ _PAR[I] = _BUFPAR[ I ]; ]
+]
+
+#ENDIF
+
+
+
+
+#IF (_THREE == 1) AND (_SINCOS == 1) AND ((_GHIN AND 2) == 2)
+
+@KYU(MDX,MDY,MDZ,HNK)
+VAR     I , J , K , L;
+ARRAY   KYUX[3] , KYUY[3] , KYUZ[3];
+[
+    I = 0;
+    WHILE(I < 180)
+    [
+        J = 0;
+        K = @ISIN(I,HNK);
+        L = @ISIN(I+_KSTEP,HNK);
+        KYUY[0] = @ICOS(I,HNK)+MDY;
+        KYUY[1] = KYUY[0];
+        KYUY[2] = @ICOS(I+_KSTEP,HNK)+MDY;
+        KYUY[3] = KYUY[2];
+        WHILE(J<360) [
+            KYUX[0] = MDX+@ISIN(J,K);
+            KYUX[1] = MDX+@ISIN(J+_KSTEP,K);
+            KYUX[2] = MDX+@ISIN(J+_KSTEP,L);
+            KYUX[3] = MDX+@ISIN(J,L);
+            KYUZ[0] = MDZ+@ICOS(J,K);
+            KYUZ[1] = MDZ+@ICOS(J+_KSTEP,K);
+            KYUZ[2] = MDZ+@ICOS(J+_KSTEP,L);
+            KYUZ[3] = MDZ+@ICOS(J,L);
+            @CPOLY(KYUX,KYUY,KYUZ);
+            J=J+_KSTEP;
+        ]
+        I = I+_KSTEP;
+    ]
+]
+
+#ENDIF
+
+
+
+
+#IF (_SINCOS==1)
+
+@ISIN(KAKU,HAN)
+VAR     I,J;
+[
+    WHILE(KAKU.<.0) KAKU=KAKU+360;
+    KAKU=KAKU MOD 360;
+    J=KAKU MOD 90;
+    CASE KAKU OF [
+          0 TO  89      I=_STABLE[J];
+         90 TO 179      I=_STABLE[89-J];
+        180 TO 269      I=-_STABLE[J];
+        270 TO 359      I=-_STABLE[89-J];
+        ]
+    I=(I./.(32767./.HAN));
+    RETURN(I);
+]
+
+
+
+@ICOS(KAKU,HAN)
+[
+    KAKU=@ISIN(KAKU+90,HAN);
+    RETURN(KAKU);
+]
+
+
+
+@IATN(XX,YY)
+VAR     X,Y,DATA;
+[
+    X=ABS(XX); Y=ABS(YY);
+    IF (X>Y) DATA=   _ATNTBL[(Y*64)/X];
+    ELSE     DATA=90-_ATNTBL[(X*64)/Y];
+    IF (YY.<.0)
+    [
+      IF (XX.<.0) RETURN(180+DATA); ELSE RETURN(360-DATA);
+    ]
+    ELSE
+    [
+      IF (XX.<.0) RETURN(180-DATA); ELSE RETURN(DATA);
+    ]
+]
+
+#ENDIF
+
+
+
+
+#IF (_THREE==1) AND (_SINCOS==1) AND ((_GHIN AND 2)==2)
+
+@SCTL(I,J,POSY,SNP)
+ARRAY   PX[3],PY[3],PZ[3];
+VAR     K;
+[
+    PX[3] = I - _KSTEP;
+    PX[2] = PX[3];
+    PX[1] = I;
+    PX[0] = PX[1];
+    PZ[3] = J;
+    PZ[2] = J - _KSTEP;
+    PZ[1] = PZ[2];
+    PZ[0] = PZ[3];
+    K     = @ISIN(I,SNP);
+    PY[0] = @ISIN(J,K) + POSY;
+    PY[1] = @ISIN(J - _KSTEP,K) + POSY;
+    K     = @ISIN(I - _KSTEP,SNP);
+    PY[3] = @ISIN(J,K)+POSY;
+    PY[2] = @ISIN(J - _KSTEP,K) + POSY;
+    @CPOLY(PX,PY,PZ);
+]
+
+
+
+
+@WAVE(XSIZE,ZSIZE,POSY,SNP)
+VAR     I,J;
+[
+    I=-XSIZE;
+    WHILE(I.<._KSTEP)
+    [
+        J=ZSIZE;
+        WHILE(  J   .>.   0 )
+        [
+            @SCTL(I,J,POSY,SNP);
+            @SCTL(I,J,POSY,SNP);
+            J=J-_KSTEP;
+        ]
+        I=I+_KSTEP;
+    ]
+    I=XSIZE;
+    WHILE(I.>.-_KSTEP)
+    [
+        J=ZSIZE;
+        WHILE(  J   .>.   0 )
+        [
+            @SCTL(I,J,POSY,SNP);
+            J=J-_KSTEP;
+        ]
+        I=I-_KSTEP;
+    ]
+]
+
+#ENDIF
+
+
+
+@MAX(A,B)                                       (* 1993 / 01 / 31  [ADD] *)
+[
+    IF (A.>.B) RETURN(A); ELSE RETURN(B);
+]
+
+
+
+#IF (_THREE==1)
+
+@GETTXY( GXS , GYS,  GZS , GXE , GYE , GZE )    (* 1993 / 02 / 19  [ADD] *)
+VAR     I;
+[
+
+    FOR I = 0 TO 8 [ _BUFPAR[ I ] = _PAR[ I ]; ]
+    _ZAHYO[0][0] = GXS;
+    _ZAHYO[0][1] = GYS;
+    _ZAHYO[0][2] = GZS;
+    _ZAHYO[1][0] = GXE;
+    _ZAHYO[1][1] = GYE;
+    _ZAHYO[1][2] = GZE;
+    _LPCT[ 0 ]      = 2;
+    _PAR[ 0 ]       = _OFSX;
+    _PAR[ 1 ]       = _OFSY;
+    _PAR[ 2 ]       = _OFSZ;
+    _PAR[ 3 ]       = 0;
+    _PAR[ 4 ]       = 0;
+    _PAR[ 5 ]       = 0;
+    _PAR[ _HEAD  ]  = _SHEAD;
+    _PAR[ _PITCH ]  = _SPITCH;
+    _PAR[ _BANK  ]  = _SBANK;
+    @MAGIC(0);
+    FOR I = 0 TO 8     [ _PAR[I] = _BUFPAR[ I ]; ]
+    IF (_BSWITCH == 1) @FUKUGEN();
+]
+
+#ENDIF
+
+
+#IF (_KPRINTF > 0)                              (* 1993 / 07 / 21  [ADD] *)
+
+@KLOCATE( KX , KY )
+[
+    _SETLOCD[2] = KX;
+    _SETLOCD[3] = KY;
+    CALL(_SETLOCD+1);
+]
+
+
+
+
+@KPINIT()
+VAR     BDSK;
+[
+    CALL( $2024 );      (* CALL #RDVSW *)
+    BDSK = ^A;
+    ^A = _KDEVICE;
+    CALL( $2027 );      (* CALL #SDVSW *)
+    CALL( _KPINIT );
+    ^A = BDSK;
+    CALL( $2027 );      (* CALL #SDVSW *)
+]
+
+
+
+
+@KLPRINT( MADR )
+[
+    ^DE = MADR;
+    CODE( $CD , _KSPRNT , $CD , _KLTNL );
+]
+
+
+
+
+@KPRINT( MADR )
+[
+    ^DE = MADR;
+    CODE( $CD , _KSPRNT );
+]
+
+
+
+
+@SETSIZE( SX , SY )
+[
+    ^DE = ( SX AND 255 ) + ( SY AND 255 ) * 256;
+    CALL( _STSIZE );
+]
+
+#ENDIF
+
+@MASK(t1,t2)
+  begin
+    _TILE1=t1;
+    _TILE2=t2;
+  end;

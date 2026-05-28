@@ -1,0 +1,22 @@
+CONST DEG2RAD = 3.1415926 / 180.0;
+
+VAR I;
+VAR FLOAT RAD;
+VAR X,Y;
+
+MAIN()
+{
+  WIDTH(40);
+  RAD=FSQRT(9);
+  PRINT(FVAL$(RAD),/);
+  FOR I=0 TO 359
+  {
+    RAD = I * DEG2RAD;
+    X = 20.0 + FCOS(RAD) * 9.0;
+    Y = 10.0 + FSIN(RAD) * 9.0;
+    LOCATE(X,Y);
+    PRINT("*");
+  }
+  INKEY(2);
+}
+

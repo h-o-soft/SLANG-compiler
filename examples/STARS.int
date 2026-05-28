@@ -1,0 +1,510 @@
+--------------------------------------------------------------------
+main: /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c:89
+
+L0: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  91)		CALLN		<-	V(1 'F_MAIN')+0 	{}
+0001 (  92)		RETV		<-	CI:0	{}
+--------------------------------------------------------------------
+F_MAIN: /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c:12
+$00 R0(I), $00 R1(I), $02 R2(I), $07 R3(I), $09 R4(I), $0b R5(I), $0d R6(I), $10 R7(P), 
+L0: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  18)		CALLN		<-	V(2 'F_INITSTARS')+0 	{}
+0002 (  19)		STOREG2		<-	V(11 'V_CNT')+0 , CI:1	{}
+0003 (  23)		JUMP		<-		{}
+		==> 2
+L2: <= D-1: (2) Head P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  23)		STOREC2		<-	V(0 '')+0 , CI:0	{}
+0001 (  23)		CALLN	R4(I)	<-	V(5 'slang_inkey')+0 	{E}
+0003 ( 176)		STOREC1		<-	V(0 '')+0 , CC:0	{}
+0004 ( 176)		STOREC1		<-	V(1 '')+0 , CC:0	{}
+0005 (  24)		RELOP19	R0(B)[0..1]	<-	R4(I), CI:65	{}
+0006 (  24)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 6
+		==> 5
+L6: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  24)		CONST	R4(I)	<-	CI:65	{}
+0001 (  24)		LOADG2	R0(I)[0..65535]	<-	V(11 'V_CNT')+0 	{}
+0002 (  24)		RELOP27	R1(B)[0..1]	<-	R0(I)[0..65535], CI:1	{}
+0003 (  24)		BRANCH		<-	R1(BF)[0..1]	{}
+		==> 4
+		==> 8
+L4: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  26)		BINOP1	R0(I)[1..65534]	<-	R0(IF)[2..65535], CI:-1	{}
+0001 (  28)		JUMP		<-		{}
+		==> 17
+L17: <= D-1: (2)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  30)		STOREG2		<-	V(11 'V_CNT')+0 , R0(IF)[1..65534]	{}
+0001 (  28)		JUMP		<-		{}
+		==> 8
+L8: <= D-1: (4)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 ( 176)		CALLN		<-	V(7 'gotoxy')+0 	{}
+0001 (  33)		LOADG2	R0(I)[0..65535]	<-	V(11 'V_CNT')+0 	{}
+0002 (  33)		STOREC2		<-	V(6 '')+0 , R0(I)[0..65535]	{}
+0003 (  33)		CALLN		<-	V(8 'slang_print_sint')+0 	{}
+0004 (  36)		STOREG2		<-	V(6 'V_I')+0 , CI:0	{}
+0005 (  35)		BINOP2	R5(I)[-1..65534]	<-	R0(IF)[0..65535], CI:1	{}
+0006 (  37)		RELOP26	R0(B)[0..1]	<-	CI:0, R5(I)[-1..65534]	{}
+0007 (  37)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 10
+		==> 1
+L10: <= D-1: (2) Head P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  38)		LOADG2	R6(I)[0..98]	<-	V(6 'V_I')+0 	{}
+0001 (  38)		BINOP16	R0(I)[0..392]	<-	R6(I)[0..98], CI:2	{}
+0003 (  39)		BINOP16	R3(I)[0..784]	<-	R0(IF)[0..392], CI:1	{}
+0004 (  39)		LEAG	R7(P)[0..784]	<-	V(9 'V_STARS' A)+0 , R3(I)[0..784]	{}
+0005 (  39)		LOADI2	R0(I)[0..65535]	<-	R7(P)+0 {V(9 'V_STARS' A)} [0..784]	{}
+0006 (  39)		BINOP17	R0(I)[0..255]	<-	R0(IF)[0..65535], CI:8	{}
+0007 ( 176)		STOREC1		<-	V(0 '')+0 , R0(CF)[0..255]	{}
+0008 (  39)		LOADI2	R0(I)[0..65535]	<-	R7(P)+2 {V(9 'V_STARS' A)} [0..784]	{}
+0009 (  39)		BINOP17	R0(I)[0..255]	<-	R0(IF)[0..65535], CI:8	{}
+000a ( 176)		STOREC1		<-	V(1 '')+0 , R0(CF)[0..255]	{}
+000b ( 176)		CALLN		<-	V(7 'gotoxy')+0 	{}
+000c (  40)		CONST	R0(P)[0..0]	<-	CG0(21:0 '')	{IS}
+000d (  40)		STOREC2		<-	V(2 '')+0 , R0(PF)+0 {V(21 '')} [0..0]	{}
+000e (  40)		CALLN		<-	V(10 'put_str')+0 	{}
+000f (  41)		LOADI2	R0(I)[0..65535]	<-	R7(P)+0 {V(9 'V_STARS' A)} [0..784]	{}
+0010 (  41)		LOADI2	R1(I)[0..65535]	<-	R7(P)+4 {V(9 'V_STARS' A)} [0..784]	{}
+0011 (  41)		BINOP1	R0(I)	<-	R1(IF)[0..65535], R0(IF)[0..65535]	{}
+0012 (  41)		STOREI2		<-	R7(P)+0 {V(9 'V_STARS' A)} [0..784], R0(I)	{}
+0013 (  42)		LOADI2	R1(I)[0..65535]	<-	R7(P)+2 {V(9 'V_STARS' A)} [0..784]	{}
+0014 (  42)		LOADI2	R2(I)[0..65535]	<-	R7(P)+6 {V(9 'V_STARS' A)} [0..784]	{}
+0015 (  42)		BINOP1	R1(I)	<-	R2(IF)[0..65535], R1(IF)[0..65535]	{}
+0016 (  42)		STOREI2		<-	R7(P)+2 {V(9 'V_STARS' A)} [0..784], R1(I)	{}
+0017 (  43)		BINOP17	R0(I)[0..255]	<-	R0(IF), CI:8	{}
+0018 ( 176)		STOREC1		<-	V(0 '')+0 , R0(CF)[0..255]	{}
+0019 (  43)		BINOP17	R1(I)[0..255]	<-	R1(IF), CI:8	{}
+001a ( 176)		STOREC1		<-	V(1 '')+0 , R1(CF)[0..255]	{}
+001b ( 176)		CALLN		<-	V(7 'gotoxy')+0 	{}
+001c (  44)		CONST	R0(P)[0..0]	<-	CG0(22:0 '')	{IS}
+001d (  40)		STOREC2		<-	V(2 '')+0 , R0(PF)+0 {V(22 '')} [0..0]	{}
+001e (  40)		CALLN		<-	V(10 'put_str')+0 	{}
+001f (  39)		LEAG	R0(P)[2..786]	<-	V(9 'V_STARS' A)+2 , R3(IF)[0..784]	{}
+0020 (  41)		LEAG	R1(P)[4..788]	<-	R0(P)[2..786], CI:2	{}
+0021 (  42)		LEAG	R2(P)[6..790]	<-	R0(P)[2..786], CI:4	{}
+0022 (  45)		LOADI2	R3(I)[0..65535]	<-	R7(PF)+0 {V(9 'V_STARS' A)} [0..784]	{}
+0023 (  45)		BINOP17	R3(I)[0..255]	<-	R3(IF)[0..65535], CI:8	{}
+0024 (  45)		RELOP26	R7(B)[0..1]	<-	R3(C)[0..255], CC:0	{}
+0025 (  45)		BRANCH		<-	R7(BF)[0..1]	{}
+		==> 11
+		==> 13
+L11: <= D-1: (2)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  47)		LOADI2	R3(I)[0..65535]	<-	R1(P)+0 {V(9 'V_STARS' A)} [4..788]	{}
+0001 (  47)		UNOP11	R3(I)[-32768..0]	<-	R3(IF)[0..65535]	{}
+0002 (  47)		STOREI2		<-	R1(PF)+0 {V(9 'V_STARS' A)} [4..788], R3(IF)[-32768..0]	{}
+0003 (  45)		JUMP		<-		{}
+		==> 12
+L12: <= D-1: (2)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  49)		LOADI2	R0(I)[0..65535]	<-	R0(PF)+0 {V(9 'V_STARS' A)} [2..786]	{}
+0001 (  49)		BINOP17	R0(I)[0..255]	<-	R0(IF)[0..65535], CI:8	{}
+0002 (  49)		RELOP26	R1(B)[0..1]	<-	R0(C)[0..255], CC:0	{}
+0003 (  49)		BRANCH		<-	R1(BF)[0..1]	{}
+		==> 14
+		==> 16
+L14: <= D-1: (2)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  51)		LOADI2	R0(I)[0..65535]	<-	R2(P)+0 {V(9 'V_STARS' A)} [6..790]	{}
+0001 (  51)		UNOP11	R0(I)[-32768..0]	<-	R0(IF)[0..65535]	{}
+0002 (  51)		STOREI2		<-	R2(PF)+0 {V(9 'V_STARS' A)} [6..790], R0(IF)[-32768..0]	{}
+0003 (  53)		JUMP		<-		{}
+		==> 15
+L15: <= D-1: (2)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  53)		BINOP1	R0(I)[1..99]	<-	R6(I)[0..98], CI:1	{}
+0001 (  53)		STOREG2		<-	V(6 'V_I')+0 , R0(IF)[1..99]	{}
+0002 (  53)		RELOP19	R0(B)[0..1]	<-	R6(IF)[0..98], R5(I)[-1..65534]	{}
+0003 (  53)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 1
+		==> 10
+L1: <= D-1: (2)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  21)		RELOP20	R0(B)[0..1]	<-	R4(IF), CI:27	{}
+0001 (  21)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 2
+		==> 3
+L3: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  58)		RETV		<-	CI:0	{}
+L16: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  49)		RELOP25	R0(B)[0..1]	<-	R0(CF)[1..255], CC:23	{}
+0001 (  49)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 14
+		==> 15
+L13: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  45)		RELOP25	R3(B)[0..1]	<-	R3(CF)[1..255], CC:79	{}
+0001 (  45)		BRANCH		<-	R3(BF)[0..1]	{}
+		==> 11
+		==> 12
+L5: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  28)		RELOP19	R0(B)[0..1]	<-	R4(I), CI:68	{}
+0001 (  28)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 9
+		==> 8
+L9: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  28)		CONST	R4(I)	<-	CI:68	{}
+0001 (  28)		LOADG2	R0(I)[0..65535]	<-	V(11 'V_CNT')+0 	{}
+0002 (  28)		RELOP28	R1(B)[0..1]	<-	R0(I)[0..65535], CI:99	{}
+0003 (  28)		BRANCH		<-	R1(BF)[0..1]	{}
+		==> 7
+		==> 8
+L7: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  30)		BINOP1	R0(I)[1..99]	<-	R0(IF)[0..98], CI:1	{}
+0001 (  28)		JUMP		<-		{}
+		==> 17
+--------------------------------------------------------------------
+F_INITSTARS: /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c:13
+$00 R0(I), $00 R1(I), $02 R2(I), $03 R3(I), $05 R4(I), 
+L0: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  65)		STOREG2		<-	V(6 'V_I')+0 , CI:0	{}
+0001 (  68)		JUMP		<-		{}
+		==> 1
+L1: <= D-1: (2) Head P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  68)		STOREC2		<-	V(0 '')+0 , CI:77	{}
+0001 (  67)		LOADG2	R2(I)[0..99]	<-	V(6 'V_I')+0 	{}
+0002 (  67)		BINOP16	R1(I)[0..396]	<-	R2(I)[0..99], CI:2	{}
+0004 (  68)		CALLN	R0(I)	<-	V(3 'slang_rnd')+0 	{}
+0005 (  69)		STOREC2		<-	V(0 '')+0 , CI:21	{}
+0006 (  68)		BINOP1	R0(I)	<-	R0(IF), CI:1	{}
+0007 (  68)		BINOP16	R0(I)	<-	R0(IF), CI:8	{}
+0008 (  68)		BINOP16	R3(I)[0..792]	<-	R1(IF)[0..396], CI:1	{}
+0009 (  68)		LEAG	R1(P)[0..792]	<-	V(9 'V_STARS' A)+0 , R3(I)[0..792]	{}
+000a (  68)		STOREI2		<-	R1(P)+0 {V(9 'V_STARS' A)} [0..792], R0(IF)	{}
+000b (  69)		CALLN	R0(I)	<-	V(3 'slang_rnd')+0 	{}
+000c (  70)		STOREC2		<-	V(0 '')+0 , CI:128	{}
+000d (  69)		BINOP1	R0(I)	<-	R0(IF), CI:1	{}
+000e (  69)		BINOP16	R0(I)	<-	R0(IF), CI:8	{}
+000f (  69)		STOREI2		<-	R1(PF)+2 {V(9 'V_STARS' A)} [0..792], R0(IF)	{}
+0010 (  70)		CALLN	R0(I)	<-	V(3 'slang_rnd')+0 	{}
+0011 (  71)		STOREC2		<-	V(0 '')+0 , CI:1	{}
+0012 (  70)		BINOP1	R1(I)	<-	R0(IF), CI:128	{}
+0013 (  70)		STOREG2		<-	V(10 'V_J')+0 , R1(I)	{}
+0014 (  71)		CALLN	R0(I)	<-	V(3 'slang_rnd')+0 	{}
+0015 (  71)		RELOP19	R0(B)[0..1]	<-	R0(IF), CI:0	{}
+0016 (  71)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 2
+		==> 3
+L2: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  73)		UNOP11	R0(I)	<-	R1(IF)	{}
+0001 (  73)		STOREG2		<-	V(10 'V_J')+0 , R0(IF)	{}
+0002 (  71)		JUMP		<-		{}
+		==> 3
+L3: <= D-1: (2)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  76)		STOREC2		<-	V(0 '')+0 , CI:128	{}
+0001 (  75)		LOADG2	R0(I)[0..65535]	<-	V(10 'V_J')+0 	{}
+0002 (  75)		LEAG	R1(P)[4..796]	<-	V(9 'V_STARS' A)+4 , R3(I)[0..792]	{}
+0003 (  75)		STOREI2		<-	R1(PF)+0 {V(9 'V_STARS' A)} [4..796], R0(IF)[0..65535]	{}
+0004 (  76)		CALLN	R0(I)	<-	V(3 'slang_rnd')+0 	{}
+0005 (  77)		STOREC2		<-	V(0 '')+0 , CI:1	{}
+0006 (  76)		BINOP1	R4(I)	<-	R0(IF), CI:128	{}
+0007 (  76)		STOREG2		<-	V(10 'V_J')+0 , R4(I)	{}
+0008 (  77)		CALLN	R0(I)	<-	V(3 'slang_rnd')+0 	{}
+0009 (  82)		BINOP1	R1(I)[1..100]	<-	R2(I)[0..99], CI:1	{}
+000a (  82)		STOREG2		<-	V(6 'V_I')+0 , R1(IF)[1..100]	{}
+000b (  77)		RELOP19	R0(B)[0..1]	<-	R0(IF), CI:0	{}
+000c (  77)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 4
+		==> 5
+L4: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  79)		UNOP11	R0(I)	<-	R4(IF)	{}
+0001 (  79)		STOREG2		<-	V(10 'V_J')+0 , R0(IF)	{}
+0002 (  77)		JUMP		<-		{}
+		==> 5
+L5: <= D-1: (2)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  81)		LOADG2	R0(I)[0..65535]	<-	V(10 'V_J')+0 	{}
+0001 (  81)		LEAG	R1(P)[6..796]	<-	V(9 'V_STARS' A)+6 , R3(IF)[0..790]	{}
+0002 (  81)		STOREI2		<-	R1(PF)+0 {V(9 'V_STARS' A)} [6..796], R0(IF)[0..65535]	{}
+0003 (  82)		RELOP19	R0(B)[0..1]	<-	R2(IF)[0..99], CI:99	{}
+0004 (  82)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 6
+		==> 1
+L6: <= D-1: (1)  P-1 /Users/ogino/projects/SLANG-work/SLANG-compiler/examples/STARS.c
+0000 (  86)		RETV		<-	CI:0	{}
+--------------------------------------------------------------------
+slang_rnd: /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.h:60
+$00 R0(I), $00 R1(I), 
+L0: <= D-1: (1)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 ( 338)		LOADZ2	R1(I)[0..65535]	<-	V(0 '')+0 	{S}
+0001 ( 338)		RELOP19	R0(B)[0..1]	<-	R1(I)[0..65535], CI:0	{S}
+0002 ( 338)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 1
+		==> 2
+L1: <= D-1: (1)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 ( 338)		RETV		<-	CI:0	{}
+L2: <= D-1: (1)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 ( 339)		CALLN	R0(I)	<-	V(4 'rand')+0 	{}
+0001 ( 339)		BINOP6	R0(I)[0..65534]	<-	R0(IF), R1(IF)[0..65535]	{}
+0002 ( 339)		RETV		<-	R0(IF)[0..65534]	{}
+--------------------------------------------------------------------
+rand: /usr/local/include/oscar64/stdlib.h:68
+$00 R0(I), $00 R1(I), 
+L0: <= D-1: (1)  P-1 /usr/local/include/oscar64/stdlib.c
+0000 ( 818)		LOADG2	R0(I)[0..65535]	<-	V(8 'seed')+0 	{}
+0001 ( 818)		BINOP16	R1(I)	<-	R0(I)[0..65535], CI:7	{}
+0002 ( 818)		BINOP10	R0(I)	<-	R1(IF), R0(IF)[0..65535]	{}
+0003 ( 819)		BINOP17	R1(I)[0..127]	<-	R0(I), CI:9	{}
+0004 ( 819)		BINOP10	R0(I)	<-	R1(IF)[0..127], R0(IF)	{}
+0005 ( 820)		BINOP16	R1(I)	<-	R0(I), CI:8	{}
+0006 ( 820)		BINOP10	R0(I)	<-	R1(IF), R0(IF)	{}
+0007 ( 820)		STOREG2		<-	V(8 'seed')+0 , R0(I)	{}
+0008 ( 821)		RETV		<-	R0(IF)	{}
+--------------------------------------------------------------------
+slang_inkey: /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.h:38
+$00 R0(I), $00 R1(C), 
+L0: <= D-1: (1)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 ( 201)		LOADA1	R1(C)[0..255]	<-	V(-1 '')+197 	{V}
+0001 ( 202)		RELOP25	R0(B)[0..1]	<-	R1(C)[0..255], CC:64	{}
+0002 ( 202)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 1
+		==> 2
+L1: <= D-1: (1)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 ( 202)		RETV		<-	CI:0	{}
+L2: <= D-1: (1)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 ( 203)		LOADA1	R0(C)[0..255]	<-	V(-1 '')+653 	{V}
+0001 ( 203)		CONV37	R0(I)[0..255]	<-	R0(CF)[0..255]	{}
+0002 ( 203)		BINOP9	R0(I)[0..1]	<-	R0(IF)[0..255], CI:1	{}
+0003 ( 203)		RELOP20	R0(B)[0..1]	<-	R0(IF)[0..1], CI:0	{}
+0004 ( 203)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 3
+		==> 4
+L3: <= D-1: (1)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 ( 203)		BINOP8	R1(C)[0..127]	<-	R1(CF)[0..63], CC:64	{}
+0001 ( 203)		JUMP		<-		{}
+		==> 4
+L4: <= D-1: (2)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 ( 204)		CONV37	R0(I)[0..127]	<-	R1(CF)[0..127]	{}
+0001 ( 204)		LEAG	R0(P)[0..127]	<-	V(13 'keyb_codes')+0 , R0(IF)[0..127]	{}
+0002 ( 204)		LOADI1	R0(C)[0..218]	<-	R0(PF)+0 {V(13 'keyb_codes')} [0..127]	{}
+0003 ( 204)		CONV37	R0(I)[0..218]	<-	R0(CF)[0..218]	{}
+0004 ( 204)		RETV		<-	R0(IF)[0..218]	{}
+--------------------------------------------------------------------
+slang_locate: /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.h:37
+$00 R0(I), 
+L0: <= D-1: (1)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 ( 176)		LOADZ2	R0(I)[0..65535]	<-	V(2 '')+0 	{S}
+0001 ( 176)		STOREC1		<-	V(0 '')+0 , R0(CF)[0..65535]	{}
+0002 ( 176)		LOADZ2	R0(I)[0..65535]	<-	V(4 '')+0 	{S}
+0003 ( 176)		STOREC1		<-	V(1 '')+0 , R0(CF)[0..65535]	{}
+0004 ( 176)		CALLN		<-	V(7 'gotoxy')+0 	{}
+0005 ( 177)		RET		<-		{}
+--------------------------------------------------------------------
+gotoxy: /usr/local/include/oscar64/conio.h:93
+
+L0: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 375)		JSR		<-	V(0 '')+0 , V(1 '')+0 , V(-1 '')+0 	{V}
+0001 ( 381)		RET		<-		{}
+--------------------------------------------------------------------
+slang_print_sint: /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.h:19
+$00 R0(I), 
+L0: <= D-1: (1)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 (  57)		LOADZ2	R0(I)[-32768..32767]	<-	V(6 '')+0 	{S}
+0001 (  57)		STOREC2		<-	V(0 '')+0 , R0(IF)[-32768..32767]	{}
+0002 (  57)		STOREC2		<-	V(4 '')+0 , CI:10	{}
+0003 (  57)		CONST	R0(P)[0..0]	<-	CG8(16:0 'slang_num_buf' A)	{S}
+0004 (  57)		STOREC2		<-	V(2 '')+0 , R0(P)+0 {V(16 'slang_num_buf' A)} [0..0]	{}
+0005 (  57)		CALLN		<-	V(9 'itoa')+0 	{}
+0006 (  58)		STOREC2		<-	V(2 '')+0 , R0(PF)+0 {V(16 'slang_num_buf' A)} [0..0]	{}
+0007 (  58)		CALLN		<-	V(10 'put_str')+0 	{}
+0008 (  59)		RET		<-		{}
+--------------------------------------------------------------------
+itoa: /usr/local/include/oscar64/stdlib.h:20
+$00 R0(I), $00 R1(P), $00 R2(I), $00 R3(I), $00 R4(I), $00 R5(I), $00 R6(B), $01 R7(C), 
+L0: <= D-1: (1)  P-1 /usr/local/include/oscar64/stdlib.c
+0000 (   9)		LOADZ2	R0(I)[-32768..32767]	<-	V(0 '')+0 	{S}
+0001 (   9)		RELOP24	R6(B)[0..1]	<-	R0(I)[-32768..32767], CI:0	{S}
+0002 (  10)		BRANCH		<-	R6(B)[0..1]	{}
+		==> 8
+		==> 9
+L8: <= D-1: (1)  P-1 /usr/local/include/oscar64/stdlib.c
+0000 (  10)		UNOP11	R0(I)[1..32768]	<-	R0(IF)[-32768..-1]	{}
+0001 (  10)		JUMP		<-		{}
+		==> 9
+L9: <= D-1: (2)  P-1 /usr/local/include/oscar64/stdlib.c
+0000 (  12)		CONST	R7(C)[0..0]	<-	CI:0	{}
+0001 (  16)		LOADZ2	R1(P)	<-	V(2 '')+0 	{IS}
+0002 (  14)		LOADZ2	R2(I)[0..65535]	<-	V(4 '')+0 	{IS}
+0003 (  14)		JUMP		<-		{}
+		==> 1
+L1: <= D-1: (2) Head P-1 /usr/local/include/oscar64/stdlib.c
+0000 (  14)		BINOP6	R3(I)[0..65534]	<-	R0(I)[0..65535], R2(I)[0..65535]	{}
+0001 (  17)		BINOP4	R0(I)[0..65535]	<-	R0(IF)[0..65535], R2(I)[0..65535]	{}
+0002 (  15)		RELOP28	R4(B)[0..1]	<-	R3(C)[0..65534], CC:10	{}
+0003 (  15)		BRANCH		<-	R4(BF)[0..1]	{}
+		==> 10
+		==> 11
+L10: <= D-1: (1)  P-1 /usr/local/include/oscar64/stdlib.c
+0000 (  15)		CONST	R4(I)[48..48]	<-	CI:48	{}
+0001 (  15)		JUMP		<-		{}
+		==> 12
+L12: <= D-1: (2)  P-1 /usr/local/include/oscar64/stdlib.c
+0000 (  16)		CONV37	R5(I)[0..255]	<-	R7(C)[0..]	{}
+0001 (  15)		CONV37	R3(I)[0..255]	<-	R3(CF)[0..65534]	{}
+0002 (  15)		BINOP1	R3(I)[48..438]	<-	R3(IF)[0..255], R4(IF)[48..183]	{}
+0003 (  16)		LEAI	R4(P)+0	<-	R1(P)+0, R5(IF)[0..255]	{}
+0004 (  16)		STOREI1		<-	R4(PF)+0, R3(CF)[48..438]	{}
+0005 (  16)		BINOP1	R7(C)[1..]	<-	R7(CF)[0..], CI:1	{}
+0006 (  17)		RELOP27	R3(B)[0..1]	<-	R0(I)[0..65535], CI:0	{}
+0007 (  17)		BRANCH		<-	R3(BF)[0..1]	{}
+		==> 1
+		==> 2
+L2: <= D-1: (1)  P-1 /usr/local/include/oscar64/stdlib.c
+0000 (  19)		BRANCH		<-	R6(BF)[0..1]	{}
+		==> 3
+		==> 4
+L3: <= D-1: (1)  P-1 /usr/local/include/oscar64/stdlib.c
+0000 (  21)		CONV37	R0(I)[0..255]	<-	R7(C)[1..256]	{}
+0001 (  21)		LEAI	R0(P)+0	<-	R1(P)+0, R0(IF)[0..255]	{}
+0002 (  21)		STOREI1		<-	R0(PF)+0, CC:45	{}
+0003 (  21)		BINOP1	R7(C)[2..]	<-	R7(CF)[1..256], CI:1	{}
+0004 (  19)		JUMP		<-		{}
+		==> 4
+L4: <= D-1: (2)  P-1 /usr/local/include/oscar64/stdlib.c
+0000 (  23)		CONV37	R0(I)[0..255]	<-	R7(C)	{}
+0001 (  23)		LEAI	R0(P)+0	<-	R1(P)+0, R0(IF)[0..255]	{}
+0002 (  23)		STOREI1		<-	R0(PF)+0, CC:0	{}
+0003 (  24)		CONST	R4(C)[0..0]	<-	CI:0	{}
+0004 (  25)		JUMP		<-		{}
+		==> 5
+L5: <= D-1: (2) Head P-1 /usr/local/include/oscar64/stdlib.c
+0000 (  25)		CONV37	R0(I)[0..255]	<-	R7(C)	{}
+0001 (  25)		CONV37	R2(I)[0..255]	<-	R4(C)[0..]	{}
+0002 (  25)		BINOP1	R3(I)[1..256]	<-	R2(I)[0..255], CI:1	{}
+0003 (  25)		RELOP28	R0(B)[0..1]	<-	R3(IF)[1..256], R0(IF)[0..255]	{}
+0004 (  25)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 6
+		==> 7
+L6: <= D-1: (1)  P-1 /usr/local/include/oscar64/stdlib.c
+0000 (  27)		LEAI	R0(P)+0	<-	R1(P)+0, R2(IF)[0..255]	{}
+0001 (  27)		LOADI1	R3(C)[0..255]	<-	R0(P)+0	{}
+0002 (  28)		BINOP1	R7(C)	<-	R7(CF), CI:-1	{}
+0003 (  28)		CONV37	R2(I)[0..255]	<-	R7(C)	{}
+0004 (  28)		LEAI	R2(P)+0	<-	R1(P)+0, R2(IF)[0..255]	{}
+0005 (  28)		LOADI1	R5(C)[0..255]	<-	R2(P)+0	{}
+0006 (  28)		STOREI1		<-	R0(PF)+0, R5(CF)[0..255]	{}
+0007 (  29)		STOREI1		<-	R2(PF)+0, R3(CF)[0..255]	{}
+0008 (  28)		BINOP1	R4(C)[1..]	<-	R4(CF)[0..], CI:1	{}
+0009 (  25)		JUMP		<-		{}
+		==> 5
+L7: <= D-1: (1)  P-1 /usr/local/include/oscar64/stdlib.c
+0000 (  31)		RET		<-		{}
+L11: <= D-1: (1)  P-1 /usr/local/include/oscar64/stdlib.c
+0000 (  15)		CONST	R4(I)[183..183]	<-	CI:183	{}
+0001 (  15)		JUMP		<-		{}
+		==> 12
+--------------------------------------------------------------------
+put_str: /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c:27
+$00 R0(P), $02 R1(P), 
+L0: <= D-1: (1)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 (  29)		LOADZ2	R0(P)	<-	V(2 '')+0 	{}
+0001 (  29)		LOADI1	R0(C)[0..255]	<-	R0(PF)+0	{}
+0002 (  29)		BRANCH		<-	R0(CF)[0..255]	{}
+		==> 1
+		==> 2
+L1: <= D-1: (2) Head P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 (  29)		LOADZ2	R1(P)	<-	V(2 '')+0 	{}
+0001 (  29)		LOADI1	R0(C)[0..255]	<-	R1(P)+0	{}
+0002 ( 340)		STOREC1		<-	V(0 '')+0 , R0(CF)[0..255]	{}
+0003 (  29)		LEAI	R0(P)+0	<-	R1(P)+0, CI:1	{}
+0004 (  29)		STOREZ2		<-	V(2 '')+0 , R0(PF)	{}
+0005 ( 340)		CALLN		<-	V(12 'putpch')+0 	{}
+0006 (  29)		LOADI1	R0(C)[0..255]	<-	R1(PF)+1	{}
+0007 (  29)		BRANCH		<-	R0(CF)[0..255]	{}
+		==> 1
+		==> 2
+L2: <= D-1: (2)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 (  30)		RET		<-		{}
+--------------------------------------------------------------------
+putch: /usr/local/include/oscar64/conio.h:89
+$00 R0(C), 
+L0: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 340)		LOADZ1	R0(C)[0..255]	<-	V(1 '')+0 	{S}
+0001 ( 340)		STOREC1		<-	V(0 '')+0 , R0(CF)[0..255]	{}
+0002 ( 340)		CALLN		<-	V(12 'putpch')+0 	{}
+0003 ( 341)		RET		<-		{}
+--------------------------------------------------------------------
+putpch: /usr/local/include/oscar64/conio.h:69
+$00 R0(I), $01 R1(C), $00 R2(C), $00 R3(B), 
+L0: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 204)		LOADG1	R1(C)[0..3]	<-	V(17 'giocharmap')+0 	{}
+0001 ( 204)		RELOP25	R0(B)[0..1]	<-	R1(C)[0..3], CC:1	{}
+0002 ( 204)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 1
+		==> 2
+L1: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 206)		LOADZ1	R2(C)[0..255]	<-	V(0 '')+0 	{}
+0001 ( 206)		RELOP19	R0(B)[0..1]	<-	R2(C)[0..255], CC:10	{}
+0002 ( 206)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 3
+		==> 4
+L3: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 207)		CONST	R0(I)[13..13]	<-	CI:13	{S}
+0001 ( 239)		JUMP		<-		{}
+		==> 15
+L15: <= D-1: (2)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 193)		JSR		<-	R0(CF)[0..95], V(-1 '')+0 	{V}
+0001 ( 239)		JUMP		<-		{}
+		==> 8
+L8: <= D-1: (3)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 214)		RET		<-		{}
+L4: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 208)		RELOP19	R0(B)[0..1]	<-	R2(C)[0..255], CC:9	{}
+0001 ( 208)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 5
+		==> 6
+L5: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 413)		LOADA1	R0(C)[0..255]	<-	V(-1 '')+211 	{V}
+0001 ( 210)		CONV37	R0(I)[0..255]	<-	R0(CF)[0..255]	{}
+0002 ( 210)		BINOP9	R0(I)[0..3]	<-	R0(IF)[0..255], CI:3	{}
+0003 ( 212)		CONST	R1(C)[32..32]	<-	CI:32	{IS}
+0004 ( 193)		JUMP		<-		{}
+		==> 7
+L7: <= D-1: (2) Head P-1 /usr/local/include/oscar64/conio.c
+0000 ( 193)		JSR		<-	R1(C)[32..32], V(-1 '')+0 	{V}
+0001 ( 213)		BINOP1	R0(C)[1..4]	<-	R0(CF)[0..3], CI:1	{}
+0002 ( 213)		RELOP28	R2(B)[0..1]	<-	R0(C)[1..4], CC:4	{}
+0003 ( 213)		BRANCH		<-	R2(BF)[0..1]	{}
+		==> 7
+		==> 8
+L6: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 216)		RELOP25	R0(B)[0..1]	<-	R1(C)[1..3], CC:2	{}
+0001 ( 216)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 9
+		==> 2
+L9: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 218)		RELOP25	R0(B)[0..1]	<-	R2(C)[0..255], CC:65	{}
+0001 ( 218)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 11
+		==> 2
+L11: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 218)		RELOP28	R0(B)[0..1]	<-	R2(C)[65..255], CC:123	{}
+0001 ( 218)		BRANCH		<-	R0(BF)[0..1]	{}
+		==> 10
+		==> 2
+L10: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 206)		CONV37	R0(I)[65..122]	<-	R2(C)[65..122]	{}
+0001 ( 220)		RELOP25	R3(B)[0..1]	<-	R2(C)[65..122], CC:97	{}
+0002 ( 220)		BRANCH		<-	R3(BF)[0..1]	{}
+		==> 12
+		==> 13
+L12: <= D-1: (2)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 227)		BINOP10	R0(I)[0..127]	<-	R0(IF)[65..122], CI:32	{}
+0001 ( 227)		STOREZ1		<-	V(0 '')+0 , R0(C)[0..127]	{}
+0002 ( 230)		RELOP19	R1(B)[0..1]	<-	R1(CF)[2..3], CC:2	{}
+0003 ( 230)		BRANCH		<-	R1(BF)[0..1]	{}
+		==> 14
+		==> 2
+L14: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 231)		BINOP9	R0(C)[0..95]	<-	R0(CF)[0..127], CC:95	{}
+0001 ( 239)		JUMP		<-		{}
+		==> 15
+L2: <= D-1: (6)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 193)		JSR		<-	V(0 '')+0 , V(-1 '')+0 	{V}
+0001 ( 239)		JUMP		<-		{}
+		==> 8
+L13: <= D-1: (1)  P-1 /usr/local/include/oscar64/conio.c
+0000 ( 220)		RELOP28	R2(B)[0..1]	<-	R2(CF)[65..96], CC:91	{}
+0001 ( 220)		BRANCH		<-	R2(BF)[0..1]	{}
+		==> 12
+		==> 2
+--------------------------------------------------------------------
+slang_print_str: /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.h:16
+$00 R0(P), 
+L0: <= D-1: (1)  P-1 /Users/ogino/.config/SLANG/runtime/c64/slang_runtime.c
+0000 (  40)		LOADZ2	R0(P)	<-	V(4 '')+0 	{S}
+0001 (  40)		STOREC2		<-	V(2 '')+0 , R0(PF)	{}
+0002 (  40)		CALLN		<-	V(10 'put_str')+0 	{}
+0003 (  41)		RET		<-		{}

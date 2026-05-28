@@ -1,0 +1,120 @@
+///
+/// CHIPTEST.SL — CHIPLIB テストプログラム
+///
+
+#include "CHIPLIB.SL"
+
+#ASM
+; テスト用チップ画像データ
+TestMapGrp:
+include "map0_8x8.grp",b
+
+; テスト用マップインデックス
+TestMapIdx:
+include "mapidx0.bin",B
+
+; テスト用圧縮マップ (64x64 スーパーチップ)
+TestMapChip:
+	REPT 16
+	DB 21,21,21,21,24,4,4,4,4,25,21,21,21,21,21,24
+	DB 21,21,21,21,24,4,4,4,4,25,21,21,21,21,21,24
+	DB 21,21,21,21,24,4,4,4,4,25,21,21,21,21,21,24
+	DB 21,21,21,21,24,4,4,4,4,25,21,21,21,21,21,24
+
+	DB 21,21,21,21,24,4,4,4,4,25,21,21,21,21,21,24
+	DB 21,21,21,21,24,4,4,4,4,25,21,21,21,21,21,24
+	DB 21,21,21,21,24,4,4,4,4,25,21,21,21,21,21,24
+	DB 21,21,21,21,24,4,4,4,4,25,21,21,21,21,21,24
+
+	DB 26,22,22,27,24,4,4,4,4,26,22,22,22,22,27,24
+	DB 26,22,22,27,24,4,4,4,4,26,22,22,22,22,27,24
+	DB 26,22,22,27,24,4,4,4,4,26,22,22,22,22,27,24
+	DB 26,22,22,27,24,4,4,4,4,26,22,22,22,22,27,24
+
+	DB 21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21
+	DB 21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21
+	DB 21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21
+	DB 21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21
+	ENDM
+
+; テスト用マスク付きスプライト (2x2 チップ、ダイヤ型シアン)
+TestSprite:
+	DB $FF,$FF,$FF,$C0,$C0,$80,$00,$00
+	DB $00,$00,$00,$1F,$3F,$7F,$FF,$FF
+	DB $00,$00,$00,$00,$00,$00,$00,$00
+	DB $00,$00,$00,$1F,$3F,$7F,$FF,$FF
+	DB $FF,$FF,$FF,$07,$03,$01,$00,$00
+	DB $00,$00,$00,$F8,$FC,$FE,$FF,$FF
+	DB $00,$00,$00,$00,$00,$00,$00,$00
+	DB $00,$00,$00,$F8,$FC,$FE,$FF,$FF
+	DB $00,$00,$80,$C0,$E0,$FF,$FF,$FF
+	DB $FF,$FF,$7F,$3F,$1F,$00,$00,$00
+	DB $00,$00,$00,$00,$00,$00,$00,$00
+	DB $FF,$FF,$7F,$3F,$1F,$00,$00,$00
+	DB $00,$00,$01,$03,$07,$FF,$FF,$FF
+	DB $FF,$FF,$FE,$FC,$F8,$00,$00,$00
+	DB $00,$00,$00,$00,$00,$00,$00,$00
+	DB $FF,$FF,$FE,$FC,$F8,$00,$00,$00
+; 合成バッファ (4096 bytes, 256 バイトアライン)
+	ALIGN 256
+TestMergeBuf:
+	DS 4096
+
+#END
+
+CONST TEST_SPRITE = TestSprite;
+CONST TEST_MAP_CHIP = TestMapChip;
+CONST TEST_MAP_IDX = TestMapIdx;
+CONST TEST_MAP_GRP = TestMapGrp;
+CONST TEST_MERGEBUF = TestMergeBuf;
+
+VAR PX, PY, DX, DY;
+
+VSYNC_PROC() { }
+
+MAIN()
+VAR I, K;
+{
+	WIDTH(40);
+	GRPSETUP();
+	GRDISP(1);
+	GRCLS();
+
+	CHIP_INIT();
+	CHIP_SET_VVRAMSIZE(42, 28);
+	CHIP_SET_OFS(1, 1);
+	CHIP_SET_SIZE(38, 23);
+
+	CHIP_SET_MAP(TEST_MAP_CHIP, TEST_MAP_IDX, TEST_MAP_GRP);
+	CHIP_SET_BUFFER(TEST_MERGEBUF);
+	CHIP_SET_MAPSIZE(64, 64);
+
+	// 初回描画
+	CHIP_FILL_MAP();
+	CHIP_DRAW_VVRAM();
+
+	PX = 5;
+	PY = 3;
+
+	// メインループ: WASD でスクロール + スプライト
+	LOOP
+	{
+		K = INKEY(0);
+		IF K == 'A' THEN PX--;
+		ELIF K == 'D' THEN PX++;
+		IF K == 'W' THEN PY--;
+		ELIF K == 'S' THEN PY++;
+
+		DX = PX - 5;
+		DY = PY - 3;
+		CHIP_SET_SCROLL(DX, DY);
+		CHIP_FILL_MAP();
+
+		CHIP_SPR_START();
+		CHIP_SPR_POS(PX, PY);
+		CHIP_SPR_ADD(TEST_SPRITE, 2, 2);
+
+		CHIP_DRAW_VVRAM();
+		VSYNC(2);
+	}
+}

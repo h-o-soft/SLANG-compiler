@@ -1,0 +1,251 @@
+;
+;	IPL(2D/2DD/2HD)
+;
+; ブート時にメイン側の $C000-, サブ側の $5000- に読み込まれ、メイン側 $C000 から実行。
+; 2D/2DD なら 256byte/sec, 2HD なら 128byte/sec の Trk.0 Sec.1-2 に配置。
+;　　（2HD は 128+128byte を Trk.0 Sec.1-2 に連続して書き込む
+;
+; IPL は、2D/2DD/2HD で別バイナリを使う。IPLMODE の設定を変えてコンパイルすること。
+;
+;2D
+;   Trk.0
+;      Sec. 1    (512byte*1) subsys サブ側
+;      Sec. 2- 3 (512byte*2) 空き（予備）
+;      Sec. 4- 5 (512byte*2) iosys メイン側
+;      Sec. 6- 9 (512byte*4) ファイルテーブル（ディレクトリ）
+;      Sec. 1    (256byte/s) ipl ここが最初に $C000/$5000 に読み込まれる
+;   Trk.1-79
+;      Sec. 1- 9 (512byte*9) ファイル格納領域
+;2DD
+;   Trk.80-159
+;      Sec. 1- 9 (512byte/s) ファイル格納領域
+;2HD
+;   Trk.0
+;      Sec. 1    (128byte*1) ipl ここが最初に $C000/$5000 に読み込まれる
+;      Sec. 2    (128byte*1) ipl ここが最初に $C080/$5080 に読み込まれる
+;      Sec. 1    (512byte*1) subsys サブ側
+;      Sec. 2- 3 (512byte*2) 空き（予備）
+;      Sec. 4- 5 (512byte*2) iosys メイン側
+;      Sec. 6- 9 (512byte*4) ファイルテーブル（ディレクトリ）
+;      Sec.10-15 (512byte*6) 空き（予備）
+;   Trk.1-159
+;      Sec. 1-15 (512byte*15) ファイル格納領域
+;
+;メイン側はオンメモリプログラムならここから直接ロードしても良い。
+;subsys.z80で設定したセクタ数は、メイン側での受信バイト数に影響するので同時に変更すること
+
+
+IPLMODE		equ		$02		;2D 	IPLを書き込むメディアの種類によっていずれかを有効にすること
+;IPLMODE		equ		$12		;2DD
+;IPLMODE		equ		$22		;2HD
+
+
+	#IF IPLMODE==$02
+		#PRINT "****** IPL MODE = 2D *****"
+	#ELIF IPLMODE==$12
+		#PRINT "****** IPL MODE = 2DD *****"
+	#ELIF IPLMODE==$22
+		#PRINT "****** IPL MODE = 2HD *****"
+	#ELSE
+		#PRINT "***** SET IPL MODE *****"
+	#ENDIF
+
+; MainPrg	equ	$F800						;メイン側ディスクルーチン(iosys)
+MainPrg	equ	$0000						;メイン側ディスクルーチン(iosys)
+SubPrg	equ	$7B00						;サブ側ディスクルーチン(subsys)
+
+	ORG			$C000
+
+Main:
+	di
+	ld			a,%00111011				;25Line,カラーグラフィック,グラフィック画面表示,N88BAS,RAM64K,640x200x3
+	out			($31),a
+	ld			a,%10111001				;音源割り込み不可,VRAM独立アクセス,Digital8色,MainRAM選択,コンピュータ出力,内部EROM
+	out			($32),a
+	ld			sp,$C000				;起動直後=$E5F4
+
+	ld			a,$0D					;exec command
+	call		SendCmd					;[$0D][Adr-H]Adr-[L]
+		#IF IPLMODE!=22
+	ld			a,$50					;2D/2DD は SUBSYS 側 IPL $5000-
+		#ELSE
+	ld			a,$40					;2HD は SUBSYS 側 IPL $4000-
+		#ENDIF
+	call		Send1
+	ld			a,Sub_IPL & $FF			;サブシステム側 IPL を実行
+	call		Send1
+
+	ld			hl,MainPrg				;ロードアドレス SubSys.z80 の Trk/Sec 等ワーク初期値に従ってロードされる
+Recv4:
+	ld			a,$93					;PortA/B 受信ポート
+	out			($FF),a
+
+	ld			a,$0B					;RFD=1
+	out			($FF),a
+.wait1:
+	in			a,($FE)					;SubのDAV=1待ち
+	rrca
+	jr			nc,.wait1
+	ld			a,$0A					;RFD=0
+	out			($FF),a
+
+	ld			bc,$00FC
+	ld		e,4					;256*n メインプログラム(iosys)のサイズに合わせて決める
+.loop:
+	call		.wait2					;256*n byte受信
+	dec			e
+	jr			nz,.loop
+
+	ld			a,$91
+	out			($FF),a					;PortA=受信 PortB=送信ポート
+
+	jp			MainPrg				;<-----  ロードしたプログラム(iosys)に飛ぶ
+
+.wait2:
+	in			a,($FE)
+	rrca
+	jr			nc,.wait2				;SubのDAV=1を待つ
+
+	ini									;(1) $FC
+	inc			c
+	ini									;(2) $FD
+
+	ld			a,9						;DAV=1(set)
+	out			($FF),a
+.wait3:
+	in			a,($FE)
+	rrca
+	jr			c,.wait3				;DAV=0待ち
+
+	ini									;(3) $FD
+	dec			c
+	ini									;(4) $FC
+
+	ld			a,8						;DAV=0(reset)
+	out			($FF),a
+	jr			nz,.wait2
+	ret
+
+SendCmd:								;ROM 内ルーチン $37C9(cmd)/$37D2(data)で代用可？機種依存だと困る･･･
+	push		af
+	ld			a,$0F
+	out			($FF),a					;ATN=1
+	pop			af
+Send1:
+	push		af
+.wait1:
+	in			a,($FE)
+	and			$02
+	jr			z,.wait1				;RFD=1待ち
+
+	ld			a,$0E
+	out			($FF),a					;ATN=0
+
+	pop			af
+	out			($FD),a					;Send
+
+	ld			a,$09
+	out			($FF),a					;DAV=1
+.wait2:
+	in			a,($FE)
+	and			4
+	jr			z,.wait2				;DAC=1待ち
+
+	ld			a,8
+	out			($FF),a					;DAV=0
+.wait3:
+	in			a,($FE)
+	and			4
+	jr			nz,.wait3				;DAC=0待ち
+	ret
+
+;-------------------------------------------------------------------------------
+;サブシステム内のバッファにも同じ256byteのIPLが残っているので
+;ここからサブシステム側のIPLとして実行する
+;
+;※トラック 0 セクタ 1 はこの IPL 自身だが、↓でロードするのは
+;  セクタ長 512byte の「もう一つのセクタ 1」。
+Sub_IPL:
+	ld			a,($07EE)
+	cp			$FE
+	jr			nz,.Fx
+
+	ld			a,2						;Set Boundary Mode（Mx系のみ）
+	call		$123B					;[cmd:$21][Mode] 0=2D/256byteのみ 1=256byteのみ 2=全種類OK限定解除
+
+	ld			c,0
+	ld			a,IPLMODE
+	call		$0F38					;Set Disk Mode (drv0)
+	ld			c,1
+	ld			a,IPLMODE
+	call		$0F38					;Set Disk Mode (drv1)
+.Fx:
+	ld			a,$0F					;Set Surface Mode
+	call		$05BD					;[cmd:$17][Mode] 全ドライブ両面ディスク
+
+	ld			de,$0001				;d=トラック番号 e=セクタ番号
+	ld			bc,$0200				;b=セクタ数 c=ドライブ番号
+
+.load:
+	call		$01AA					;シークコマンド発行、結果をcfで返す
+	ret			c						;cf=1でエラーの時はコマンドフェッチループに戻る
+	call		$035B					;ドライブ毎のマージンデータ書き込み($F7)
+
+	push		bc
+	push		de						;ROM 内ルーチンのリードセクタは N や EOT が固定なので↓に改変して使用 $02D5->$03F1近辺
+
+	ld			a,$46					;765A: READ DATA [CMD:06] [HD-US] [C] [H] [R] [N] [EOT] [GPL] [DTL]
+	call		$02A4					;WriteFDC+ワークにも保存
+	xor			a						;H=0
+	ld			c,a						;H=0
+	srl			d						;トラック番号->シリンダ番号
+	jr			nc,.skip				;トラック番号が偶数なら表 H=0
+	ld			a,4						;トラック番号が奇数なら裏 H=1
+	inc			c						;H=1
+.skip
+	rst			$20						;[HD-US] bit0-1にドライブ番号、bit2にヘッド番号
+	ld			a,d
+	rst			$20						;[C] シリンダ
+	ld			a,c
+	rst			$20						;[H] ヘッダ
+	ld			a,e
+	rst			$20						;[R] セクタ
+	ld			a,2
+	rst			$20						;[N]=512byte
+	ld			a,10
+	rst			$20						;[EOT] 最終セクタ 10
+	ld			a,$0E
+	rst			$20						;[GPL] ギャップ長 14
+	ld			a,$FF
+	rst			$20						;[DTL] データ長
+
+	ld			hl,SubPrg				;サブ側プログラムのロードアドレス
+
+	ld			a,b
+	add			a,a
+	ld			d,a
+	ld			bc,$00FB				;$FB=765AとFDDとの入出力ポート
+.loop:									;512byte*読み出しセクタ数分ループ トラックはまたげない
+	ei
+	halt
+	in			a,($FA)					;765A STATUS
+	and			$20						;bit5=1 NON DMA
+	jr			z,.exit
+	ini									;(hl)<-(c) hl++ b--
+	jr			nz,.loop
+	dec			d
+	jr			nz,.loop
+
+.exit:
+	in			a,($F8)					;FDC に terminal count を出力
+	ei
+	halt
+	di
+	pop			de
+	pop			bc
+
+	call		$0263					;FDCのリザルトステータス取得、ワーク($7F0D-)に格納 cf=1 はエラー
+	ret			c						;cf=1でエラーの時はコマンドフェッチループに戻る
+
+	jp			SubPrg					;サブ側のプログラムを実行
+

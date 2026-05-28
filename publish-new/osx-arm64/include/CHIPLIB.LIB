@@ -1,0 +1,1506 @@
+///
+/// CHIPLIB.SL — X1 総合グラフィックライブラリ (320x200, 8x8 チップ)
+///
+/// 役割:
+///   全部入り総合グラフィックライブラリ。マップ描画 + チップスプライト +
+///   マスク描画 + アニメ + ダブルバッファを、グラフィック VRAM 一括で管理する高機能版。
+///   PCG ベース (TILELIB) ではなく、グラフィック VRAM で直接描画したい場合に使う。
+///
+/// 特徴:
+///   - 仮想 VRAM (RAM) ダブルバッファ + 差分転送
+///   - マップ描画、単発チップ描画、マスク描画 (合成バッファ経由)
+///   - スプライト系 API (CHIP_SPR_*) で前景合成
+///   - アニメ対応 (CHIP_SET_ANIM 閾値以上のチップを自動サイクル)
+///   - 表示領域 / スクロール / マップサイズを個別指定可能
+///
+/// ユーザー設定:
+///   通常使用は CHIP_SET_SIZE() で VVRAM サイズが自動設定される (display + 2 マージン)。
+///   要求サイズが _CHIP_VVRAMW_MAX × _CHIP_VVRAMH_MAX を超えると自動で clamp。
+///   デフォルト MAX は 42x28。大画面マップが必要なら #include 前に上書き可能:
+///     CONST _CHIP_VVRAM_OVERRIDE = 1;
+///     CONST ASM _CHIP_VVRAMW_MAX = 50;
+///     CONST ASM _CHIP_VVRAMH_MAX = 30;
+///     #include "CHIPLIB.SL"
+///
+/// 公開 API 分類:
+///   [必須]    CHIP_INIT, CHIP_SET_MAP, CHIP_SET_MAPSIZE,
+///             CHIP_SET_SIZE, CHIP_SET_OFS, CHIP_SET_SCROLL,
+///             CHIP_FILL_MAP, CHIP_DRAW_VVRAM
+///   [アニメ]  CHIP_SET_ANIM, CHIP_SET_ANIM_RATE, CHIP_ANIM_TICK (VSYNC_PROC から)
+///   [スプライト] CHIP_SPR_START, CHIP_SPR_POS, CHIP_SPR_ADD, CHIP_SPR_FLASH
+///   [直接描画] CHIP_DRAW, CHIP_MASK_DRAW
+///   [上級者向け] CHIP_SET_VVRAMSIZE (通常は CHIP_SET_SIZE で自動設定)
+///
+
+// --- 初期化・描画 ---
+MACHINE CHIP_INIT(0): ChipInit;
+MACHINE CHIP_DRAW_VVRAM(0): ChipDrawVVRAM;
+MACHINE CHIP_FILL_MAP(0): ChipFillMap;
+MACHINE CHIP_DRAW(3): ChipDraw;
+MACHINE CHIP_MASK_DRAW(3): ChipMaskDraw;
+
+// --- 設定 ---
+MACHINE CHIP_SET_OFS(2): ChipSetOfs;
+MACHINE CHIP_SET_SIZE(2): ChipSetSize;
+MACHINE CHIP_SET_MAP(3): ChipSetMap;
+MACHINE CHIP_SET_MAPSIZE(2): ChipSetMapSize;
+MACHINE CHIP_SET_SCROLL(2): ChipSetScroll;
+MACHINE CHIP_SET_VVRAMSIZE(2): ChipSetVVRAMSize;
+MACHINE CHIP_SET_ANIM(1): ChipSetAnim;
+MACHINE CHIP_SET_ANIM_RATE(2): ChipSetAnimRate;
+MACHINE CHIP_ANIM_TICK(0): ChipAnimTick;
+
+// --- スプライト ---
+MACHINE CHIP_SPR_START(0): ChipSprStart;
+MACHINE CHIP_SPR_POS(2): ChipSprPos;
+MACHINE CHIP_SPR_ADD(3): ChipSprAdd;
+MACHINE CHIP_SPR_FLASH(1): ChipSprFlash;
+
+// ============================================================
+// ブロック 1: 実装
+// ============================================================
+//
+// VVRAM 最大サイズ (バッファ確保用)。デフォルト 42x28。
+// 大きいマップが必要な場合は #include 前に下記のように上書き可能:
+//   CONST _CHIP_VVRAM_OVERRIDE = 1;
+//   CONST ASM _CHIP_VVRAMW_MAX = 50;
+//   CONST ASM _CHIP_VVRAMH_MAX = 30;
+//   #include "CHIPLIB.SL"
+#IF (_CHIP_VVRAM_OVERRIDE != 1)
+CONST ASM _CHIP_VVRAMW_MAX = 42;
+CONST ASM _CHIP_VVRAMH_MAX = 28;
+#ENDIF
+
+#ASM
+; 初期値 (CHIP_SET_VVRAMSIZE で動的変更可)
+VVRAMWIDTH	EQU	42
+VVRAMHEIGHT	EQU	27
+MAPWIDTH	EQU	21	; 全画面: (40+1)/2+1
+MAPHEIGHT	EQU	14	; 全画面: (25+1)/2+1
+DRAWX		EQU	0
+DRAWY		EQU	0
+DRAWWCNT	EQU	40	; 全画面 320/8
+DRAWHCNT	EQU	25	; 全画面 200/8
+
+; データアドレス初期値 (CHIP_SET_MAP で動的設定される前提。ダミー 0)
+MAPGRPADR	EQU	0
+MAPIDXADR	EQU	0
+MAPCHIPADR	EQU	0
+MERGEBUFFER	EQU	0
+
+_CHIP_ANIMIDX:	DB	0
+
+;
+;  ChipInit
+;    仮想VRAMとその関連データの初期化
+; 
+ChipInit:
+	; 仮想VRAM (RAM ダブルバッファ) を $FF でクリア
+	; ($FF = 未使用値。チップ番号 0 との差分を出すため 0 ではなく $FF)
+	ld hl,_CHIP_VVRAM0
+	ld bc,VVRAM_SIZE
+	ld a,$FF
+	call _ChipClearRAM
+	ld hl,_CHIP_VVRAM1
+	ld bc,VVRAM_SIZE
+	ld a,$FF
+	call _ChipClearRAM
+	; マージバッファアドレスを自己書き換えで設定 (内部 _CHIP_MERGEBUF を参照)
+	ld a,HIGH _CHIP_MERGEBUF
+	ld (VramDrawAddress.ref_mergebuf1+1),a
+	ld (ChipSprAdd.ref_mergebuf2+1),a
+	ld (ChipSprAdd.ref_mergebuf3+1),a
+	; Primary をページ 0 にしておく
+	xor a
+	ld (_CHIP_PRIMARY),a
+	ret
+
+; RAM を A の値でクリア (HL=先頭, BC=サイズ)
+_ChipClearRAM:
+	ld (hl),a
+	ld d,h
+	ld e,l
+	inc de
+	dec bc
+	ldir
+	ret
+
+; 仮想 VRAM / チップ定数
+VVRAM_SIZE	EQU	_CHIP_VVRAMW_MAX * _CHIP_VVRAMH_MAX	; 最大サイズでクリア
+CHIP_SIZE	EQU	24	; 通常チップ: B8+R8+G8
+MASK_CHIP_SIZE	EQU	32	; マスク付き: mask8+B8+R8+G8
+MERGE_UNIT	EQU	32	; 合成バッファ 1 個
+
+;;; X1 版 Phase 0: 最小描画プリミティブ (320x200, 8x8 チップ)
+
+;
+; _ChipGetVRAMAdr
+;   X1 の非線形 VRAM I/O アドレスを計算する (320x200, WIDTH=40)
+;   Y%8==0 前提で簡略化: (Y&7)<<11 の項は常に 0
+;
+;   入力: HL = X (ピクセル単位), DE = Y (ピクセル単位、8の倍数のみ)
+;   出力: HL = B プレーン ($4000 ベース) の I/O アドレス
+;   破壊: AF, BC, DE
+;
+;   計算: $4000 + X + Y * 40 (入力はチップ単位 = 8ドット単位)
+;
+_ChipGetVRAMAdr:
+	push hl			; X を保存
+	; Y * 40 = Y*8 + Y*32
+	ex de,hl		; HL = Y
+	ld d,h
+	ld e,l			; DE = Y
+	add hl,hl
+	add hl,hl
+	add hl,hl		; HL = Y*8
+	ld b,h
+	ld c,l			; BC = Y*8
+	add hl,hl
+	add hl,hl		; HL = Y*32
+	add hl,bc		; HL = Y*40
+	ex de,hl		; DE = Y*40
+	pop hl			; HL = X
+	; 合算
+	add hl,de		; HL = X + Y*40
+	ld de,$4000
+	add hl,de		; HL = $4000 + X + Y*40
+	ret
+
+;
+; ChipSetMap
+;   マップデータのアドレスを設定 (自己書き換え)
+;   HL = MAPCHIPADR, DE = MAPIDXADR, BC = MAPGRPADR
+;
+ChipSetMap:
+	ld (ChipFillMap.ref_mapchipadr+2),hl	; ld ix,imm の即値は +2
+	ld (ChipFillMap.ref_mapidxadr+1),de
+	ld (VramDrawAddress.ref_mapgrpadr1+1),bc
+	ld (ChipSprAdd.ref_mapgrpadr2+1),bc
+	ret
+
+;
+; ChipDraw
+;   指定座標に 1 チップ (8x8) を描画
+;   HL = X (チップ単位), DE = Y (チップ単位)
+;   BC = チップ画像データアドレス (24 bytes: B8+R8+G8)
+;
+ChipDraw:
+	push bc			; 画像データアドレスを保存
+	call _ChipGetVRAMAdr	; HL = VRAM I/O アドレス
+	call _ChipSetDrawAddr	; 自己書き換え
+	pop hl			; HL = 画像データ
+	call _ChipDrawOne
+	ret
+
+;
+; _ChipSetDrawAddr
+;   _ChipDrawOne 内の ld bc 即値を自己書き換えして描画先を設定
+;
+;   入力: HL = B プレーンの VRAM I/O アドレス (_ChipGetVRAMAdr の戻り値)
+;   破壊: なし
+;
+_ChipSetDrawAddr:
+	ld (_ChipDrawOne.bc_init+1),hl
+	ret
+
+;
+; _ChipDrawInner
+;   8x8 チップ 1 プレーンを VRAM に描画 (アンロール展開)
+;
+;   前提: BC = VRAM I/O アドレス、SP = 画像データ先頭
+;   動作: POP で 2 行分 (2 bytes) を一括読み → OUT (C),A でライン描画
+;         各行で B += $08 (X1 インターリーブの次ライン)
+;         8 行完了時 B は +$40 されており、次プレーンの先頭に自動遷移
+;   破壊: AF, HL, BC (B += $40)
+;
+_ChipDrawInner:
+	ld (.stacksave+1),sp
+	ld sp,hl		; SP = 画像データ
+	; ---- line 0, 1 ----
+	pop hl
+	ld a,l
+	out (c),a
+	ld a,b
+	add a,$08
+	ld b,a
+	ld a,h
+	out (c),a
+	ld a,b
+	add a,$08
+	ld b,a
+	; ---- line 2, 3 ----
+	pop hl
+	ld a,l
+	out (c),a
+	ld a,b
+	add a,$08
+	ld b,a
+	ld a,h
+	out (c),a
+	ld a,b
+	add a,$08
+	ld b,a
+	; ---- line 4, 5 ----
+	pop hl
+	ld a,l
+	out (c),a
+	ld a,b
+	add a,$08
+	ld b,a
+	ld a,h
+	out (c),a
+	ld a,b
+	add a,$08
+	ld b,a
+	; ---- line 6, 7 ----
+	pop hl
+	ld a,l
+	out (c),a
+	ld a,b
+	add a,$08
+	ld b,a
+	ld a,h
+	out (c),a
+	ld a,b
+	add a,$08
+	ld b,a		; 計 B += $08*8 = $40 → 次プレーンへ
+	; SP 現在値 (= 次の画像データ位置) を HL に保存
+	ld hl,0
+	add hl,sp
+.stacksave:
+	ld sp,0		; SP 復帰
+	ret
+
+;
+; _ChipDrawOne
+;   8x8 チップを 3 プレーン (B/R/G) 描画する
+;
+;   前提: _ChipSetDrawAddr で描画先が設定済み
+;   入力: HL = 画像データ先頭 (24 bytes: B[8] + R[8] + G[8])
+;   動作: _ChipDrawInner を 3 回呼ぶ (内部で SP 保存/復帰)
+;         _ChipDrawInner 内で B += $40 されるため、
+;         B→R→G のプレーン切替はオーバーヘッドゼロ
+;   破壊: AF, HL, BC
+;
+_ChipDrawOne:
+	di
+.bc_init:
+	ld bc,$0000		; ← _ChipSetDrawAddr で自己書き換え
+	call _ChipDrawInner	; B プレーン ($4000+offset)
+	call _ChipDrawInner	; R プレーン (自動: B += $40 → $8000+offset)
+	call _ChipDrawInner	; G プレーン (自動: B += $40 → $C000+offset)
+	ei
+	ret
+
+
+;
+; ChipFillMap
+;   マップデータを元に現在書き込み有効な仮想VRAMに転送
+; 
+ChipFillMap:
+	; 入力
+	; (Work) _CHIP_MAPX  描画左上座標(8x8を1単位とした座標
+	; (Work) _CHIP_MAPY  描画左上座標
+	; (Work) _CHIP_PRIMARY 描画対象の仮想VRAM番号とMAPX、MAPYのオフセット位置(各1ビット)
+	push iy
+
+	ld iy,_CHIP_MAPY
+.ref_mapchipadr:
+	ld ix,MAPCHIPADR
+
+	; deにPrimary(描画先VVRAM)のアドレスを入れる (RAM ダブルバッファ)
+	ld a,(_CHIP_PRIMARY)
+	and 1
+	jr nz,.usepage1
+	ld de,_CHIP_VVRAM0
+	jr .pagesel_done
+.usepage1:
+	ld de,_CHIP_VVRAM1
+.pagesel_done:
+
+	; IY = _CHIP_MAPY(IY+2がMAPX)
+	; IX = MAPCHIPADR(圧縮マップ)
+	; DE = 描画先VVRAMアドレス(Primary/Secondary考慮済)
+
+
+	push de
+	; backup sp
+	ld (.tileMapSp+1),sp
+
+	;Calculate Y-offset
+	ld a,(IY+1)	; High _CHIP_MAPY
+	srl a
+	ld h,a
+	ld a,(IY+0)	; Low _CHIP_MAPY
+	rr a
+	ld l,a
+	ld e,(IY+4)	; _CHIP_MAPW。 可変サイズなので……
+	ld d,0
+	call MULHLDE	; 素朴に掛け算する
+	ex de,hl
+	add ix,de
+
+	ld a,(IY+3)	; High _CHIP_MAPX
+	srl a
+	ld d,a
+	ld a,(IY+2)	; Low _CHIP_MAPX
+	rr a
+	ld e,a
+	add ix,de
+	; ここでixに描画元のMAPCHIPADR先頭が入る(ここから最大20x12を拾って描画する)
+
+	pop de
+	push de
+	; deには描画先仮想VRAM先頭アドレスが入っている
+
+
+	exx
+	; 縦のループ数
+	ld c,MAPHEIGHT
+.tileTransferY
+	exx
+	; 仮想VRAMアドレス先頭を保存しておく
+	ld (.DeRestore+1),de
+	exx
+	; 圧縮マップの横のループ数
+	ld b,MAPWIDTH
+.tileTransferX
+	exx
+
+	ld a,(ix)	; 圧縮マップのタイル番号
+	and $3f		; 上位2ビットは無視
+	inc ix		; 右に移動
+
+	; 4倍してやる(2x2でマップチップが4バイト構成なので)
+	ld l,a
+	ld h,0
+	add hl,hl
+	add hl,hl
+	ld c,l
+	ld b,h
+	; ld c,a
+	; xor a
+	; sla c
+	; rla
+	; sla c
+	; rla
+	; ld b,a
+.ref_mapidxadr:
+	ld hl,MAPIDXADR
+	add hl,bc
+
+	; ここまでで
+	; iy = マップ座標の先頭
+	; ix = 描画元のMAPCHIPADR(これはしばらく使わない)
+	; hl = マップチップ先頭(2x2の先頭)
+	; de = 描画先仮想VRAM先頭
+	; が、入っている。
+
+	di
+	ld sp,hl
+	
+	ex de,hl
+	; 入れ替えてこうなる
+	; hl = 描画先仮想VRAM先頭
+	; de = マップチップ先頭(2x2の先頭)
+
+	
+
+	; bcには仮想VRAM改行幅を入れる
+.ref_vvw_m1:
+	ld bc,VVRAMWIDTH-1
+
+	; 2x2を描画する(クリッピングを考慮していない)
+	; VVRAMチップ番号を2つ得る
+	pop de
+	ld (hl),e
+	inc hl
+	ld (hl),d
+	add hl,bc
+	pop de
+	ld (hl),e
+	inc hl
+	ld (hl),d
+	xor a
+	sbc hl,bc	; これで右に移動している
+
+	; ここまでで2x2が描画出来ている
+
+	ex de,hl
+	; hl = (pop deで壊れているので使われない)
+	; de = 仮想VRAM先頭
+
+	exx
+	dec b
+	jr nz,.tileTransferX
+	exx
+
+	; ここでDE(描画先)を戻す
+.DeRestore
+	ld de,0
+
+.ref_vvw_x2:
+	ld hl,VVRAMWIDTH*2	; 横一行の2行ぶん足す
+	add hl,de
+	ex de,hl
+	; これでdeに描画先VVRAMアドレスが入る
+
+	ld a,(_CHIP_MAPW)
+	ld c,a
+	ld b,0
+	; 本来は圧縮マップの横描画数なので-20あるいは-18になるはず(IXが進んだ数を引いてやって、次の行の先頭に移動させる)
+	add ix,bc		;Move to the next row of the Supertilemap
+	ld bc,-MAPWIDTH
+	add ix,bc		;Move to the next row of the Supertilemap
+
+	exx
+	dec c
+	jr nz,.tileTransferY
+	exx
+
+.tileMapSp
+	ld	sp,0
+
+	pop hl	; DEに入れておいた描画先VVRAMアドレス
+
+
+	
+
+	pop IY
+	ei
+	ret
+
+
+; マップチップ描画の左上座標を指定
+; X1 版: X, Y ともにチップ単位 (8x8 = 1)
+ChipSetOfs:
+	; hl = x (チップ単位)
+	; de = y (チップ単位)
+	call _ChipGetVRAMAdr
+	call _ChipSetDrawAddr
+	ld (VramDrawAddress+1),hl	; ChipDrawVVRAM 裏レジスタ初期値も設定
+	ret
+
+; マップチップ描画の縦横の個数を指定 (X1 8x8 版)
+;   通常はこの関数だけで VVRAM サイズも自動設定される (display + 2 マージン、MAX で clamp)。
+;   特殊用途で VVRAM サイズを明示制御したい場合は、本関数の後に CHIP_SET_VVRAMSIZE を呼ぶ。
+;   要求サイズが _CHIP_VVRAMW_MAX × _CHIP_VVRAMH_MAX を超えた場合は MAX に clamp される。
+;   大画面が必要なら ライブラリ取り込み前に MAX を上書き定義すること。
+ChipSetSize:
+	; hl = 横個数 (8x8 チップ数)
+	; de = 縦個数
+
+	; --- 内部 VVRAM サイズも自動設定 (display + 2, MAX で clamp) ---
+	push hl
+	push de
+	; VVRAM W = HL + 2 (clamp to _CHIP_VVRAMW_MAX)
+	ld a,l
+	add a,2
+	cp _CHIP_VVRAMW_MAX + 1
+	jr c,.cssz_wok
+	ld a,_CHIP_VVRAMW_MAX
+.cssz_wok:
+	ld l,a
+	ld h,0
+	; VVRAM H = DE + 2 (clamp to _CHIP_VVRAMH_MAX)
+	ld a,e
+	add a,2
+	cp _CHIP_VVRAMH_MAX + 1
+	jr c,.cssz_hok
+	ld a,_CHIP_VVRAMH_MAX
+.cssz_hok:
+	ld e,a
+	ld d,0
+	call ChipSetVVRAMSize
+	pop de
+	pop hl
+
+	; VVRAM マージン = VVRAMWIDTH - 横個数
+.ref_vvw:
+	ld a,VVRAMWIDTH
+	sub l
+	ld (VramDrawAddress.vvrammargin+1),a
+
+	; 縦サイズを入れておく
+	ld a,e
+	ld (VramDrawAddress.drawhcnt1+1),a
+
+	; 横サイズを入れておく
+	ld a,l
+	ld (VramDrawAddress.drawwcnt0+1),a
+	ld (VramDrawAddress.drawwcnt1+1),a
+	ld (VramDrawAddress.drawwcnt2+1),a
+	ld (VramDrawAddress.drawwcnt3+1),a
+
+	; 行間 VRAM アドレスジャンプ = 40 - 横個数 (X1 WIDTH=40, 8x8=1byte/chip)
+	ld a,40
+	sub l
+	ld l,a
+	ld h,0
+	ld (VramDrawAddress+4),hl
+
+	ret
+
+ChipSetAnim:
+	; hl = anim parts start index
+	ld a,l
+	ld (VramDrawAddress.animstart+1),a
+	ld (ChipSprAdd.ref_animstart2+1),a	; SpriteAdd 内のアニメ判定も同期
+	ret
+
+;
+; ChipSetAnimRate — アニメ進行レート設定
+;   HL = ticks (1 フレーム進めるのに必要な vsync 数)
+;   DE = period (アニメ周期、1-4 が実用範囲)
+;   範囲外 (0) は内部で 1 にクランプ
+;   実行中にレート変更すると内部カウンタ/フレームが新範囲を逸脱しないよう、
+;   _CHIP_ANIMCNT / _CHIP_ANIMFRAME / _CHIP_ANIMIDX を 0 に初期化する
+;
+ChipSetAnimRate:
+	ld a,l
+	or a
+	jr nz,.tickok
+	ld a,1			; ticks=0 → 1 にクランプ
+.tickok:
+	ld (_CHIP_ANIMTICKS),a
+	ld a,e
+	or a
+	jr nz,.perok
+	ld a,1			; period=0 → 1 にクランプ
+.perok:
+	ld (_CHIP_ANIMPERIOD),a
+	; 内部状態を整合する値 (0) にリセット
+	xor a
+	ld (_CHIP_ANIMCNT),a
+	ld (_CHIP_ANIMFRAME),a
+	ld (_CHIP_ANIMIDX),a
+	ret
+
+;
+; ChipAnimTick — VSYNC_PROC から呼ぶ。アニメカウンタ進行 + フレーム更新
+;   _CHIP_ANIMIDX を必要に応じて更新する
+;
+ChipAnimTick:
+	ld hl,_CHIP_ANIMCNT
+	inc (hl)
+	ld a,(hl)
+	ld b,a
+	ld a,(_CHIP_ANIMTICKS)
+	cp b
+	ret nz			; counter < ticks → 何もしない
+	; counter == ticks → リセットしてフレーム進行
+	ld (hl),0
+	ld hl,_CHIP_ANIMFRAME
+	inc (hl)
+	ld a,(hl)
+	ld b,a
+	ld a,(_CHIP_ANIMPERIOD)
+	cp b
+	jr nz,.notwrap
+	ld (hl),0		; frame == period → ラップ
+.notwrap:
+	ld a,(_CHIP_ANIMFRAME)
+	ld (_CHIP_ANIMIDX),a
+	ret
+
+
+
+; ChipDrawVVRAM
+;  仮想VRAMのキャラクターコードを元に描画を行う
+;  ダブルバッファのSWAPも実行する
+;
+ChipDrawVVRAM:
+	; 裏レジスタに実 VRAM I/O アドレスを入れておく (X1: B プレーンベース)
+	exx
+VramDrawAddress:
+	ld hl,$4000		; ← ChipSetOfs で自己書き換え (_ChipGetVRAMAdr の戻り値)
+	ld de,40-DRAWWCNT	; ← ChipSetSize で自己書き換え (行間マージン)
+.drawwcnt0
+	ld c,DRAWWCNT		; ← ChipSetSize で自己書き換え
+	exx
+
+	; 横描画数
+.drawwcnt1
+	ld b,DRAWWCNT		; ← ChipSetSize
+	; 縦描画数
+.drawhcnt1
+	ld c,DRAWHCNT		; ← ChipSetSize
+
+	; VVRAM のオフセット計算 (X/Y のサブチップオフセット)
+	ld a,(_CHIP_MAPY)
+	and 1
+	sla a
+	sla a
+	ld e,a
+	ld a,(_CHIP_MAPX)
+	and 1
+	sla a
+	or e
+
+	; 新データ (ChipFillMap/ChipSprAdd が書いた側 = PRIMARY ページ)
+	push af
+	ld a,(_CHIP_PRIMARY)
+	and 1
+	jr nz,.draw_new_page1
+	ld hl,_CHIP_VVRAM0	; PRIMARY=0 → 新データ=PAGE0
+	jr .draw_new_done
+.draw_new_page1:
+	ld hl,_CHIP_VVRAM1	; PRIMARY=1 → 新データ=PAGE1
+.draw_new_done:
+	pop af
+	call _ChipSetVAdrOfs
+	push hl
+
+	; 旧データ (前回描画 = PRIMARY の逆ページ)
+	; ★ A は _CHIP_PRIMARY を使う (bit 2-1 に前回のオフセット情報が入っている)
+	ld a,(_CHIP_PRIMARY)
+	push af			; _CHIP_PRIMARY を保存
+	and 1			; bit 0 でページ選択
+	jr z,.draw_old_page1
+	ld hl,_CHIP_VVRAM0	; PRIMARY=1 → 旧データ=PAGE0
+	jr .draw_old_done
+.draw_old_page1:
+	ld hl,_CHIP_VVRAM1	; PRIMARY=0 → 旧データ=PAGE1
+.draw_old_done:
+	pop af			; _CHIP_PRIMARY 復帰 (前回のオフセット)
+	call _ChipSetVAdrOfs
+	pop de
+	; DE = 新データ (PRIMARY), HL = 旧データ (前回)
+
+.drawvvram_loop
+	
+
+	ld a,(de)	; DE が secondary 側
+	; 128以上の場合(合成チップの場合)は必ず描画する
+.animstart
+	cp 80
+	jr nc,.combdraw
+	; 128未満の場合は前の画面と比較する
+	cp (hl)
+
+	; 一致している場合は描画しない
+	jr z,.nodraw
+.mapdraw
+	; マップ描画
+	push de
+	push hl
+	; aにチップ番号があるので24倍してからMAPGRPADRを足す (8x8: CHIP_SIZE=24)
+	ld l,a
+	ld h,0
+.mapanimdraw
+	add hl,hl
+	add hl,hl
+	add hl,hl	; ×8
+	ld e,l
+	ld d,h
+	add hl,hl
+	add hl,de	; ×24
+.ref_mapgrpadr1:
+	ld de,MAPGRPADR
+	add hl,de
+	ex de,hl
+	; deがチップアドレスになっている
+	exx
+	push hl
+	exx
+	pop hl
+	jr .chipdraw
+.animdraw
+	; マップ描画だがチップアドレス下位2ビットを差し替えてやる
+	push de
+	push hl
+	and $fc
+	ld l,a
+	ld a,(_CHIP_ANIMIDX)
+	or l
+	ld l,a
+	ld h,0
+	jr .mapanimdraw
+.combdraw
+	cp $80
+	jr c,.animdraw
+
+	; 合成チップ描画
+	push de
+	push hl
+
+	ex de,hl
+	; 合成バッファ位置を算出 (8x8: MERGE_UNIT=32)
+	and $7f
+	ld l,a
+	ld h,0
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	add hl,hl	; 32倍
+.ref_mergebuf1:
+	ld a,HIGH MERGEBUFFER
+	add a,h
+	ld h,a
+	ex de,hl
+
+	exx
+	push hl
+	exx
+	pop hl
+	;jr .chipdraw
+.chipdraw
+	; この時点で HL=実VRAM I/Oアドレス、DE=画像アドレス になっている
+	push bc
+	call _ChipSetDrawAddr	; HL を _ChipDrawOne.bc_init に書き換え
+	ex de,hl		; HL = 画像データ (_ChipDrawOne は HL で受ける)
+	call _ChipDrawOne
+
+	pop bc
+	pop hl
+	pop de
+.nodraw
+	inc hl
+	inc de
+
+	; 裏レジスタ側で実VRAM I/Oアドレスを計算
+	exx
+	dec c
+	; 1行ぶんは単に横移動
+	jr	nz,.yoko2add
+	; 右端に到達したら次の char row (+40) に進む
+	add hl,de
+.drawwcnt2
+	ld c,DRAWWCNT		; ← ChipSetSize
+.yoko2add
+	; 横 8 ドットおきなので 1 バイト (8x8)
+	inc hl
+	exx
+
+	djnz .drawvvram_loop
+
+.drawwcnt3
+	ld b,DRAWWCNT		; ← ChipSetSize
+
+	; hl と de を VVRAMWIDTH - DRAWWCNT 足して次の行先頭に
+	push bc
+.vvrammargin
+	ld bc,VVRAMWIDTH-DRAWWCNT	; ← ChipSetSize で自己書き換え
+	add hl,bc
+	ex de,hl
+	add hl,bc
+	ex de,hl
+	pop bc
+
+	dec c
+	jp nz,.drawvvram_loop
+
+	; 今回のオフセットを保存しておく
+	ld a,(_CHIP_MAPY)
+	and 1
+	sla a
+	sla a
+	ld b,a
+	ld a,(_CHIP_MAPX)
+	and 1
+	sla a
+	or b
+	ld b,a
+
+	; 描画対象をSWAPしておく
+	ld a,(_CHIP_PRIMARY)
+	xor 1
+	and 1
+	; 前回オフセットを保存
+	or b
+	ld (_CHIP_PRIMARY),a
+
+	ret
+
+; _CHIP_MAPX, _CHIP_MAPYのオフセットを考慮して仮想VRAMの参照先頭位置をズラす
+; X1版: HL は呼び出し元で _CHIP_VVRAM0 or _CHIP_VVRAM1 を設定済み
+_ChipSetVAdrOfs:
+	push de
+	bit 2,a
+	jr z,.noyofs
+	; オフセットされている場合は一行ぶん足す
+.ref_vvw:
+	ld de,VVRAMWIDTH
+	add hl,de
+.noyofs
+	; 横位置オフセットの場合は2バイトズラして開始する
+	bit 1,a
+	jr  z,.offsetx1
+	inc hl
+.offsetx1
+	pop de
+	ret
+
+
+
+
+; ChipMaskDraw
+;   マスクデータつきの8x8画像を合成バッファに書き込む
+;   点滅描画を行う場合はChipSprFlashで点滅状態設定をしてから呼ぶ事
+ChipMaskDraw:
+	; hl = source, de = dest
+	; sourceの32バイト(8バイトマスク、24バイトRGB)をdeに描画 (X1 8x8版)
+	; 先頭のマスクでマスクしてからRGBをorして格納する
+
+	push hl
+	ld bc,8		; mask 8 bytes (8x8)
+	add hl,bc
+	ld c,l
+	ld b,h
+	pop hl
+
+	; hl  = mask address
+	; bc  = color address
+	; de = or描画対象dest
+
+	; call後、hlは変化なく、bcとdeは16バイト進んでいる
+	; なので連続して呼び出すとマスクされた上でRGBが正しく描画される
+	; スタックいじるので割り込み禁止
+.noflash
+	push hl
+FlashOrDraw1:
+	call _ChipMaskDrawPlane
+	; call _ChipMaskFlashPlane
+	pop hl
+	push hl
+FlashOrDraw2:
+	call _ChipMaskDrawPlane
+	; call _ChipMaskFlashPlane
+	pop hl
+FlashOrDraw3:
+	call _ChipMaskDrawPlane
+	; call _ChipMaskFlashPlane
+	ret
+
+_ChipMaskDrawPlane:
+	; 8x8版: 8 bytes/plane (4 POP × 2 bytes)
+	; SP = mask, HL = color, DE = dest (合成バッファ、RAM)
+	di
+	ld (.stackadr+1),sp
+	ld sp,hl
+	ld l,c
+	ld h,b
+
+	; --- 4 POP (8 bytes) ---
+	pop bc
+	ld a,(de)
+	and c
+	or (hl)
+	ld (de),a
+	inc hl
+	inc de
+	ld a,(de)
+	and b
+	or (hl)
+	ld (de),a
+	pop bc
+	inc hl
+	inc de
+	ld a,(de)
+	and c
+	or (hl)
+	ld (de),a
+	inc hl
+	inc de
+	ld a,(de)
+	and b
+	or (hl)
+	ld (de),a
+	pop bc
+	inc hl
+	inc de
+	ld a,(de)
+	and c
+	or (hl)
+	ld (de),a
+	inc hl
+	inc de
+	ld a,(de)
+	and b
+	or (hl)
+	ld (de),a
+	pop bc
+	inc hl
+	inc de
+	ld a,(de)
+	and c
+	or (hl)
+	ld (de),a
+	inc hl
+	inc de
+	ld a,(de)
+	and b
+	or (hl)
+	ld (de),a
+	inc hl
+	inc de
+
+	; hlはcolorの次の色になっている
+	ld c,l
+	ld b,h
+
+	; hlを8バイト戻す(マスクの先頭) (8x8: mask=8 bytes)
+	ld hl,-8
+	add hl,sp
+.stackadr
+	ld sp,0
+	ei
+	ret
+
+_ChipMaskFlashPlane:
+	di
+	push bc
+
+	ld (.fstackadr+1),sp
+	ld sp,hl
+
+	; 8x8版: 4 回ループ (2 bytes × 4 = 8 bytes/plane)
+	ld b,4
+.flashloop
+	pop hl
+	ld a,h
+	cpl
+	ld h,a
+	ld a,l
+	cpl
+	ld l,a
+	ld a,(de)
+	or l
+	ld (de),a
+	inc de
+	ld a,(de)
+	or h
+	ld (de),a
+	inc de
+
+	djnz .flashloop
+.fstackadr
+	ld sp,0
+
+	; deは維持する
+	; hlはそのまま
+	; bcは8バイト進める (8x8: 8 bytes/plane)
+	pop hl
+
+	ld bc,8
+	add hl,bc
+	ld c,l
+	ld b,h
+
+	ei
+	ret
+
+
+; ChipSprFlash
+; 次に ChipMaskDraw した時の点滅状態を設定する
+; L :
+;     bit0 = Rプレーンを点滅させるか
+;     bit1 = Gプレーンを点滅させるか
+;     bit2 = Bプレーンを点滅させるか
+; 
+; プレーンについては0だと点滅せず、7だと真っ白になる
+ChipSprFlash:
+	ld a,l
+	; bit 7,a
+	; jr z,.noflash
+
+	ld hl,_ChipMaskDrawPlane
+	ld de,_ChipMaskFlashPlane
+
+	srl a
+	jr nc,.normaldraw1
+	ex de,hl
+.normaldraw1
+	ld (FlashOrDraw1+1),hl
+
+	ld hl,_ChipMaskDrawPlane
+	ld de,_ChipMaskFlashPlane
+
+	srl a
+	jr nc,.normaldraw2
+	ex de,hl
+.normaldraw2
+	ld (FlashOrDraw2+1),hl
+
+	ld hl,_ChipMaskDrawPlane
+	ld de,_ChipMaskFlashPlane
+
+	srl a
+	jr nc,.normaldraw3
+	ex de,hl
+.normaldraw3
+	ld (FlashOrDraw3+1),hl
+.noflash
+	ret
+
+; 合成パーツ番号を初期化する
+ChipSprStart:
+	ld a,128
+	ld (_CHIP_EXIDX),a
+	ret
+
+; スプライトの書き込み開始位置を設定(VVRAMの座標)
+ChipSprPos:
+	; hl = X
+	; de = Y
+	ld a,l
+	ld (_CHIP_SPRX),a
+	ld a,e
+	ld (_CHIP_SPRY),a
+	ret
+
+ChipSprAdd:
+	; hl = image address with mask
+	; de = sw
+	; bc = sh
+
+	; 保存しておく
+	ld a,e
+	ld (_CHIP_SWBAK),a
+
+	ld b,e
+	; b = SW
+	; c = SH
+	push bc
+
+	; 画像アドレスは保存しておく(後で使う)
+	ld (_CHIP_SIMGADR),hl
+
+	; ; _CHIP_VADRについては描画開始位置計算を後で行う
+	; ld hl,0
+	; ld (_CHIP_VADR),hl
+
+	;-----------------------------
+
+	; スプライトのYが縦方向上にハミ出しているか？
+	ld a,(_CHIP_MAPY)
+	and $fe
+	ld b,a
+	ld a,(_CHIP_SPRY)
+	cp b
+	jr nc,.sy_ge_MAPY	; はみ出していない
+	; はみ出しているので描画が開始されるところまで下に下げていく
+
+	; SW * 32を計算して入れてやる(マスクあり画像横ぶんスキップ: 8x8版は32bytes/chip)
+	; deにはまだSWが入っているはず
+	ex de,hl	; deをhlに移す
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	add hl,hl	; 32倍
+	ld (.sw_mul_64 + 1),hl
+
+.yclip_loop
+	; ADR = ADR + TMP1
+	ld hl,(_CHIP_SIMGADR)
+.sw_mul_64
+	ld de,0
+	add hl,de
+	ld (_CHIP_SIMGADR),hl
+	;; _CHIP_VADR = _CHIP_VADR + VVRAMWIDTH
+	;ld hl,(_CHIP_VADR)
+	;ld de,VVRAMWIDTH
+	;add hl,de
+	;ld (_CHIP_VADR),hl
+	; _CHIP_SPRY++
+	ld a,(_CHIP_SPRY)
+	inc a
+	ld (_CHIP_SPRY),a
+	; SH--
+	pop bc
+	; pushしたものの下位がSH
+	dec c
+	jp z,.spradd_end2	; IF SH==0 GOTO .spradd_end
+				; 描画するものがなければここで終了
+	push bc			; SW, SHを保存しなおす
+	; UNTIL (SY >= _CHIP_MAPY)
+	; aには_CHIP_SPRYが入ったままのはず
+	; ld a,(_CHIP_SPRY)
+	ld c,a
+	ld a,(_CHIP_MAPY)
+	and $fe
+	ld b,a
+	ld a,c
+	cp b
+	jr c,.yclip_loop	; IF SY < _CHIP_MAPY goto .ycliploop
+.sy_ge_MAPY
+
+	; 描画可能な状況でVVRAMの先頭アドレスを計算してやる
+	ld a,(_CHIP_MAPY)
+	and $fe
+	ld b,a
+	ld a,(_CHIP_SPRY)
+	sub b
+	ld l,a
+	ld h,0
+.ref_vvw1:
+	ld de,VVRAMWIDTH
+	call MULHLDE	; HL = Y * VVRAMWIDTH
+	ex de,hl
+
+	; _CHIP_SPRXがMAPXより小さい場合は負値になるが計算上問題ないはず
+	ld a,(_CHIP_SPRX)
+	ld l,a
+	ld h,0
+	ld a,(_CHIP_MAPX)
+	and $fe
+	ld c,a
+	ld b,0
+	or a
+	sbc hl,bc
+	add hl,de		; 縦位置を足す
+	; VVRAM先頭アドレス (RAM ダブルバッファ)
+	push af
+	ld a,(_CHIP_PRIMARY)
+	and 1
+	jr nz,.spr_usepage1
+	ld de,_CHIP_VVRAM0
+	jr .spr_pagesel_done
+.spr_usepage1:
+	ld de,_CHIP_VVRAM1
+.spr_pagesel_done:
+	pop af
+	add hl,de
+	; VVRAMの開始アドレスを保存しておく
+	ld (_CHIP_VADR),hl
+
+	;-----------------------------------------------
+	; ループ内での計算は無駄なので事前計算しておく
+	;-----------------------------------------------
+	; _CHIP_MAPY_MAPH2 = _CHIP_MAPY + VVRAMHEIGHT
+	ld a,(_CHIP_MAPY)
+	and $fe
+.ref_vvh:
+	add a,VVRAMHEIGHT
+	ld (.mapy_maph2 + 1),a
+
+	; _CHIP_MAPX_MAPW2 = _CHIP_MAPX + MAPWIDTH*2;
+	ld a,(_CHIP_MAPX)
+	and $fe
+	add a,MAPWIDTH*2
+; 	ld a,b
+	ld (.mapx_mapw2 + 1),a
+
+	
+	;-----------------------------------------------
+
+.yloop
+	; 画面下にハミ出したらもう描画する事はないので終了
+	;IF (SY >= _CHIP_MAPY_MAPH2) GOTO .spradd_end
+	ld a,(_CHIP_SPRY)
+.mapy_maph2
+	cp 0
+	jp nc,.spradd_end
+	jp z,.spradd_end
+
+.xloop
+;	if (_CHIP_SPRX < _CHIP_MAPX) OR (_CHIP_SPRX >= _CHIP_MAPX_MAPW2)
+;	{
+;		GOTO SPRADD_HSKIP;
+;	}
+	ld a,(_CHIP_MAPX)
+	and $fe
+	ld b,a
+	ld a,(_CHIP_SPRX)
+	cp b
+	jr c,.spradd_hskip
+.mapx_mapw2
+	cp 0
+	jr nc,.spradd_hskip
+	jr z,.spradd_hskip
+
+	
+	; VC = MEM[_CHIP_VADR];
+	ld hl,(_CHIP_VADR)
+	ld a,(hl)
+	cp $80
+	jr nc,.extraparts
+	; 通常チップ (アニメチップの場合は下位2ビットをANIMIDXで差し替え)
+.ref_animstart2:
+	cp 0		; ← ChipSetAnim で自己書き換え (アニメ閾値)
+	jr c,.not_anim_spr
+	and $fc
+	push hl
+	ld hl,_CHIP_ANIMIDX
+	or (hl)
+	pop hl
+.not_anim_spr:
+	; マップチップ番号をbに入れておく
+	ld b,a
+	; 合成チップ番号を新規発行して書き込む
+	; MEM[_CHIP_VADR] = _CHIP_EXIDX;
+	; _CHIP_EXIDX++;
+	ld a,(_CHIP_EXIDX)
+	ld (hl),a
+	inc a
+	ld (_CHIP_EXIDX),a
+
+	; // 合成バッファのアドレス
+	; CADR = $A000 + _CHIP_EXIDX * 64;
+	dec a
+	and $7f
+	call _ChipCalcMergeAdr
+	push hl
+.ref_mergebuf2:
+	ld a,HIGH MERGEBUFFER
+	add a,h
+	ld h,a
+	; hlに合成バッファアドレス
+
+	; // BG画像を合成バッファにコピー
+	; MEMCPY(CADR, MAPGRPADR + VC * 48, 48);
+	ex de,hl
+	pop hl
+	; 合成チップアドレスCADRを保存
+	push de
+	; MAPGRPADR + VC * 24を計算する (8x8: CHIP_SIZE=24)
+	ld l,b
+	ld h,0
+	add hl,hl
+	add hl,hl
+	add hl,hl	; ×8
+	ld c,l
+	ld b,h
+	add hl,hl
+	add hl,bc	; ×24
+.ref_mapgrpadr2:
+	ld bc,MAPGRPADR
+	add hl,bc
+
+	ld bc,CHIP_SIZE
+	ldir		; マップチップ画像を合成バッファにコピー
+	pop de
+	; deに合成チップアドレス(CADR)が入っている
+	jr .execmerge
+.extraparts
+	; 合成チップ
+	; CADR = $A000 + (VC AND $7F) * 64;
+	and $7f
+	call _ChipCalcMergeAdr
+.ref_mergebuf3:
+	ld a,HIGH MERGEBUFFER
+	add a,h
+	ld h,a
+	ex de,hl
+.execmerge
+	
+	; hl = source, de = dest
+	ld hl,(_CHIP_SIMGADR)
+	call ChipMaskDraw
+
+.spradd_hskip
+;	_CHIP_VADR++;
+	ld hl,(_CHIP_VADR)
+	inc hl
+	ld (_CHIP_VADR),hl
+;	ADR = ADR + MASK_CHIP_SIZE (32 for 8x8);
+	ld hl,(_CHIP_SIMGADR)
+	ld de,MASK_CHIP_SIZE
+	add hl,de
+	ld (_CHIP_SIMGADR),hl
+;	SX++;
+	ld a,(_CHIP_SPRX)
+	inc a
+	ld (_CHIP_SPRX),a
+;	SW--;
+	pop bc
+	dec b
+	push bc
+	jr nz,.xloop
+.spradd_vskip
+	pop bc
+;	SH--;
+	dec c
+	jr z,.spradd_end2
+;	SW = _CHIP_SWBAK;
+	ld a,(_CHIP_SWBAK)
+	ld b,a
+	push bc
+	; _CHIP_SPRXを戻す(クリッピングに必要)
+	ld a,(_CHIP_SPRX)
+	sub a,b
+	ld (_CHIP_SPRX),a
+;	_CHIP_VADR = _CHIP_VADR + VVRAMWIDTH - _CHIP_SWBAK;
+.ref_vvw2:
+	ld a,VVRAMWIDTH
+	sub a,b
+	ld l,a
+	ld h,0
+	ex de,hl
+	ld hl,(_CHIP_VADR)
+	add hl,de
+	ld (_CHIP_VADR),hl
+;	SY++;
+	ld a,(_CHIP_SPRY)
+	inc a
+	ld (_CHIP_SPRY),a
+	jp .yloop
+
+.spradd_end
+	pop bc
+.spradd_end2
+
+	ret
+
+_ChipCalcMergeAdr:
+	ld l,a
+	ld h,0
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	add hl,hl
+	add hl,hl	; 32倍 (8x8: MERGE_UNIT=32)
+	ret
+
+; ============================================================
+; ユーティリティ
+; ============================================================
+
+; RangeCheck — 値が範囲内かチェック
+; input: c=値, hl=開始値アドレス (hl+1=終了値)
+; output: cf=1 → 範囲内
+RangeCheck:
+    ld a, c
+    cp (hl)
+    jr c, .out_of_range
+    inc hl
+    ld a, c
+    cp (hl)
+    jr c, .in_range
+    jr z, .in_range
+.out_of_range2:
+    inc hl
+    and a
+    ret
+.out_of_range:
+    inc hl
+    jr .out_of_range2
+.in_range:
+    inc hl
+    scf
+    ret
+
+; IsScreenInside — 画面内判定
+; input: e=x, d=y
+; output: cf=1 → 画面外
+IsScreenInside:
+	sla e
+	sla d
+	ld	hl, _CHIP_MAPY
+	ld	a, d
+	cp	(hl)
+	jr	c, .screen_out
+	ld	a, (hl)
+	add	a, DRAWHCNT
+	cp	d
+	jr	c, .screen_out
+	inc	hl
+	inc	hl
+	ld	a, e
+	cp	(hl)
+	jr	c, .screen_out
+	ld	a, (hl)
+	add	a, DRAWWCNT
+	cp	e
+	jr	c, .screen_out
+.screen_out
+	ret
+
+; ============================================================
+; 動的設定 API
+; ============================================================
+
+; ChipSetVVRAMSize — 仮想 VRAM サイズを動的に設定 (全参照箇所を自己書き換え)
+; HL = width, DE = height
+ChipSetVVRAMSize:
+	; width 関連の自己書き換え
+	; ChipFillMap: ld bc,width-1
+	push hl
+	dec l
+	ld h,0
+	ld (ChipFillMap.ref_vvw_m1+1),hl
+	pop hl
+	; ChipFillMap: ld hl,width*2
+	push hl
+	ld h,0
+	add hl,hl
+	ld (ChipFillMap.ref_vvw_x2+1),hl
+	pop hl
+	; ChipSetSize: ld a,width
+	ld a,l
+	ld (ChipSetSize.ref_vvw+1),a
+	; _ChipSetVAdrOfs: ld de,width
+	push hl
+	ld h,0
+	ld (_ChipSetVAdrOfs.ref_vvw+1),hl
+	pop hl
+	; ChipSprAdd: ld de,width (MULHLDE用)
+	push hl
+	ld h,0
+	ld (ChipSprAdd.ref_vvw1+1),hl
+	pop hl
+	; ChipSprAdd: ld a,width
+	ld a,l
+	ld (ChipSprAdd.ref_vvw2+1),a
+
+	; height 関連の自己書き換え
+	; ChipSprAdd: add a,height
+	ld a,e
+	ld (ChipSprAdd.ref_vvh+1),a
+
+	ret
+
+; ChipSetScroll — スクロール位置を設定
+; HL = _CHIP_MAPX, DE = _CHIP_MAPY
+ChipSetScroll:
+	ld (_CHIP_MAPX),hl
+	ld (_CHIP_MAPY),de
+	ret
+
+; ChipSetMapSize — _CHIP_MAPW/MAPH を動的に設定
+; HL = width, DE = height
+ChipSetMapSize:
+	ld a,l
+	ld (_CHIP_MAPW),a
+	ld a,e
+	ld (_CHIP_MAPH),a
+	ret
+
+#END
+
+// ============================================================
+// ブロック 2: ワークエリア
+// ============================================================
+#ASM
+
+; --- 内部ワーク ---
+_CHIP_PRIMARY:	DB	0	; ダブルバッファ ページ番号 + 前回オフセット
+_CHIP_FLASHFLG:	DB	0	; 点滅状態
+_CHIP_ANIMCNT:	DB	0	; vsync カウンタ (CHIP_ANIM_TICK 用)
+_CHIP_ANIMTICKS: DB	8	; フレーム進行間隔 (vsync数, デフォルト 8)
+_CHIP_ANIMFRAME: DB	0	; 現在のアニメフレーム
+_CHIP_ANIMPERIOD: DB	4	; アニメ周期 (フレーム数, デフォルト 4)
+_CHIP_SWBAK:	DS	1	; スプライト幅バックアップ
+_CHIP_SIMGADR:	DS	2	; スプライト画像アドレス
+_CHIP_VADR:	DS	2	; VVRAM アドレスワーク
+_CHIP_SPRX:	DS	1	; スプライト X 座標
+_CHIP_SPRY:	DS	1	; スプライト Y 座標
+_CHIP_EXIDX:	DB	128	; 合成パーツインデックス
+
+; --- マップ座標・サイズ ---
+_CHIP_MAPY:	DW	0	; スクロール Y (チップ単位、LSB=サブオフセット)
+_CHIP_MAPX:	DW	0	; スクロール X (同上)
+_CHIP_MAPW:	DB	50	; マップデータ横幅 (スーパーチップ数)
+_CHIP_MAPH:	DB	40	; マップデータ縦幅
+
+; --- 仮想 VRAM ダブルバッファ ---
+_CHIP_VVRAM0:	DS	_CHIP_VVRAMW_MAX * _CHIP_VVRAMH_MAX
+_CHIP_VVRAM1:	DS	_CHIP_VVRAMW_MAX * _CHIP_VVRAMH_MAX
+
+; --- マージバッファ (ALIGN 256, 4KB 固定 = 128 合成チップ × 32 byte) ---
+ALIGN 256
+_CHIP_MERGEBUF:	DS	4096
+
+#END

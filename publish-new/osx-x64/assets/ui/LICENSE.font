@@ -1,0 +1,35 @@
+font_charset1.png / font_charset2.png の出典
+=============================================
+
+SHARP X1 CZ-800 series compatible free font ROM。
+meister68k さんの X1_compatible_font リポジトリから取得した成果物を元に、
+本プロジェクト用に選別・整形しています。
+
+  https://github.com/meister68k/X1_compatible_font
+
+さらにその元となったフォントは Num Kadoma さんの「美咲フォント」
+(Misaki Font) です。
+
+  https://littlelimit.net/misaki.htm
+
+
+ライセンス (原文)
+-----------------
+
+These fonts are free softwares.
+Unlimited permission is granted to use, copy, and distribute it, with or
+without modification, either commercially and noncommercially.
+THESE FONTS ARE PROVIDED "AS IS" WITHOUT WARRANTY.
+
+これらのフォントはフリー(自由な)ソフトウエアです。
+あらゆる改変の有無に関わらず、また商業的な利用であっても、自由にご利用、
+複製、再配布することができますが、全て無保証とさせていただきます。
+
+Copyright(C) 2002-2019 Num Kadoma
+
+
+window.png について
+-------------------
+
+9-slice ウィンドウ枠デザイン (assets/ui/window.png) は本プロジェクト用に
+作成したオリジナルです。SLANG-compiler 本体と同じライセンスが適用されます。

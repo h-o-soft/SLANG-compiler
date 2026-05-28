@@ -1,0 +1,258 @@
+# SLANG Compiler Makefile (Distribution Package)
+# ===============================================
+# make install      - バイナリとライブラリをインストール
+# make uninstall    - アンインストール
+# make run          - サンプルをビルドしてエミュレータで実行
+# make clean        - サンプルのビルド成果物を削除
+
+# インストール設定
+PREFIX ?= /usr/local
+BINDIR = $(PREFIX)/bin
+CONFIG_DIR = $(HOME)/.config/SLANG
+
+# サンプルビルド設定
+SRC_EXT = .sl
+ASM_EXT = .asm
+BIN_EXT = .bin
+
+ENV ?= lsx
+SLANGENV = $(ENV)
+TARGET ?= examples/STARS
+
+RUNADR = 3000
+LOADADR = 3000
+
+# OS検出
+ifeq ($(OS),Windows_NT)
+    DETECTED_OS = Windows
+    MKDIR = mkdir
+    RM = del /Q
+    RMDIR = rmdir /S /Q
+    CP = copy
+    XCOPY = xcopy /E /Y
+    PATHSEP = \\
+    EXE_EXT = .exe
+else
+    UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),Darwin)
+        DETECTED_OS = macOS
+    else
+        DETECTED_OS = Linux
+    endif
+    MKDIR = mkdir -p
+    RM = rm -f
+    RMDIR = rm -rf
+    CP = cp
+    XCOPY = cp -R
+    PATHSEP = /
+    EXE_EXT =
+endif
+
+# ツールのコマンド名
+SLANGCOMPILER = bin/SLANGCompiler$(EXE_EXT)
+ASM = tools/AILZ80ASM$(EXE_EXT)
+NDC = tools/ndc$(EXE_EXT)
+HUDISK = tools/HuDisk$(EXE_EXT)
+MODSPLIT = bin/ModuleSplitter$(EXE_EXT)
+
+OUTPROG = $(dir $(TARGET))PROG.bin
+ASM_OPT =
+
+# エミュレータ設定（環境に応じて変更）
+ifeq ($(ENV), lsx)
+  EMU = wine ~/emu/X1/X1.exe
+  DISK_IMAGE = images/LSXPROG.D88
+  BIN_EXT_ENV = .com
+else ifeq ($(ENV), x1)
+  EMU = wine ~/emu/X1/X1.exe
+  DISK_IMAGE = images/LSXPROG.D88
+  BIN_EXT_ENV = .com
+else ifeq ($(ENV), sos)
+  EMU = wine ~/emu/X1/X1.exe
+  DISK_IMAGE = images/SOSPROG.D88
+  BIN_EXT_ENV = $(BIN_EXT)
+else ifeq ($(ENV), msxrom)
+  EMU = /Applications/openMSX.app/Contents/MacOS/openmsx
+  BIN_EXT_ENV = $(BIN_EXT)
+  EMUOPT = -cart
+  DISK_IMAGE = $(OUTPROG)
+else ifeq ($(ENV), msx2)
+  EMU = /Applications/openMSX.app/Contents/MacOS/openmsx
+  DISK_IMAGE = images/dosformsx.dsk
+  BIN_EXT_ENV = .com
+  EMUOPT = -diska
+else ifeq ($(ENV), msxlsx)
+  EMU = /Applications/openMSX.app/Contents/MacOS/openmsx
+  DISK_IMAGE = images/dos2formsx.dsk
+  BIN_EXT_ENV = .com
+  EMUOPT = -diska
+else ifeq ($(findstring $(ENV),pc80mk2 pc80mk2x),$(ENV))
+  EMU = wine ~/emu/PC8001mkII/pc8001mk2.exe
+  BIN_EXT = .cmt
+  BIN_EXT_ENV = .cmt
+  OUTPROG = $(TARGET).bin
+  OUTCMT = $(TARGET).cmt
+  DISK_IMAGE_TMP = $(dir $(TARGET))PROG.cmt
+  DISK_IMAGE = $(subst /,$(PATHSEP),$(DISK_IMAGE_TMP))
+  ASM_OPT = -cmt -gap 0
+else ifeq ($(ENV), cpm)
+  SLANGENV = lsx
+  EMU = tools/cpm$(EXE_EXT)
+  DISK_IMAGE = $(OUTPROG)
+endif
+
+IMGPROG = $(basename $(OUTPROG))$(BIN_EXT_ENV)
+
+.PHONY: all install uninstall run build clean help setup-tools
+
+all: help
+
+# インストール
+install: install-bin install-lib
+	@echo "Installation complete!"
+	@echo "  Binaries: $(BINDIR)"
+	@echo "  Libraries: $(CONFIG_DIR)"
+
+install-bin:
+ifeq ($(DETECTED_OS),Windows)
+	@echo "Windows: Please add bin directory to PATH manually"
+	@if not exist "$(BINDIR)" $(MKDIR) "$(BINDIR)"
+	$(CP) bin\SLANGCompiler.exe "$(BINDIR)\"
+	$(CP) bin\ModuleSplitter.exe "$(BINDIR)\"
+else
+	$(MKDIR) $(BINDIR)
+	$(CP) bin/SLANGCompiler $(BINDIR)/
+	$(CP) bin/ModuleSplitter $(BINDIR)/
+	chmod +x $(BINDIR)/SLANGCompiler
+	chmod +x $(BINDIR)/ModuleSplitter
+endif
+
+install-lib:
+ifeq ($(DETECTED_OS),Windows)
+	@if not exist "$(CONFIG_DIR)" $(MKDIR) "$(CONFIG_DIR)"
+	@if not exist "$(CONFIG_DIR)\include" $(MKDIR) "$(CONFIG_DIR)\include"
+	@if not exist "$(CONFIG_DIR)\lib" $(MKDIR) "$(CONFIG_DIR)\lib"
+	$(XCOPY) include "$(CONFIG_DIR)\include"
+	$(XCOPY) lib "$(CONFIG_DIR)\lib"
+else
+	$(MKDIR) $(CONFIG_DIR)
+	$(XCOPY) include $(CONFIG_DIR)/
+	$(XCOPY) lib $(CONFIG_DIR)/
+endif
+
+# アンインストール
+uninstall:
+ifeq ($(DETECTED_OS),Windows)
+	$(RM) "$(BINDIR)\SLANGCompiler.exe"
+	$(RM) "$(BINDIR)\ModuleSplitter.exe"
+	$(RMDIR) "$(CONFIG_DIR)"
+else
+	$(RM) $(BINDIR)/SLANGCompiler
+	$(RM) $(BINDIR)/ModuleSplitter
+	$(RMDIR) $(CONFIG_DIR)
+endif
+	@echo "Uninstallation complete!"
+
+# 開発ツールのセットアップ
+setup-tools:
+ifeq ($(DETECTED_OS),Windows)
+	setupenv.bat
+else ifeq ($(DETECTED_OS),macOS)
+	./setupenv.sh mac
+else
+	./setupenv.sh linux
+endif
+
+# サンプルのビルド
+$(TARGET)$(ASM_EXT): $(TARGET)$(SRC_EXT)
+	$(SLANGCOMPILER) $< -E $(SLANGENV) --output-debug-symbol
+
+$(OUTPROG): $(TARGET)$(ASM_EXT)
+	$(ASM) $< -f -o $@ -bin -sym -lst $(ASM_OPT)
+
+# ディスクイメージ作成
+ifeq ($(ENV), cpm)
+disk_image: $(OUTPROG)
+else ifeq ($(ENV), msxrom)
+disk_image: $(OUTPROG)
+else ifeq ($(ENV),pc80mk2)
+cmtsplit: $(OUTPROG)
+	$(MODSPLIT) $(TARGET) --cmt
+ifeq ($(OS),Windows_NT)
+	copy /B /Y $(OUTCMT) $(DISK_IMAGE)
+else
+	cp $(OUTCMT) $(DISK_IMAGE)
+endif
+disk_image: $(OUTPROG) cmtsplit
+else ifeq ($(ENV), pc80mk2x)
+$(DISK_IMAGE): $(OUTPROG)
+	$(MODSPLIT) $(TARGET) --cmt
+ifeq ($(OS),Windows_NT)
+	copy /B /Y $(OUTCMT)+lib\\pc8001\\XBIOS\\XBIOS.CMT TEMP.CMT
+	copy TEMP.CMT $(DISK_IMAGE)
+	del TEMP.CMT
+else
+	cat $(OUTCMT) lib/pc8001/XBIOS/XBIOS.CMT > TEMP.CMT
+	cp TEMP.CMT $(DISK_IMAGE)
+	rm TEMP.CMT
+endif
+disk_image: $(DISK_IMAGE)
+else ifeq ($(ENV), sos)
+disk_image: $(IMGPROG)
+	$(HUDISK) -d $(DISK_IMAGE) PROG.bin
+	$(HUDISK) -a $(DISK_IMAGE) $(IMGPROG) -r $(LOADADR) -g $(RUNADR)
+else ifeq ($(ENV), msx2)
+disk_image: $(IMGPROG)
+	- $(NDC) D $(DISK_IMAGE) 0 PROG$(BIN_EXT_ENV)
+	$(NDC) P $(DISK_IMAGE) 0 $(IMGPROG)
+else
+disk_image: $(IMGPROG)
+	- $(NDC) D $(DISK_IMAGE) 0 PROG$(BIN_EXT_ENV)
+	$(NDC) P $(DISK_IMAGE) 0 $(IMGPROG)
+endif
+
+# 拡張子変換
+ifneq ($(BIN_EXT), $(BIN_EXT_ENV))
+$(basename $(OUTPROG))$(BIN_EXT_ENV): $(OUTPROG)
+ifeq ($(OS),Windows_NT)
+	move $< $@
+else
+	mv $< $@
+endif
+endif
+
+# サンプル実行
+run: disk_image
+	$(EMU) $(EMUOPT) $(DISK_IMAGE)
+
+# ビルドのみ
+build: $(OUTPROG)
+
+# クリーンアップ
+clean:
+ifeq ($(OS),Windows_NT)
+	del /Q /F $(subst /,\,$(TARGET)$(ASM_EXT)) $(subst /,\,$(TARGET)$(BIN_EXT)) $(subst /,\,$(dir $(TARGET))PROG.bin) $(subst /,\,$(dir $(TARGET))PROG.com) $(subst /,\,$(dir $(TARGET))PROG.cmt) 2>nul
+else
+	rm -f $(TARGET)$(ASM_EXT) $(TARGET)$(BIN_EXT) $(TARGET)$(BIN_EXT_ENV) $(dir $(TARGET))PROG.bin $(dir $(TARGET))PROG.com $(dir $(TARGET))PROG.cmt
+endif
+
+# ヘルプ
+help:
+	@echo "SLANG Compiler - Distribution Package"
+	@echo ""
+	@echo "Installation:"
+	@echo "  make install       - Install binaries and libraries"
+	@echo "  make uninstall     - Uninstall"
+	@echo "  make setup-tools   - Download development tools (AILZ80ASM, etc.)"
+	@echo ""
+	@echo "Sample Build:"
+	@echo "  make run TARGET=examples/STARS ENV=lsx  - Build and run sample"
+	@echo "  make build TARGET=examples/STARS ENV=lsx - Build only"
+	@echo "  make clean         - Clean build artifacts"
+	@echo ""
+	@echo "Options:"
+	@echo "  PREFIX=path        - Installation prefix (default: /usr/local)"
+	@echo "  TARGET=path        - Sample source file (without extension)"
+	@echo "  ENV=env            - Target environment (lsx/x1/sos/msx2/msxrom/pc80mk2)"
+	@echo ""
+	@echo "Detected OS: $(DETECTED_OS)"

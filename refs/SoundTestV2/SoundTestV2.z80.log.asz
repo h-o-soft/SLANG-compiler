@@ -1,0 +1,554 @@
+------------------------------------------------
+Asm2Hex : Version 0.8.1
+ + Z80 - ZilogMnemonic : Rev.0d
+------------------------------------------------
+------------------------
+####     PASS:2     ####
+------------------------
+  D000                		org	0xD000
+                      	;=======================================================================
+                      	; 8253 簡易サウンドドライバテストプログラム V2 [ 最適化済 ]
+                      	; Tokihiro Naito 2020/11/27
+                      	;=======================================================================
+  D000  C393D0        		jp	Main
+                      	;
+                      	; 発音カウンタ値テーブル 256境界保証
+                      	;
+  D003                	FRQTBL:
+  D003  80EE1DE17BD48D		dw	0xEE80, 0xE11D, 0xD47B, 0xC88D, 0xBD4C, 0xB2AC
+        C84CBDACB2    	
+  D00F  A5A82E9F3F96D0		dw	0xA8A5, 0x9F2E, 0x963F, 0x8DD0, 0x85DA, 0x7E57
+        8DDA85577E    	
+  D01B  40778F703D6A47		dw	0x7740, 0x708F, 0x6A3D, 0x6447, 0x5EA6, 0x5956
+        64A65E5659    	
+  D027  5354974F1F4BE8		dw	0x5453, 0x4F97, 0x4B1F, 0x46E8, 0x42ED, 0x3F2C
+        46ED422C3F    	
+  D033  A03B47381F3523		dw	0x3BA0, 0x3847, 0x351F, 0x3223, 0x2F53, 0x2CAB
+        32532FAB2C    	
+  D03F  292ACB27902574		dw	0x2A29, 0x27CB, 0x2590, 0x2374, 0x2177, 0x1F96
+        237721961F    	
+  D04B  D01D241C8F1A12		dw	0x1DD0, 0x1C24, 0x1A8F, 0x1912, 0x17AA, 0x1656
+        19AA175616    	
+  D057  1515E613C812BA		dw	0x1515, 0x13E6, 0x12C8, 0x11BA, 0x10BB, 0x0FCB
+        11BB10CB0F    	
+  D063  E80E120E480D89		dw	0x0EE8, 0x0E12, 0x0D48, 0x0C89, 0x0BD5, 0x0B2B
+        0CD50B2B0B    	
+  D06F  8A0AF3096409DD		dw	0x0A8A, 0x09F3, 0x0964, 0x08DD, 0x085E, 0x07E5
+        085E08E507    	
+  D07B  74070907A40644		dw	0x0774, 0x0709, 0x06A4, 0x0644, 0x05EA, 0x0595
+        06EA059505    	
+  D087  4505F904B2046F		dw	0x0545, 0x04F9, 0x04B2, 0x046F, 0x042F, 0x03F3
+        042F04F303    	
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; メイン
+                      	;
+  D093                	Main:
+                      		; ドライバの初期化
+  D093  CDF8D0        		call	SNDInitialize
+                      	
+                      		; メインループ
+  D096  21D7D1        	.repeat	ld	hl, BGM
+  D099  CDC6D0        		call	SNDMusicStart	; 音楽を鳴らす
+  D09C  CDBBD1        	.loop	call	SNDDiver	; サウンドドライバ呼び出し
+                      	
+                      		; 効果音発音テスト
+  D09F  DB01          	.effect	in	a, (0x01)
+  D0A1  E680          		and	%10000000	; RETUENキーが
+  D0A3  2006          		jr	nz, .endchk	; 押されていないなら次に
+  D0A5  212BD2        		ld	hl, SE		; HL 効果音アドレス
+  D0A8  CDEAD0        		call	SNDEffectStart	; 効果音を発生させる
+  D0AB  DB04          	.endchk	in	a, (0x04)	; [Q]キーが
+  D0AD  E602          		and	%00000010	; 押されていたら
+  D0AF  2809          		jr	z, .end		; 終了処理に
+  D0B1  CD16D1        		call	SNDIsPlaying	; 音楽演奏中確認
+  D0B4  C29CD0        		jp	nz, .loop	; 演奏中ならそのままループ
+  D0B7  C396D0        		jp	.repeat		; 音楽を再演奏させる
+                      	
+                      		; 終了処理
+  D0BA  CDF8D0        	.end	call	SNDStop		; 発音停止
+  D0BD  DB04          	.qoff	in	a, (0x04)	; [Q]キーが
+  D0BF  E602          		and	%00000010	; 押されていたら
+  D0C1  28FA          		jr	z, .qoff	; 無限ループ
+  D0C3  C3665C        		jp	0x5C66		; 終了する
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; 音楽を鳴らす
+                      	; HL = BGMデータアドレス
+                      	;
+  D0C6                	SNDMusicStart:
+  D0C6  ED73E7D0      		ld	(.retads), sp
+  D0CA  314ED2        		ld	sp, SND.CHEnd
+  D0CD  110008        		ld	de, 0x0800	; 音長初期値 8
+                      	
+                      		; CH3
+  D0D0  4E            		ld	c, (hl)
+  D0D1  23            		inc	hl
+  D0D2  46            		ld	b, (hl)		; BC CH3 MML アドレス
+  D0D3  23            		inc	hl
+  D0D4  C5            		push	bc		; CH3 + MML.REPEAT
+  D0D5  D5            		push	de		; CH3 + MML.LENGTH
+  D0D6  C5            		push	bc		; CH3 + MML.ADDRESS
+  D0D7  D5            		push	de		; CH2 + MML.FREQ (dummy)
+                      	
+                      		; CH2
+  D0D8  4E            		ld	c, (hl)
+  D0D9  23            		inc	hl
+  D0DA  46            		ld	b, (hl)		; BC CH2 MML アドレス
+  D0DB  23            		inc	hl
+  D0DC  C5            		push	bc		; CH2 + MML.REPEAT
+  D0DD  D5            		push	de		; CH2 + MML.LENGTH
+  D0DE  C5            		push	bc		; CH2 + MML.ADDRESS
+  D0DF  D5            		push	de		; CH2 + MML.FREQ (dummy)
+                      	
+                      		; CH1
+  D0E0  4E            		ld	c, (hl)
+  D0E1  23            		inc	hl
+  D0E2  46            		ld	b, (hl)		; BC CH1 MML アドレス
+  D0E3  C5            		push	bc		; CH1 + MML.REPEAT
+  D0E4  D5            		push	de		; CH1 + MML.LENGTH
+  D0E5  C5            		push	bc		; CH1 + MML.ADDRESS
+                      	
+  D0E7                	.retads	equ	$ + 1
+  D0E6  310000        		ld	sp, 0		; SP を元に戻して
+  D0E9  C9            		ret			; 終了する
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; 効果音を鳴らす
+                      	; HL = 効果音データアドレス
+                      	;
+  D0EA                	SNDEffectStart:
+  D0EA  2250D2        		ld	(SND.SE + MML.ADDRESS), hl
+  D0ED  210001        		ld	hl, 0x0100	; 音長初期値 1
+  D0F0  2252D2        		ld	(SND.SE + MML.LENGTH), hl
+  D0F3  65            		ld	h, l
+  D0F4  224ED2        		ld	(SND.SE + MML.FREQ), hl
+  D0F7  C9            		ret
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; 音を止める
+                      	;
+  D0F8                	SNDInitialize:
+  D0F8                	SNDStop:
+  D0F8  AF            		xor	a
+  D0F9  D302          		out	(0x02), a	; キーオンフラグを全停止する
+  D0FB  210000        		ld	hl, 0
+  D0FE  ED7313D1      		ld	(.retads), sp
+  D102  313AD2        		ld	sp, SND.CH1 + MML.ADDRESS + 2
+  D105  E5            		push	hl
+  D106  3142D2        		ld	sp, SND.CH2 + MML.ADDRESS + 2
+  D109  E5            		push	hl
+  D10A  314AD2        		ld	sp, SND.CH3 + MML.ADDRESS + 2
+  D10D  E5            		push	hl
+  D10E  3152D2        		ld	sp, SND.SE  + MML.ADDRESS + 2
+  D111  E5            		push	hl
+  D113                	.retads	equ	$ + 1
+  D112  310000        		ld	sp, 0		; SP を元に戻して
+  D115  C9            		ret			; 終了する
+                      	
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; 音楽が演奏されているか
+                      	; out: ZF=1 停止している
+                      	;
+  D116                	SNDIsPlaying:
+  D116  2A38D2        		ld	hl, (SND.CH1 + MML.ADDRESS)
+  D119  7C            		ld	a, h
+  D11A  B5            		or	l
+  D11B  2A40D2        		ld	hl, (SND.CH2 + MML.ADDRESS)
+  D11E  7C            		ld	a, h
+  D11F  B5            		or	l
+  D120  2A48D2        		ld	hl, (SND.CH3 + MML.ADDRESS)
+  D123  7C            		ld	a, h
+  D124  B5            		or	l
+  D125  C9            		ret
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; サウンドドライバエントリ
+                      	;
+  D126                	SNDTimer:
+                      		; 全ての使用レジスタを保存して復帰する
+  D126  E5            		push	hl
+  D127  D5            		push	de
+  D128  C5            		push	bc
+  D129  F5            		push	af
+  D12A  CD32D1        		call	.exec
+  D12D  F1            		pop	af
+  D12E  C1            		pop	bc
+  D12F  D1            		pop	de
+  D130  E1            		pop	hl
+  D131  C9            		ret
+                      	
+                      		; 汎用タイマー更新
+  D132  2134D2        	.exec	ld	hl, SND.Counter
+  D135  34            		inc	(hl)
+                      	
+                      		; チャンネル別更新
+  D136  2138D2        		ld	hl, SND.CH1 + MML.ADDRESS
+  D139  CD7FD1        		call	SNDPlayer
+  D13C  2140D2        		ld	hl, SND.CH2 + MML.ADDRESS
+  D13F  CD7FD1        		call	SNDPlayer
+  D142  2148D2        		ld	hl, SND.CH3 + MML.ADDRESS
+  D145  CD7FD1        		call	SNDPlayer
+  D148  2150D2        		ld	hl, SND.SE + MML.ADDRESS
+  D14B  CD7FD1        		call	SNDPlayer
+                      	
+                      		; 発音する
+  D14E  2A36D2        		ld	hl, (SND.CH1 + MML.FREQ)
+  D151  010C36        		ld	bc, SNDWRT.@1 * 256 + SNDCH.@1
+  D154  CD75D1        		call	SNDOutput
+  D157  2A3ED2        		ld	hl, (SND.CH2 + MML.FREQ)
+  D15A  010D76        		ld	bc, SNDWRT.@2 * 256 + SNDCH.@2
+  D15D  CD75D1        		call	SNDOutput
+  D160  2A4ED2        		ld	hl, (SND.SE + MML.FREQ)
+  D163  010EB6        		ld	bc, SNDWRT.@3 * 256 + SNDCH.@3
+  D166  7C            		ld	a, h
+  D167  B5            		or	l
+  D168  2003          		jr	nz, .outpt
+  D16A  2A46D2        		ld	hl, (SND.CH3 + MML.FREQ)
+  D16D  CD75D1        	.outpt	call	SNDOutput
+  D170  3EC8          		ld	a, KEYON.All
+  D172  D302          		out	(0x02), a	; キーオンフラグを全解放する
+  D174  C9            		ret
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; カウンタ値を出力する
+                      	; B  = カウンタ値設定開始ビット
+                      	; C  = SNDCH 出力ポート
+                      	; HL = 実際に出力するカウンタ値
+                      	;
+  D175                	SNDOutput:
+  D175  78            		ld	a, b
+  D176  D30F          		out	(0x0F), a
+  D178  00            		nop
+  D179  ED69          		out	(c), l
+  D17B  00            		nop
+  D17C  ED61          		out	(c), h
+  D17E  C9            		ret
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; チャンネル別更新処理（ドライバ内部呼び出し専用）
+                      	; HL = ワーク先頭アドレス（ + MML.ADDRESS）
+                      	;
+  D17F                	SNDPlayer:
+  D17F  ED7395D1      		ld	(.retads), sp
+  D183  F9            		ld	sp, hl			; SP = +2 MML.ADDRES
+                      	
+                      		; アドレスがなければ終了
+  D184  D1            		pop	de			; SP = +4 MML.LENGTH
+  D185  7A            		ld	a, d			; DE MMLデータポインタ
+  D186  B3            		or	e
+  D187  280B          		jr	z, .exit		; データが無ければ終了する
+                      	
+                      		; 発音継続確認
+  D189  E1            		pop	hl			; H = 初期音長, L = 現音長
+  D18A  2D            		dec	l			; 現在の音長 -1
+  D18B  FAA2D1        		jp	m, .cmd			; マイナスならコマンド解析
+  D18E  E5            		push	hl			; 音長を保存
+  D18F  2003          		jr	nz, .exit		; 音長最後で無ければ終了
+  D191  D5            		push	de			; dummy
+  D192  65            		ld	h, l			; HL = 0
+  D193  E5            		push	hl			; MML.FREQ をゼロに
+                      	
+                      		; SNDTimer に戻る
+  D195                	.retads	equ	$ + 1
+  D194  310000        	.exit	ld	sp, 0			; SP を元に戻して
+  D197  C9            		ret				; 終了する
+                      	
+                      		; 終了
+  D198  210000        	.stop	ld	hl, 0
+  D19B  E5            		push	hl			; MML.LENGTH = 0
+  D19C  E5            		push	hl			; ADDRESS = 0
+  D19D  18F5          		jr	.exit			; 終了する
+                      	
+                      		; 音長
+  D19F  ED44          	.length	neg				; 符号反転
+  D1A1  67            		ld	h, a			; 初期音長を更新
+                      	
+                      		; MMLコマンド解析
+  D1A2  1A            	.cmd	ld	a, (de)			; Acc コマンド
+  D1A3  13            		inc	de			; DE 次のアドレスに
+  D1A4  FE80          		cp	0x80			; 終了コードで比較
+  D1A6  28F0          		jr	z, .stop		; ZF=1 なら終了
+  D1A8  D29FD1        		jp	nc, .length		; マイナス値なら音長
+                      	
+                      		; 音階
+  D1AB  6C            		ld	l, h			; 音長を初期化
+  D1AC  E5            		push	hl			; 音長を保存
+  D1AD  D5            		push	de			; MMLポインタを保存
+  D1AE  87            		add	a, a			; カウンタ連番を2倍して
+  D1AF  C603          		add	a, FRQTBL % 256		; テーブル下位8bit加算
+  D1B1  6F            		ld	l, a
+  D1B2  26D0          		ld	h, FRQTBL / 256		; HL カウンタ値の位置
+  D1B4  7E            		ld	a, (hl)
+  D1B5  2C            		inc	l
+  D1B6  66            		ld	h, (hl)
+  D1B7  6F            		ld	l, a			; HL カウンタ値
+  D1B8  E5            		push	hl			; MML.FREQ に保存
+  D1B9  18D9          		jr	.exit
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; 垂直帰線が裏に入ったら音を鳴らす
+                      	;
+  D1BB                	SNDDiver:
+  D1BB  F5            		push	af
+  D1BC  3A56D2        		ld	a, (SND.BLANKFLG)
+  D1BF  B7            		or	a
+  D1C0  2009          		jr	nz, .chkF
+                      	
+                      		; 垂直帰線が裏にいる
+  D1C2  DB40          		in	a, (0x40)
+  D1C4  E620          		and	%00100000
+  D1C6  3256D2        		ld	(SND.BLANKFLG), a
+  D1C9  F1            		pop	af
+  D1CA  C9            		ret
+                      	
+                      		; 垂直帰線が表にいる
+  D1CB  DB40          	.chkF	in	a, (0x40)
+  D1CD  E620          		and	%00100000
+  D1CF  3256D2        		ld	(SND.BLANKFLG), a
+  D1D2  CC26D1        		call	z, SNDTimer	; 裏から表に変わったので呼び出す
+  D1D5  F1            		pop	af
+  D1D6  C9            		ret
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; 音階定義
+                      	;
+  D1D7                	TONE:
+  0000                	.C	equ	0
+  0001                	.CP	equ	1
+  0002                	.D	equ	2
+  0003                	.DP	equ	3
+  0004                	.E	equ	4
+  0005                	.F	equ	5
+  0006                	.FP	equ	6
+  0007                	.G	equ	7
+  0008                	.GP	equ	8
+  0009                	.A	equ	9
+  000A                	.AP	equ	10
+  000B                	.B	equ	11
+                      	
+  0000                	.O1	equ	(0 * 12)
+  000C                	.O2	equ	(1 * 12)
+  0018                	.O3	equ	(2 * 12)
+  0024                	.O4	equ	(3 * 12)
+  0030                	.O5	equ	(4 * 12)
+  003C                	.O6	equ	(5 * 12)
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; 発音制御フラグ
+                      	;
+  D1D7                	KEYON:	; キーオンフラグ out(0x02) に出力する
+  0008                	.@1	equ	%00001000	; ch.1
+  0040                	.@2	equ	%01000000	; ch.2
+  0080                	.@3	equ	%10000000	; ch.3
+  00C8                	.All	equ	(.@1 | .@2 | .@3)
+                      	
+  D1D7                	SNDCH:	; チャンネル毎のカウント値設定ポート番号
+  000C                	.@1	equ	%00001100	; ch.1
+  000D                	.@2	equ	%00001101	; ch.2
+  000E                	.@3	equ	%00001110	; ch.3
+                      	
+  D1D7                	SNDWRT:	; カウンタ値出力開始フラグ 下位／上位
+  0036                	.@1	equ	%00110110	; ch.1
+  0076                	.@2	equ	%01110110	; ch.2
+  00B6                	.@3	equ	%10110110	; ch.3
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; サンプルデータ
+                      	;
+  D1D7  15D2F3D1DDD1  	BGM:	dw	.@3, .@2, .@1
+  D1DD  F02B          	.@1	db	-16, TONE.O4 + TONE.G
+  D1DF  28            		db	TONE.O4 + TONE.E
+  D1E0  E028          		db	-32, TONE.O4 + TONE.E	; 64 ちょうちょ～
+                      	
+  D1E2  F02B          		db	-16, TONE.O4 + TONE.G
+  D1E4  28            		db	TONE.O4 + TONE.E
+  D1E5  E028          		db	-32, TONE.O4 + TONE.E	; 64 ちょうちょ～
+                      	
+  D1E7  F024          		db	-16, TONE.O4 + TONE.C
+  D1E9  26            		db	TONE.O4 + TONE.D
+  D1EA  28            		db	TONE.O4 + TONE.E
+  D1EB  29            		db	TONE.O4 + TONE.F	; 64 なのはに
+                      	
+  D1EC  F02B          		db	-16, TONE.O4 + TONE.G
+  D1EE  F02B          		db	-16, TONE.O4 + TONE.G
+  D1F0  E02B          		db	-32, TONE.O4 + TONE.G	; 64 とまれ～
+                      	
+  D1F2  80            		db	0x80
+                      	
+  D1F3  F8            	.@2	db	-8
+  D1F4  0E            		db	TONE.O2 + TONE.D
+  D1F5  0E            		db	TONE.O2 + TONE.D
+  D1F6  0E            		db	TONE.O2 + TONE.D
+  D1F7  0E            		db	TONE.O2 + TONE.D
+  D1F8  0E            		db	TONE.O2 + TONE.D
+  D1F9  0E            		db	TONE.O2 + TONE.D
+  D1FA  0E            		db	TONE.O2 + TONE.D
+  D1FB  0E            		db	TONE.O2 + TONE.D	; 64
+                      	
+  D1FC  11            		db	TONE.O2 + TONE.F
+  D1FD  11            		db	TONE.O2 + TONE.F
+  D1FE  11            		db	TONE.O2 + TONE.F
+  D1FF  11            		db	TONE.O2 + TONE.F
+  D200  11            		db	TONE.O2 + TONE.F
+  D201  11            		db	TONE.O2 + TONE.F
+  D202  11            		db	TONE.O2 + TONE.F
+  D203  11            		db	TONE.O2 + TONE.F	; 64
+                      	
+  D204  13            		db	TONE.O2 + TONE.G
+  D205  13            		db	TONE.O2 + TONE.G
+  D206  13            		db	TONE.O2 + TONE.G
+  D207  13            		db	TONE.O2 + TONE.G
+  D208  13            		db	TONE.O2 + TONE.G
+  D209  13            		db	TONE.O2 + TONE.G
+  D20A  13            		db	TONE.O2 + TONE.G
+  D20B  13            		db	TONE.O2 + TONE.G	; 64
+                      	
+  D20C  11            		db	TONE.O2 + TONE.F
+  D20D  11            		db	TONE.O2 + TONE.F
+  D20E  11            		db	TONE.O2 + TONE.F
+  D20F  11            		db	TONE.O2 + TONE.F
+  D210  11            		db	TONE.O2 + TONE.F
+  D211  11            		db	TONE.O2 + TONE.F
+  D212  11            		db	TONE.O2 + TONE.F
+  D213  11            		db	TONE.O2 + TONE.F	; 64
+                      	
+  D214  80            		db	0x80
+                      	
+  D215  F037          	.@3	db	-16, TONE.O5 + TONE.G
+  D217  34            		db	TONE.O5 + TONE.E
+  D218  E034          		db	-32, TONE.O5 + TONE.E
+                      	
+  D21A  F037          		db	-16, TONE.O5 + TONE.G
+  D21C  34            		db	TONE.O5 + TONE.E
+  D21D  E034          		db	-32, TONE.O5 + TONE.E
+                      	
+  D21F  F030          		db	-16, TONE.O5 + TONE.C
+  D221  32            		db	TONE.O5 + TONE.D
+  D222  34            		db	TONE.O5 + TONE.E
+  D223  35            		db	TONE.O5 + TONE.F
+                      	
+  D224  F037          		db	-16, TONE.O5 + TONE.G
+  D226  F037          		db	-16, TONE.O5 + TONE.G
+  D228  E037          		db	-32, TONE.O5 + TONE.G
+                      	
+  D22A  80            		db	0x80
+                      	
+                      	; o4l48dg>cfb>e
+  D22B  00            	SE:	db	0
+  D22C  26            		db	TONE.O4 + TONE.D
+  D22D  2B            		db	TONE.O4 + TONE.G
+  D22E  18            		db	TONE.O3 + TONE.C
+  D22F  1D            		db	TONE.O3 + TONE.F
+  D230  23            		db	TONE.O3 + TONE.B
+  D231  10            		db	TONE.O2 + TONE.E
+  D232  80            		db	0x80
+                      	
+                      	;-----------------------------------------------------------------------
+                      	; ワークエリア
+                      	;
+  D233                	MML:
+  0000                	.FREQ		equ	0		; 2 発音周波数
+  0002                	.ADDRESS	equ	2		; 2 MMLデータアドレス
+  0004                	.LENGTH		equ	4		; 1 現在の音長カウンタ
+  0005                	.LENDATA	equ	5		; 1 音長初期値
+  0006                	.REPEAT		equ	6		; 2 MMLデータ初期アドレス
+  0008                	.SIZE		equ	8		; チャンネルデータサイズ
+                      	
+  D234                		org     ($ + 1) / 2 * 2		; 偶数アライメント
+  D234                	SND:
+  D234                	.Counter	ds	1		; 汎用カウンタ
+  D235                	.Repeat		ds	1		; BGMリピート再生フラグ
+  D236                	.CH1		ds	MML.SIZE	; 1ch
+  D23E                	.CH2		ds	MML.SIZE	; 2ch
+  D246                	.CH3		ds	MML.SIZE	; 3ch
+  D24E                	.CHEnd		equ	$		; CH最後尾
+  D24E                	.SE		ds	MML.SIZE	; SE
+  D256                	.BLANKFLG	ds	1		; 垂直帰線位置フラグ
+[EOF:SoundTestV2.z80]
+------------------------
+####  SYMBOL TABLE  ####
+------------------------
+$:			0D257H
+FRQTBL:			0D003H
+Main:			0D093H
+Main.repeat:		0D096H
+Main.loop:		0D09CH
+Main.effect:		0D09FH
+Main.endchk:		0D0ABH
+Main.end:		0D0BAH
+Main.qoff:		0D0BDH
+SNDMusicStart:		0D0C6H
+SNDMusicStart.retads	0D0E7H
+SNDEffectStart:		0D0EAH
+SNDInitialize:		0D0F8H
+SNDStop:		0D0F8H
+SNDStop.retads		0D113H
+SNDIsPlaying:		0D116H
+SNDTimer:		0D126H
+SNDTimer.exec:		0D132H
+SNDTimer.outpt:		0D16DH
+SNDOutput:		0D175H
+SNDPlayer:		0D17FH
+SNDPlayer.retads	0D195H
+SNDPlayer.exit:		0D194H
+SNDPlayer.stop:		0D198H
+SNDPlayer.length:	0D19FH
+SNDPlayer.cmd:		0D1A2H
+SNDDiver:		0D1BBH
+SNDDiver.chkF:		0D1CBH
+TONE:			0D1D7H
+TONE.C			00000H
+TONE.CP			00001H
+TONE.D			00002H
+TONE.DP			00003H
+TONE.E			00004H
+TONE.F			00005H
+TONE.FP			00006H
+TONE.G			00007H
+TONE.GP			00008H
+TONE.A			00009H
+TONE.AP			0000AH
+TONE.B			0000BH
+TONE.O1			00000H
+TONE.O2			0000CH
+TONE.O3			00018H
+TONE.O4			00024H
+TONE.O5			00030H
+TONE.O6			0003CH
+KEYON:			0D1D7H
+KEYON.@1		00008H
+KEYON.@2		00040H
+KEYON.@3		00080H
+KEYON.All		000C8H
+SNDCH:			0D1D7H
+SNDCH.@1		0000CH
+SNDCH.@2		0000DH
+SNDCH.@3		0000EH
+SNDWRT:			0D1D7H
+SNDWRT.@1		00036H
+SNDWRT.@2		00076H
+SNDWRT.@3		000B6H
+BGM:			0D1D7H
+BGM.@1:			0D1DDH
+BGM.@2:			0D1F3H
+BGM.@3:			0D215H
+SE:			0D22BH
+MML:			0D233H
+MML.FREQ		00000H
+MML.ADDRESS		00002H
+MML.LENGTH		00004H
+MML.LENDATA		00005H
+MML.REPEAT		00006H
+MML.SIZE		00008H
+SND:			0D234H
+SND.Counter:		0D234H
+SND.Repeat:		0D235H
+SND.CH1:		0D236H
+SND.CH2:		0D23EH
+SND.CH3:		0D246H
+SND.CHEnd		0D24EH
+SND.SE:			0D24EH
+SND.BLANKFLG:		0D256H
+------------------------

@@ -1,0 +1,35 @@
+
+
+MAGBASE:
+    calls:
+        - MAGLOAD
+        - X1WORK
+    lib_name: MAGLIB
+    extlib: mag/MAG.ASM:MAGBASE
+
+GRDISP:
+    lib_name: MAGLIB
+    extlib: mag/MAG.ASM:GRDISP
+
+GRCLS:
+    calls:
+        - MAGBASE
+    lib_name: MAGLIB
+    extlib: mag/MAG.ASM:GRCLS
+
+MAGLOAD:
+    calls:
+        - MAGBASE
+        - X1WORK
+        - GRCLS
+        - MULHLDE
+        - FOPEN
+        - FGETC
+        - FREAD
+        - FSEEK
+        - FCLOSE
+    lib_name: MAGLIB
+    extlib: mag/MAG.ASM:MAGLOAD
+    works:
+        MAGLOAD_WORK: 2
+

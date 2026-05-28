@@ -1,0 +1,729 @@
+;
+; Main側ディスクルーチン
+;
+;現在 832byte
+;1024byteまで（暫定）
+;
+;todo.
+
+;	Relaxed on
+
+Sub_Load2	equ	$7B03
+Sub_Save2	equ	$7B06
+Sub_MemSave	equ	$7B09
+Sub_MemLoad	equ	$7B0C
+Sub_SetMode	equ	$7B0F
+Disk_Buffer	equ	$0500					;512byte 必要（ディレクトリ検索などで使用）
+
+
+	; ORG		$F800
+	ORG		$0000
+
+	jp			Start					;+0
+	jp			Disk_Load				;+3
+	jp			Disk_Load2				;+6
+	jp			Disk_Load3				;+9
+	jp			Disk_Save				;+12
+	jp			Disk_ChangeDrv			;+15
+	jp			Disk_ChangeMType		;+18
+	; jp			$				;+21  Formatは欠番
+	jp			Disk_SetMode			;+21  Format → サブシステムの待ち受けモード設定
+	jp			Disk_FindFile			;+24
+	jp			Disk_EnumFile			;+27
+	jp			Disk_FileName			;+30
+	; jp			$				;+33
+	jp			Disk_SecLoad			;+33
+	jp			Mem_Load			;+36	Sub側から読む
+	jp			Mem_Save			;+39	Sub側に書く
+
+;ファイル名 $xxxx.$$$ をロードする。xxxxは4桁16進アドレス
+;複数あっても最初に発見したものを使う。16進文字列でなくてもロードしてしまうので注意。
+Start:
+	call		Disk_FindFile
+	jr			c,$						;見つからなかったらブートしない。エラーメッセージ出す余裕が無い･･･
+	push		de
+	inc			de						;de=発見したディレクトリエントリ "$"の次から
+	call		.sub
+	add			a,a
+	add			a,a
+	add			a,a
+	add			a,a
+	ld			h,a
+	call		.sub
+	or			h
+	ld			h,a
+	call		.sub
+	add			a,a
+	add			a,a
+	add			a,a
+	add			a,a
+	ld			l,a
+	call		.sub
+	or			l
+	ld			l,a
+	pop			de
+	push		hl						;ロード後、ロード開始番地に飛ぶ
+	ld			(LoadAdr),hl
+	jp			Disk_Load.load			;ディレクトリ再読込が面倒で無ければDisk_Loadでもok.
+.sub:									;"0"-"9","A"-"F" : $30-$39,$41-$46
+	ld			a,(de)
+	inc			de
+	sub			$30
+	cp			$41-$30
+	ret			c
+	sub			7
+	ret
+
+
+CurDrv:		db		0					;カレントドライブ
+MType0:		db		0					;drv0 0=2D 1=2DD 2=2HD
+MType1:		db		0					;drv1
+
+Drv:		db		0					;ドライブ番号(0/1)	ここから
+Cnt:		db		1					;セクタ数
+Sec:		db		1					;セクタ番号
+Trk:		db		1					;トラック番号		ここまで4byteの並びは変更禁止
+
+DirSec:		db		6					;ディレクトリの場所 セクタ
+DirTrk:		db		0					;ディレクトリの場所 トラック
+DirMax:		db		4					;ディレクトリが何セクタあるか
+DirCnt:		db		0					;ディレクトリセクタのカウンタ
+;                    12345678123
+FileName:	db		"$????   $$$"		;11文字 一旦クリアしてから書き込むこと
+FileSize:	ds		3					;ファイルサイズ 0-16,777,215byte
+FileCnt:	db		0					;ファイルがいくつ見つかったか
+
+LoadAdr:	dw		0					;ロードアドレス保存
+
+MemAdr:		dw		0					;メモリアドレス保存
+MemSize:	dw		0					;メモリサイズ保存
+
+;---------------------------------------------------------------------------------------------------
+;指定したファイルを指定したアドレスにロードする
+;call Disk_Load2
+;db   "FILE    BIN",0
+;hl=ロードアドレス
+Disk_Load2:
+	ex			(sp),hl
+	ld			de,FileName
+	xor			a
+.loop:
+	ldi
+	cp			(hl)
+	jr			nz,.loop
+	ex			(sp),hl
+
+Disk_Load:								;ファイル名を格納済みの場合ここから
+	ld			(LoadAdr),hl
+	call		Disk_FindFile
+	ret			c						;見つからなかった
+.load:
+	call		Disk_FileInfo			;ディレクトリアドレス=deにて発見
+	ld			hl,(LoadADr)
+	jp			Disk_CmdLoad
+
+;指定したファイルを指定バイト位置から指定バイト数、指定位置にロードする
+;ファイル名は格納済みとする
+;hl=アドレス
+;bc=指定バイト数（サイズチェックしていない）
+;ade=指定バイト位置（サイズチェックしていない）
+Disk_Load3:
+	ld			(LoadAdr),hl
+	ld			(.cnt),bc
+
+	ld			l,d
+	ld			h,a
+	srl			h
+	rr			l						;Pos/512
+	ld			bc,-9
+	ld			a,-1
+.div9:
+	inc			a
+	add			hl,bc
+	jr			c,.div9
+	ld			(.trk),a				;Pos/512/9=開始トラック相対(0-
+	sbc			hl,bc
+	ld			a,l
+	ld			(.sec),a				;(Pos/512) mod 9=開始セクタ相対(0-8)
+
+	ld			a,d
+	and			1
+	ld			d,a
+	ld			(.pos),de				;セクタ中の何バイト目から読み出すか(0-511)
+
+	call		Disk_FindFile			;ファイルが見つからなかった
+	ret			c
+	call		Disk_FileInfo			;ファイルの開始位置が (Drv),Trk,Sec,Cnt ワークに入る
+
+	ld			de,(Sec)
+	ld			a,(.sec)
+	add			a,e
+	cp			10
+	jr			c,.skip1
+	sub			9
+.skip1:
+	ccf
+	ld			(Sec),a
+	ld			a,(.trk)
+	adc			a,d
+	ld			(Trk),a					;指定した開始位置 Trk,Sec に補正する
+	ld			a,1
+	ld			(Cnt),a					;1セクタずつ処理
+
+.loadsec:
+	ld			hl,Disk_Buffer
+	call		Disk_CmdLoad
+
+	ld			hl,Disk_Buffer
+	ld			de,(.pos)				;バッファに読み込んだ途中から転送
+	add			hl,de
+	ld			de,(LoadAdr)
+	ld			bc,(.cnt)
+	ld			a,((Disk_Buffer+$0200) & $FFFF) >> 8
+.loop:
+	ldi									;バッファからロードアドレスにコピー
+	jp			po,.end					;if(bc==0) goto end
+	cp			h
+	jp			nz,.loop				;バッファ上限まで読んだら次のセクタ
+	ld			(.cnt),bc
+	ld			(LoadAdr),de
+	ld			hl,0
+	ld			(.pos),hl				;pos=0
+	ld			a,(Sec)
+	inc			a
+	cp			10
+	jr			c,.skip2
+	ld			a,1
+.skip2:
+	ccf
+	ld			(Sec),a
+	ld			a,(Trk)
+	adc			a,0
+	ld			(Trk),a
+	jp			.loadsec
+.end:
+	or			a						;cf=0 正常終了
+	ret
+
+.pos:		dw	0
+.cnt:		dw	0
+.trk:		db	0
+.sec:		db	0
+
+;---------------------------------------------------------------------------------------------------
+Disk_Save:
+	ld			(Drv),bc				;b=cnt c=drv
+	ld			(Sec),de				;d=Trk e=Sec
+	jp			Disk_CmdSave
+
+;---------------------------------------------------------------------------------------------------
+Disk_ChangeDrv:
+	ld			(CurDrv),a				;0=drv0 1=drv1
+	ret
+;---------------------------------------------------------------------------------------------------
+;メディアタイプ変更
+;MTypeに変更後の値を入れてcall
+;先にタイムアウトを実装しないと･･･
+Disk_ChangeMType:
+; 	ld			a,$1F					;Set Diskmode	2D機(Fx系)はコマンド自体を弾かれる
+; 	call		Disk_SendCmd			;[$1F][Drv][Mode]
+; 	ld			a,(CurDrv)
+; 	ld			c,a
+; 	ld			b,0
+; 	call		Disk_Send1
+; 	ld			hl,MType0
+; 	add			hl,bc
+; 	ld			a,(hl)					;0=2D 1=2DD 2=2HD
+; 	add			a,a
+; 	add			a,a
+; 	add			a,a
+; 	add			a,a
+; 	or			2						;512byte/sector
+; 	jp			Disk_Send1
+; 
+; ;一応チェックらしきものを付けておくが、正しく判別できるかどうかは謎
+; ;単に設定した値を返すだけ、という気がする
+; 	ld			a,$20					;Send Diskmode
+; 	call		Disk_SendCmd			;[$20][Drv]
+; 	ld			a,(CurDrv)
+; 	ld			c,a
+; 	ld			b,0
+; 	call		Disk_Send1
+; 
+; 	call		Disk_Recv1				;1byte受信
+; 	ld			hl,MType0
+; 	add			hl,bc
+; 	cp			(hl)
+; 	ret			z
+; 	inc			(hl)					;2D->2DD->2HD
+; 	ld			a,(hl)
+; 	cp			3						;2HDまで試行してダメなら戻る
+; 	jr			nz,Disk_ChangeMType
+; 	ld			(hl),0
+; 	ret
+	ret
+
+;---------------------------------------------------------------------------------------------------
+Disk_FileName:
+	ld			de,FileName
+	ret
+
+;---------------------------------------------------------------------------------------------------
+;ファイル名をディレクトリで検索して見つかったアドレスで返す(de)
+;見つかった後、継続して検索する場合は.nextから再開する
+;
+Disk_FindFile:
+	ld			a,1
+	ld			(Cnt),a					;1セクタずつ
+
+	ld			hl,(DirSec)				;h=Trk. l=Sec. ディレクトリのある位置
+	ld			(Sec),hl
+	ld			a,(DirMax)
+.loop1:
+	ld			(DirCnt),a				;ディレクトリ セクタ数分
+	ld			hl,Disk_Buffer
+	call		Disk_CmdLoad
+
+	ld			b,32					;32エントリ/ディレクトリ512byte
+	ld			de,Disk_Buffer
+.loop2:
+	ld			hl,FileName
+	ld			c,11
+	push		de
+.loop3:
+	ld			a,(hl)
+	cp			"?"						;"?"
+	jr			z,.match
+	ld			a,(de)
+	cp			(hl)
+	jr			nz,.next
+.match:
+	inc			de
+	inc			hl
+	dec			c
+	jr			nz,.loop3
+	pop			de
+	or			a						;cf=0 発見
+	ret
+.next:
+	pop			de
+	ld			hl,16
+	add			hl,de
+	ex			de,hl
+.continue:
+	djnz		.loop2
+
+	ld			hl,Sec					;ディレクトリがトラックをまたぐ場合は変更すること
+	inc			(hl)
+
+	ld			a,(DirCnt)
+	dec			a
+	jr			nz,.loop1
+	scf									;cf=1 発見できず
+	ret
+
+
+Disk_FileInfo:
+	push		ix
+	ld			ixh,d					;de=発見したディレクトリを展開したメモリアドレス
+	ld			ixl,e
+	ld			h,(ix+14)				;Trk
+	ld			l,(ix+15)				;Sec
+	ld			(Sec),hl
+
+	ld			a,(ix+11)
+	ld			l,(ix+12)
+	ld			h,(ix+13)
+	ld			(FileSize),a
+	ld			(FileSize+1),hl			;FileSize >> 9 が読み込みセクタ数
+
+	srl			h
+	rr			l						;FileSize >> 9
+	jr			c,.skip1
+	or			a
+	jr			z,.skip2				;if((FileSize and 512)!=0) Sectors++;
+.skip1:
+	inc			l
+.skip2:
+	ld			a,l
+	ld			(Cnt),a					;読み込みセクタ数が256を超える場合は別処理すべし
+	pop			ix
+	ret
+
+
+;---------------------------------------------------------------------------------------------------
+;ディスク上のファイルをバッファに列挙
+;hl=ファイル情報を格納するバッファ 最大16*128=2048byte
+;"????????BIN" のような指定方法で、拡張子BINのものだけを拾える
+Disk_EnumFile:
+	xor			a
+	ld			(FileCnt),a						;発見したファイル数
+
+	ex			(sp),hl
+	call		Disk_FileName					;ファイル名を入れるワーク(8+3=11byte)アドレスをdeに取得する
+	ld			bc,11
+	ldir
+	ex			(sp),hl
+
+	push		hl
+	call		Disk_FindFile					;発見するとcf=0 deにディスクバッファ内のファイル情報アドレスを返す
+	pop			hl
+	ld			a,0
+	ret			c								;発見できなければ cf=1
+
+.loop:
+	ld			a,(FileCnt)
+	inc			a
+	ld			(FileCnt),a						;ファイルカウント+1
+	ex			de,hl
+	push		bc								;b保護
+	ld			bc,16							;バッファをケチるなら11byteだけでもいいかもしれない
+	ldir
+	pop			bc
+	ex			de,hl
+	push		hl
+	call		Disk_FindFile.continue			;継続して検索する場合は.continueを呼ぶ deは前回発見時+16 bは保護
+	pop			hl
+	jr			nc,.loop
+.exit:
+	ld			a,(FileCnt)						;cf=0 見つかった数を返す
+	or			a
+	ret
+
+;---------------------------------------------------------------------------------------------------
+;hl=ロードアドレス
+;Drv,Cnt,Sec,Trk に値を入れてcall
+Disk_CmdLoad:
+	ld			a,$0D					;Execute
+	call		Disk_SendCmd			;[$0D][Adr-H][Adr-L]
+	ld			a,Sub_Load2 >> 8		;Sub_Load2実行
+	call		Disk_Send1
+	ld			a,Sub_Load2 & $FF
+	call		Disk_Send1
+
+	push		hl
+	ld			hl,Drv
+	call		Main_SendParam4			;Drv/Cnt/Sec/Trkを送ってから
+	pop			hl
+
+	call		Main_PortRecv
+
+	ld			a,(Cnt)
+	push		bc
+	ld			b,a
+.loop:
+	call		Main_Recv4				;受信
+	djnz		.loop
+	pop			bc
+
+	ld			a,$91
+	out			($FF),a					;PortA=受信 PortB=送信ポート
+	ret
+
+;---------------------------------------------------------------------------------------------------
+Disk_CmdSave:
+	ld			a,$0D					;Execute
+	call		Disk_SendCmd			;[$0D][Adr-H][Adr-L]
+	ld			a,Sub_Save2 >> 8		;Sub_Save2実行
+	call		Disk_Send1
+	ld			a,Sub_Save2 & $FF
+	call		Disk_Send1
+
+	push		hl
+	ld			hl,Drv
+	call		Main_SendParam4			;Drv/Cnt/Sec/Trkを送ってから
+	pop			hl
+
+	call		Main_PortSend
+
+	ld			a,(Cnt)
+	push		bc
+	ld			b,a
+.loop:
+	call		Main_Send4				;送信
+	djnz		.loop
+	pop			bc
+
+	ld			a,$91
+	out			($FF),a					;PortA=受信 PortB=送信ポート
+	ret
+
+
+;--------------------------------------------------------------------------------------------------
+;Main側 コマンド/データ送信
+;
+Disk_SendCmd:
+	push		af
+	ld			a,$0F
+	out			($FF),a					;ATN=1
+	pop			af
+Disk_Send1:
+	push		af
+.wait1:
+	in			a,($FE)
+	and			$02
+	jr			z,.wait1				;RFD=1待ち
+
+	ld			a,$0E
+	out			($FF),a					;ATN=0
+
+	pop			af
+	out			($FD),a					;Send
+
+	ld			a,$09
+	out			($FF),a					;DAV=1
+.wait2:
+	in			a,($FE)
+	and			4
+	jr			z,.wait2				;DAC=1待ち
+
+	ld			a,8
+	out			($FF),a					;DAV=0
+.wait3:
+	in			a,($FE)
+	and			4
+	jr			nz,.wait3				;DAC=0待ち
+	ret
+
+
+;--------------------------------------------------------------------------------------------------
+;Main側 1バイト受信
+;
+Disk_Recv1:
+	ld			a,$0B
+	out			($FF),a					;RFD=1
+.wait1:
+	in			a,($FE)
+	rrca
+	jr			nc,.wait1				;DAV=1待ち
+
+	ld			a,$0A
+	out			($FF),a					;RFD=0
+
+	in			a,($FC)					;1byte入力
+	push		af
+	ld			a,$0D
+	out			($FF),a					;DAC=1
+.wait2:
+	in			a,($FE)
+	rrca
+	jr			c,.wait2				;DAV=0待ち
+
+	ld			a,$0C
+	out			($FF),a					;DAC=0
+	pop			af
+	ret
+
+
+;--------------------------------------------------------------------------------------------------
+Main_PortRecv:
+	ld			a,$93					;PortA/B 受信ポート
+	out			($FF),a
+
+	ld			a,$0B					;RFD=1
+	out			($FF),a
+.wait:
+	in			a,($FE)					;SubのDAV=1待ち
+	rrca
+	jr			nc,.wait
+
+	ld			a,$0A					;RFD=0
+	out			($FF),a
+	ret
+
+Main_PortSend:
+	ld			a,$81					;PortA/B 送信ポート
+	out			($FF),a
+
+.wait:
+	in			a,($FE)					;SubのRFD=1待ち
+	and			2
+	jr			z,.wait
+	ret
+
+
+;--------------------------------------------------------------------------------------------------
+;Main側 4byte パラメータ送信（汎用）
+;
+;hl=格納アドレス
+Main_SendParam4:
+	call		Main_PortSend
+
+	ld			bc,$04FD
+	call		Main_Send4.loop
+	ld			a,$91
+	out			($FF),a					;PortA=受信 PortB=送信ポート
+	ret
+
+;--------------------------------------------------------------------------------------------------
+;Main側 データ送信(4倍速)
+;
+;(M)FD->(S)FC (M)FC->(S)FD
+Main_Send4:
+	push		bc
+	ld			bc,$00FD
+	call		.loop					;256*2=512byte送信
+	call		.loop
+	pop			bc
+	ret
+.loop:
+	outi								;(1) $FD
+	dec			c
+	outi								;(2) $FC
+
+	ld			a,9						;DAV=1(set)
+	out			($FF),a
+.wait1:
+	in			a,($FE)
+	rrca
+	jr			nc,.wait1				;DAV=1待ち
+
+	outi								;(3) $FC
+	inc			c
+	outi								;(4) $FD
+
+	ld			a,8						;DAV=0(reset)
+	out			($FF),a
+.wait2:
+	in			a,($FE)
+	rrca								;DAV=0待ち
+	jr			c,.wait2				;zf は変化しない
+
+	jp			nz,.loop				;outi の b-- を判定する
+	ret
+
+;--------------------------------------------------------------------------------------------------
+;Main側 データ受信(4倍速)
+
+Main_Recv4:
+	push		bc
+	ld			bc,$00FC
+	call		.loop					;256*2=512byte受信
+	call		.loop
+	pop			bc
+	ret
+.loop:
+	in			a,($FE)
+	rrca
+	jr			nc,.loop				;SubのDAV=1待ち
+
+	ini									;(1) $FC
+	inc			c
+	ini									;(2) $FD
+
+	ld			a,9						;DAV=1(set)
+	out			($FF),a
+.wait:
+	in			a,($FE)
+	rrca
+	jr			c,.wait					;DAV=0待ち
+
+	ini									;(3) $FD
+	dec			c
+	ini									;(4) $FC
+
+	ld			a,8						;DAV=0(reset)
+	out			($FF),a
+	jp			nz,.loop
+	ret
+
+;--------------------------------------------------------------------------------------------------
+
+; メインメモリからサブメモリへの転送
+;  input:
+;   hl=転送先アドレス(SUB)
+;   bc=転送サイズ(下位のみ使われる)
+;   de=転送元アドレス(MAIN)
+Mem_Save:
+	; Drvにhlとbcを書いちゃう(ワーク共有)
+	ld	(MemAdr),hl
+	ld	(MemSize),bc
+	push	de
+
+	; Sub_MemSaveを呼び出して転送先アドレスと転送サイズを送る
+	ld	a,$0D				;Execute
+	call	Disk_SendCmd			;[$0D][Adr-H][Adr-L]
+	ld	a,high Sub_MemSave		;Sub_MemSave実行
+	call	Disk_Send1
+	ld	a,low Sub_MemSave
+	call	Disk_Send1
+
+	; パラメータ送信
+	ld	hl,MemAdr
+	call	Main_SendParam4			;転送先アドレスと転送サイズを送る
+
+	; データ送信
+	call		Main_PortSend
+	pop	hl
+
+	ld	a, (MemSize)
+	ld	b, a				; 転送サイズ
+	ld	c, $FD
+	call	Main_Send4.loop
+	ld	a,$91
+	out	($FF),a					;PortA=受信 PortB=送信ポート
+	ret
+
+
+; サブメモリからメインメモリへの転送
+;  input:
+;   hl=転送先アドレス(MAIN)
+;   bc=転送サイズ(下位のみ使われる)
+;   de=転送元アドレス(SUB)
+Mem_Load:
+	; Drvにdeとbcを書いちゃう(ワーク共有)
+	ld	(MemAdr),de
+	ld	(MemSize),bc
+	push	hl
+
+	; Sub_MemLoadを呼び出して転送先アドレスと転送サイズを送る
+	ld	a,$0D				;Execute
+	call	Disk_SendCmd			;[$0D][Adr-H][Adr-L]
+	ld	a,high Sub_MemLoad		;Sub_MemLoad実行
+	call	Disk_Send1
+	ld	a,low Sub_MemLoad
+	call	Disk_Send1
+
+	; パラメータ送信
+	ld	hl,MemAdr
+	call	Main_SendParam4			;転送先アドレスと転送サイズを送る
+
+	call	Main_PortRecv
+	; データ受信
+	pop	hl
+
+	ld	a, (MemSize)
+	ld	b, a
+	ld	c, $FC
+	call	Main_Recv4.loop
+
+	ld	a,$91
+	out	($FF),a					;PortA=受信 PortB=送信ポート
+	ret
+
+;---------------------------------------------------------------------------------------------------
+; サブシステムのモード設定
+; input: a = モード（0=DISK BIOSモード、1=シンプルモード）
+Disk_SetMode:
+	push	af
+
+	ld	a,$0D					; Execute
+	call	Disk_SendCmd			; [$0D][Adr-H][Adr-L]
+
+	ld	a,Sub_SetMode >> 8		; Sub_SetModeのアドレス上位バイト
+	call	Disk_Send1
+
+	ld	a,Sub_SetMode & $FF		; Sub_SetModeのアドレス下位バイト
+	call	Disk_Send1
+
+	pop	af
+	call	Disk_Send1		
+
+	ld	a,$91
+	out	($FF),a					;PortA=受信 PortB=送信ポート
+	ret
+
+Disk_SecLoad:
+	ld			(Drv),bc				;b=cnt c=drv
+	ld			(Sec),de				;d=Trk e=Sec
+	jp			Disk_CmdLoad

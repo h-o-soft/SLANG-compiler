@@ -1,0 +1,118 @@
+; The Blue Danube (An der schoenen blauen Donau) - Walzer 1 excerpt
+; Simplified from page 2 of the piano score for PC-8001mkII 3ch BEEP.
+;
+; This is not a full piano transcription. Dense chords, inner voices, and
+; ornaments are reduced to:
+;   @1 main melody
+;   @2 bass on beat 1
+;   @3 light waltz accompaniment on beats 2-3
+;
+; Convert with:
+;   python3 tools/mml2sound.py examples/PC80mk2_BlueDanube_Walzer1.mml
+
+@1 o4 l4
+; Walzer 1 main phrase, D major
+d f+ a
+a2 >d4
+d2 <a4
+>d2 r4
+<e f+ a
+a2 >c+4
+c+2 <a4
+>d2 r4
+<d f+ a
+a2 >d4
+d2 <a4
+>d2 r4
+<e f+ a
+a2 >c+4
+c+2 <a4
+>d2 r4
+
+; Answer phrase, simplified A major color
+o5 e e e
+c+ e a
+g+ f+ e
+d c+ b
+e e e
+c+ e a
+g+ f+ e
+a2 r4
+a g+ f+
+e c+ a
+b c+ d
+e2 r4
+e f+ g+
+a e c+
+b d g+
+a2 r4
+
+@2 o2 l4
+; Bass only on beat 1, to keep the PC-8001mkII channels stable
+d r r
+d r r
+a r r
+a r r
+d r r
+d r r
+a r r
+d r r
+d r r
+a r r
+g r r
+d r r
+d r r
+a r r
+a r r
+d r r
+a r r
+a r r
+e r r
+e r r
+a r r
+a r r
+e r r
+a r r
+a r r
+a r r
+e r r
+e r r
+a r r
+a r r
+e r r
+a r r
+
+@3 o3 l4
+; Single-note chord tones on beats 2-3
+r f+ a
+r f+ a
+r e a
+r e a
+r f+ a
+r f+ a
+r e a
+r f+ a
+r a >d
+o3 r e a
+r d g
+r f+ a
+r a >d
+o3 r e a
+r f+ a
+r f+ a
+o3 r c+ e
+r c+ e
+r b e
+r b e
+r c+ e
+r c+ e
+r b e
+r c+ e
+r c+ e
+r c+ e
+r b e
+r b e
+r c+ e
+r c+ e
+r b e
+r c+ e

@@ -1,0 +1,46 @@
+
+Disk_Load:
+  calls:
+    - Disk_FileName
+  code: |
+    ; HL = path Address, DE = load address
+    push de
+    call Disk_FileName
+    pop hl
+
+    ; Disk_Load
+    jp $0000 + $3
+
+Disk_FileName:
+  code: |
+    ; HL = path Address
+    ; Disk_FileName (deにFileNameのaddressを返す)
+    call $0000 + $1e
+    xor a
+    .loop
+    ldi
+    cp  (hl)
+    jr  nz,.loop
+    ret
+
+Disk_Load3:
+  code: |
+    ; HL = load address, DE = offset, BC = size
+
+    ; limit 64KB
+    ld a,0
+
+    ; Disk_Load3
+    jp $0000 + $9
+    ret
+
+Disk_Save:
+  code: |
+    ; HL = save data address, b=cnt c=drv d=Trk e=Sec
+    jp $0000 + 12
+
+Disk_SecLoad:
+  code: |
+    ; HL = load data address, b=cnt c=drv d=Trk e=Sec
+    jp $0000 + 33
+

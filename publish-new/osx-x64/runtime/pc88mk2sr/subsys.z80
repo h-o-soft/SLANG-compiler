@@ -1,0 +1,783 @@
+;
+; サブ側ディスクシステム
+; ディスクの Trk.0 Sec.1 に配置(512byteセクタ)
+;
+; 2D: 512byte/Sec  9Sec/Trk 41Trk/Cyl = 377,856bytes
+;2DD: 512byte/Sec  9Sec/Trk 82Trk/Cyl = 755,712bytes
+;2HD: 512byte/Sec 15Sec/Trk 82Trk/Cyl = 1,259,520bytes (2HC)
+;
+;バッファはサブ側メモリ $4000-$5DFF まで使用(2D/2DD だけなら $4000-$51FF)
+;
+;http://community.osdev.info/index.php?(FDC)765A
+;http://homepage.ntlworld.com/mark.woodmass/necfdc.htm
+;
+;I/O
+;$F4(W)  :ドライブ制御
+;         [0][0][CLK][DSI][TD(drv1)][TD(drv0)][RV(drv1)][RV[drv0)] TD:0=2D/2DD,1=2HD RV:0=48TPI(2D),1=96TPI(2DD/2HD)
+;$F7(W)  :プリンタポート出力
+;$F8(R/W):モーター制御出力 (R = Terminal Count 出力)
+;$FA(R)  :765A ステータス
+;         [RQM][DIO][NDM][CB][D3B][D2B][D1B][D0B] CB:idlephase以外 NDM:E-Phase DIO:0=CPU->FDC,1=FDC->CPU RQM:データの送受信の用意が出来た
+;$FB(R/W):FDD入出力
+;$FC(R/W):8255データ入出力
+;$FD(R/W):8255データ入出力
+;$FE(R/W):8255コントロール入出力 (PortC直接出力)
+;$FF(W)  :8255コントロール出力
+;         [CNT][.][.][.][D3][D2][D1][BSET] CNT=0の場合 ポートCのビットセット/リセットを指定
+;         [CNT][GAMS2][GAMS1][PA][PCH][PCH][GBMS][PB][PCL] CNT=1の場合 PA/PB:0=出力,1=入力
+;
+;メディアタイプの変更はメイン側で指示する。$0833
+;サブ側はあくまで「現時点で設定されているモードで」ロードするのみ。
+;
+;size:505bytes（暫定）
+;
+;todo.
+;タイムアウトが無い。ROM内ルーチンと同様にATNが立ったら強制的にコマンド待ちに戻るようにすべきか
+;サイズがギリギリで機能拡張も出来ないので 2-3 セクタ化を覚悟してコードを整理する
+;
+;	relaxed on
+
+	ORG		$7B00						;$7F00-$7FFF はROMルーチンのワークとスタックなので注意.
+
+
+;--------------------------------------------------------------------------------------------------
+	jp		Sub_Load	;Sub_Init		;+0
+	jp		Sub_Load2					;+3
+	jp		Sub_Save2					;+6
+	jp		Sub_MemSave				;+9
+	jp		Sub_MemLoad				;+12
+	jp		Sub_SetWaitMode				;+15
+
+;以下の初期値が最初にメインメモリにロードされる（メイン側ディスクルーチン）
+Drv:		db		0					;ドライブ番号 0/1
+Cnt:		db		2					;セクタ数 1-255     ※ 0禁止(サイズ制限のため)
+Sec:		db		4					;セクタ番号 1-9(2D/2DD) 1-15(2HD)
+Trk:		db		0					;トラック番号 0-79(2D) 0-159(2DD/2HD)
+
+;汎用データ転送処理用
+PrmAdr:		dw		0					;送受信アドレス
+PrmSize:	dw		0					;送受信サイズ(下位のみ使われる)
+
+;--------------------------------------------------------------------------------------------------
+;初期化
+;Sub_Init:
+;	jp			Sub_Load				;ワーク初期値に従ってメイン側にiosysを送信
+
+;--------------------------------------------------------------------------------------------------
+;Fx系機種用
+Sub_ReadSector2D:
+	call		$01AA					;[765A] Seek + Sense Int Status
+	ret			c
+	call		$035B					;マージンポートに値を出力
+	ld			a,9
+.try:
+	ld			($7F0A),a				;リトライカウンタ ROM内ルーチンに倣う
+
+	push		bc
+	push		de
+	ld			a,$46					;[765A] Read Data コマンド発行
+	call		$02A4					;出力+ワークにも保存
+
+	call		Sub_SetParam2D			;[765A] パラメータ出力 ROM内ルーチンは N=1 固定なので使えない
+
+	ld			d,b
+	sla			d						;d=読み込みセクタ数*2
+	ld			bc,$00FB				;b=0
+	ld			e,$20
+.loop:
+	ei
+	halt
+	in			a,($FA)					;[765A] Status
+	and			e						;bit5 1=NON DMA
+	jr			z,.exit
+	ini
+	jp			nz,.loop
+	dec			d
+	jr			nz,.loop				;512byte * 読み込みセクタ数
+.exit:
+	in			a,($F8)					;FDC に terminal count を出力
+	ei
+	halt
+	di
+	pop			de
+	pop			bc
+	call		$0263					;リザルトステータスのチェック
+	ret			nc
+.retry
+	call		$0375					;マージンポートに値を出力
+	ld			a,($7F0A)
+	dec			a
+	jr			nz,.try
+	scf
+	ret									;9回リトライしてもダメならエラー
+
+
+;--------------------------------------------------------------------------------------------------
+;Fx系機種用
+Sub_WriteSector2D:
+	call		$07D6					;[765A] Seek コマンド発行 & ディスク挿入チェック
+	ret			c
+	call		$035B					;マージンポートに値を出力
+	ld			a,9
+.try:
+	ld			($7F0A),a				;リトライカウンタ ROM内ルーチンに倣う
+
+	push		bc
+	push		de
+	ld			a,$45					;[765A] Write Data コマンド発行
+	call		$02A4					;出力+ワークにも保存
+
+	call		Sub_SetParam2D			;[765A] パラメータ出力 ROM内ルーチンは N=1 固定なので使えない
+
+	ld			d,b
+	sla			d						;d=読み込みセクタ数*2
+	ld			bc,$00FB				;b=0
+	ld			e,$20
+.loop:
+	ei
+	halt
+	in			a,($FA)					;[765A] Status
+	and			e						;bit5 1=NON DMA
+	jr			z,.exit
+	outi								;b--, (c)<-(hl), hl++
+	jp			nz,.loop
+	dec			d
+	jr			nz,.loop				;512byte * 書き込みセクタ数
+.exit:
+	in			a,($F8)					;FDC に terminal count を出力
+	ei
+	halt
+	di
+
+.wait:
+	dec			d						;本当は3926clk サイズ削減のため $07C6
+	jr			nz,.wait
+
+	pop			de
+	pop			bc
+	call		$0263					;リザルトステータスのチェック
+	ret			nc
+.retry
+	ld			a,($7F0E)				;[ST1]
+	and			2						;Not Writable が立っていたらエラーを返す
+	scf
+	ret			nz
+
+	call		$0375					;マージンポートに値を出力
+	ld			a,($7F0A)
+	dec			a
+	jr			nz,.try
+	scf
+	ret									;9回リトライしてもダメならエラー
+
+
+;--------------------------------------------------------------------------------------------------
+Sub_SetParam2D:
+	ld			a,d						;d=トラック番号
+	and			1
+	rlca
+	rlca
+	or			c						;c=ドライブ番号
+	rst			$20						;[HD-US]
+	ld			a,d
+	srl			a
+	rst			$20						;[C] シリンダ番号
+	ld			a,d
+	and			1
+	rst			$20						;[H] ヘッダ表裏
+	ld			a,e
+	rst			$20						;[R] セクタ番号
+
+	ld			a,2
+	rst			$20						;[N] セクタ長 512byte
+
+	ld			a,9						;
+	rst			$20						;[EOT] 最終セクタ Mx系機種は関係ないので2D決めうち
+	ld			a,$0E
+	rst			$20						;[GPL] ギャップ長
+	ld			a,$FF
+	rst			$20						;[DTL] データ長
+	ret
+
+
+;--------------------------------------------------------------------------------------------------
+Sub_PortRecv:
+	ld			a,$93					;PortA/B 受信ポート
+	out			($FF),a
+
+	ld			a,$0B					;RFD=1
+	out			($FF),a
+.wait:
+	in			a,($FE)					;MainのDAV=1待ち
+	rrca
+	jr			nc,.wait
+
+	ld			a,$0A					;RFD=0
+	out			($FF),a
+	ret
+
+Sub_PortSend:
+	ld			a,$81					;PortA/B 送信ポート
+	out			($FF),a
+
+.wait:
+	in			a,($FE)					;MainのRFD=1待ち
+	and			2
+	jr			z,.wait
+	ret
+
+Sub_Resume:
+	ld			a,$91
+	out			($FF),a					;PortA=受信 PortB=送信ポート
+.wait_mode
+	jp			$00C1
+
+;--------------------------------------------------------------------------------------------------
+Sub_Load2:
+	ld			hl,Drv					;パラメータ受信後、ロード
+	call		Sub_RecvParam4
+Sub_Load:
+	ld			hl,Sub_Resume			;ret でポート設定を戻した後、コマンド待ちに戻る
+	push		hl
+
+	ld			bc,(Drv)				;b=cnt c=drv
+	ld			de,(Sec)				;e=sec d=trk
+
+	ld			a,($07EE)				;$07EEが$FEなら2HD対応機種、$FE以外なら2D機種
+	cp			$FE
+	ld			hl,Sub_ReadSector2D
+	jr			nz,.Fx
+.Mx:
+	call		$12A3					;ドライブ別ディスクモード取得
+	and			%00100000				;00=2D 01=2DD 10=2HD
+	ld			a,9+1
+	jr			z,.2d2dd
+	ld			a,15+1					;実際のところ2HC(512byte/Sec 15Sec/Trk 80Trk/Cyl = 1,228,800bytes)になる
+.2d2dd:
+	ld			(.load+1),a
+;	ld			($7F53),a				;セットパラメータ($0833)での最大セクタ番号 9,9,15 (512byte, 2D/2DD/2HD)
+;	ld			hl,$4000				;セットパラメータ($0833)でのリードバッファポインタ $4000,$4000,$4000 (同上）
+;	ld			($7F59),hl				;	よって変更の必要なし
+	ld			hl,$0809				;Mx系機種はROM内ルーチンを使う
+.Fx:
+	ld			(.readsec+1),hl
+
+	call		Sub_PortSend
+.load:
+	ld			a,9+1					;書き換え
+	sub			e						;a=そのトラックの残りセクタ数
+	cp			b						;読むべき残りセクタ数
+	jr			c,.skip2
+;	inc			b
+;	dec			b
+;	jr			z,.skip2				;b=0(256)の場合
+	ld			a,b
+.skip2:
+	push		bc
+	ld			(.remain+1),a
+	ld			b,a						;b=セクタ数 c=ドライブ番号 d=トラック番号 e=セクタ番号
+	ld			hl,$4000				;hl=格納開始アドレス 
+.readsec:
+	call		$0809					;FDから指定セクタ分読む
+	jr			c,.err
+
+	ld			hl,$4000				;サブシステム内のリードバッファ 最大で $4000-$5DFF (7680byte)
+
+.loop:
+	call		Sub_Send4				;512*今回読んだセクタ数分メイン側に送信	cf=0で戻る
+	djnz		.loop
+.err:
+	pop			bc
+	ret			c
+
+	inc			d						;trk++
+	ld			e,1						;sec=1
+	ld			a,b
+.remain:
+	sub			1						;読むべき残りセクタ数-今回読んだセクタ数=残りセクタ数
+	ld			b,a
+	jp			nz,.load
+;	or			a						;cf=0 正常終了
+	ret
+
+
+
+;--------------------------------------------------------------------------------------------------
+Sub_Save2:
+	ld			hl,Drv					;パラメータ受信後、セーブ
+	call		Sub_RecvParam4
+
+Sub_Save:
+	ld			hl,Sub_Resume			;ret でポート設定を戻した後、コマンド待ちに戻る
+	push		hl
+
+	ld			bc,(Drv)
+	ld			de,(Sec)
+
+	ld			a,($07EE)				;$07EEが$FEなら2HD対応機種、$FE以外なら2D機種
+	cp			$FE
+	ld			hl,Sub_WriteSector2D
+	jr			nz,.Fx
+.Mx:
+	call		$12A3					;ドライブ別ディスクモード取得
+	and			%00100000				;00=2D 01=2DD 10=2HD
+	ld			a,9+1
+	jr			z,.2d2dd
+	ld			a,15+1					;実際のところ2HC(512byte/Sec 15Sec/Trk 80Trk/Cyl = 1,228,800bytes)になる
+.2d2dd:
+	ld			(.save+1),a
+;	ld			($7F53),a				;セットパラメータ($0833)での最大セクタ番号 9,9,15 (512byte, 2D/2DD/2HD)
+;	ld			hl,$4000				;セットパラメータ($0833)でのリードバッファポインタ $4000,$4000,$4000 (同上）
+;	ld			($7F59),hl				;	よって変更の必要なし
+	ld			hl,$080F				;Mx系機種はROM内ルーチンを使う
+.Fx:
+	ld			(.writesec+1),hl
+
+	call		Sub_PortRecv
+.save:
+	ld			a,9+1					;e=開始セクタ番号
+	sub			e						;a=そのトラックの残りセクタ数
+	cp			b						;書き込むべき残りセクタ数
+	jr			c,.skip2
+;	inc			b
+;	dec			b
+;	jr			z,.skip2				;b=0(256)の場合
+	ld			a,b
+.skip2:
+	push		bc
+	ld			(.remain+1),a
+	ld			b,a						;b=セクタ数 c=ドライブ番号 d=トラック番号 e=セクタ番号
+	ld			hl,$4000				;hl=格納開始アドレス 
+	push		bc
+.loop:
+	call		Sub_Recv4				;メイン側から指定セクタ受信する
+	djnz		.loop
+	pop			bc
+
+	ld			hl,$4000				;サブシステム内のライトバッファ 最大で $4000-$5DFF (7680byte)
+.writesec:
+	call		$080F					;FDへ指定セクタ分書き込む
+	pop			bc
+	ret			c
+
+	inc			d						;trk++
+	ld			e,1						;sec=1
+	ld			a,b
+.remain:
+	sub			1						;書き込むべき残りセクタ数-今回書き込んだセクタ数=残りセクタ数
+	ld			b,a
+	jp			nz,.save
+;	or			a						;cf=0 正常終了
+	ret
+
+
+;--------------------------------------------------------------------------------------------------
+;SubSys側 データ送信(4倍速)
+;
+;(S)FD->(M)FC (S)FC->(M)FD
+Sub_Send4:
+	push		bc
+;	ld			hl,$4000				;送信バッファ
+	ld			bc,$00FD
+	call		.loop					;256*2=512byte送信
+	call		.loop
+	pop			bc
+	ret
+.loop:
+	outi								;(1) $FD
+	dec			c
+	outi								;(2) $FC
+
+	ld			a,9						;DAV=1(set)
+	out			($FF),a
+.wait1:
+	in			a,($FE)
+	rrca
+	jr			nc,.wait1				;MainのDAV=1待ち
+
+	outi								;(3) $FC
+	inc			c
+	outi								;(4) $FD
+
+	ld			a,8						;DAV=0(reset)
+	out			($FF),a
+.wait2:
+	in			a,($FE)					;MainのDAV=0待ち
+	rrca								;zf は変化しない
+	jr			c,.wait2
+
+	jp			nz,.loop				;outi の b-- を判定する
+;	or			a						;cf=0 正常終了
+	ret
+
+
+;--------------------------------------------------------------------------------------------------
+;SubSys側 データ受信(4倍速)
+;
+;
+SUB_Recv4:
+	push		bc
+;	ld			hl,$4000				;受信バッファ
+	ld			bc,$00FC
+	call		.loop
+	call		.loop					;256*2=512bytes受信
+	pop			bc
+	ret
+.loop:
+	in			a,($FE)
+	rrca
+	jr			nc,.loop				;MainのDAV=1待ち
+
+	ini									;(1) $FC
+	inc			c
+	ini									;(2) $FD
+
+	ld			a,9						;DAV=1(set)
+	out			($FF),a
+.wait:
+	in			a,($FE)
+	rrca
+	jr			c,.wait					;MainのDAV=0待ち
+
+	ini									;(3) $FD
+	dec			c
+	ini									;(4) $FC
+
+	ld			a,8						;DAV=0(reset)
+	out			($FF),a
+
+	jp			nz,.loop
+	or			a
+	ret
+
+
+;--------------------------------------------------------------------------------------------------
+;Sub側 4byte パラメータ受信（汎用）
+;
+;hl=格納アドレス
+Sub_RecvParam4:
+	call		Sub_PortRecv
+
+	ld			bc,$04FC
+	jp			Sub_Recv4.loop
+
+
+; 汎用的なメモリ転送(メイン→サブ)
+;  メイン側から下記データが送られてくる
+;   from addr (word) : 転送先アドレス(SUB)
+;   size (word) : 転送サイズ
+;  上記受信後、転送サイズぶんを受信してサブ側に保存
+Sub_MemSave:
+	; パラメータ受信のための初期化
+	call	Sub_PortRecv
+
+	ld	hl,Sub_Resume			;ret でポート設定を戻した後、コマンド待ちに戻る
+	push	hl
+
+	; 4バイト読む(読み込み先とデータサイズ)
+	ld	hl,PrmAdr
+	ld	bc,$04FC
+	call	Sub_Recv4.loop
+
+	; データ受信のための初期化
+	call	Sub_PortRecv
+
+	; データ受信
+	ld	hl,(PrmAdr)
+	ld	a,(PrmSize)
+	ld	b, a
+	ld	c, $fc
+	jp	Sub_Recv4.loop
+
+; 汎用的なメモリ転送(サブ→メイン)
+;  メイン側から下記データが送られてくる
+;   from addr (word) : 転送元アドレス(SUB)
+;   size (word) : 転送サイズ
+;  上記受信後、転送サイズぶんを送り出す
+Sub_MemLoad:
+	; パラメータ受信のための初期化
+	call	Sub_PortRecv
+
+;.load_start
+	ld	hl,Sub_Resume			;ret でポート設定を戻した後、コマンド待ちに戻る
+	push	hl
+
+	; 4バイト読む(読み込み先とデータサイズ)
+	ld	hl,PrmAdr
+	ld	bc,$04FC
+	call	Sub_Recv4.loop
+
+	; データ送信のための初期化
+	call	Sub_PortSend
+
+	; データ送信
+	ld	hl,(PrmAdr)
+	ld	a,(PrmSize)
+	ld	b, a
+	ld	c, $fd
+	jp	Sub_Send4.loop
+
+; 	; ポート初期化 - 受信モードに戻す
+; 	ld	a, $91        ; ポートAを入力、ポートBを出力
+; 	out	($ff),a
+; 
+; 	; 最小限のコマンド待ち受け処理
+; 	; ATN=1待ち
+; .wait_atn:
+; 	in	a,($fe)       ; ポートCから制御信号を読む
+; 	bit	3,a           ; ATNはビット3
+; 	jr	z,.wait_atn
+; 
+; 	; RFD=1 (Ready For Data)
+; 	ld	a, $0B        ; PC1（RFD）を1にする
+; 	out	($ff), a
+; 
+; 	; DAV=1待ち
+; .wait_dav:
+; 	in	a,($fe)       ; ポートCから制御信号を読む
+; 	rrca             ; ビット0をキャリーフラグに
+; 	jr	nc,.wait_dav  ; キャリーがクリアされていればループ
+; 
+; 	; データ受信 - ポートAから読む（受信モード）
+; 	in	a,($fc)       ; ポートAからコマンドを読む
+; 	; aはコマンドである（0x0Dを期待）
+; 
+; 	; DAC=1
+; 	ld	a, $0D        ; PC2（DAC）を1にする
+; 	out	($ff), a
+; 
+; 	; DAV=0待ち
+; .wait_dav_clear:
+; 	in	a,($fe)       ; ポートCから制御信号を読む
+; 	rrca             ; ビット0をキャリーフラグに
+; 	jr	c,.wait_dav_clear  ; キャリーがセットされていればループ
+; 
+; 	; DAC=0
+; 	ld	a, $0C        ; PC2（DAC）を0にする
+; 	out	($ff), a
+; 
+; 	; アドレス上位バイト受信
+; 	call	Recv_Byte
+; 
+; 	; アドレス下位バイト受信
+; 	call	Recv_Byte
+; 
+; 	; 再びSub_MemLoadを実行
+; 	jp	Sub_MemLoad
+
+;; 1バイト受信するサブルーチン
+;Recv_Byte:
+;	; RFD=1
+;	ld	a, $0B        ; PC1（RFD）を1にする
+;	out	($ff), a
+;
+;	; DAV=1待ち
+;.wait_dav:
+;	in	a,($fe)       ; ポートCから制御信号を読む
+;	rrca             ; ビット0をキャリーフラグに
+;	jr	nc,.wait_dav  ; キャリーがクリアされていればループ
+;
+;	; データ受信 - ポートAから読む（受信モード）
+;	in	a,($fc)       ; ポートAからデータを読む（捨てる）
+;
+;	; DAC=1
+;	ld	a, $0D        ; PC2（DAC）を1にする
+;	out	($ff), a
+;
+;	; DAV=0待ち
+;.wait_dav_clear:
+;	in	a,($fe)       ; ポートCから制御信号を読む
+;	rrca             ; ビット0をキャリーフラグに
+;	jr	c,.wait_dav_clear  ; キャリーがセットされていればループ
+;
+;	; DAC=0
+;	ld	a, $0C        ; PC2（DAC）を0にする
+;	out	($ff), a
+;	ret
+
+
+
+
+
+
+
+
+
+
+
+;;	; 受信準備完了にする
+;;	xor	a
+;;	out	($ff),a
+;;
+;;	jp	Sub_Resume
+;
+;	; 実験
+;	; ATN=1待ち
+;.wait_atn:
+;	in	a,($fe)
+;	bit	3,a
+;	jr	z,.wait_atn
+;
+;	; 
+;	ld	a, $0B       ; PC1（RFD）を 1 にする
+;	out	($ff), a     ; 8255 のコントロールポートに書き込む
+;
+;.wait_dav:
+;	in	a,($fe)
+;	rrca
+;	jr	nc,.wait_dav
+;
+;	in	a,($fd)
+;	; aはコマンドである
+;	ld	b, a
+;	; 多分0x0dなので無視する(今は)
+;
+;	ld	a, $09       ; PC1（DAC）を 1 にする
+;	out	($ff), a
+;
+;.wait_dav_clear:
+;	in	a,($fe)
+;	rrca
+;	jr	c,.wait_dav_clear
+;
+;	ld			a,8						;DAV=0(reset)
+;	out			($FF),a
+;
+;	call	Trash1Byte		; high address
+;	call	Trash1Byte		; low address
+;
+;	jr	.load_start		; この流れにしかならないはず
+;
+;
+;	ret
+;
+;Trash1Byte:
+;	ld	a, $0B       ; PC1（RFD）を 1 にする
+;	out	($ff), a     ; 8255 のコントロールポートに書き込む
+;
+;.wait_dav:
+;	in	a,($fe)
+;	rrca
+;	jr	nc,.wait_dav
+;
+;	in	a,($fd)
+;	; aはコマンドである
+;	ld	b, a
+;	; 多分0x0dなので無視する(今は)
+;
+;	ld	a, $09       ; PC1（DAC）を 1 にする
+;	out	($ff), a
+;
+;.wait_dav_clear:
+;	in	a,($fe)
+;	rrca
+;	jr	c,.wait_dav_clear
+;
+;	ld			a,8						;DAV=0(reset)
+;	out			($FF),a
+;
+;	ret
+
+Sub_SetWaitMode:
+	; パラメータ受信のための初期化
+	call	Sub_PortRecv
+
+	; モード値を受信
+	call	Recv_Byte
+	dec	a
+	; 1だった場合SimpleCommandLoopにジャンプ
+	jr	z, .set_simple_mode
+	ld	de, $00c1
+	jr	.set_mode
+.set_simple_mode
+	ld	de, SimpleCommandLoop
+.set_mode
+	ld	(Sub_Resume.wait_mode + 1), de
+	ex	de, hl
+	jp	(hl)
+
+; シンプルモードのコマンド待ち受けループ
+SimpleCommandLoop:
+	; ATN=1待ち
+	in	a,($fe)       ; ポートCから制御信号を読む
+	bit	3,a           ; ATNはビット3
+	jr	z,SimpleCommandLoop
+
+	; コマンドバイト受信（0x0Dだと思うので値は見ない)
+	call	Recv_Byte
+
+	; アドレス上位バイト受信
+	call	Recv_Byte
+	ld	h, a
+
+	; アドレス下位バイト受信
+	call	Recv_Byte
+	ld	l, a
+
+	jp	(hl)
+
+; 1バイト受信するサブルーチン
+Recv_Byte:
+	; RFD=1
+	ld	a, $0B        ; PC1（RFD）を1にする
+	out	($ff), a
+
+	; DAV=1待ち
+.wait_dav:
+	in	a,($fe)       ; ポートCから制御信号を読む
+	rrca             ; ビット0をキャリーフラグに
+	jr	nc,.wait_dav  ; キャリーがクリアされていればループ
+
+	; データ受信 - ポートAから読む（受信モード）
+	in	a,($fc)       ; ポートAからデータを読む
+	ld	b, a
+
+	; DAC=1
+	ld	a, $0D        ; PC2（DAC）を1にする
+	out	($ff), a
+
+	; DAV=0待ち
+.wait_dav_clear:
+	in	a,($fe)       ; ポートCから制御信号を読む
+	rrca             ; ビット0をキャリーフラグに
+	jr	c,.wait_dav_clear  ; キャリーがセットされていればループ
+
+	; DAC=0
+	ld	a, $0C        ; PC2（DAC）を0にする
+	out	($ff), a
+
+	ld	a, b
+	ret
+
+
+		#IF #FALSE	;以下保留
+
+; 下記34バイト
+; 現在505バイトなので、27バイト削らないといけない
+;--------------------------------------------------------------------------------------------------
+;Sub側 4byte パラメータ送信（汎用）
+;
+;hl=格納アドレス
+Sub_SendParam4:
+	call		Sub_PortSend
+
+	ld			bc,$04FD
+	jp			Sub_Send4.loop
+
+;--------------------------------------------------------------------------------------------------
+;SubSys側 追加でプログラムを読み込む
+; メイン側で適当なアドレスにロード→サブ側バッファに残ったプログラムを任意のメモリに転送する
+; ただし、ロードの際にトラックはまたげない
+Sub_LoadPrg:
+	ld			hl,data1
+	call		Sub_RecvParam4
+
+	ld			hl,$4000
+	ld			de,(data1)				;$5E00-$7AFFまでがフリー（暫定）
+	ld			bc,(data2)
+	push		de
+	ldir
+	ret									;転送先に飛ぶ
+data1:	dw		0
+data2:	dw		0
+		#ENDIF
