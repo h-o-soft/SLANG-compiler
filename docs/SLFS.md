@@ -128,15 +128,50 @@ slangbuild --emit disk -E x1native_slfs SLFSDEMO.SL -o SLFSDEMO \
   --slfs-add examples/X1NATIVE_SLFS/assets/
 ```
 
-### slfs-pack (standalone CLI)
+### slfs-pack (standalone CLI、 subcommand 構成)
 
 ```sh
-slfs-pack -o output.d88 --main main.bin \
+slfs-pack pack    -o <out.d88> --main <main.bin> [--add <spec>] [options]
+slfs-pack list    <d88>                                          # asset 一覧
+slfs-pack info    <d88>                                          # boot header + superblock 詳細
+slfs-pack extract <d88> <name|id> -o <out>                       # 個別 asset 抽出
+slfs-pack extract-main <d88> -o <out.bin>                        # main bin 抽出
+slfs-pack extract-save <d88> [--offset N] [--count N] -o <out>   # save area raw dump
+```
+
+#### pack (= disk image 生成)
+
+```sh
+slfs-pack pack -o output.d88 --main main.bin \
   --add NAME:path/to/file \
   --add path/to/dir/ \
   --main-load 0x1000 --main-exec 0x1000 \
   --volume "MYGAME"
 ```
+
+#### list / info (= inspect)
+
+```sh
+slfs-pack list game.d88
+#   ID  filename     type  start_sec  byte_size
+#    0  GREETING.TX  $00            9         17
+#    1  NUMBERS.BIN  $00           10        256
+
+slfs-pack info game.d88
+# === boot header (sector 0) === / === SLFS superblock (sector 1) ===
+```
+
+#### extract (= debug / 修復 / save backup)
+
+```sh
+slfs-pack extract game.d88 0           -o asset0.bin           # ID 指定
+slfs-pack extract game.d88 NUMBERS.BIN -o numbers.bin          # name 指定
+slfs-pack extract-main game.d88 -o main.bin                    # main bin 抽出
+slfs-pack extract-save game.d88 -o save_full.bin               # save 全 dump
+slfs-pack extract-save game.d88 --offset 0 --count 2 -o slot1.bin  # 特定 slot
+```
+
+save 抽出は **raw dump** (= slot 解釈はアプリ側責任、 spec 通り)。 Phase 2 で `FS_SAVE_R/W` API 追加時に同 slot spec で対称化予定。
 
 ## 実装
 
