@@ -340,6 +340,22 @@ DEC DE
 JR .pstr1
 
 
+; @name PSPC
+; @resident shared
+; @param_count 1
+; @calls PCR1
+LD E,' '
+JR PCR1
+
+
+; @name PTAB
+; @resident shared
+; @param_count 1
+; @calls PCR1
+LD E,$09
+JR PCR1
+
+
 ; @name PCHR
 ; @resident shared
 ; @calls PRT
@@ -352,13 +368,6 @@ LD A, L
 OR A
 JR NZ, PRT
 RET
-
-
-; @name PRT
-; @resident shared
-; @param_count 1
-; @calls sPRINT
-JP sPRINT
 
 
 ; @name PHEX4
@@ -390,6 +399,16 @@ CALL PRT
 
 POP AF
 CALL SASC
+; 2 桁目 (low nibble) は直後の PRT へ fall-through して出力する。
+; PRT は必ず PHEX の直後に置くこと (= libx1_print.asm と同じ並び。 順序を
+; 崩すと PHEX が次関数へ落ちて暴走する: Issue #221)。
+
+
+; @name PRT
+; @resident shared
+; @param_count 1
+; @calls sPRINT
+JP sPRINT
 
 
 ; @name PMSG
