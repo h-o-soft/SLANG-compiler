@@ -16,9 +16,9 @@ Existing repo conventions: `tools/charmap-encode.py` / `tools/png_to_asm.py`.
 
 Usage:
   python3 tools/arkos_bin_to_asm.py <input.bin> \\
-    [--org 0xC300] [--no-org] \\
+    [--org 0x8000] [--no-org] \\
     --label PSGAKG_DRIVER \\
-    --output examples/X1NATIVE_ARKOS/PSGAKG_C300.asm
+    --output examples/X1_ARKOS/PSGAKG_8000.asm
 
 Output layout (with --org):
     ; Generated from <input.bin> (<size> bytes, ORG $XXXX)
