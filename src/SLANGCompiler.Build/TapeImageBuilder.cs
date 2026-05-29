@@ -66,7 +66,8 @@ public class TapeImageBuilder
         {
             for (int i = 0; i < additionalStages.Count; i++)
             {
-                rc = ValidateStage(additionalStages[i].bin, additionalStages[i].cfg, $"overlay[{i}]");
+                rc = ValidateStage(additionalStages[i].bin, additionalStages[i].cfg,
+                                   $"stage[{i}] ({additionalStages[i].cfg.Name})");
                 if (rc != 0) return rc;
             }
         }
@@ -112,7 +113,7 @@ public class TapeImageBuilder
                 {
                     var s = additionalStages[i];
                     Console.WriteLine(
-                        $"    overlay[{i}]: name={s.cfg.Name}, load=${s.cfg.Load:X4}, size={s.bin.Length}");
+                        $"    stage[{i}]: name={s.cfg.Name}, load=${s.cfg.Load:X4}, size={s.bin.Length}");
                 }
             }
         }

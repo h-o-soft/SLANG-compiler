@@ -100,6 +100,9 @@ internal class Program
                 case "--slfs-add" when i + 1 < args.Length:
                     opts.SlfsAddSpecs.Add(args[++i]);
                     break;
+                case "--tape-add" when i + 1 < args.Length:
+                    opts.TapeAddSpecs.Add(args[++i]);
+                    break;
                 case "-I" when i + 1 < args.Length:
                     opts.IncludePaths.Add(args[++i]);
                     break;
@@ -159,6 +162,11 @@ internal class Program
             {
                 Console.Error.WriteLine(
                     "slangbuild: --tape-name / --tape-load / --tape-exec require --emit tape");
+                return 1;
+            }
+            if (opts.TapeAddSpecs.Count > 0)
+            {
+                Console.Error.WriteLine("slangbuild: --tape-add requires --emit tape");
                 return 1;
             }
         }
