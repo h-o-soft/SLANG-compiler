@@ -414,7 +414,7 @@ The MIT License (MIT)
 Arkos Tracker 3 player, by Targhan/Arkos.
 
 X1 系 env (-E x1 / sosx1 / x1native / x1native_slfs) の Arkos Tracker 楽曲
-(.akg) / 効果音 (.akx) 再生に使用する PSG driver。 X1 (PSG) 向け移植と
+(.akg / .akm) / 効果音 (.akx) 再生に使用する PSG driver。 X1 (PSG) 向け移植と
 jump table wrapper は本 repo 作者が元の Arkos player をカスタマイズして作成。
 player 本体の license は Arkos Tracker 公式 FAQ に明記:
   "The players are MIT-licensed. Basically, you can use and modify them at
