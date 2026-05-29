@@ -566,11 +566,14 @@ public class Driver
         }
         if (defines != null && defines.Count > 0)
         {
+            // AILZ80ASM の `-dl` (--define-label) は **スペース区切りで複数ラベル**を取る
+            // (= `-dl A=1 B=1`)。 define 毎に `-dl` を繰り返す (= `-dl A=1 -dl B=1`) と
+            // 2 個目以降の `-dl` で parse が壊れ usage 表示 + exit 2 になる
+            // (= defines が 2 個以上の env で顕在化、 x1native_slfs に SLFS:1 追加で発覚)。
+            // よって `-dl` は 1 回だけ追加し、 各ラベルを後続の個別引数として渡す。
+            list.Add("-dl");
             foreach (var (name, value) in defines)
-            {
-                list.Add("-dl");
                 list.Add($"{name}={value}");
-            }
         }
         return list.Count > 0 ? list.ToArray() : null;
     }
