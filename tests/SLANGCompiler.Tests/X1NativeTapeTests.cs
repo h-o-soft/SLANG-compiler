@@ -222,4 +222,77 @@ public class X1NativeTapeTests
         File.Delete(tmp + ".wav");
         if (File.Exists(tmp + ".tap")) File.Delete(tmp + ".tap");
     }
+
+    // === --tape-add spec parse (= file[@load[:exec]]) ===
+
+    [Fact]
+    public void ParseTapeAddSpec_FileOnly_LoadExecZero()
+    {
+        Assert.True(Driver.ParseTapeAddSpec("BGM.AKG", out var file, out var load, out var exec));
+        Assert.Equal("BGM.AKG", file);
+        Assert.Equal(0, load);          // load 省略 → 0
+        Assert.Null(exec);              // exec 省略 → null (= 呼出側で load fallback)
+    }
+
+    [Fact]
+    public void ParseTapeAddSpec_WithLoad_ExecNull()
+    {
+        Assert.True(Driver.ParseTapeAddSpec("DRV.bin@0x8000", out var file, out var load, out var exec));
+        Assert.Equal("DRV.bin", file);
+        Assert.Equal(0x8000, load);
+        Assert.Null(exec);
+    }
+
+    [Fact]
+    public void ParseTapeAddSpec_WithLoadExec()
+    {
+        Assert.True(Driver.ParseTapeAddSpec("DRV.bin@$4000:$4000", out var file, out var load, out var exec));
+        Assert.Equal("DRV.bin", file);
+        Assert.Equal(0x4000, load);
+        Assert.Equal(0x4000, exec);
+    }
+
+    [Theory]
+    [InlineData("DRV.bin@zzzz")]      // 不正 addr
+    [InlineData("@0x8000")]            // file 名なし
+    [InlineData("")]                   // 空
+    public void ParseTapeAddSpec_Invalid_ReturnsFalse(string spec)
+    {
+        Assert.False(Driver.ParseTapeAddSpec(spec, out _, out _, out _));
+    }
+
+    // === --tape-add 多段 tape 生成 (= main + 追加 stage 連結) ===
+
+    [Fact]
+    public void Build_WithAdditionalStages_ConcatenatesAllStages()
+    {
+        var main = new byte[16];
+        for (int i = 0; i < main.Length; i++) main[i] = (byte)i;
+        var stage1 = new byte[] { 0xAA, 0xBB, 0xCC };
+        var stage2 = new byte[] { 0x11, 0x22 };
+        var stages = new List<(byte[] bin, TapeImageBuilder.ResolvedTapeConfig cfg)>
+        {
+            (stage1, MakeCfg(name: "STAGE1", load: 0x8000, exec: 0x8000)),
+            (stage2, MakeCfg(name: "STAGE2", load: 0xB000, exec: 0xB000)),
+        };
+        var tmp = Path.Combine(Path.GetTempPath(), "x1n_tape_multistage");
+        var rc = new TapeImageBuilder().Build(
+            main, MakeCfg(name: "MAIN", load: 0x1000, exec: 0x1000),
+            stages, tmp, emitWav: false, verbose: false);
+        Assert.Equal(0, rc);
+        Assert.True(File.Exists(tmp + ".tap"));
+        // 多段連結なので 1 段だけの .tap より大きい (= stage 分の info+data block が増える)
+        var multi = File.ReadAllBytes(tmp + ".tap");
+        File.Delete(tmp + ".tap");
+
+        var rcSingle = new TapeImageBuilder().Build(
+            main, MakeCfg(name: "MAIN", load: 0x1000, exec: 0x1000),
+            null, tmp, emitWav: false, verbose: false);
+        Assert.Equal(0, rcSingle);
+        var single = File.ReadAllBytes(tmp + ".tap");
+        File.Delete(tmp + ".tap");
+
+        Assert.True(multi.Length > single.Length,
+            $"multi-stage tap ({multi.Length}) should be larger than single ({single.Length})");
+    }
 }

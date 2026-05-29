@@ -406,3 +406,35 @@ THESE FONTS ARE PROVIDED "AS IS" WITHOUT WARRANTY.
 Copyright(C) 2002-2019 Num Kadoma
 
 ※ 詳細は assets/ui/LICENSE.font を参照。
+
+Arkos Tracker player (runtime/x1/PlayerAk*.asm / playerAk*_x1_wrapper.asm)
+https://www.julien-nevo.com/arkostracker/
+------
+The MIT License (MIT)
+Arkos Tracker 3 player, by Targhan/Arkos.
+
+X1 系 env (-E x1 / sosx1 / x1native / x1native_slfs) の Arkos Tracker 楽曲
+(.akg) / 効果音 (.akx) 再生に使用する PSG driver。 X1 (PSG) 向け移植と
+jump table wrapper は本 repo 作者が元の Arkos player をカスタマイズして作成。
+player 本体の license は Arkos Tracker 公式 FAQ に明記:
+  "The players are MIT-licensed. Basically, you can use and modify them at
+   will, in any production, free or sold, open or closed source."
+  https://www.julien-nevo.com/arkostracker/index.php/faq/
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.

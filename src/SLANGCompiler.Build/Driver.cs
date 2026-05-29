@@ -66,6 +66,12 @@ public class Driver
         /// <summary>`--tape-exec &lt;addr&gt;`。env.Tape.Exec (or load) を CLI override。</summary>
         public int? TapeExec { get; set; }
 
+        /// <summary>`--tape-add <file[@load[:exec]]>` (repeatable)。EmitMode == "tape" 時、
+        /// 生バイナリ (= Arkos driver / BGM / SFX 等) を main の後続 tape stage として連結。
+        /// load/exec は省略可 (= MTREAD は呼出側 addr 引数優先で info block の load を無視するため、
+        /// 省略時 0)。 stage 順 = tape 物理順 = SLANG の MTREAD 呼び出し順。</summary>
+        public List<string> TapeAddSpecs { get; } = new();
+
         // === Phase B+: SLFS (= --emit disk + disk.tool: slfs-pack) 関連 ===
         /// <summary>`--slfs-add <name>:<path>` or `--slfs-add <dir>` (repeatable)。
         /// disk.tool == "slfs-pack" 時の asset list (= SLFS dir entry)。
@@ -479,6 +485,37 @@ public class Driver
                     }
                 }
 
+                // --tape-add: 生バイナリ (= Arkos driver / BGM / SFX 等) を後続 tape stage に連結。
+                // spec = file[@load[:exec]]。 load/exec は省略可 (= MTREAD は呼出側 addr 引数優先で
+                // info block load を無視、 省略時 0)。 overlay stage の後ろに append (= stage 順 =
+                // overlay → tape-add = tape 物理順 = MTREAD 呼び出し順)。
+                if (_opts.TapeAddSpecs.Count > 0)
+                {
+                    additionalStages ??= new();
+                    foreach (var spec in _opts.TapeAddSpecs)
+                    {
+                        if (!ParseTapeAddSpec(spec, out var filePath, out var load, out var exec))
+                        {
+                            Console.Error.WriteLine(
+                                $"slangbuild: invalid --tape-add spec: {spec} (= file[@load[:exec]])");
+                            return 1;
+                        }
+                        if (!File.Exists(filePath))
+                        {
+                            Console.Error.WriteLine($"slangbuild: --tape-add file not found: {filePath}");
+                            return 1;
+                        }
+                        var bytes = File.ReadAllBytes(filePath);
+                        var stageCfg = new TapeImageBuilder.ResolvedTapeConfig(
+                            Name: Path.GetFileNameWithoutExtension(filePath),
+                            Load: load,                 // 省略時 0
+                            Exec: exec ?? load,         // exec 省略時 load と同値
+                            WavSampleRate: mainCfg.WavSampleRate,
+                            WavBits: mainCfg.WavBits);
+                        additionalStages.Add((bytes, stageCfg));
+                    }
+                }
+
                 int tapeRc = new TapeImageBuilder().Build(
                     binBytes, mainCfg, additionalStages, outputBase, _opts.EmitWav, _opts.Verbose);
                 if (tapeRc != 0) return tapeRc;
@@ -529,11 +566,14 @@ public class Driver
         }
         if (defines != null && defines.Count > 0)
         {
+            // AILZ80ASM の `-dl` (--define-label) は **スペース区切りで複数ラベル**を取る
+            // (= `-dl A=1 B=1`)。 define 毎に `-dl` を繰り返す (= `-dl A=1 -dl B=1`) と
+            // 2 個目以降の `-dl` で parse が壊れ usage 表示 + exit 2 になる
+            // (= defines が 2 個以上の env で顕在化、 x1native_slfs に SLFS:1 追加で発覚)。
+            // よって `-dl` は 1 回だけ追加し、 各ラベルを後続の個別引数として渡す。
+            list.Add("-dl");
             foreach (var (name, value) in defines)
-            {
-                list.Add("-dl");
                 list.Add($"{name}={value}");
-            }
         }
         return list.Count > 0 ? list.ToArray() : null;
     }
@@ -1157,5 +1197,70 @@ public class Driver
         }
 
         return proc.ExitCode;
+    }
+
+    /// <summary>
+    /// `--tape-add` の spec を parse: `file[@load[:exec]]`。
+    /// load 省略時 0、 exec 省略時 null (= 呼出側で load にフォールバック)。
+    /// addr は `$XXXX` / `0xXXXX` / decimal。 file path 内の `:` (= Windows drive) は
+    /// `@` より前なので影響しない。
+    /// internal: X1NativeTapeTests から直接 parse 検証するため。
+    /// </summary>
+    internal static bool ParseTapeAddSpec(string spec, out string filePath, out int load, out int? exec)
+    {
+        filePath = spec;
+        load = 0;
+        exec = null;
+        if (string.IsNullOrWhiteSpace(spec)) return false;
+
+        int at = spec.IndexOf('@');
+        if (at < 0)
+        {
+            filePath = spec;   // file 名のみ (= load/exec なし)
+            return filePath.Length > 0;
+        }
+
+        filePath = spec.Substring(0, at);
+        if (filePath.Length == 0) return false;
+
+        var addrPart = spec.Substring(at + 1);
+        int colon = addrPart.IndexOf(':');
+        string loadStr;
+        string? execStr = null;
+        if (colon < 0)
+        {
+            loadStr = addrPart;
+        }
+        else
+        {
+            loadStr = addrPart.Substring(0, colon);
+            execStr = addrPart.Substring(colon + 1);
+        }
+        if (!TryParseAddr(loadStr, out load)) return false;
+        if (execStr != null)
+        {
+            if (!TryParseAddr(execStr, out int e)) return false;
+            exec = e;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// address 文字列を int に parse (= `$XXXX` / `0xXXXX` / decimal)。
+    /// Program.TryParseAddress と同等 (= Driver から使うための再実装、 小さいので複製)。
+    /// </summary>
+    private static bool TryParseAddr(string s, out int value)
+    {
+        value = 0;
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        s = s.Trim();
+        if (s.StartsWith("$"))
+            return int.TryParse(s.Substring(1), System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out value);
+        if (s.StartsWith("0x") || s.StartsWith("0X"))
+            return int.TryParse(s.Substring(2), System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out value);
+        return int.TryParse(s, System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture, out value);
     }
 }

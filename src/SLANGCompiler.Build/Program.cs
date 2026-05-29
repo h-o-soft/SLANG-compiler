@@ -100,6 +100,9 @@ internal class Program
                 case "--slfs-add" when i + 1 < args.Length:
                     opts.SlfsAddSpecs.Add(args[++i]);
                     break;
+                case "--tape-add" when i + 1 < args.Length:
+                    opts.TapeAddSpecs.Add(args[++i]);
+                    break;
                 case "-I" when i + 1 < args.Length:
                     opts.IncludePaths.Add(args[++i]);
                     break;
@@ -159,6 +162,11 @@ internal class Program
             {
                 Console.Error.WriteLine(
                     "slangbuild: --tape-name / --tape-load / --tape-exec require --emit tape");
+                return 1;
+            }
+            if (opts.TapeAddSpecs.Count > 0)
+            {
+                Console.Error.WriteLine("slangbuild: --tape-add requires --emit tape");
                 return 1;
             }
         }
@@ -229,6 +237,9 @@ internal class Program
         Console.Error.WriteLine("  --tape-name <s> Override tape file name (--emit tape only; ASCII printable 1..13 char)");
         Console.Error.WriteLine("  --tape-load <a> Override tape load address (--emit tape only; '$1000' / 0x1000 / 4096)");
         Console.Error.WriteLine("  --tape-exec <a> Override tape exec address (--emit tape only; default = load)");
+        Console.Error.WriteLine("  --tape-add <f[@load[:exec]]> Append raw binary as a tape stage (--emit tape only, repeatable;");
+        Console.Error.WriteLine("                  load/exec optional = MTREAD reads to caller-specified addr)");
+        Console.Error.WriteLine("  --slfs-add <name:path | dir> Add SLFS asset (--emit disk + tool=slfs-pack only, repeatable)");
         Console.Error.WriteLine("  --keep-asm      Keep intermediate ASM / sym files");
         Console.Error.WriteLine("  --verbose       Show subprocess (slangc / AILZ80ASM) output");
         Console.Error.WriteLine("  -h, --help      Show this help");
