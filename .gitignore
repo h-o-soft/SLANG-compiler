@@ -69,6 +69,11 @@ apps/PROG.*
 !tests/**/fixtures/**/*.asm
 !tests/**/fixtures/**/*.ASM
 
+# runtime/ 配下は全て source asm (= build はここで行わない)。 *.ASM rule が
+# case-insensitive FS で source の .asm も巻き込むため明示的に ignore 除外する
+# (= 新規 runtime asm を git add -f せずに済むように)。
+!runtime/**/*.asm
+
 # disk image build 出力先 (= make ENV=lsx disk_image / slangbuild --emit disk
 # で書き換えられる作業ファイル)。pristine template は images/templates/ に
 # 分離済み (PR #157)。

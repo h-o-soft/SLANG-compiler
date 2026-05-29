@@ -54,6 +54,20 @@ createRelease() {
     cp ../../examples/zxn/Makefile examples/zxn/ 2>/dev/null
   fi
 
+  # examples/X1_ARKOS は Arkos Tracker driver sample (AKG / AKM)。 SL + Makefile +
+  # README + 楽曲/効果音データ (.AKG / .AKM / .AKX、 Arkos export 生データ) を配布。
+  # driver bin (PSGAK*_8000.bin) / *.sizes.inc / *.assets.inc / *.d88 / *.tap 等の
+  # ビルド成果物は Makefile が RASM / slangbuild で再生成するため含めない。
+  if [ -d "../../examples/X1_ARKOS" ]; then
+    mkdir -p examples/X1_ARKOS
+    cp ../../examples/X1_ARKOS/*.SL       examples/X1_ARKOS/ 2>/dev/null
+    cp ../../examples/X1_ARKOS/README.md  examples/X1_ARKOS/ 2>/dev/null
+    cp ../../examples/X1_ARKOS/Makefile   examples/X1_ARKOS/ 2>/dev/null
+    cp ../../examples/X1_ARKOS/*.AKG      examples/X1_ARKOS/ 2>/dev/null
+    cp ../../examples/X1_ARKOS/*.AKM      examples/X1_ARKOS/ 2>/dev/null
+    cp ../../examples/X1_ARKOS/*.AKX      examples/X1_ARKOS/ 2>/dev/null
+  fi
+
   # assets: UILIB 用フォント / CHARMAP 再生成ソース (PNG, JSON)
   if [ -d "../../assets" ]; then
     cp -r ../../assets .
