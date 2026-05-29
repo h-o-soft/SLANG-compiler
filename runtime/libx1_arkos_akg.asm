@@ -2,13 +2,14 @@
 ; ====================================================================================================
 ; Arkos Tracker AKG driver - SLANG MACHINE 中間層
 ;
-; wrapper bin (= PSGAKG_C300.bin) を ARKOS_AKG_BASE (= 既定 $C300) にロードした前提で
-; jump table 呼出。 wrapper の jump table layout は
+; wrapper bin (= playerAkg_x1_wrapper.asm を RASM ビルドした PSGAKG_<ORG>.bin) を
+; ARKOS_AKG_BASE にロードした前提で jump table 呼出。 wrapper の jump table layout は
 ; runtime/x1/playerAkg_x1_wrapper.asm 参照。
 ;
-; ARKOS_AKG_BASE は SLANG プログラム側で `CONST ASM ARKOS_AKG_BASE = $C300;` として
-; 定義する (= driver の load 先を決めるのはプログラム側、 #ASM block の ORG と同値)。
-; 本 file は address 非依存 (= symbol 参照のみ)、 AILZ80ASM は forward EQU 参照を解決。
+; ARKOS_AKG_BASE は SLANG プログラム側で `CONST ASM ARKOS_AKG_BASE = $8000;` のように
+; 定義する (= driver の load 先を決めるのはプログラム側、 RASM `-DDRIVER_ORG` と同値)。
+; examples/X1_ARKOS/ sample では $8000 配置 (= x1native default $1000 / sosx1 $3000 から
+; 十分離す)。 本 file は address 非依存 (= symbol 参照のみ)、 AILZ80ASM は forward EQU 解決。
 ;
 ; MACHINE ABI (= 既存 libx1_psg.asm 等と同じ):
 ;  - 引数は HL (1 個目) / DE (2 個目) / BC (3 個目) で受ける

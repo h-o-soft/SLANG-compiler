@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """arkos_bin_to_asm.py - Convert binary file to AILZ80ASM `.db` stream asm.
 
-Used for embedding RASM-built Arkos driver bin (= PSGAKG_C300.bin etc.)
-and Arkos asset files (= BGM.AKG / SE.AKX) into SLANG programs via
-`#ASM INCLUDE` blocks.
+Used for **embedding** RASM-built Arkos driver bin (= PSGAKG_<ORG>.bin etc.)
+and Arkos asset files (= BGM.AKG / SE.AKX) into a SLANG program via
+`#ASM INCLUDE` blocks (= driver/data を本体 binary に焼き込む方式)。
+
+注: examples/X1_ARKOS/ の標準 sample は driver/data を embed せず各 env の
+手段で**実行時ロード**するため (= Makefile / ARKOSMP.SL / docs の主経路)、
+この変換ツールは使わない。 単一 binary に全部 embed したい場合 (= disk/tape
+を分けず 1 file 配布する等) 向けの補助ユーティリティとして残している。
+AILZ80ASM が `INCLUDE "file", BINARY` を直接サポートするので、 通常はそちらで
+足りる (= この `.db` 列変換は INCLUDE BINARY が使えない文脈の保険)。
 
 Existing repo conventions: `tools/charmap-encode.py` / `tools/png_to_asm.py`.
 

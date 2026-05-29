@@ -40,6 +40,8 @@ driver / BGM / SFX は本体に embed せず、 各 env のネイティブ手段
 
 ロード後は env 非依存の中間層 (`AKG_*`) を呼ぶ。 CTC があれば割り込み駆動、 なければ VSYNC polling に自動 fallback。 詳細は [docs/X1.md](../../docs/X1.md) の「Arkos Tracker music driver」 を参照。
 
+> 本 sample は実行時ロード方式なので driver/data の embed 変換は不要。 driver/data を**本体 binary に焼き込みたい**場合 (= 1 file 配布等) は `tools/arkos_bin_to_asm.py` で `.bin` を `#ASM INCLUDE` 用 asm に変換できる (= 補助ユーティリティ、 標準ビルドの主経路では未使用)。
+
 ## ライセンス
 
 driver 本体 (`runtime/x1/PlayerAkg_x1.asm` 等) は Targhan/Arkos の X1 player (MIT License)。 各 asm ファイルの header に attribution あり。
