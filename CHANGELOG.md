@@ -12,6 +12,7 @@
   - driver bin は chip 選択式 (`--chip ay|opm|both`)、 曲/SFX は driver 関数アドレスを EQU 注入して固定 ORG ビルド → 実行時ロード。 X1 PSG 2MHz / FM 4MHz のクロック補正、 CTC ch1 割込 (IM2) と VSYNC polling の両対応
   - SFX は AY/PSG 専用・同時 1 個、 再生 ch は変換時固定、 再生中は対応 BGM ch を mute。 sample `examples/X1_BANJO` (`CHIP=ay` で SPACE 再生、 曲/SFX `.fur` は別途用意)
   - Furnace `.fur` → Z80 データ変換 (`tools/json2sms_x1.py` ほか)、 raw bin → X1 cassette tape 変換 (`tools/bin2x1tap.py`)
+  - 複数楽曲/SFX を manifest で一括登録 → bundle 連結 + アドレス CONST (`MUSIC_*` / `SFX_*`) 自動生成する `tools/banjo_pack_assets.py` と sample `examples/X1_BANJO_MULTI` (人手のアドレス計算不要、 `BANJO_PLAY(MUSIC_xxx)` で再生)
   - 出典: banjo (https://github.com/joffb/banjo、 MIT、 Joe Kennedy)。 LICENSE / THIRD_PARTY_NOTICES に attribution
 
 ## Version 0.25.0

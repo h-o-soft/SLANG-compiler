@@ -1,0 +1,16 @@
+# banjo asset manifest (X1_BANJO_MULTI サンプル)
+#
+# 1 行 1 アセット。 行の順 = ロード順 = アドレス順。 # コメント / 空行は無視。
+#   music <file.fur>          : BGM (曲)
+#   sfx   <file.fur> <ay_ch>   : SFX (効果音、 AY ch 0..2 に置いたノートを抜き出す)
+#
+# .fur は本ファイルと同じ assets/ に置く (配布には含めない)。
+# banjo_pack_assets.py が各 .fur を順次アドレスでビルドし、 basename からアドレス定数を生成する:
+#   bgm1.fur -> CONST MUSIC_BGM1、 beep.fur -> CONST SFX_BEEP (BANJOMULTI.assets.addr.inc)。
+# manifest を変えたら BANJOMULTI.SL の参照定数名も合わせること (自己責任)。
+#
+# このサンプルは AY (CHIP=ay) 前提。 OPM にする場合は OPM 曲を並べ sfx 行を外し CHIP=opm でビルド。
+
+music bgm1.fur
+music bgm2.fur
+sfx   beep.fur 2

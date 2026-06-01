@@ -138,8 +138,16 @@ def main() -> int:
     # RAM section (ram_base 以上) は bin に出ないので両推定とも ROM 範囲に限定する。
     nz_addr = last_nonzero_addr(rom, load)
     if nz_addr >= ram_base:
-        # wlalink の bank 全体出力に RAM 残骸が混じることは無い想定だが、 念のため clamp。
-        nz_addr = ram_base - 1
+        # 実使用 code/data が RAM 域 ($ram_base) を跨いだ = blob が配置領域に収まっていない。
+        # 旧実装はここを ram_base-1 に clamp して黙って切っていたが、 複数アセット連結
+        # (banjo_pack_assets.py) で overflow を検出できないため error にする
+        # (単一曲フローは $C000 に届かないので無影響)。
+        print(
+            f"trim_to_end: ERROR 実使用 code/data が RAM 域 (${ram_base:04X}) を跨ぐ: "
+            f"最後の非ゼロ byte ${nz_addr:04X} >= ram_base (load=${load:04X})。 "
+            f"blob が配置領域に収まっていない (連結ではアドレス割当を見直すこと)",
+            file=sys.stderr)
+        return 1
     sym_max = parse_sym_max_label(args.sym, load, ram_base)
     max_addr = max(nz_addr, sym_max)
 
