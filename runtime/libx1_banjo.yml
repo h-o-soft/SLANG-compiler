@@ -1,0 +1,9 @@
+machine: true
+functions:
+  - name: BANJO_INIT
+  - name: BANJO_PLAY
+  - name: BANJO_UPDATE
+  - name: BANJO_STOP
+  - name: BANJO_SFX_INIT
+  - name: BANJO_SFX_PLAY
+  - name: BANJO_SFX_STOP

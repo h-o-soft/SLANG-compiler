@@ -75,6 +75,37 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
+banjo music driver (runtime/x1/banjo/*, tools/json2sms_x1.py)
+https://github.com/joffb/banjo
+------
+MIT License
+Copyright (c) 2024 Joe Kennedy
+
+X1 系 env (-E x1 / sosx1 / x1native / x1native_slfs) の Furnace tracker
+楽曲再生に使用する Z80 music driver。runtime/x1/banjo/ の X1 wrapper、
+I/O adapter、AY port と tools/json2sms_x1.py は本 repo 側の移植/調整コード、
+upstream/ 配下は banjo から必要部分を vendoring したもの。
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+
 Command Line Parser Library for CLR and NetStandard
 ------
 The MIT License (MIT)

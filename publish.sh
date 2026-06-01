@@ -68,6 +68,16 @@ createRelease() {
     cp ../../examples/X1_ARKOS/*.AKX      examples/X1_ARKOS/ 2>/dev/null
   fi
 
+  # examples/X1_BANJO は Furnace tracker 用 banjo driver sample。曲 .fur は
+  # ユーザーが用意するため配布に含めない。driver/song の中間生成物も Makefile
+  # が再生成する。
+  if [ -d "../../examples/X1_BANJO" ]; then
+    mkdir -p examples/X1_BANJO/assets
+    cp ../../examples/X1_BANJO/*.SL       examples/X1_BANJO/ 2>/dev/null
+    cp ../../examples/X1_BANJO/README.md  examples/X1_BANJO/ 2>/dev/null
+    cp ../../examples/X1_BANJO/Makefile   examples/X1_BANJO/ 2>/dev/null
+  fi
+
   # assets: UILIB 用フォント / CHARMAP 再生成ソース (PNG, JSON)
   if [ -d "../../assets" ]; then
     cp -r ../../assets .
@@ -83,6 +93,10 @@ createRelease() {
   cp ../../tools/png_to_asm.py        tools/ 2>/dev/null
   cp ../../tools/disk-add-overlays.py tools/ 2>/dev/null
   cp ../../tools/mml2sound.py         tools/ 2>/dev/null
+  cp ../../tools/banjo_extract_syms.py tools/ 2>/dev/null
+  cp ../../tools/banjo_prep_song.py    tools/ 2>/dev/null
+  cp ../../tools/banjo_trim_to_end.py  tools/ 2>/dev/null
+  cp ../../tools/json2sms_x1.py        tools/ 2>/dev/null
   # udostool.exe: pc88mk2sr 用 (Bookworm's Library 由来、repo 同梱で
   # setup-tools 不要、license 詳細は THIRD_PARTY_NOTICES.md 参照)
   cp ../../tools/udostool.exe         tools/ 2>/dev/null

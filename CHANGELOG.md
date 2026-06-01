@@ -1,5 +1,19 @@
 # 更新履歴
 
+## Unreleased
+
+- X1 に Arkos Tracker (AKG / AKM) サウンドドライバを統合 — PSG の BGM と SFX (効果音) を SLANG から再生、 詳細は [docs/X1.md](docs/X1.md)
+  - MACHINE 中間層 `libx1_arkos` (`ARKOS_INIT`/`_SET_CTC_PORT`/`_BGM_PLAY`/`_STOP`/`_PAUSE`/`_RESUME` + `ARKOS_SFX_INIT`/`_PLAY`/`_STOP`、 AKG/AKM 共通)、 4 env (x1 / sosx1 / x1native / x1native_slfs) 対応、 CTC ch1 割込 (IM2) / VSYNC polling 両対応
+  - BGM は `.akg` (generic) / `.akm` (minimalist)、 SFX は `.akx` バンクを番号 + channel (0-2) 指定で再生。 player bin は RASM ビルドを固定 ORG ロード、 sample `examples/X1_ARKOS`
+  - 出典: Arkos Tracker player (Targhan / Arkos、 MIT)
+
+- X1 に banjo (Furnace tracker → Z80) サウンドドライバを統合 — AY/PSG・OPM/YM2151 の BGM と AY/PSG の SFX (効果音) を SLANG から再生、 詳細は [docs/X1.md](docs/X1.md)
+  - MACHINE 中間層 `libx1_banjo` (`BANJO_INIT`/`_PLAY`/`_UPDATE`/`_STOP`/`_END`/`_SET_CTC_PORT` + SFX 用 `BANJO_SFX_PLAY`/`_STOP`/`_INIT`)、 4 env (x1 / sosx1 / x1native / x1native_slfs) 対応
+  - driver bin は chip 選択式 (`--chip ay|opm|both`)、 曲/SFX は driver 関数アドレスを EQU 注入して固定 ORG ビルド → 実行時ロード。 X1 PSG 2MHz / FM 4MHz のクロック補正、 CTC ch1 割込 (IM2) と VSYNC polling の両対応
+  - SFX は AY/PSG 専用・同時 1 個、 再生 ch は変換時固定、 再生中は対応 BGM ch を mute。 sample `examples/X1_BANJO` (`CHIP=ay` で SPACE 再生、 曲/SFX `.fur` は別途用意)
+  - Furnace `.fur` → Z80 データ変換 (`tools/json2sms_x1.py` ほか)、 raw bin → X1 cassette tape 変換 (`tools/bin2x1tap.py`)
+  - 出典: banjo (https://github.com/joffb/banjo、 MIT、 Joe Kennedy)。 LICENSE / THIRD_PARTY_NOTICES に attribution
+
 ## Version 0.25.0
 
 - Commodore 64 (6502) backend 正式対応 — oscar64 を別途インストールして `SLANG → C ソース → .prg` の二段変換、 詳細は [docs/C64.md](docs/C64.md)

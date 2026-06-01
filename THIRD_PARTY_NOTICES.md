@@ -102,6 +102,24 @@ lsx / x1 環境 (`-E lsx` / `-E x1`) の `slangbuild --emit disk` 機能でテ�
 
 ---
 
+## banjo music driver (Furnace tracker → Z80)
+
+X1 用 banjo driver sample / runtime integration で使用する third-party source。Furnace tracker の曲データを Z80 driver 用データへ変換し、AY/PSG や OPM/YM2151 等で再生する。
+
+| 項目 | 内容 |
+|---|---|
+| 配置 | `runtime/x1/banjo/upstream/`, `runtime/x1/banjo/ay/`, `tools/json2sms_x1.py` |
+| 取得元 | `https://github.com/joffb/banjo` |
+| 著者 | Joe Kennedy |
+| License | MIT License |
+| 改変 | `upstream/` 配下は必要ファイルのみ vendoring。X1 用 wrapper / I/O adapter / AY port は `runtime/x1/banjo/` 側に別ファイルとして追加 |
+
+vendoring 対象は Core (`music_driver/banjo/`)、OPM chip driver (`music_driver/opm/`)、AY chip driver (`runtime/x1/banjo/ay/` に X1 port として配置)、および変換ツール (`furnace2json.py` / `json2sms.py` / `tools/json2sms_x1.py`) のみ。他 chip、examples、旧スクリプト等は含めない。
+
+LICENSE 全文は `runtime/x1/banjo/upstream/LICENSE.md` および repo root `LICENSE` を参照。
+
+---
+
 ## LICENSE 別途同梱物
 
 以下の同梱物は LICENSE 全文を別ファイルとして同梱しています。詳細は各 LICENSE ファイルを参照してください。
