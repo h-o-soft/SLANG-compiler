@@ -146,19 +146,19 @@ rm dosformsx_016.zip
 # (examples/X1_BANJO, examples/X1_BANJO_MULTI) のビルドに必要。
 # 他ツールと違い PATH の通った場所にあるシステムバイナリとして使う想定のため
 # TOOLPATH には置かず、 自動インストールもしない (システムへ勝手に入れない方針)。
-# 未導入なら導入コマンド例を示して非ゼロ終了する。
+# 全員に必須のツールではないので、 未導入でも setup は止めず警告のみ出して続行
+# (banjo X1 サウンドを使う人だけが気付けばよい)。
 if which wla-z80 >/dev/null 2>&1 && which wlalink >/dev/null 2>&1; then
   echo "WLA-DX (wla-z80 / wlalink) は導入済みです。"
 else
   echo
-  echo "Error! WLA-DX (wla-z80 / wlalink) が PATH に見つかりません。"
-  echo "  banjo (Furnace) サウンドドライバ sample のビルドに必要です。"
-  echo "  PATH の通った場所に導入してください:"
+  echo "Note: WLA-DX (wla-z80 / wlalink) が PATH に見つかりません。"
+  echo "  banjo (Furnace) サウンドドライバ sample を使う場合のみ必要です。"
+  echo "  使う場合は PATH の通った場所に導入してください:"
   echo "    mac  : brew install wla-dx"
   echo "    linux: sudo apt install wla-dx   (または https://github.com/vhelin/wla-dx をビルド)"
+  echo "  (banjo を使わない場合は無視して構いません。 setup は続行します)"
   echo
-  cd $CURPATH
-  exit 1
 fi
 
 cd ..

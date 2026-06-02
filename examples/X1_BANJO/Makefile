@@ -173,8 +173,8 @@ else
 	song=`wc -c < song.bin | tr -d ' '`; \
 	if [ `expr 32768 + $$drv` -gt 45056 ]; then \
 	  echo "ERROR: driver ($$drv B) overflows \$$8000..\$$B000"; exit 1; fi; \
-	if [ `expr 45056 + $$song` -gt 65536 ]; then \
-	  echo "ERROR: song ($$song B) overflows \$$B000..\$$10000"; exit 1; fi; \
+	if [ `expr 45056 + $$song` -gt 49152 ]; then \
+	  echo "ERROR: song ($$song B) overflows \$$B000..\$$C000"; exit 1; fi; \
 	printf 'CONST DRV_SIZE = %s, SONG_SIZE = %s;\n' $$drv $$song > $(SIZES); \
 	echo "generated $(SIZES): DRV=$$drv SONG=$$song"
 endif
