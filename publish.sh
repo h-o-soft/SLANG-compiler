@@ -68,6 +68,29 @@ createRelease() {
     cp ../../examples/X1_ARKOS/*.AKX      examples/X1_ARKOS/ 2>/dev/null
   fi
 
+  # examples/X1_BANJO は Furnace tracker 用 banjo driver sample。曲 .fur は
+  # ユーザーが用意するため配布に含めない。driver/song の中間生成物も Makefile
+  # が再生成する。
+  if [ -d "../../examples/X1_BANJO" ]; then
+    mkdir -p examples/X1_BANJO/assets
+    cp ../../examples/X1_BANJO/*.SL       examples/X1_BANJO/ 2>/dev/null
+    cp ../../examples/X1_BANJO/README.md  examples/X1_BANJO/ 2>/dev/null
+    cp ../../examples/X1_BANJO/Makefile   examples/X1_BANJO/ 2>/dev/null
+  fi
+
+  # examples/X1_BANJO_MULTI は複数曲 / 複数 SFX を 1 bundle (banjodat.bin) に
+  # まとめる sample。曲 .fur は X1_BANJO 同様ユーザーが用意するため含めない。
+  # assets/banjo_assets.txt は manifest 雛形なので配布に含める (.gitkeep も)。
+  # bgm.bin / sfx.bin / *.log 等の中間生成物・ログは含めない。
+  if [ -d "../../examples/X1_BANJO_MULTI" ]; then
+    mkdir -p examples/X1_BANJO_MULTI/assets
+    cp ../../examples/X1_BANJO_MULTI/*.SL                  examples/X1_BANJO_MULTI/ 2>/dev/null
+    cp ../../examples/X1_BANJO_MULTI/README.md             examples/X1_BANJO_MULTI/ 2>/dev/null
+    cp ../../examples/X1_BANJO_MULTI/Makefile              examples/X1_BANJO_MULTI/ 2>/dev/null
+    cp ../../examples/X1_BANJO_MULTI/assets/banjo_assets.txt examples/X1_BANJO_MULTI/assets/ 2>/dev/null
+    cp ../../examples/X1_BANJO_MULTI/assets/.gitkeep        examples/X1_BANJO_MULTI/assets/ 2>/dev/null
+  fi
+
   # assets: UILIB 用フォント / CHARMAP 再生成ソース (PNG, JSON)
   if [ -d "../../assets" ]; then
     cp -r ../../assets .
@@ -83,6 +106,11 @@ createRelease() {
   cp ../../tools/png_to_asm.py        tools/ 2>/dev/null
   cp ../../tools/disk-add-overlays.py tools/ 2>/dev/null
   cp ../../tools/mml2sound.py         tools/ 2>/dev/null
+  cp ../../tools/banjo_extract_syms.py tools/ 2>/dev/null
+  cp ../../tools/banjo_prep_song.py    tools/ 2>/dev/null
+  cp ../../tools/banjo_trim_to_end.py  tools/ 2>/dev/null
+  cp ../../tools/banjo_pack_assets.py  tools/ 2>/dev/null
+  cp ../../tools/json2sms_x1.py        tools/ 2>/dev/null
   # udostool.exe: pc88mk2sr 用 (Bookworm's Library 由来、repo 同梱で
   # setup-tools 不要、license 詳細は THIRD_PARTY_NOTICES.md 参照)
   cp ../../tools/udostool.exe         tools/ 2>/dev/null
