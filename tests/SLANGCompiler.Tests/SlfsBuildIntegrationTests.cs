@@ -28,6 +28,7 @@ public class SlfsBuildIntegrationTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         psi.ArgumentList.Add("run");
         psi.ArgumentList.Add("--project");
         psi.ArgumentList.Add(Path.Combine(repo, "src", "SLANGCompiler.Build"));
