@@ -53,10 +53,17 @@ public class IntegrationTests : IDisposable
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
 
         using var proc = Process.Start(psi)!;
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit(30000);
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        if (!proc.WaitForExit(30000))
+        {
+            try { proc.Kill(entireProcessTree: true); } catch { }
+            Assert.Fail("slangc timed out after 30s");
+        }
+        var stderr = stderrTask.GetAwaiter().GetResult();
 
         Assert.Equal(0, proc.ExitCode);
         Assert.True(File.Exists(outputPath), $"Output file not created. stderr: {stderr}");
@@ -81,10 +88,17 @@ public class IntegrationTests : IDisposable
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
 
         using var proc = Process.Start(psi)!;
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit(30000);
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        if (!proc.WaitForExit(30000))
+        {
+            try { proc.Kill(entireProcessTree: true); } catch { }
+            Assert.Fail("slangc timed out after 30s");
+        }
+        var stderr = stderrTask.GetAwaiter().GetResult();
 
         Assert.NotEqual(0, proc.ExitCode);
         return stderr;
@@ -110,10 +124,17 @@ public class IntegrationTests : IDisposable
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
 
         using var proc = Process.Start(psi)!;
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit(30000);
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        if (!proc.WaitForExit(30000))
+        {
+            try { proc.Kill(entireProcessTree: true); } catch { }
+            Assert.Fail("slangc timed out after 30s");
+        }
+        var stderr = stderrTask.GetAwaiter().GetResult();
 
         Assert.Equal(0, proc.ExitCode);
         Assert.True(File.Exists(outputPath), $"Output file not created. stderr: {stderr}");

@@ -66,6 +66,7 @@ public class BuildIntegrationTests : IDisposable
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         psi.ArgumentList.Add("publish");
         psi.ArgumentList.Add("src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj");
         psi.ArgumentList.Add("-c");
@@ -76,7 +77,15 @@ public class BuildIntegrationTests : IDisposable
         psi.ArgumentList.Add("true");
         psi.ArgumentList.Add("-p:PublishSingleFile=true");
         using var proc = Process.Start(psi)!;
-        proc.WaitForExit(180_000);
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        if (!proc.WaitForExit(180_000))
+        {
+            try { proc.Kill(entireProcessTree: true); } catch { }
+            Assert.Fail("dotnet publish timed out after 180s");
+        }
+        stdoutTask.GetAwaiter().GetResult();
+        stderrTask.GetAwaiter().GetResult();
         Assert.Equal(0, proc.ExitCode);
         Assert.True(File.Exists(exePath), $"slangc publish output not found: {exePath}");
         return exePath;
@@ -113,6 +122,7 @@ public class BuildIntegrationTests : IDisposable
         // 古い env を参照しないようにし、新 disk: セクション込みの repo 内 lsx.env を
         // 読ませる)。InstalledEnv テスト等は mock install dir を渡す
         psi.Environment["SLANG_HOME"] = slangHome;
+        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         psi.ArgumentList.Add("run");
         psi.ArgumentList.Add("--project");
         psi.ArgumentList.Add(buildProject);
@@ -127,9 +137,15 @@ public class BuildIntegrationTests : IDisposable
         foreach (var a in extraArgs) psi.ArgumentList.Add(a);
 
         using var proc = Process.Start(psi)!;
-        var stdout = proc.StandardOutput.ReadToEnd();
-        var stderr = proc.StandardError.ReadToEnd();
-        proc.WaitForExit(120_000);
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        if (!proc.WaitForExit(120_000))
+        {
+            try { proc.Kill(entireProcessTree: true); } catch { }
+            Assert.Fail("slangbuild timed out after 120s");
+        }
+        var stdout = stdoutTask.GetAwaiter().GetResult();
+        var stderr = stderrTask.GetAwaiter().GetResult();
         return (proc.ExitCode, stdout, stderr);
     }
 
