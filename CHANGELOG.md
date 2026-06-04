@@ -1,8 +1,6 @@
 # 更新履歴
 
-## Unreleased
-
-## Version 0.26.0 (2026-06-03)
+## Version 0.26.0
 
 - X1 に Arkos Tracker (AKG / AKM) サウンドドライバを統合 — PSG の BGM と SFX (効果音) を SLANG から再生、 詳細は [docs/X1.md](docs/X1.md)
   - MACHINE 中間層 `libx1_arkos` (`ARKOS_INIT`/`_SET_CTC_PORT`/`_BGM_PLAY`/`_STOP`/`_PAUSE`/`_RESUME` + `ARKOS_SFX_INIT`/`_PLAY`/`_STOP`、 AKG/AKM 共通)、 4 env (x1 / sosx1 / x1native / x1native_slfs) 対応、 CTC ch1 割込 (IM2) / VSYNC polling 両対応
