@@ -1,6 +1,6 @@
 # 更新履歴
 
-## Unreleased
+## Version 0.26.0
 
 - X1 に Arkos Tracker (AKG / AKM) サウンドドライバを統合 — PSG の BGM と SFX (効果音) を SLANG から再生、 詳細は [docs/X1.md](docs/X1.md)
   - MACHINE 中間層 `libx1_arkos` (`ARKOS_INIT`/`_SET_CTC_PORT`/`_BGM_PLAY`/`_STOP`/`_PAUSE`/`_RESUME` + `ARKOS_SFX_INIT`/`_PLAY`/`_STOP`、 AKG/AKM 共通)、 4 env (x1 / sosx1 / x1native / x1native_slfs) 対応、 CTC ch1 割込 (IM2) / VSYNC polling 両対応
@@ -14,6 +14,8 @@
   - Furnace `.fur` → Z80 データ変換 (`tools/json2sms_x1.py` ほか)、 raw bin → X1 cassette tape 変換 (`tools/bin2x1tap.py`)
   - 複数楽曲/SFX を manifest で一括登録 → bundle 連結 + アドレス CONST (`MUSIC_*` / `SFX_*`) 自動生成する `tools/banjo_pack_assets.py` と sample `examples/X1_BANJO_MULTI` (人手のアドレス計算不要、 `BANJO_PLAY(MUSIC_xxx)` で再生)
   - 出典: banjo (https://github.com/joffb/banjo、 MIT、 Joe Kennedy)。 LICENSE / THIRD_PARTY_NOTICES に attribution
+
+- `dotnet test` が無限ハングする問題を修正 — MSBuild ノード再利用デッドロックとパイプバッファデッドロックを解消 (IntegrationTests / BuildIntegrationTests / SlfsBuildIntegrationTests)
 
 ## Version 0.25.0
 
