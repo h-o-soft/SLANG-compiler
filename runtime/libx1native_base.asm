@@ -18,12 +18,12 @@
 ;     Russian peasant 乗算、 libx1_print fork)
 ;   - clear_screen: text + attribute + kanji 3 plane を全 cell 初期化 + sXYADR reset
 ;     (= boot ROM 残骸 clear、 SLANGINIT / WIDTH 切替 / CLEAR ($0C) で共通利用)
-;   - _CRTCD / _C8025L / _C4025L: CRTC PARM table (= libx1_print fork、
-;     turbo 系 _C8025H / _C4025H は scope 外 = MVP は標準 X1 80/40 のみ)
+;   - _CRTCD / _C8025L / _C8025H / _C4025L / _C4025H: CRTC PARM table
+;     (= LSX-Dodgers MODE/X1INIT fork、 X1turbo 系は start port $1FF0 で自動選択)
 
 ; @name SLANGINIT
 ; @resident local
-; @calls sWORK, INIT_CRTC, clear_screen, _C8025L, SETUP_ISR_AREA, SEARCHCTC
+; @calls sWORK,INIT_CRTC,clear_screen,_C8025L,_C8025H,SETUP_ISR_AREA,SEARCHCTC
 ; 注: SLANGINIT 自体は SEARCHCTC を CALL しない (= IRQ 基盤と device 責任分割
 ;      原則、 SEARCHCTC は PSG_INIT(1) 等 device library 側で CALL)、 ただし
 ;      link planner が SEARCHCTC を link 対象に積むため declare として記載。
@@ -52,11 +52,17 @@ LD A, $82
 OUT (C), A
 
 ; CRTC 80 mode 初期化 + AT_WIDTH = 80 (= standalone binary 化、 emulator/IPL
-; の WIDTH 80 mode 設定に依存しない)。 _C8025L は標準 X1 80 col Lo-res
-; PARM table、 turbo 系 (_C8025H) は scope 外。
+; の WIDTH 80 mode 設定に依存しない)。 X1turbo 系は start port $1FF0 の bit0
+; で high-res table (_C8025H) に切り替える。
 LD A, 80
 LD (AT_WIDTH), A
+LD BC, $1FF0
+IN A, (C)
+RRCA
 LD HL, _C8025L
+JR C, .init_crtc
+LD HL, _C8025H
+.init_crtc:
 CALL INIT_CRTC
 
 ; text + attribute + kanji 3 plane を全 cell 初期化 + sXYADR reset
@@ -115,7 +121,7 @@ JR .stop_halt
 
 ; @name INIT_CRTC
 ; @resident shared
-; @calls X1CRT_WORK
+; @calls X1CRT_WORK,X1WORK
 ; CRTC 80 mode / 40 mode 切替 + 画面 mode 設定。
 ; HL = source PARM table (= _C8025L / _C4025L 等、 16 byte)、 _CRTCD work area
 ; に LDIR copy してから CRTC R0-R11 を $1800/$1801 経由 OUT + 8255 port C
@@ -142,6 +148,8 @@ LD BC, $1A03 + $0100
 OUTI               ; byte 14 を 8255 port C へ OUT
 LD BC, $1FD0 + $0100
 OUTI               ; byte 15 を WK1FD0 ($1FD0) へ OUT
+LD A, (_CRTCD+15)
+LD (_WK1FD0), A    ; graphics 系の _WK1FD0 cache も CRTC table と同期
 RET
 
 
@@ -237,23 +245,42 @@ RET
 
 ; @name _C8025L
 ; @resident shared
-; CRTC PARM: 標準 X1 80 col Lo-res、 25 行。 libx1_print.asm _C8025L fork。
-; turbo 系 (_C8025H) は scope 外 (= MVP では標準 X1 のみ)。
+; CRTC PARM: 標準 X1 80 col Lo-res、 25 行。 LSX-Dodgers MODE X8024L fork。
 DB	$6F, $50, $59, $38, $1F, $02, $19, $1C      ; R0-R7
 DB	$00, $07                                     ; R8-R9
 DW	0 - 80 * 25, 0 - 80                          ; R10/R11 + LSX cache (-80*25 = $F830, -80 = $FFB0)
 DB	$0C                                          ; 8255 port C
-DB	$A0                                          ; WK1FD0
+DB	$20                                          ; WK1FD0
+
+
+; @name _C8025H
+; @resident shared
+; CRTC PARM: X1turbo 系 80 col Hi-res、 25 行。 LSX-Dodgers MODE X8024H fork。
+DB	$6B, $50, $59, $88, $1B, $00, $19, $1A      ; R0-R7
+DB	$00, $0F                                     ; R8-R9
+DW	0 - 80 * 25, 0 - 80
+DB	$0C
+DB	$23
 
 
 ; @name _C4025L
 ; @resident shared
-; CRTC PARM: 標準 X1 40 col Lo-res、 25 行。 libx1_print.asm _C4025L fork。
+; CRTC PARM: 標準 X1 40 col Lo-res、 25 行。 LSX-Dodgers MODE X4024L fork。
 DB	$37, $28, $2D, $34, $1F, $02, $19, $1C      ; R0-R7
 DB	$00, $07                                     ; R8-R9
 DW	0 - 40 * 25, 0 - 40                          ; R10/R11 + LSX cache
 DB	$0D                                          ; 8255 port C
-DB	$A0                                          ; WK1FD0
+DB	$20                                          ; WK1FD0
+
+
+; @name _C4025H
+; @resident shared
+; CRTC PARM: X1turbo 系 40 col Hi-res、 25 行。 LSX-Dodgers MODE X4024H fork。
+DB	$35, $28, $2D, $84, $1B, $00, $19, $1A      ; R0-R7
+DB	$00, $0F
+DW	0 - 40 * 25, 0 - 40
+DB	$0D
+DB	$23
 
 
 ; @name X1WORK
@@ -267,7 +294,7 @@ DB	$A0                                          ; WK1FD0
 ; - AT_COLORF / _WK1FD0: 将来 libmag native 化 (= 別 PR) で reuse される予定の
 ;   互換用 shim、 graphics pcg/grp 単独動作には実質使わないが保守的に provide。
 AT_COLORF: DB $07   ; 前景色 default (= 白、 既存 libx1_print と同初期値)
-_WK1FD0:   DB $00   ; 8255 WK1FD0 cache (= 既存 libx1_print と同初期値)
+_WK1FD0:   DB $20   ; 8255 WK1FD0 cache (= INIT_CRTC で実 table 値に同期)
 
 
 ; @name SEARCHCTC

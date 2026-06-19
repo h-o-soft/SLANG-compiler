@@ -559,18 +559,29 @@ RET
 ; @name WIDTH
 ; @resident shared
 ; @param_count 1
-; @calls sWORK, INIT_CRTC, clear_screen, _C8025L, _C4025L
+; @calls sWORK,INIT_CRTC,clear_screen,_C8025L,_C8025H,_C4025L,_C4025H
 ; L = column count (= 40 or 80)、 41 未満 → 40 mode / それ以上 → 80 mode。
-; PARM 選択 + INIT_CRTC + AT_WIDTH 更新 + 画面 clear (= 既存 LSX 系も WIDTH 末尾で
-; CTRL0C 呼出、 STARS 冒頭 `WIDTH(WD)` 等で画面初期化を期待する慣習に合わせる)。
+; PARM 選択 + INIT_CRTC + AT_WIDTH 更新 + 画面 clear。
+; X1turbo 系は既存 x1 WIDTH と同じく start port $1FF0 bit0 で high-res table を選ぶ。
 LD A, L
+LD BC, $1FF0
 CP 41
 JR C, .w40
+IN A, (C)
+RRCA
 LD HL, _C8025L
+JR C, .w80_set
+LD HL, _C8025H
+.w80_set:
 LD A, 80
 JR .w_set
 .w40:
+IN A, (C)
+RRCA
 LD HL, _C4025L
+JR C, .w40_set
+LD HL, _C4025H
+.w40_set:
 LD A, 40
 .w_set:
 LD (AT_WIDTH), A

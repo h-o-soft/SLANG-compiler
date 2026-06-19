@@ -50,7 +50,7 @@ MAIN()
 VAR I;
 BEGIN
     WIDTH(WD);
-    DEFFONT($21, $7A);
+    DEFFONT($20, $7A);
     // 4行はPCG
     TATR_FILL(0,0,40,4,$27);
     // 5行目からは非PCG
