@@ -1,5 +1,9 @@
 # 更新履歴
 
+## Unreleased
+
+- ランタイムに `GETCGROM(CODE, ADR)` を追加 — X1 CGROM (ANK) フォントを 1 文字分 (8 ライン × 1 バイト) 読み出す (`x1` / `sosx1` / `x1native` / `x1native_slfs`)。 ADR から 8 バイトに指定 ANK コードの字形を格納。 sample `examples/X1CGROM.SL` (CGROM フォントを読み出して太字化 + 3 倍幅化し PCG 定義)
+
 ## Version 0.26.0
 
 - X1 に Arkos Tracker (AKG / AKM) サウンドドライバを統合 — PSG の BGM と SFX (効果音) を SLANG から再生、 詳細は [docs/X1.md](docs/X1.md)
