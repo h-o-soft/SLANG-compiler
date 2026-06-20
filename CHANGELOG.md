@@ -4,6 +4,7 @@
 
 - x1native: X1turbo/Z 実機向け CRTC 初期化を修正 — start port `$1FF0` で 15kHz/24kHz table を自動選択し、`WIDTH(40/80)` でも同じ判定を使用。`$1FD0` の shadow (`_WK1FD0`) も CRTC table と同期。
 - ランタイムに `GETCGROM(CODE, ADR)` を追加 — X1 CGROM (ANK) フォントを 1 文字分 (8 ライン × 1 バイト) 読み出す (`x1` / `sosx1` / `x1native` / `x1native_slfs`)。 ADR から 8 バイトに指定 ANK コードの字形を格納。 sample `examples/X1CGROM.SL` (CGROM フォントを読み出して太字化 + 3 倍幅化し PCG 定義)
+- x1: テキスト表示の CRTC テーブル値を正典 (LSX-Dodgers `cmd/mode/MODE.ASM` / S-OS) に合わせて修正 (#231) — high-res の R5 を `$01` → `$00`、`$1FD0` 初期値の bit7 を落として `$A0`/`$A3` → `$20`/`$23` に変更 (bit5=1 は据置)
 
 ## Version 0.26.0
 
