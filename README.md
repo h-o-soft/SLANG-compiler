@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80 + C64/oscar64) 0.26.0
+SLANG Compiler (Z80 + C64/oscar64) 0.27.0
 
 # 概要
 
@@ -35,7 +35,7 @@ slangbuild -E c64 -I include examples/c64/SPRITE.SL -o SPRITE
 ## slangc 単体 (= compile のみ、 link しない)
 
 ```
-SLANG Compiler v0.26.0
+SLANG Compiler v0.27.0
 Usage: slangc [options] <input.sl>
 
 Options:

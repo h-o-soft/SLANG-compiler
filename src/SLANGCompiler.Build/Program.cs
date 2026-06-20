@@ -13,7 +13,7 @@ namespace SLANGCompiler.Build;
 /// </summary>
 internal class Program
 {
-    private const string Version = "0.26.0";
+    private const string Version = "0.27.0";
 
     public static int Main(string[] args)
     {
