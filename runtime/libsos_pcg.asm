@@ -255,3 +255,63 @@ SCG_SPAN:
 DB 0
 SCG_NODISPADR:
 DW 0
+
+
+; @name TATTR
+; @resident shared
+; @param_count 1
+; @calls SOSCALLS
+; HL = 属性値 ($0000-$00FF のみ有効)、戻り HL=1 成功 / HL=0 検証失敗
+; 現在のテキストカーソル位置のセルの attribute だけを 1 バイト書く。
+; 文字も漢字セレクタも書かず、カーソルも進めない。状態も持たない。
+; bit7=X2 / bit6=Y2 / bit5=PCG / bit4=点滅 / bit3=反転 / bit2-0=BRG 色。
+; 全ビットがハードウェア上の意味を持つのでマスクせずそのまま書く。
+; 検証失敗時は I/O を一切行わない。DI/EI もしない (単一 OUT なので不要)。
+;
+; sosx1 はカーソルを SLANG 側で持たず S-OS が所有するので sCSR ($2018) で取得する
+; (戻り L=X / H=Y、LOCATE が sLOC に H=Y,L=X を渡すのと同じ packing)。
+; 桁数は既存 PCGDEF / GETCGROM と同じく sWIDTH ($1F5C) を読む。AT_WIDTH は
+; SLANGINIT が値を入れた直後に __WORK__ をゼロクリアするため起動直後は 0 で使えない。
+LD A,H
+OR A
+JR NZ,TAT_NG
+PUSH HL                ; sCSR の破壊レジスタが不明なので属性を stack に退避
+CALL sCSR              ; HL = (Y << 8) | X
+LD C,L                 ; C = X
+LD E,H                 ; E = Y
+LD D,0
+LD B,8
+LD A,(sWIDTH)          ; 40 or 80
+LD H,A
+LD L,0                 ; HL = width * 256 (= 乗算の初期値)
+TAT_MUL:
+ADD HL,HL
+JR NC,TAT_MUL1
+ADD HL,DE
+TAT_MUL1:
+DJNZ TAT_MUL
+LD B,0                 ; DJNZ 終了で B=0、BC = X
+ADD HL,BC              ; HL = Y * width + X (= text VRAM 内 offset)
+LD A,(sWIDTH)
+LD BC,1000             ; 40 桁: 有効 offset 0-999
+CP 41
+JR C,TAT_LIM
+LD BC,2000             ; 80 桁: 有効 offset 0-1999
+TAT_LIM:
+AND A
+SBC HL,BC
+JR NC,TAT_NGPOP        ; offset >= limit → 表示範囲外
+ADD HL,BC              ; offset を復元
+LD B,H
+LD C,L
+SET 5,B                ; BC = $2000 + offset (canonical attribute port)
+POP DE                 ; E = 退避した属性 (PUSH HL の L 側)
+LD A,E
+OUT (C),A              ; ちょうど 1 バイト OUT
+LD HL,1
+RET
+TAT_NGPOP:
+POP DE                 ; 拒否パスでも stack を必ず戻す
+TAT_NG:
+LD HL,0
+RET
