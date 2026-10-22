@@ -378,19 +378,47 @@ public sealed class HuLowerer
         _ => false,
     };
 
-    private static bool NeedsTempReset(HuStmt s) => s switch
+    /// <summary>
+    /// 文の頭で一時領域を空に戻すか。文が持つ式 (代入先の添字・FOR の式なども含む) のどれかが一時文字列を作るなら戻す。
+    /// IF の THEN 節・ELSE 節の文は、それぞれの文の頭で判定する。WHILE の条件はループの先頭ラベルの後ろで戻す (別扱い)。
+    /// PRINT は項目ごとに戻すので常に戻す。
+    /// </summary>
+    internal static bool NeedsTempReset(HuStmt s)
+        => s is HuPrint || (s is not HuWhile && StatementExprs(s).Any(MakesTemps));
+
+    /// <summary>文が直接持つ式をすべて列挙する (IF の THEN 節・ELSE 節の中の文は含まない)</summary>
+    internal static IEnumerable<HuExpr> StatementExprs(HuStmt s)
     {
-        HuAssign a => MakesTemps(a.Value),
-        HuIf f => MakesTemps(f.Cond),
-        HuUntil u => MakesTemps(u.Cond),
-        HuOnJump on => MakesTemps(on.Selector),
-        HuCommand c => c.Args.Any(a => a != null && MakesTemps(a)),
-        HuLineText lt => MakesTemps(lt.Char),
-        HuDefChr dc => MakesTemps(dc.Pattern) || MakesTemps(dc.Code),
-        HuOut o => MakesTemps(o.Port) || MakesTemps(o.Value),
-        HuPrint => true,
-        _ => false,
-    };
+        switch (s)
+        {
+            case HuAssign a: yield return a.Target; yield return a.Value; break;
+            case HuOnJump on: yield return on.Selector; break;
+            case HuIf f: yield return f.Cond; break;
+            case HuFor fr:
+                yield return fr.From;
+                yield return fr.To;
+                if (fr.Step != null) yield return fr.Step;
+                break;
+            case HuUntil u: yield return u.Cond; break;
+            case HuWhile w: yield return w.Cond; break;
+            case HuDim d: foreach (var (_, b) in d.Arrays) yield return b; break;
+            case HuRead r: foreach (var t in r.Targets) yield return t; break;
+            case HuOut o: yield return o.Port; yield return o.Value; break;
+            case HuPrint p:
+                if (p.Using != null) yield return p.Using;
+                foreach (var item in p.Items)
+                {
+                    if (item is HuPrintExpr pe) yield return pe.Expr;
+                    else if (item is HuPrintSpc sp) yield return sp.Count;
+                }
+                break;
+            case HuCommand c: foreach (var a in c.Args) if (a != null) yield return a; break;
+            case HuLineText lt:
+                yield return lt.X1; yield return lt.Y1; yield return lt.X2; yield return lt.Y2; yield return lt.Char;
+                break;
+            case HuDefChr dc: yield return dc.Code; yield return dc.Pattern; break;
+        }
+    }
 
     private sealed class NextPartComparer : IEqualityComparer<(HuNext, int)>
     {

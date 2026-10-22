@@ -98,6 +98,56 @@ public class HuBasicEmitTests
             Assert.Equal("BAS_STMP", Assert.IsType<FCall>(ops[i + 1]).Function);
     }
 
+    /// <summary>文が持つ式のどこで一時文字列を作っても、その文の頭で一時領域を空に戻す (繰り返し実行してもあふれない)</summary>
+    [Theory]
+    [InlineData("10 A%(VAL(CHR$(49)))=0:GOTO 10")]                 // 代入先の添字
+    [InlineData("10 FOR I%=VAL(CHR$(49)) TO 2:NEXT:GOTO 10")]      // FOR の初期値
+    [InlineData("10 FOR I%=1 TO VAL(CHR$(50)):NEXT:GOTO 10")]      // FOR の上限
+    [InlineData("10 FOR I%=1 TO 2 STEP VAL(CHR$(49)):NEXT:GOTO 10")] // FOR の増分
+    [InlineData("10 OUT VAL(CHR$(49)),0:GOTO 10")]
+    [InlineData("10 LOCATE VAL(CHR$(49)),0:GOTO 10")]
+    [InlineData("10 ON VAL(CHR$(49)) GOTO 10")]
+    [InlineData("10 IF VAL(CHR$(49)) THEN 10")]
+    [InlineData("10 REPEAT:UNTIL VAL(CHR$(49)):GOTO 10")]
+    [InlineData("10 LINE(VAL(CHR$(49)),0)-(1,1),\"*\":GOTO 10")]
+    [InlineData("10 DEFCHR$(VAL(CHR$(49)))=\"\":GOTO 10")]
+    [InlineData("10 READ A%(VAL(CHR$(49))):RESTORE:GOTO 10\n20 DATA 1")]
+    public void Lowering_EveryAllocatingStatementResetsTemps(string program)
+    {
+        var r = Transpile(program);
+        var ops = r.Flat!.Ops.ToList();
+        // 各行の頭からの命令列で、一時文字列を作る呼び出しより前に BAS_STMP があるか
+        var sl = r.Output!;
+        foreach (var line in sl.Split('\n').Where(l => l.Contains("BAS_SCHR(")))
+        {
+            var idx = sl.IndexOf(line, StringComparison.Ordinal);
+            var before = sl[..idx];
+            var lastLabel = Math.Max(before.LastIndexOf("L10:", StringComparison.Ordinal), before.LastIndexOf("QL", StringComparison.Ordinal));
+            Assert.True(before.LastIndexOf("BAS_STMP();", StringComparison.Ordinal) > lastLabel,
+                $"BAS_STMP が {line.Trim()} の前にない:\n{sl}");
+        }
+        Assert.Contains(ops, o => o is FCall { Function: "BAS_STMP" });
+    }
+
+    [Fact]
+    public void Lowering_StatementExprsCoversEveryExpressionField()
+    {
+        // 構文木の文の型のうち式を持つものは、すべて StatementExprs で式を返す
+        var program = HuBasicEmitTests_FullProgramForExprs;
+        var prog = Transpile(program).Program!;
+        foreach (var stmt in SLANGCompiler.HuBasic.Analysis.HuAnalyzer.AllStatements(prog.Lines))
+        {
+            var props = stmt.GetType().GetProperties().Where(p =>
+                typeof(SLANGCompiler.HuBasic.Parsing.HuExpr).IsAssignableFrom(p.PropertyType) && p.Name != "Pos").ToList();
+            var listed = HuLowerer.StatementExprs(stmt).ToList();
+            foreach (var p in props)
+                if (p.GetValue(stmt) is SLANGCompiler.HuBasic.Parsing.HuExpr e)
+                    Assert.Contains(listed, x => ReferenceEquals(x, e));
+        }
+    }
+
+    private const string HuBasicEmitTests_FullProgramForExprs = FullProgram;
+
     [Fact]
     public void Lowering_WhileResetsTempsInsideLoopHead()
     {
