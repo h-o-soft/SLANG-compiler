@@ -86,6 +86,16 @@ public class HuBasicEmitTests
         Assert.StartsWith("BAS_PSTR,BAS_STMP,BAS_PSTR,BAS_STMP,BAS_PNL,BAS_SSET,BAS_STMP,BAS_SSET,BAS_STMP", text);
     }
 
+    /// <summary>PRINT USING と SPC の項目も、一時文字列を作るなら項目ごとに空に戻す</summary>
+    [Fact]
+    public void Lowering_PrintUsingAndSpcResetTempsPerItem()
+    {
+        var flat = Transpile("10 PRINT USING \"#\";VAL(A$+A$);VAL(A$+A$):PRINT SPC(VAL(A$+A$));SPC(VAL(A$+A$))").Flat!;
+        var calls = flat.Ops.OfType<FCall>().Select(c => c.Function).ToList();
+        var text = string.Join(",", calls.SkipWhile(c => c != "BAS_PUFMT"));
+        Assert.StartsWith("BAS_PUFMT,BAS_STMP,BAS_PUSING,BAS_STMP,BAS_PUSING,BAS_STMP,BAS_PNL,BAS_STMP,BAS_PSPC,BAS_STMP,BAS_PSPC,BAS_STMP,BAS_PNL", text);
+    }
+
     [Fact]
     public void Lowering_NumericReadResetsTemps()
     {

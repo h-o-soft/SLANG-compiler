@@ -323,6 +323,7 @@ public sealed class HuLowerer
             {
                 case HuPrintExpr pe when p.Using != null:
                     Call("BAS_PUSING", E(pe.Expr));
+                    if (MakesTemps(pe.Expr)) Call("BAS_STMP");
                     break;
                 case HuPrintExpr pe when pe.Expr.Type == HuType.Str:
                     Call("BAS_PSTR", E(pe.Expr));
@@ -337,6 +338,7 @@ public sealed class HuLowerer
                     break;
                 case HuPrintSpc sp:
                     Call("BAS_PSPC", E(sp.Count));
+                    if (MakesTemps(sp.Count)) Call("BAS_STMP");
                     break;
             }
             last = item;

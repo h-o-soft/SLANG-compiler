@@ -2535,96 +2535,113 @@ LD E, A
 LD A, (BAS_ATTR)
 LD D, A
 JP BAS_VPUT
-; 線: Bresenham (dx, dy、符号付き)
+; 線: 主軸を 1 つずつ進める Bresenham。誤差は符号なし 16 ビットの借りで判定するので、座標がどの値でも
+; 主軸の長さ + 1 回で必ず終わる。誤差の初期値は主軸の長さの半分の切り捨て (Hu-BASIC と同じ点を置く。実測)
 .btl_line
-LD HL, (.btl_x2)
-LD DE, (.btl_x1)
-OR A
-SBC HL, DE
-LD (.btl_dx), HL
-LD HL, (.btl_y2)
-LD DE, (.btl_y1)
-OR A
-SBC HL, DE
-LD (.btl_dy), HL
-; sx, sy と |dx|, |dy|
-LD HL, (.btl_dx)
-LD DE, 1
-BIT 7, H
-JP Z, .btl_sxok
-LD DE, $FFFF
-CALL .btl_neg
-.btl_sxok
+LD HL, (.btl_x1)
+LD DE, (.btl_x2)
+CALL .btl_delta
 LD (.btl_dx), HL
 LD (.btl_sx), DE
-LD HL, (.btl_dy)
-LD DE, 1
-BIT 7, H
-JP Z, .btl_syok
-LD DE, $FFFF
-CALL .btl_neg
-.btl_syok
+LD HL, (.btl_y1)
+LD DE, (.btl_y2)
+CALL .btl_delta
 LD (.btl_dy), HL
 LD (.btl_sy), DE
-; err = dx - dy
+; |dx| >= |dy| なら x が主軸
+LD DE, (.btl_dx)
+OR A
+SBC HL, DE          ; |dy| - |dx| (符号なし)
+JP C, .btl_xmaj
+JP Z, .btl_xmaj
+LD HL, .btl_y1
+LD (.btl_pmaj), HL
+LD HL, .btl_x1
+LD (.btl_pmin), HL
+LD HL, (.btl_sy)
+LD (.btl_smaj), HL
+LD HL, (.btl_sx)
+LD (.btl_smin), HL
+LD HL, (.btl_dy)
+LD DE, (.btl_dx)
+JP .btl_run
+.btl_xmaj
+LD HL, .btl_x1
+LD (.btl_pmaj), HL
+LD HL, .btl_y1
+LD (.btl_pmin), HL
+LD HL, (.btl_sx)
+LD (.btl_smaj), HL
+LD HL, (.btl_sy)
+LD (.btl_smin), HL
 LD HL, (.btl_dx)
 LD DE, (.btl_dy)
-OR A
-SBC HL, DE
+.btl_run
+; HL = 主軸の長さ, DE = 副軸の長さ
+LD (.btl_cnt), HL
+LD (.btl_dmaj), HL
+LD (.btl_dmin), DE
+SRL H
+RR L
 LD (.btl_err), HL
 .btl_loop
 LD HL, (.btl_x1)
 LD DE, (.btl_y1)
 CALL .btl_plot
-; 終点に着いたら終わり
-LD HL, (.btl_x1)
-LD DE, (.btl_x2)
-OR A
-SBC HL, DE
-JP NZ, .btl_step
-LD HL, (.btl_y1)
-LD DE, (.btl_y2)
-OR A
-SBC HL, DE
+LD HL, (.btl_cnt)
+LD A, H
+OR L
 RET Z
-.btl_step
-; e2 = 2 * err
+DEC HL
+LD (.btl_cnt), HL
+; 主軸を進める
+LD HL, (.btl_pmaj)
+LD DE, (.btl_smaj)
+CALL .btl_add
+; err -= 副軸の長さ。借りが出たら err += 主軸の長さ (結果は 0 以上・主軸の長さ未満に戻る) で、副軸も進める
 LD HL, (.btl_err)
-ADD HL, HL
-LD (.btl_e2), HL
-; e2 > -dy なら err -= dy, x += sx
-LD DE, (.btl_dy)
-LD HL, 0
-OR A
-SBC HL, DE          ; HL = -dy
-EX DE, HL           ; DE = -dy
-LD HL, (.btl_e2)
-CALL .btl_sgt       ; キャリー = HL > DE
-JP NC, .btl_ny
-LD HL, (.btl_err)
-LD DE, (.btl_dy)
+LD DE, (.btl_dmin)
 OR A
 SBC HL, DE
-LD (.btl_err), HL
-LD HL, (.btl_x1)
-LD DE, (.btl_sx)
-ADD HL, DE
-LD (.btl_x1), HL
-.btl_ny
-; e2 < dx なら err += dx, y += sy
-LD HL, (.btl_dx)
-LD DE, (.btl_e2)
-CALL .btl_sgt       ; キャリー = dx > e2
-JP NC, .btl_loop
-LD HL, (.btl_err)
-LD DE, (.btl_dx)
+JP NC, .btl_nomin
+LD DE, (.btl_dmaj)
 ADD HL, DE
 LD (.btl_err), HL
-LD HL, (.btl_y1)
-LD DE, (.btl_sy)
-ADD HL, DE
-LD (.btl_y1), HL
+LD HL, (.btl_pmin)
+LD DE, (.btl_smin)
+CALL .btl_add
 JP .btl_loop
+.btl_nomin
+LD (.btl_err), HL
+JP .btl_loop
+; (HL) の 16 ビットの値に DE を足す
+.btl_add
+LD A, (HL)
+ADD A, E
+LD (HL), A
+INC HL
+LD A, (HL)
+ADC A, D
+LD (HL), A
+RET
+; HL = 始点, DE = 終点 (符号付き) → HL = |終点 - 始点| (0-65535), DE = 進む向き (1 / -1)
+.btl_delta
+PUSH HL
+PUSH DE
+CALL .btl_sgt       ; キャリー = 始点 > 終点
+POP DE
+POP HL
+JP C, .btl_dneg
+EX DE, HL
+OR A
+SBC HL, DE          ; 終点 - 始点
+LD DE, 1
+RET
+.btl_dneg
+OR A
+SBC HL, DE          ; 始点 - 終点
+LD DE, $FFFF
+RET
 ; HL > DE (符号付き) ならキャリーを立てる
 .btl_sgt
 LD A, H
@@ -2637,15 +2654,6 @@ RET
 .btl_sgd
 LD A, D             ; 異符号: DE が負なら HL > DE
 RLA
-RET
-.btl_neg
-LD A, L
-CPL
-LD L, A
-LD A, H
-CPL
-LD H, A
-INC HL
 RET
 .btl_ret DW 0
 .btl_box DW 0
@@ -2661,7 +2669,13 @@ RET
 .btl_sx DW 0
 .btl_sy DW 0
 .btl_err DW 0
-.btl_e2 DW 0
+.btl_cnt DW 0
+.btl_dmaj DW 0
+.btl_dmin DW 0
+.btl_pmaj DW 0
+.btl_pmin DW 0
+.btl_smaj DW 0
+.btl_smin DW 0
 
 
 ; ============================================================ PCG
