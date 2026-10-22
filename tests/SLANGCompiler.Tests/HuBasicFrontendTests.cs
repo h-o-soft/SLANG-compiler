@@ -246,6 +246,8 @@ public class HuBasicFrontendTests
     [InlineData("10 DEFINT A-Z:IF A/2>1 THEN 10", "HB0402")]  // / の結果を比べる
     [InlineData("10 DEFINT A-Z:A$=1", "HB0404")]
     [InlineData("10 DEFINT A-Z:A=\"X\"+1", "HB0404")]
+    [InlineData("10 DEFINT A-Z:FOR I=1 TO 2:NEXT A$", "HB0404")] // NEXT の変数も整数
+    [InlineData("10 FOR A$=1 TO 2:NEXT", "HB0404")]
     [InlineData("10 GOTO 20", "HB0503")]
     [InlineData("10 DEFINT A-Z:ON A GOSUB 10,99", "HB0503")]
     [InlineData("10 DEFINT A-Z:FOR I=1 TO 2", "HB0601")]

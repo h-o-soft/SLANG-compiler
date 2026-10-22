@@ -1961,7 +1961,14 @@ RET
 ; @resident shared
 ; @param_count 1
 ; @calls BAS_WORK
-; HL = 行番号 (0 = 先頭)。行番号が HL 以上の最初の DATA 行の先頭へ (なければ末尾)
+; HL = 行番号 (0 = 先頭)。行番号が HL 以上の最初の DATA 行の先頭へ (なければ末尾)。
+; DATA がない (BAS_DATAINIT が呼ばれていない) ときは末尾 (= 0) のままにする
+EX DE, HL
+LD HL, (BAS_DLTAB)
+LD A, H
+OR L
+JP Z, .brs_end
+EX DE, HL
 LD A, H
 OR L
 JP NZ, .brs_find

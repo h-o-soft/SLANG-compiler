@@ -424,7 +424,12 @@ public sealed class HuAnalyzer
                 _forIds[fr] = _forCount++;
                 break;
             case HuNext nx:
-                foreach (var v in nx.Vars) UseVar(v, nx.Pos);
+                foreach (var v in nx.Vars)
+                {
+                    UseVar(v, nx.Pos);
+                    if (VarType(v) != HuType.Int)
+                        _diag.Error("HB0404", $"NEXT の変数 {v} は整数にしてください", nx.Pos);
+                }
                 break;
             case HuUntil u:
                 ExpectInt(u.Cond, intConv: false);

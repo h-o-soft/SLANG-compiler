@@ -292,6 +292,22 @@ public class HuBasicEmitTests
                 Assert.True(all.Contains(dep), $"{f.Name} の @calls {dep} がどのライブラリにもない");
     }
 
+    /// <summary>DATA のないプログラムで RESTORE を呼んでも、初期化されていない行の表を走査しない</summary>
+    [Fact]
+    public void Runtime_RestoreGuardsMissingDataTable()
+    {
+        var path = Path.Combine(RepoRoot(), "runtime", "libx1_basic.asm");
+        var f = RuntimeParser.Parse(File.ReadAllText(path), path).Single(x => x.Name == "BAS_RESTORE");
+        var code = f.Code.Split('\n').Select(l => l.Split(';')[0].Trim()).Where(l => l.Length > 0).ToList();
+        int load = code.IndexOf("LD HL, (BAS_DLTAB)");
+        Assert.True(load >= 0 && load < 3, "BAS_RESTORE は最初に行の表があるかを見る");
+        Assert.Equal("JP Z, .brs_end", code[load + 3]);
+        // hub2sl は DATA がなければ BAS_DATAINIT を呼ばないが、RESTORE は受け付ける
+        var sl = Transpile("10 RESTORE 10:READ A%:END").Output!;
+        Assert.DoesNotContain("BAS_DATAINIT", sl);
+        Assert.Contains("BAS_RESTORE(10);", sl);
+    }
+
     [Theory]
     [InlineData("x1native")]
     [InlineData("x1native_slfs")]
