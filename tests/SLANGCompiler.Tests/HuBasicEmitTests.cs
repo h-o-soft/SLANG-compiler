@@ -87,6 +87,18 @@ public class HuBasicEmitTests
     }
 
     [Fact]
+    public void Lowering_NumericReadResetsTemps()
+    {
+        // BAS_READN は項目を一時文字列で読むので、数値の READ の後にも一時領域を空に戻す
+        var flat = Transpile("10 RESTORE:READ A%,B%:GOTO 10\n20 DATA 1,2").Flat!;
+        var ops = flat.Ops.ToList();
+        var reads = ops.Select((o, i) => (o, i)).Where(x => x.o is FAssign { Value: SLANGCompiler.HuBasic.Parsing.HuCall { Name: FlatPseudo.ReadNum } }).ToList();
+        Assert.Equal(2, reads.Count);
+        foreach (var (_, i) in reads)
+            Assert.Equal("BAS_STMP", Assert.IsType<FCall>(ops[i + 1]).Function);
+    }
+
+    [Fact]
     public void Lowering_WhileResetsTempsInsideLoopHead()
     {
         var flat = Transpile("10 DEFINT A-Z:WHILE INKEY$=\"\":WEND").Flat!;
@@ -156,6 +168,16 @@ public class HuBasicEmitTests
         Assert.Contains("CASE H_T OF { 0: GOTO R0; };", sl);
         Assert.Contains("H_T=BAS_FORPUSH(&V_I, 2, 1, 0);", sl);
         Assert.Contains("CASE H_T OF { 0: GOTO QFT0; };", sl);
+    }
+
+    /// <summary>実行時エラーの「in 行番号」のため、各行の頭で行番号を記録する</summary>
+    [Fact]
+    public void Slang_RecordsCurrentLineForErrorMessages()
+    {
+        var sl = Transpile("10 A%=1\n20 A%=2").Output!;
+        Assert.Contains("BAS_LNINIT(&H_LINE);", sl);
+        Assert.Matches(@"L10:\s+H_LINE=10;", sl);
+        Assert.Matches(@"L20:\s+H_LINE=20;", sl);
     }
 
     [Fact]

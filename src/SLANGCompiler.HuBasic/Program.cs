@@ -153,6 +153,8 @@ class Program
         Console.Error.WriteLine("  -o <path>                出力する SLANG のファイル (既定: 入力の拡張子を .SL に)");
         Console.Error.WriteLine("  --env <name>             x1native (既定) / x1native_slfs");
         Console.Error.WriteLine("  --wait <mode>            none (既定) / line[:N] / frame[:N]");
+        Console.Error.WriteLine("                           line:N = 各行の頭で約 0.1ms × N 待つ (N=450〜500 で Hu-BASIC に近い速さの目安)");
+        Console.Error.WriteLine("                           frame:N = '#VSYNC の指示コメントの位置で N フレーム待つ");
         Console.Error.WriteLine("  --input-encoding <enc>   utf8 (既定) / sjis");
         Console.Error.WriteLine("  --emit-line-comments     元の行をコメントで出す");
         Console.Error.WriteLine("  --data-budget <bytes>    静的データの上限 (既定 24576)");

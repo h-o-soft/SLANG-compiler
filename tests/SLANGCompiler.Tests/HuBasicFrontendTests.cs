@@ -47,6 +47,26 @@ public class HuBasicFrontendTests
     public void Lexer_SplitsKeywordsByLongestMatch(string body, string expected)
         => Assert.Equal(expected, Kinds(Lex(body)));
 
+    [Theory]
+    [InlineData("A%=&H10000000000000000")]
+    [InlineData("A%=&H10000")]
+    [InlineData("A%=&O777777777777777777777777")]
+    [InlineData("A%=&B11111111111111111")]
+    [InlineData("A%=99999999999999999999999")]
+    public void Lexer_RejectsOversizedLiterals(string body)
+    {
+        var diag = new HuDiagnosticBag();
+        HuParser.ParseSingleLine("10 " + body, diag);
+        Assert.Contains(diag.Items, d => d.Code == "HB0103");
+    }
+
+    [Fact]
+    public void Lexer_AcceptsLargestLiterals()
+    {
+        var t = Lex("A=&HFFFF+&O177777+&B1111111111111111+65535");
+        Assert.Equal(4, t.Count(x => x.Kind == HuTokenKind.Number && x.Value == 65535));
+    }
+
     [Fact]
     public void Lexer_UnclosedStringEndsAtLineEnd()
     {

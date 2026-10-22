@@ -17,6 +17,8 @@ public sealed record HuLowerOptions(HuWaitMode Wait = HuWaitMode.None, int WaitA
 public sealed class HuLowerer
 {
     public const string Temp = "T";
+    /// <summary>実行中の行番号 (実行時エラーの「in 行番号」の表示に使う)</summary>
+    public const string CurrentLine = "LINE";
     public static string DimState(string array) => "DIM:" + array;
     public static string UpperBound(string array) => "UB:" + array;
 
@@ -61,6 +63,7 @@ public sealed class HuLowerer
     private HuFlat Run()
     {
         Call("BAS_INIT");
+        Call("BAS_LNINIT", new FHiddenAddrArg(CurrentLine));
         if (_prog.DataBytes.Length > 0) Call("BAS_DATAINIT", new FDataTableArg(false), new FDataTableArg(true));
         foreach (var name in _prog.Arrays.Keys)
         {
@@ -71,6 +74,7 @@ public sealed class HuLowerer
         foreach (var line in _prog.Lines)
         {
             Emit(new FLabel(LineLabel(line.Number)));
+            Emit(new FAssignHidden(CurrentLine, new HuNum(line.Number, line.Pos)));
             if (_opt.LineMarks) Emit(new FLineMark(line.Number, line.SourceText));
             if (_opt.Wait == HuWaitMode.Line) Call("BAS_WLINE", I(_opt.WaitArg));
             LowerStatements(line.Statements);
@@ -90,7 +94,7 @@ public sealed class HuLowerer
         if (fors.Count > 0) Emit(new FDispatch(Temp, fors));
         Call("BAS_END");
 
-        var hidden = new List<string> { Temp };
+        var hidden = new List<string> { Temp, CurrentLine };
         foreach (var name in _prog.Arrays.Keys)
         {
             hidden.Add(DimState(name));
@@ -209,7 +213,11 @@ public sealed class HuLowerer
                         Call("BAS_STMP");
                     }
                     else
+                    {
+                        // 数値の READ も内部で一時文字列を使う (BAS_READN は項目を文字列で読んでから解釈する)
                         Emit(new FAssign(t, new HuCall(FlatPseudo.ReadNum, Array.Empty<HuExpr>(), rd.Pos) { Type = HuType.Int }));
+                        Call("BAS_STMP");
+                    }
                 }
                 break;
             case HuRestore rs:

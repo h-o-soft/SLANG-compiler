@@ -19,7 +19,7 @@
 ; @name BAS_WORK
 ; @resident shared
 ; @param_count 0
-; @works BAS_CXY:2,BAS_WID:1,BAS_ATTR:1,BAS_CSZ:1,BAS_RAW:1,BAS_PAL:3,BAS_CSP:2,BAS_CSTK:640,BAS_TMPP:2,BAS_TMP:1024,BAS_NUMBUF:8,BAS_DBASE:2,BAS_DLTAB:2,BAS_DPOS:2,BAS_DEND:2,BAS_UFMT:256,BAS_PCGBUF:32,BAS_TEMPN:2,BAS_PLST:9,BAS_PLCH:15,BAS_LASTKEY:1,BAS_CLK:1
+; @works BAS_CXY:2,BAS_WID:1,BAS_ATTR:1,BAS_CSZ:1,BAS_RAW:1,BAS_PAL:3,BAS_CSP:2,BAS_CSTK:640,BAS_TMPP:2,BAS_TMP:1024,BAS_NUMBUF:8,BAS_DBASE:2,BAS_DLTAB:2,BAS_DPOS:2,BAS_DEND:2,BAS_UFMT:256,BAS_PCGBUF:32,BAS_TEMPN:2,BAS_PLST:9,BAS_PLCH:15,BAS_LASTKEY:1,BAS_CLK:1,BAS_LNPTR:2
 ; BAS_CX/CY: カーソル、BAS_WID: 桁数 (40/80)、BAS_ATTR: 現在の属性 (色 + CR/CF/CG)
 ; BAS_CSZ: CSIZE (0-3)、BAS_RAW: PRINT#0 中なら 1、BAS_PAL*: パレットの影 (書込専用ポートのため)
 ; BAS_CSP/BAS_CSTK: 制御スタック (10 バイト × 64 枠)
@@ -29,6 +29,7 @@
 ; BAS_TEMPN: 1/32 音符の長さ (約 1ms の刻みの数 = 7500/テンポ)、BAS_PLST: チャンネルごとの MML の状態
 ; (オクターブ・長さ (1/32 単位)・音量 × 3)、BAS_PLCH: PLAY 中のチャンネル (位置 2・残り 1・数え 1・動作中 1 × 3)
 ; BAS_LASTKEY: INKEY$ の押した瞬間の判定用、BAS_CLK: CLICK の状態
+; BAS_LNPTR: 実行中の行番号を持つ変数のアドレス (0 なら行番号を出さない)
 ; カーソルとパレットは連続した番地が要るので、まとめて確保して EQU で分ける
 BAS_CX EQU BAS_CXY
 BAS_CY EQU BAS_CXY + 1
@@ -137,11 +138,21 @@ HALT
 JP .be_halt
 
 
+; @name BAS_LNINIT
+; @resident shared
+; @param_count 1
+; @calls BAS_WORK
+; HL = 実行中の行番号を持つ変数のアドレス (hub2sl の出力が各行の頭で行番号を書く)
+LD (BAS_LNPTR), HL
+RET
+
+
 ; @name BAS_ERROR
 ; @resident shared
 ; @param_count 1
-; @calls BAS_WORK,BAS_PNL,BAS_PSTRZ,BAS_PNUM,BAS_END
-; HL = エラー番号。改行して "Error <番号>" を出して止まる
+; @calls BAS_WORK,BAS_PNL,BAS_PSTRZ,BAS_UTOA,BAS_END
+; HL = エラー番号。Hu-BASIC と同じく、改行してから「<メッセージ> in <行番号>」、次の行に「Ok」を出して止まる
+; (メッセージの綴りは Hu-BASIC の実測。表にない番号は「Error <番号>」、行番号が分からなければ in を出さない)
 PUSH HL
 XOR A
 LD (BAS_RAW), A
@@ -149,13 +160,74 @@ LD (BAS_CSZ), A
 LD A, (BAS_CX)
 OR A
 CALL NZ, BAS_PNL
+POP DE              ; E = エラー番号
+LD HL, .ber_tab
+.ber_find
+LD A, (HL)
+OR A
+JP Z, .ber_unknown
+CP E
+JP Z, .ber_found
+.ber_skip
+INC HL
+LD A, (HL)
+OR A
+JP NZ, .ber_skip
+INC HL
+JP .ber_find
+.ber_found
+INC HL
+CALL BAS_PSTRZ
+JP .ber_line
+.ber_unknown
+PUSH DE
 LD HL, .ber_msg
 CALL BAS_PSTRZ
+POP DE
+LD H, 0
+LD L, E
+CALL BAS_UTOA
+CALL BAS_PSTRZ
+.ber_line
+LD HL, (BAS_LNPTR)
+LD A, H
+OR L
+JP Z, .ber_ok
+PUSH HL
+LD HL, .ber_in
+CALL BAS_PSTRZ
 POP HL
-CALL BAS_PNUM
+LD A, (HL)
+INC HL
+LD H, (HL)
+LD L, A
+CALL BAS_UTOA
+CALL BAS_PSTRZ
+.ber_ok
+CALL BAS_PNL
+LD HL, .ber_okmsg
+CALL BAS_PSTRZ
+CALL BAS_PNL
 JP BAS_END
-.ber_msg
-DB "Error", 0
+.ber_msg DB "Error ", 0
+.ber_in DB " in ", 0
+.ber_okmsg DB "Ok", 0
+; [番号][メッセージ 0 終端] の並び、0 で終わり
+.ber_tab
+DB 1, "NEXT without FOR", 0
+DB 3, "RETURN without GOSUB", 0
+DB 4, "Out of data", 0
+DB 5, "Illegal function call", 0
+DB 6, "Overflow", 0
+DB 7, "Out of memory", 0
+DB 9, "Subscript out of range", 0
+DB 10, "Duplicate definition", 0
+DB 11, "Division by zero", 0
+DB 13, "Type mismatch", 0
+DB 15, "String too long", 0
+DB 16, "String formula too complex", 0
+DB 36, "Format over", 0
+DB 0
 
 
 ; ============================================================ 画面の出力

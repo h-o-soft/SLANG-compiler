@@ -185,15 +185,21 @@ public sealed class HuLexer
         _pos += 2;
         long v = 0;
         int digits = 0;
+        bool tooLarge = false;
         while (_pos < _text.Length)
         {
             int d = DigitValue(_text[_pos]);
             if (d < 0 || d >= radix) break;
-            v = v * radix + d;
+            // 足す前に 65535 を超えるかを見る (桁が多いと long でも回り込むため)。超えても残りの桁は読み切る
+            if (!tooLarge)
+            {
+                v = v * radix + d;
+                if (v > 65535) tooLarge = true;
+            }
             digits++;
             _pos++;
         }
-        if (digits == 0 || v > 65535)
+        if (digits == 0 || tooLarge)
         {
             _diag.Error("HB0103", $"不正な {radix} 進数 {_text[start.._pos]}", At(start));
             v = 0;

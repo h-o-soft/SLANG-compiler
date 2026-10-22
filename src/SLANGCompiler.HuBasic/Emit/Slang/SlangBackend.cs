@@ -49,6 +49,7 @@ public sealed class SlangBackend : IHuBackend
     public static string HiddenName(string hidden)
     {
         if (hidden == HuLowerer.Temp) return "H_T";
+        if (hidden == HuLowerer.CurrentLine) return "H_LINE";
         if (hidden.StartsWith("DIM:")) return "H_DIM_" + Bare(hidden[4..]);
         if (hidden.StartsWith("UB:")) return "H_UB_" + Bare(hidden[3..]);
         return "H_" + hidden;
