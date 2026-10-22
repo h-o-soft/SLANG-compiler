@@ -217,6 +217,10 @@ public class HuBasicFrontendTests
     [InlineData("10 A=1", "HB0403")]                          // DEFINT なし → 浮動小数
     [InlineData("10 DEFINT A-Z:A!=1", "HB0403")]
     [InlineData("10 DEFINT A-Z:N=5:DIM A(N)", "HB0304")]      // 変数の上限
+    [InlineData("10 DEFINT A-Z:DIM A(32768*65535)", "HB0305")] // 定数の計算があふれても範囲外として検出
+    [InlineData("10 DEFINT A-Z:DIM A(65535*65535*65535)", "HB0305")]
+    [InlineData("10 DEFINT A-Z:DIM A(8192)", "HB0305")]
+    [InlineData("10 DEFINT A-Z:DIM A(-1)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A$(3)", "HB0306")]         // 文字列の配列
     [InlineData("10 DEFINT A-Z:A=5/2*2", "HB0402")]           // / の結果を算術に使う
     [InlineData("10 DEFINT A-Z:IF A/2>1 THEN 10", "HB0402")]  // / の結果を比べる
@@ -249,6 +253,9 @@ public class HuBasicFrontendTests
     [InlineData("10 DEFINT A-Z:LOCATE A/2,0")]         // 整数の引数
     [InlineData("10 DEFINT A-Z:A=(B/2)")]              // 括弧は位置を変えない
     public void Analyzer_AllowsDivisionWhereConvertedToInt(string program) => AnalyzeOk(program);
+
+    [Fact]
+    public void Analyzer_LargestArrayBoundIsAccepted() => AnalyzeOk("10 DEFINT A-Z:DIM A(8191)");
 
     [Fact]
     public void Analyzer_ScalarAndArrayWithSameNameAreSeparate()

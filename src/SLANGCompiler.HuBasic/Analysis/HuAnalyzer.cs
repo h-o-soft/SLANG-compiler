@@ -13,6 +13,7 @@ public sealed class HuAnalyzer
 {
     public const int DefaultDataBudget = 24 * 1024;
     public const int MaxArrayBytes = 16 * 1024;
+    public const int MaxArrayIndex = MaxArrayBytes / 2 - 1; // 8191
     public const int MaxDataBytes = 32767;
     public const int MaxNameLength = 28; // SLANG の名前の上限 32 から接頭辞の分を引く
 
@@ -152,33 +153,54 @@ public sealed class HuAnalyzer
                     continue;
                 }
                 CheckVarName(name, dim.Pos);
-                var bound = ConstValue(boundExpr);
-                if (bound == null)
+                if (ConstExprOnly(boundExpr) == false)
                 {
                     _diag.Error("HB0304", $"DIM {name} の上限は定数で書いてください (変数を含む上限は未対応)", dim.Pos);
                     continue;
                 }
-                if (bound < 0 || (bound.Value + 1) * 2 > MaxArrayBytes)
+                var bound = ConstValue(boundExpr);
+                // 上限の添字そのものを直接比べる (掛け算で大きさを計算して比べるとあふれるため)
+                if (bound == null || bound < 0 || bound > MaxArrayIndex)
                 {
-                    _diag.Error("HB0305", $"DIM {name}({bound}) の大きさが範囲外です", dim.Pos);
+                    _diag.Error("HB0305", $"DIM {name} の上限が範囲外です (0〜{MaxArrayIndex})", dim.Pos);
                     continue;
                 }
-                var storage = Math.Max(bound.Value, 10);
+                var storage = Math.Max((int)bound.Value, 10);
                 _arrays[name] = _arrays.TryGetValue(name, out var prev) ? Math.Max(prev, storage) : storage;
             }
         }
     }
 
-    /// <summary>定数だけの整数式なら値 (16 ビットで回り込ませない生の値)。それ以外は null。</summary>
-    public static int? ConstValue(HuExpr e) => e switch
+    /// <summary>
+    /// 定数だけの整数式なら値 (16 ビットで回り込ませない生の値。64 ビットで計算し、
+    /// 途中で ±2^40 を超えたら null として扱う)。それ以外は null。
+    /// </summary>
+    public static long? ConstValue(HuExpr e)
     {
-        HuNum n => n.Value,
-        HuUnary { Op: "-" } u => ConstValue(u.Operand) is int v ? -v : null,
-        HuUnary { Op: "+" } u => ConstValue(u.Operand),
-        HuBinary { Op: "+" } b => ConstValue(b.Left) is int l && ConstValue(b.Right) is int r ? l + r : null,
-        HuBinary { Op: "-" } b => ConstValue(b.Left) is int l && ConstValue(b.Right) is int r ? l - r : null,
-        HuBinary { Op: "*" } b => ConstValue(b.Left) is int l && ConstValue(b.Right) is int r ? l * r : null,
-        _ => null,
+        const long Limit = 1L << 40;
+        long? v = e switch
+        {
+            HuNum n => n.Value,
+            HuUnary { Op: "-" } u => ConstValue(u.Operand) is long x ? -x : null,
+            HuUnary { Op: "+" } u => ConstValue(u.Operand),
+            HuBinary { Op: "+" } b => ConstValue(b.Left) is long l && ConstValue(b.Right) is long r ? l + r : null,
+            HuBinary { Op: "-" } b => ConstValue(b.Left) is long l && ConstValue(b.Right) is long r ? l - r : null,
+            HuBinary { Op: "*" } b => ConstValue(b.Left) is long l && ConstValue(b.Right) is long r ? MulOrNull(l, r) : null,
+            _ => null,
+        };
+        return v is long w && (w > Limit || w < -Limit) ? null : v;
+
+        static long? MulOrNull(long l, long r)
+            => l != 0 && Math.Abs(r) > Limit / Math.Abs(l) ? null : l * r;
+    }
+
+    /// <summary>数値と + - * と単項 - + だけでできた式か (値の大きさは問わない)</summary>
+    private static bool ConstExprOnly(HuExpr e) => e switch
+    {
+        HuNum => true,
+        HuUnary { Op: "-" or "+" } u => ConstExprOnly(u.Operand),
+        HuBinary { Op: "+" or "-" or "*" } b => ConstExprOnly(b.Left) && ConstExprOnly(b.Right),
+        _ => false,
     };
 
     private void UseArray(string name, HuPos pos)
@@ -578,10 +600,10 @@ public sealed class HuAnalyzer
 
     private int ComputeStaticBytes(int dataBytes, int dataLineCount)
     {
-        int total = _intVars.Count * 2 + _strVars.Count * 256;
-        foreach (var bound in _arrays.Values) total += (bound + 1) * 2 + 4;
-        foreach (var lit in _literals) total += lit.Length + 1;
-        total += dataBytes + (dataLineCount + 1) * 4;
-        return total;
+        long total = _intVars.Count * 2L + _strVars.Count * 256L;
+        foreach (var bound in _arrays.Values) total += (bound + 1L) * 2 + 4;
+        foreach (var lit in _literals) total += lit.Length + 1L;
+        total += dataBytes + (dataLineCount + 1L) * 4;
+        return (int)Math.Min(total, int.MaxValue);
     }
 }

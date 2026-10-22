@@ -46,6 +46,22 @@ public class HuBasicEmitTests
         210 RETURN 60
         """;
 
+    /// <summary>MVP のすべての命令・関数を使うプログラム (自作)。ランタイムの契約と組み立ての通しに使う</summary>
+    private const string FullProgram = """
+        10 DEFINT A-Z:CLS:INIT:WIDTH 40:CLICK OFF:TEMPO 300
+        20 A$="AB":B$=A$+CHR$(65):C$=MID$(A$,1,1)+MID$(A$,2)+RIGHT$(A$,1)+HEXCHR$("41")+CGPAT$(65)+INKEY$
+        30 N=ASC(A$)+VAL("&H10")+STICK(0)+STRIG(1)+INP(&H3000):IF A$<B$ THEN N=N/3
+        40 READ D$,M:RESTORE 900:ON N RESTORE 900,910:PRINT USING "**###";M;:PRINT#0 "X";SPC(2);N,D$
+        50 COLOR 5,1:LOCATE 1,1:CFLASH 1:CFLASH:CSIZE 3:CSIZE:CGEN 1:CGEN 0
+        60 LINE(0,0)-(5,5),"*",B:LINE(0,0)-(5,3),"#":DEFCHR$(130)=HEXCHR$("FF"):OUT &H3000,65
+        70 PLAY "O4C5D#E:E:G":BEEP:PAUSE 1:X(1)=N\2+N MOD 3:DIM Y(4)
+        80 FOR I=1 TO 2:NEXT:GOSUB 100:ON N GOSUB 100:ON N GOTO 90
+        90 REPEAT:UNTIL 1:WHILE 0:WEND:END
+        100 RETURN
+        900 DATA AB,1
+        910 DATA C
+        """;
+
     // ------------------------------------------------------------ 展開
 
     [Fact]
@@ -147,7 +163,7 @@ public class HuBasicEmitTests
     {
         var sl = Transpile("10 DEFINT A-Z:READ A:RESTORE 20\n20 DATA 7").Output!;
         Assert.Contains("BAS_DATAINIT(H_DATA, H_DLINE);", sl);
-        Assert.Contains("ARRAY H_DLINE[] = { 20,0,$FFFF,2 };", sl);
+        Assert.Contains("ARRAY H_DLINE[] = { %20,%0,%$FFFF,%2 };", sl);
         Assert.Contains("V_A=BAS_READN();", sl);
         Assert.Contains("BAS_RESTORE(20);", sl);
     }
@@ -177,7 +193,7 @@ public class HuBasicEmitTests
     {
         var path = Path.Combine(RepoRoot(), "runtime", "libx1_basic.asm");
         var functions = RuntimeParser.Parse(File.ReadAllText(path), path).ToDictionary(f => f.Name);
-        var sl = Transpile(Stage1Program).Output!;
+        var sl = Transpile(Stage1Program).Output! + Transpile(FullProgram).Output!;
         var called = Regex.Matches(sl, @"\b(BAS_[A-Z0-9]+)\(").Select(m => m.Groups[1].Value).Distinct().ToList();
         Assert.NotEmpty(called);
         foreach (var name in called)
@@ -188,6 +204,20 @@ public class HuBasicEmitTests
             // @calls に書いた依存がすべて (どこかのランタイムに) 存在するかは組み立ての通しで確かめる
         }
         Assert.True(functions["BAS_FORPUSH"].CalleeCleanup, "4 引数の BAS_FORPUSH は callee cleanup");
+        Assert.True(functions["BAS_TLINE"].CalleeCleanup, "6 引数の BAS_TLINE は callee cleanup");
+        // ランタイム内部の @calls もすべて、このファイルか x1native の env のライブラリにある
+        var root = RepoRoot();
+        var envLibs = EnvironmentLoader.Load(Path.Combine(root, "runtime", "env", "x1native.env")).Libraries;
+        var all = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var lib in envLibs)
+        {
+            var lp = Path.Combine(root, "runtime", Path.GetFileName(lib));
+            if (File.Exists(lp))
+                foreach (var f in RuntimeParser.Parse(File.ReadAllText(lp), lp)) all.Add(f.Name);
+        }
+        foreach (var f in functions.Values)
+            foreach (var dep in f.Dependencies)
+                Assert.True(all.Contains(dep), $"{f.Name} の @calls {dep} がどのライブラリにもない");
     }
 
     [Theory]
@@ -212,6 +242,8 @@ public class HuBasicEmitTests
         {
             var sl = Path.Combine(dir, "PROG.SL");
             File.WriteAllText(sl, Transpile(Stage1Program).Output!);
+            var sl2 = Path.Combine(dir, "FULL.SL");
+            File.WriteAllText(sl2, Transpile(FullProgram).Output!);
             var psi = new ProcessStartInfo("dotnet")
             {
                 WorkingDirectory = dir,
@@ -219,24 +251,65 @@ public class HuBasicEmitTests
                 RedirectStandardError = true,
                 UseShellExecute = false,
             };
-            psi.Environment["SLANG_HOME"] = root;
-            psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
-            foreach (var a in new[] { "run", "--project", Path.Combine(root, "src", "SLANGCompiler.Build", "SLANGCompiler.Build.csproj"),
-                         "-c", "Release", "--", sl, "-E", "x1native", "--asm", asmPath, "-o", Path.Combine(dir, "PROG") })
-                psi.ArgumentList.Add(a);
-            using var proc = Process.Start(psi)!;
-            var so = proc.StandardOutput.ReadToEndAsync();
-            var se = proc.StandardError.ReadToEndAsync();
-            Assert.True(proc.WaitForExit(180_000), "slangbuild timed out");
-            Assert.True(proc.ExitCode == 0, $"slangbuild failed:\n{so.Result}\n{se.Result}");
-            var bin = Path.Combine(dir, "PROG.bin");
-            Assert.True(File.Exists(bin), "PROG.bin がない");
-            // x1native: $1000 から予約領域 $FFE0 の手前に収まる
-            Assert.True(0x1000 + new FileInfo(bin).Length < 0xFFE0);
+            RunSlangbuild(root, dir, sl, asmPath, Path.Combine(dir, "PROG"));
+            AssertBuilt(Path.Combine(dir, "PROG"));
+            RunSlangbuild(root, dir, sl2, asmPath, Path.Combine(dir, "FULL"));
+            AssertBuilt(Path.Combine(dir, "FULL"));
         }
         finally
         {
             try { Directory.Delete(dir, true); } catch { }
         }
+    }
+
+    private static void RunSlangbuild(string root, string dir, string sl, string asmPath, string outBase)
+    {
+        var psi = new ProcessStartInfo("dotnet")
+        {
+            WorkingDirectory = dir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        psi.Environment["SLANG_HOME"] = root;
+        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        foreach (var a in new[] { "run", "--project", Path.Combine(root, "src", "SLANGCompiler.Build", "SLANGCompiler.Build.csproj"),
+                     "-c", "Release", "--", sl, "-E", "x1native", "--asm", asmPath, "--keep-asm", "-o", outBase })
+            psi.ArgumentList.Add(a);
+        using var proc = Process.Start(psi)!;
+        var so = proc.StandardOutput.ReadToEndAsync();
+        var se = proc.StandardError.ReadToEndAsync();
+        Assert.True(proc.WaitForExit(180_000), "slangbuild timed out");
+        Assert.True(proc.ExitCode == 0, $"slangbuild failed:\n{so.Result}\n{se.Result}");
+    }
+
+    /// <summary>bin ができていて、作業領域 (__WORKEND__) まで含めて $1000〜予約領域 $FFE0 の手前に収まる</summary>
+    private static void AssertBuilt(string outBase)
+    {
+        var bin = outBase + ".bin";
+        Assert.True(File.Exists(bin), $"{bin} がない");
+        var lst = outBase + ".LST";
+        Assert.True(File.Exists(lst), $"{lst} がない");
+        var workEnd = SLANGCompiler.HuBasic.CLI.Program.ReadWorkEnd(lst);
+        Assert.NotNull(workEnd);
+        Assert.True(0x1000 + new FileInfo(bin).Length < 0xFFE0);
+        Assert.True(workEnd < 0xFFE0, $"作業領域の終わり ${workEnd:X4} が予約領域にかかる");
+    }
+
+    /// <summary>DATA の行の表は 2 バイトずつの要素としてアセンブルされる (初期値の並びの既定は 1 バイト)</summary>
+    [Fact]
+    public void Slang_DataLineTableIsAssembledAsWords()
+    {
+        var sl = Transpile("10 DEFINT A-Z:READ A\n900 DATA 7").Output!;
+        var diag = new DiagnosticBag();
+        var tokens = new Lexer.Preprocessor(diag).Process(new Lexer.Lexer(sl).Tokenize(), ".");
+        var ast = new Parser.Parser(tokens, diag).ParseCompilationUnit();
+        var analyzer = new Semantics.SemanticAnalyzer(diag);
+        analyzer.Analyze(ast);
+        var asm = new CodeGen.CodeGenerator(new IR.IrGenerator(diag, analyzer.Symbols).Generate(ast)).Generate();
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        var table = asm.Split('\n').SkipWhile(l => !l.Contains("_V_H_DLINE:")).Skip(1).First();
+        Assert.Contains("$84,$03", table.Replace(" ", ""));   // 900 = $0384 (下位・上位の順)
+        Assert.Contains("$FF,$FF", table.Replace(" ", ""));
     }
 }

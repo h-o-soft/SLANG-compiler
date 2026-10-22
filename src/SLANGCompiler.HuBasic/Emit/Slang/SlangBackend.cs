@@ -86,7 +86,8 @@ public sealed class SlangBackend : IHuBackend
             }
             dl.Add(0xFFFF);
             dl.Add(_prog.DataBytes.Length);
-            _sb.AppendLine($"ARRAY H_DLINE[] = {{ {string.Join(",", dl.Select(Hex))} }};");
+            // 初期値の並び (CODE リスト) の要素は既定で 1 バイト。2 バイトの要素は % を付ける
+            _sb.AppendLine($"ARRAY H_DLINE[] = {{ {string.Join(",", dl.Select(v => "%" + Hex(v)))} }};");
         }
     }
 
@@ -261,7 +262,7 @@ public sealed class SlangBackend : IHuBackend
         throw new InvalidOperationException(e.ToString());
     }
 
-    private static bool IsNonZeroConst(HuExpr e) => HuAnalyzer.ConstValue(e) is int v && (v & 0xFFFF) != 0;
+    private static bool IsNonZeroConst(HuExpr e) => HuAnalyzer.ConstValue(e) is long v && (v & 0xFFFF) != 0;
 
     /// <summary>文字列の式 (長さ付きバッファへのポインタ)</summary>
     private string Str(HuExpr e)

@@ -196,7 +196,7 @@ public sealed class HuLowerer
                 foreach (var (name, bound) in d.Arrays)
                 {
                     if (!_prog.Arrays.ContainsKey(name)) continue;
-                    var n = HuAnalyzer.ConstValue(bound) ?? 0;
+                    var n = (int)(HuAnalyzer.ConstValue(bound) ?? 0);
                     Call("BAS_DIM", new FHiddenAddrArg(DimState(name)), new FHiddenAddrArg(UpperBound(name)), I(n));
                 }
                 break;

@@ -24,7 +24,7 @@ class Program
             return 0;
         }
 
-        string? input = null, output = null, checkBin = null;
+        string? input = null, output = null, checkBin = null, checkLst = null;
         string encoding = "utf8";
         var opt = new HuTranspileOptions();
         for (int i = 0; i < args.Length; i++)
@@ -71,6 +71,9 @@ class Program
                 case "--check-bin":
                     checkBin = NextArg();
                     break;
+                case "--lst":
+                    checkLst = NextArg();
+                    break;
                 default:
                     if (a.StartsWith('-')) return Fail($"不明なオプション {a}");
                     input = a;
@@ -78,7 +81,7 @@ class Program
             }
         }
 
-        if (checkBin != null) return CheckBin(checkBin);
+        if (checkBin != null) return CheckBin(checkBin, checkLst);
         if (input == null) return Fail("入力ファイルを指定してください");
         if (!File.Exists(input)) return Fail($"入力ファイルがありません: {input}");
 
@@ -93,20 +96,44 @@ class Program
         return 0;
     }
 
-    /// <summary>組み立て後の bin が、配置先から予約領域の手前に収まるか</summary>
-    static int CheckBin(string path)
+    /// <summary>
+    /// 組み立て後のプログラムが、配置先から予約領域の手前に収まるか。
+    /// bin の大きさだけでなく、ファイルに含まれない作業領域 (SLANG の __WORK__ から __WORKEND__ まで。
+    /// 起動時に 0 で埋められる) の終わりも見る。__WORKEND__ はアセンブラの LST (既定は bin と同じ名前の .LST) から読む。
+    /// </summary>
+    static int CheckBin(string path, string? lstPath)
     {
         if (!File.Exists(path)) return Fail($"bin がありません: {path}");
-        long end = LoadAddress + new FileInfo(path).Length;
+        long binEnd = LoadAddress + new FileInfo(path).Length;
+        lstPath ??= Path.ChangeExtension(path, ".LST");
+        if (!File.Exists(lstPath))
+            return Fail($"LST がありません: {lstPath} (--lst で指定してください。作業領域の終わりを確かめるのに要ります)");
+        var workEnd = ReadWorkEnd(lstPath);
+        if (workEnd == null)
+            return Fail($"{lstPath} に __WORKEND__ が見つかりません");
+        long end = Math.Max(binEnd, workEnd.Value);
         if (end > ReservedStart)
         {
             Console.Error.WriteLine(
-                $"hub2sl: error HB0312: {path} の末尾 ${end:X4} が予約領域 ${ReservedStart:X4} を越えています " +
-                $"({end - ReservedStart} バイト超過)");
+                $"hub2sl: error HB0312: プログラムの終わり ${end:X4} (bin ${binEnd:X4}、作業領域 ${workEnd:X4}) が " +
+                $"予約領域 ${ReservedStart:X4} を越えています ({end - ReservedStart} バイト超過)");
             return 1;
         }
-        Console.WriteLine($"hub2sl: {path} は ${LoadAddress:X4}-${end - 1:X4} に収まります (残り {ReservedStart - end} バイト)");
+        Console.WriteLine($"hub2sl: ${LoadAddress:X4}-${end - 1:X4} に収まります " +
+                          $"(bin ${binEnd:X4}、作業領域 ${workEnd:X4}、残り {ReservedStart - end} バイト)");
         return 0;
+    }
+
+    /// <summary>AILZ80ASM の LST の「<番地>  __WORKEND__ EQU ...」の行から番地を読む</summary>
+    internal static long? ReadWorkEnd(string lstPath)
+    {
+        var re = new System.Text.RegularExpressions.Regex(@"^\s*(?:[0-9A-F]{6}\s+)?([0-9A-F]{4})\s+__WORKEND__\s+EQU\b");
+        foreach (var line in File.ReadLines(lstPath))
+        {
+            var m = re.Match(line);
+            if (m.Success) return Convert.ToInt64(m.Groups[1].Value, 16);
+        }
+        return null;
     }
 
     static int Fail(string message)
@@ -120,7 +147,7 @@ class Program
         Console.Error.WriteLine($"hub2sl {Version} - Hu-BASIC to SLANG transpiler");
         Console.Error.WriteLine();
         Console.Error.WriteLine("Usage: hub2sl INPUT.BAS [-o OUT.SL] [options]");
-        Console.Error.WriteLine("       hub2sl --check-bin PROG.bin");
+        Console.Error.WriteLine("       hub2sl --check-bin PROG.bin [--lst PROG.LST]");
         Console.Error.WriteLine();
         Console.Error.WriteLine("Options:");
         Console.Error.WriteLine("  -o <path>                出力する SLANG のファイル (既定: 入力の拡張子を .SL に)");
@@ -129,6 +156,7 @@ class Program
         Console.Error.WriteLine("  --input-encoding <enc>   utf8 (既定) / sjis");
         Console.Error.WriteLine("  --emit-line-comments     元の行をコメントで出す");
         Console.Error.WriteLine("  --data-budget <bytes>    静的データの上限 (既定 24576)");
-        Console.Error.WriteLine("  --check-bin <bin>        組み立て後の bin の大きさを検査する");
+        Console.Error.WriteLine("  --check-bin <bin>        組み立て後の大きさを検査する (bin と、LST の __WORKEND__)");
+        Console.Error.WriteLine("  --lst <lst>              --check-bin で読む LST (既定: bin と同じ名前の .LST)");
     }
 }
