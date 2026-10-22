@@ -549,6 +549,47 @@ LD H, 0
 RET
 
 
+; @name TATTR
+; @resident shared
+; @param_count 1
+; @calls sWORK,AT_VRCALC
+; HL = 属性値 ($0000-$00FF のみ有効)、 戻り HL=1 成功 / HL=0 検証失敗
+; 現在のテキストカーソル位置のセルの attribute だけを 1 バイト書く。
+; 文字も漢字セレクタも書かず、 カーソルも進めない。 状態も持たない。
+; bit7=X2 / bit6=Y2 / bit5=PCG / bit4=点滅 / bit3=反転 / bit2-0=BRG 色。
+; 全ビットがハードウェア上の意味を持つのでマスクせずそのまま書く。
+; 検証失敗時は I/O を一切行わない。 DI/EI もしない (= 単一 OUT なので不要)。
+; x1native は cursor を (X,Y) = sXYADR で持つので AT_VRCALC で offset 化してから
+; x1 (LSX) 版と同一の表示範囲判定を行う (= env 間で受理/拒否を完全一致させる)。
+; stack を使わないので SP に一切触れない。
+LD A, H
+OR A
+JR NZ, .tattr_ng
+LD D, L                ; D = 属性バイト退避 (= AT_VRCALC は DE を保存する)
+LD HL, (sXYADR)        ; L = X、 H = Y
+CALL AT_VRCALC         ; HL = Y * width + X (= text VRAM 内 offset)
+LD A, (AT_WIDTH)
+LD BC, 1000            ; 40 桁: 有効 offset 0-999
+CP 41
+JR C, .tattr_lim
+LD BC, 2000            ; 80 桁: 有効 offset 0-1999
+.tattr_lim
+AND A
+SBC HL, BC
+JR NC, .tattr_ng       ; offset >= limit → 表示範囲外
+ADD HL, BC             ; offset を復元
+LD B, H
+LD C, L
+SET 5, B               ; BC = $2000 + offset (= canonical attribute port)
+LD A, D
+OUT (C), A             ; ちょうど 1 バイト OUT
+LD HL, 1
+RET
+.tattr_ng
+LD HL, 0
+RET
+
+
 ; @name PRMODE
 ; @resident shared
 ; @param_count 1
