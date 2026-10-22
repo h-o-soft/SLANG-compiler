@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>SLANGCompiler.HuBasic</RootNamespace>
+    <AssemblyName>hub2sl</AssemblyName>
+    <Copyright>Copyright (c) 2022-2026 OGINO Hiroshi / H.O SOFT</Copyright>
+    <Company>H.O SOFT</Company>
+    <Version>0.27.0</Version>
+    <AssemblyTitle>Hu-BASIC to SLANG transpiler</AssemblyTitle>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="SLANGCompiler.Tests" />
+  </ItemGroup>
+</Project>

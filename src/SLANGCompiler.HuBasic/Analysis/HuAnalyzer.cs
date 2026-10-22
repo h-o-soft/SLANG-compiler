@@ -1,0 +1,587 @@
+using SLANGCompiler.HuBasic.Parsing;
+
+namespace SLANGCompiler.HuBasic.Analysis;
+
+/// <summary>
+/// 構文木を検査して <see cref="HuProgram"/> を作る。
+/// - 行の並べ替え・重複・飛び先の検査
+/// - 型 (整数 / 文字列) の決定と検査、浮動小数の拒否、'/' の位置の検査
+/// - REPEAT/UNTIL・WHILE/WEND の字面の対応、FOR が回らないときの飛び先の走査
+/// - 配列・文字列リテラル・DATA の表、GOSUB の戻り先 ID、静的データの合計
+/// </summary>
+public sealed class HuAnalyzer
+{
+    public const int DefaultDataBudget = 24 * 1024;
+    public const int MaxArrayBytes = 16 * 1024;
+    public const int MaxDataBytes = 32767;
+    public const int MaxNameLength = 28; // SLANG の名前の上限 32 から接頭辞の分を引く
+
+    private readonly HuDiagnosticBag _diag;
+    private readonly int _dataBudget;
+
+    private readonly HashSet<char> _intLetters = new();
+    private readonly SortedSet<string> _intVars = new(StringComparer.Ordinal);
+    private readonly SortedSet<string> _strVars = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _arrays = new(StringComparer.Ordinal);
+    private readonly List<string> _literals = new();
+    private readonly Dictionary<HuFor, int> _forIds = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<HuFor, (HuNext Next, int Part)> _forExits = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<HuStmt, int> _gosubIds = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<HuStmt, HuStmt> _loopPairs = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<HuStmt, int> _loopIds = new(ReferenceEqualityComparer.Instance);
+    private HashSet<int> _lineNumbers = new();
+
+    private HuAnalyzer(HuDiagnosticBag diag, int dataBudget)
+    {
+        _diag = diag;
+        _dataBudget = dataBudget;
+    }
+
+    public static HuProgram Analyze(HuAstProgram ast, HuDiagnosticBag diag, int dataBudget = DefaultDataBudget)
+        => new HuAnalyzer(diag, dataBudget).Run(ast);
+
+    private HuProgram Run(HuAstProgram ast)
+    {
+        var lines = SortLines(ast.Lines);
+        _lineNumbers = lines.Select(l => l.Number).ToHashSet();
+
+        // DEFINT は位置に関係なくプログラム全体に効くものとして先に集める
+        foreach (var s in AllStatements(lines))
+            if (s is HuDefint d)
+                foreach (var (from, to) in d.Ranges)
+                    for (char c = from; c <= to; c++) _intLetters.Add(c);
+
+        CollectDims(lines);
+        foreach (var line in lines)
+            foreach (var s in line.Statements)
+                CheckStatement(s);
+
+        MatchLoops(lines);
+        var (dataBytes, dataLines) = BuildData(lines);
+
+        var program = new HuProgram
+        {
+            Lines = lines,
+            IntVars = _intVars.ToList(),
+            StrVars = _strVars.ToList(),
+            Arrays = new Dictionary<string, int>(_arrays),
+            Literals = _literals,
+            DataBytes = dataBytes,
+            DataLines = dataLines,
+            ForIds = _forIds,
+            ForExits = _forExits,
+            GosubIds = _gosubIds,
+            LoopPairs = _loopPairs,
+            LoopIds = _loopIds,
+            StaticDataBytes = ComputeStaticBytes(dataBytes.Length, dataLines.Count),
+        };
+        if (program.StaticDataBytes > _dataBudget)
+        {
+            _diag.Error("HB0309",
+                $"静的なデータの合計 {program.StaticDataBytes} バイトが上限 {_dataBudget} バイトを超えています " +
+                $"(整数変数 {_intVars.Count}、配列 {_arrays.Count}、文字列変数 {_strVars.Count}、" +
+                $"文字列リテラル {_literals.Count}、DATA {dataBytes.Length} バイト)",
+                HuPos.None);
+        }
+        return program;
+    }
+
+    // ------------------------------------------------------------ 行
+
+    private List<HuLine> SortLines(IReadOnlyList<HuLine> lines)
+    {
+        for (int i = 1; i < lines.Count; i++)
+        {
+            if (lines[i].Number < lines[i - 1].Number)
+            {
+                _diag.Warning("HB0501", "行番号が昇順に並んでいないので並べ替えます", lines[i].Pos);
+                break;
+            }
+        }
+        var seen = new Dictionary<int, HuLine>();
+        foreach (var l in lines)
+        {
+            if (seen.ContainsKey(l.Number))
+                _diag.Error("HB0502", $"行番号 {l.Number} が 2 回以上あります", l.Pos);
+            else
+                seen[l.Number] = l;
+        }
+        return seen.Values.OrderBy(l => l.Number).ToList();
+    }
+
+    /// <summary>プログラム順 (IF の THEN 節、ELSE 節の順) にすべての文を並べる</summary>
+    public static IEnumerable<HuStmt> AllStatements(IEnumerable<HuLine> lines)
+    {
+        foreach (var l in lines)
+            foreach (var s in Flatten(l.Statements))
+                yield return s;
+    }
+
+    private static IEnumerable<HuStmt> Flatten(IEnumerable<HuStmt> stmts)
+    {
+        foreach (var s in stmts)
+        {
+            yield return s;
+            if (s is HuIf f)
+            {
+                foreach (var t in Flatten(f.Then)) yield return t;
+                if (f.Else != null)
+                    foreach (var e in Flatten(f.Else)) yield return e;
+            }
+        }
+    }
+
+    private void CheckTarget(int line, HuPos pos)
+    {
+        if (!_lineNumbers.Contains(line))
+            _diag.Error("HB0503", $"飛び先の行 {line} がありません", pos);
+    }
+
+    // ------------------------------------------------------------ DIM と配列
+
+    private void CollectDims(List<HuLine> lines)
+    {
+        foreach (var s in AllStatements(lines))
+        {
+            if (s is not HuDim dim) continue;
+            foreach (var (name, boundExpr) in dim.Arrays)
+            {
+                if (name.EndsWith('$'))
+                {
+                    _diag.Error("HB0306", $"文字列の配列 {name} は未対応です", dim.Pos);
+                    continue;
+                }
+                CheckVarName(name, dim.Pos);
+                var bound = ConstValue(boundExpr);
+                if (bound == null)
+                {
+                    _diag.Error("HB0304", $"DIM {name} の上限は定数で書いてください (変数を含む上限は未対応)", dim.Pos);
+                    continue;
+                }
+                if (bound < 0 || (bound.Value + 1) * 2 > MaxArrayBytes)
+                {
+                    _diag.Error("HB0305", $"DIM {name}({bound}) の大きさが範囲外です", dim.Pos);
+                    continue;
+                }
+                var storage = Math.Max(bound.Value, 10);
+                _arrays[name] = _arrays.TryGetValue(name, out var prev) ? Math.Max(prev, storage) : storage;
+            }
+        }
+    }
+
+    /// <summary>定数だけの整数式なら値 (16 ビットで回り込ませない生の値)。それ以外は null。</summary>
+    public static int? ConstValue(HuExpr e) => e switch
+    {
+        HuNum n => n.Value,
+        HuUnary { Op: "-" } u => ConstValue(u.Operand) is int v ? -v : null,
+        HuUnary { Op: "+" } u => ConstValue(u.Operand),
+        HuBinary { Op: "+" } b => ConstValue(b.Left) is int l && ConstValue(b.Right) is int r ? l + r : null,
+        HuBinary { Op: "-" } b => ConstValue(b.Left) is int l && ConstValue(b.Right) is int r ? l - r : null,
+        HuBinary { Op: "*" } b => ConstValue(b.Left) is int l && ConstValue(b.Right) is int r ? l * r : null,
+        _ => null,
+    };
+
+    private void UseArray(string name, HuPos pos)
+    {
+        if (name.EndsWith('$'))
+        {
+            _diag.Error("HB0306", $"文字列の配列 {name} は未対応です", pos);
+            return;
+        }
+        CheckVarName(name, pos);
+        if (!_arrays.ContainsKey(name)) _arrays[name] = 10; // DIM なし → 上限 10
+    }
+
+    // ------------------------------------------------------------ 変数と型
+
+    private void CheckVarName(string name, HuPos pos)
+    {
+        var bare = name.TrimEnd('$', '%', '!', '#');
+        if (bare.Length > MaxNameLength)
+            _diag.Error("HB0310", $"変数名 {name} が長すぎます ({MaxNameLength} 文字まで)", pos);
+        if (name.EndsWith('!') || name.EndsWith('#'))
+            _diag.Error("HB0403", $"浮動小数の変数 {name} は未対応です (整数と文字列のみ)", pos);
+        else if (!name.EndsWith('$') && !name.EndsWith('%') && !_intLetters.Contains(name[0]))
+            _diag.Error("HB0403",
+                $"変数 {name} は浮動小数になります (DEFINT で整数にするか、% を付けてください)", pos);
+    }
+
+    private static HuType VarType(string name) => name.EndsWith('$') ? HuType.Str : HuType.Int;
+
+    private void UseVar(string name, HuPos pos)
+    {
+        CheckVarName(name, pos);
+        if (name.EndsWith('$')) _strVars.Add(name);
+        else _intVars.Add(name);
+    }
+
+    private void AddLiteral(string text)
+    {
+        if (!_literals.Contains(text)) _literals.Add(text);
+    }
+
+    /// <summary>
+    /// 式を検査して型を付ける。intConv は「この式の値がその場で整数に変換される位置」か
+    /// ('/' はこの位置の最上位でだけ許す)。
+    /// </summary>
+    private HuType CheckExpr(HuExpr e, bool intConv)
+    {
+        HuType t;
+        switch (e)
+        {
+            case HuNum:
+                t = HuType.Int;
+                break;
+            case HuStr s:
+                AddLiteral(s.Text);
+                t = HuType.Str;
+                break;
+            case HuVar v:
+                UseVar(v.Name, v.Pos);
+                t = VarType(v.Name);
+                break;
+            case HuIndex ix:
+                UseArray(ix.Name, ix.Pos);
+                ExpectInt(ix.Index, intConv: true);
+                t = HuType.Int;
+                break;
+            case HuUnary u:
+                ExpectInt(u.Operand, intConv: u.Op == "NOT");
+                t = HuType.Int;
+                break;
+            case HuBinary b:
+                t = CheckBinary(b, intConv);
+                break;
+            case HuCall c:
+                t = CheckCall(c);
+                break;
+            default:
+                t = HuType.Int;
+                break;
+        }
+        e.Type = t;
+        return t;
+    }
+
+    private void ExpectInt(HuExpr e, bool intConv)
+    {
+        if (CheckExpr(e, intConv) != HuType.Int)
+            _diag.Error("HB0404", "整数の式が必要です (文字列が書かれています)", e.Pos);
+    }
+
+    private void ExpectStr(HuExpr e)
+    {
+        if (CheckExpr(e, false) != HuType.Str)
+            _diag.Error("HB0404", "文字列の式が必要です (整数が書かれています)", e.Pos);
+    }
+
+    private HuType CheckBinary(HuBinary b, bool intConv)
+    {
+        switch (b.Op)
+        {
+            case "+":
+            {
+                var lt = CheckExpr(b.Left, false);
+                var rt = CheckExpr(b.Right, false);
+                if (lt != rt)
+                    _diag.Error("HB0404", "文字列と整数を + でつなげません", b.Pos);
+                return lt;
+            }
+            case "=":
+            case "<>":
+            case "<":
+            case ">":
+            case "<=":
+            case ">=":
+            {
+                var lt = CheckExpr(b.Left, false);
+                var rt = CheckExpr(b.Right, false);
+                if (lt != rt)
+                    _diag.Error("HB0404", "文字列と整数は比べられません", b.Pos);
+                return HuType.Int;
+            }
+            case "AND":
+            case "OR":
+            case "XOR":
+                ExpectInt(b.Left, intConv: true);
+                ExpectInt(b.Right, intConv: true);
+                return HuType.Int;
+            case "/":
+                if (!intConv)
+                    _diag.Error("HB0402",
+                        "この位置の '/' は浮動小数の中間値が必要なので未対応です " +
+                        "(代入の右辺・ビット演算・添字・整数の引数の位置でだけ使えます)", b.Pos);
+                ExpectInt(b.Left, intConv: false);
+                ExpectInt(b.Right, intConv: false);
+                return HuType.Int;
+            default: // - * \ MOD
+                ExpectInt(b.Left, intConv: false);
+                ExpectInt(b.Right, intConv: false);
+                return HuType.Int;
+        }
+    }
+
+    private HuType CheckCall(HuCall c)
+    {
+        var a = c.Args;
+        switch (c.Name)
+        {
+            case "INP":
+            case "STICK":
+            case "STRIG":
+                ExpectInt(a[0], intConv: true);
+                return HuType.Int;
+            case "ASC":
+            case "VAL":
+                ExpectStr(a[0]);
+                return HuType.Int;
+            case "CHR$":
+            case "CGPAT$":
+                ExpectInt(a[0], intConv: true);
+                return HuType.Str;
+            case "HEXCHR$":
+                ExpectStr(a[0]);
+                return HuType.Str;
+            case "MID$":
+            case "RIGHT$":
+                ExpectStr(a[0]);
+                for (int i = 1; i < a.Count; i++) ExpectInt(a[i], intConv: true);
+                return HuType.Str;
+            case "INKEY$":
+                return HuType.Str;
+            default:
+                return HuType.Int;
+        }
+    }
+
+    // ------------------------------------------------------------ 文
+
+    private int _gosubCount;
+    private int _forCount;
+
+    private void CheckStatement(HuStmt s)
+    {
+        switch (s)
+        {
+            case HuAssign asg:
+            {
+                var tt = CheckExpr(asg.Target, false);
+                var vt = CheckExpr(asg.Value, intConv: tt == HuType.Int);
+                if (tt != vt)
+                    _diag.Error("HB0404", "代入の左右の型が違います", asg.Pos);
+                break;
+            }
+            case HuGoto g:
+                CheckTarget(g.Line, g.Pos);
+                break;
+            case HuGosub g:
+                CheckTarget(g.Line, g.Pos);
+                _gosubIds[g] = _gosubCount++;
+                break;
+            case HuReturn r:
+                if (r.Line is int rl) CheckTarget(rl, r.Pos);
+                break;
+            case HuOnJump on:
+                ExpectInt(on.Selector, intConv: false);
+                foreach (var l in on.Lines) CheckTarget(l, on.Pos);
+                if (on.Kind == "GOSUB") _gosubIds[on] = _gosubCount++;
+                break;
+            case HuIf f:
+                ExpectInt(f.Cond, intConv: false);
+                foreach (var t in f.Then) CheckStatement(t);
+                if (f.Else != null)
+                    foreach (var e in f.Else) CheckStatement(e);
+                break;
+            case HuFor fr:
+                UseVar(fr.Var, fr.Pos);
+                if (VarType(fr.Var) != HuType.Int)
+                    _diag.Error("HB0404", "FOR の変数は整数にしてください", fr.Pos);
+                ExpectInt(fr.From, intConv: true);
+                ExpectInt(fr.To, intConv: false);
+                if (fr.Step != null) ExpectInt(fr.Step, intConv: false);
+                _forIds[fr] = _forCount++;
+                break;
+            case HuNext nx:
+                foreach (var v in nx.Vars) UseVar(v, nx.Pos);
+                break;
+            case HuUntil u:
+                ExpectInt(u.Cond, intConv: false);
+                break;
+            case HuWhile w:
+                ExpectInt(w.Cond, intConv: false);
+                break;
+            case HuRead rd:
+                foreach (var t in rd.Targets) CheckExpr(t, false);
+                break;
+            case HuRestore rs:
+                if (rs.Line is int line) CheckTarget(line, rs.Pos);
+                break;
+            case HuOut o:
+                ExpectInt(o.Port, intConv: true);
+                ExpectInt(o.Value, intConv: true);
+                break;
+            case HuPrint p:
+                if (p.Using != null) ExpectStr(p.Using);
+                foreach (var item in p.Items)
+                {
+                    if (item is HuPrintExpr pe)
+                    {
+                        var t = CheckExpr(pe.Expr, false);
+                        if (p.Using != null && t != HuType.Int)
+                            _diag.Error("HB0406", "PRINT USING は数値の書式だけに対応しています", pe.Expr.Pos);
+                    }
+                    else if (item is HuPrintSpc sp)
+                        ExpectInt(sp.Count, intConv: true);
+                }
+                break;
+            case HuCommand cmd:
+                CheckCommand(cmd);
+                break;
+            case HuLineText lt:
+                ExpectInt(lt.X1, true);
+                ExpectInt(lt.Y1, true);
+                ExpectInt(lt.X2, true);
+                ExpectInt(lt.Y2, true);
+                ExpectStr(lt.Char);
+                break;
+            case HuDefChr dc:
+                ExpectInt(dc.Code, true);
+                ExpectStr(dc.Pattern);
+                break;
+            case HuDim:
+            case HuDefint:
+            case HuData:
+            case HuRem:
+            case HuRepeat:
+            case HuWend:
+            case HuEnd:
+            case HuInit:
+                break;
+        }
+    }
+
+    private void CheckCommand(HuCommand cmd)
+    {
+        if (cmd.Name == "PLAY")
+        {
+            ExpectStr(cmd.Args[0]!);
+            return;
+        }
+        foreach (var a in cmd.Args)
+            if (a != null) ExpectInt(a, intConv: true);
+        if (cmd.Name == "WIDTH" && cmd.Args[0] is HuNum w && w.Value != 40 && w.Value != 80)
+            _diag.Error("HB0311", "WIDTH は 40 か 80 です", cmd.Pos);
+    }
+
+    // ------------------------------------------------------------ ループの対応
+
+    private void MatchLoops(List<HuLine> lines)
+    {
+        var all = AllStatements(lines).ToList();
+        var stack = new Stack<HuStmt>();
+        int loopId = 0;
+        foreach (var s in all)
+        {
+            switch (s)
+            {
+                case HuRepeat:
+                case HuWhile:
+                    _loopIds[s] = loopId++;
+                    stack.Push(s);
+                    break;
+                case HuUntil u:
+                    if (stack.Count > 0 && stack.Peek() is HuRepeat rp)
+                    {
+                        stack.Pop();
+                        _loopPairs[rp] = u;
+                        _loopPairs[u] = rp;
+                    }
+                    else
+                        _diag.Error("HB0602", "UNTIL に対応する REPEAT がありません", u.Pos);
+                    break;
+                case HuWend w:
+                    if (stack.Count > 0 && stack.Peek() is HuWhile wh)
+                    {
+                        stack.Pop();
+                        _loopPairs[wh] = w;
+                        _loopPairs[w] = wh;
+                    }
+                    else
+                        _diag.Error("HB0602", "WEND に対応する WHILE がありません", w.Pos);
+                    break;
+            }
+        }
+        foreach (var open in stack)
+            _diag.Error("HB0603", open is HuRepeat ? "REPEAT が UNTIL で閉じられていません" : "WHILE が WEND で閉じられていません", open.Pos);
+
+        // FOR が 1 回も回らないときの飛び先: 後ろを字面の順に走査し、間の FOR と NEXT の入れ子を
+        // 数えながら「同じ変数を名指しする NEXT の部分」か「同じ深さの変数なしの NEXT」を探す
+        for (int i = 0; i < all.Count; i++)
+        {
+            if (all[i] is not HuFor fr) continue;
+            int depth = 0;
+            bool found = false;
+            for (int j = i + 1; j < all.Count && !found; j++)
+            {
+                if (all[j] is HuFor) { depth++; continue; }
+                if (all[j] is not HuNext nx) continue;
+                int parts = Math.Max(1, nx.Vars.Count);
+                for (int k = 0; k < parts; k++)
+                {
+                    bool named = nx.Vars.Count > 0;
+                    // 同じ変数を名指しする NEXT は深さに関係なく一致 (Hu-BASIC はその NEXT で
+                    // 内側の FOR 枠を捨てる)。それ以外は内側のループを閉じたものとして深さを減らし、
+                    // 深さ 0 の変数なしの NEXT は一致
+                    if ((named && nx.Vars[k] == fr.Var) || (!named && depth == 0))
+                    {
+                        _forExits[fr] = (nx, k);
+                        found = true;
+                        break;
+                    }
+                    if (depth > 0) depth--;
+                }
+            }
+            if (!found)
+                _diag.Error("HB0601", $"FOR {fr.Var} に対応する NEXT が見つかりません", fr.Pos);
+        }
+    }
+
+    // ------------------------------------------------------------ DATA
+
+    private (byte[], List<(int, int)>) BuildData(List<HuLine> lines)
+    {
+        var bytes = new List<byte>();
+        var dataLines = new List<(int, int)>();
+        foreach (var line in lines)
+        {
+            bool first = true;
+            foreach (var s in Flatten(line.Statements))
+            {
+                if (s is not HuData d) continue;
+                if (first)
+                {
+                    dataLines.Add((line.Number, bytes.Count));
+                    first = false;
+                }
+                foreach (var item in d.Items)
+                {
+                    var len = Math.Min(item.Length, 255);
+                    bytes.Add((byte)len);
+                    for (int i = 0; i < len; i++) bytes.Add((byte)item[i]);
+                }
+            }
+        }
+        if (bytes.Count > MaxDataBytes)
+            _diag.Error("HB0107", $"DATA の合計 {bytes.Count} バイトが {MaxDataBytes} バイトを超えています", HuPos.None);
+        return (bytes.ToArray(), dataLines);
+    }
+
+    private int ComputeStaticBytes(int dataBytes, int dataLineCount)
+    {
+        int total = _intVars.Count * 2 + _strVars.Count * 256;
+        foreach (var bound in _arrays.Values) total += (bound + 1) * 2 + 4;
+        foreach (var lit in _literals) total += lit.Length + 1;
+        total += dataBytes + (dataLineCount + 1) * 4;
+        return total;
+    }
+}

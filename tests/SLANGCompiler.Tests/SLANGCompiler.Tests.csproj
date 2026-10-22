@@ -16,5 +16,6 @@
     <ProjectReference Include="..\..\src\SLANGCompiler.Core\SLANGCompiler.Core.csproj" />
     <ProjectReference Include="..\..\src\SLANGCompiler.Build\SLANGCompiler.Build.csproj" />
     <ProjectReference Include="..\..\src\SLANGCompiler.SlfsPack\SLANGCompiler.SlfsPack.csproj" />
+    <ProjectReference Include="..\..\src\SLANGCompiler.HuBasic\SLANGCompiler.HuBasic.csproj" />
   </ItemGroup>
 </Project>
