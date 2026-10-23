@@ -158,6 +158,11 @@ public sealed class HuAnalyzer
                     _diag.Error("HB0304", $"DIM {name} の上限は定数で書いてください (変数を含む上限は未対応)", dim.Pos);
                     continue;
                 }
+                if (boundExpr is HuBinary && ContainsFloat(boundExpr))
+                {
+                    _diag.Error("HB0313", $"DIM {name} の上限に浮動小数の計算は未対応です (浮動小数の定数 1 つなら書けます)", dim.Pos);
+                    continue;
+                }
                 var bound = ConstValue(boundExpr);
                 // 上限の添字そのものを直接比べる (掛け算で大きさを計算して比べるとあふれるため)
                 if (bound == null || bound < 0 || bound > MaxArrayIndex)
@@ -178,11 +183,13 @@ public sealed class HuAnalyzer
     public static long? ConstValue(HuExpr e)
     {
         const long Limit = 1L << 40;
+        if (e is HuBinary bin && (ContainsFloat(bin.Left) || ContainsFloat(bin.Right))) return null;
         long? v = e switch
         {
             HuNum n => n.Value,
-            // 浮動小数の定数は四捨五入した値 (DIM の上限などで、32768 以上の 10 進の数も範囲の検査に乗せる)
-            HuFloat f when Math.Abs(f.Value) <= Limit => (long)Math.Round(f.Value, MidpointRounding.AwayFromZero),
+            // 浮動小数の定数 1 つは、f24 に直した値を四捨五入した値 (DIM の上限などで、32768 以上の 10 進の数も
+            // 範囲の検査に乗せる)。浮動小数を含む計算は、途中で丸めると値が変わるので定数として扱わない (下の二項演算)
+            HuFloat f when Math.Abs(f.Value) <= Limit => (long)Math.Round(HuF24.Quantize(f.Value), MidpointRounding.AwayFromZero),
             HuUnary { Op: "-" } u => ConstValue(u.Operand) is long x ? -x : null,
             HuUnary { Op: "+" } u => ConstValue(u.Operand),
             HuBinary { Op: "+" } b => ConstValue(b.Left) is long l && ConstValue(b.Right) is long r ? l + r : null,
@@ -195,6 +202,15 @@ public sealed class HuAnalyzer
         static long? MulOrNull(long l, long r)
             => l != 0 && Math.Abs(r) > Limit / Math.Abs(l) ? null : l * r;
     }
+
+    /// <summary>浮動小数の定数を含む式か</summary>
+    public static bool ContainsFloat(HuExpr e) => e switch
+    {
+        HuFloat => true,
+        HuUnary u => ContainsFloat(u.Operand),
+        HuBinary b => ContainsFloat(b.Left) || ContainsFloat(b.Right),
+        _ => false,
+    };
 
     /// <summary>数値と + - * と単項 - + だけでできた式か (値の大きさは問わない)</summary>
     private static bool ConstExprOnly(HuExpr e) => e switch

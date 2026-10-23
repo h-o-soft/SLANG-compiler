@@ -343,7 +343,7 @@ public sealed class SlangBackend : IHuBackend
             case HuFloat f:
                 return FConst(f.Value);
             case HuNum n:
-                return FConst(n.Value);
+                return FConst(HuF24.SignedInt(n.Value));
             case HuUnary { Op: "+" } u:
                 return Flt(u.Operand);
             case HuUnary { Op: "-" } u:
@@ -370,7 +370,7 @@ public sealed class SlangBackend : IHuBackend
     private string FAddr(HuExpr e)
     {
         if (e is HuFloat f) return FConstAddr(f.Value);
-        if (e is HuNum n) return FConstAddr(n.Value);
+        if (e is HuNum n) return FConstAddr(HuF24.SignedInt(n.Value));
         var v = Flt(e);
         if (System.Text.RegularExpressions.Regex.IsMatch(v, @"^H_F\d+$")) return "&" + v;
         var t = NewFTemp();
@@ -395,7 +395,8 @@ public sealed class SlangBackend : IHuBackend
     {
         if (ConstFloat(e) is double cv)
         {
-            var r = Math.Round(cv, MidpointRounding.AwayFromZero);
+            // 実行時と同じ値にするため、SLANG が定数を f24 に直したときの値を丸める (.499999 は f24 では .5)
+            var r = Math.Round(HuF24.Quantize(cv), MidpointRounding.AwayFromZero);
             if (Math.Abs(r) <= 65535) return Num(unchecked((short)(int)r));
         }
         if (e is HuCall { Name: "INT" } c && c.Args[0].Type == HuType.Int)

@@ -313,14 +313,15 @@ public class HuBasicFrontendTests
     [InlineData("10 A=1", "HB0403")]                          // DEFINT なし → 浮動小数
     [InlineData("10 DEFINT A-Z:A!=1", "HB0403")]
     [InlineData("10 DEFINT A-Z:N=5:DIM A(N)", "HB0304")]      // 変数の上限
-    [InlineData("10 DEFINT A-Z:DIM A(32768*65535)", "HB0305")] // 定数の計算があふれても範囲外として検出
-    [InlineData("10 DEFINT A-Z:DIM A(65535*65535*65535)", "HB0305")]
+    [InlineData("10 DEFINT A-Z:DIM A(&H8000*&HFFFF)", "HB0305")] // 定数の計算があふれても範囲外として検出
+    [InlineData("10 DEFINT A-Z:DIM A(&HFFFF*&HFFFF*&HFFFF)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A(8192)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A(-1)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A$(3)", "HB0306")]         // 文字列の配列
     [InlineData("10 DEFINT A-Z:A!=1.5", "HB0403")]            // 浮動小数の変数は段階 F2 から
     [InlineData("10 DEFINT A-Z:PRINT USING \"##.#\";1.5", "HB0407")]
     [InlineData("10 DEFINT A-Z:DIM A(40000)", "HB0305")]       // 32768 以上の 10 進 (浮動小数の定数) も範囲を検査
+    [InlineData("10 DEFINT A-Z:DIM A(1.25+1.25)", "HB0313")]   // 浮動小数を含む計算の上限は未対応 (項ごとに丸めると値が違う)
     [InlineData("10 DEFINT A-Z:A$=1", "HB0404")]
     [InlineData("10 DEFINT A-Z:A=\"X\"+1", "HB0404")]
     [InlineData("10 DEFINT A-Z:FOR I=1 TO 2:NEXT A$", "HB0404")] // NEXT の変数も整数
@@ -331,6 +332,15 @@ public class HuBasicFrontendTests
     [InlineData("10 UNTIL 1", "HB0602")]
     [InlineData("10 REPEAT", "HB0603")]
     public void Analyzer_ReportsErrors(string program, string code) => AssertError(program, code);
+
+    [Fact]
+    public void Analyzer_DimBoundWithSingleFloatConstant()
+    {
+        // 浮動小数の定数 1 つの上限は、f24 に直した値を四捨五入 (2.5 → 3)
+        var prog = AnalyzeOk("10 DEFINT A-Z:DIM A(2.5),B(12.4)");
+        Assert.Equal(10, prog.Arrays["A"]);   // 上限が 10 未満なら 10 を確保する
+        Assert.Equal(12, prog.Arrays["B"]);
+    }
 
     [Fact]
     public void Analyzer_DuplicateLineNumberIsError()

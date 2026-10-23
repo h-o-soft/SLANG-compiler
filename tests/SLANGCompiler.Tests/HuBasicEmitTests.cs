@@ -229,6 +229,51 @@ public class HuBasicEmitTests
         Assert.Equal(new[] { "H_F1=V_X;", "H_F2=V_Y;", "H_F3=V_Z;", "H_F4=V_W;" }, lines.GetRange(a - 4, 4));
     }
 
+    /// <summary>定数を整数に丸めるときは、実行時と同じ f24 の値で丸める</summary>
+    [Theory]
+    [InlineData(".499999", 1)]      // f24 では .5 になる
+    [InlineData("-.499999", -1)]
+    [InlineData(".4999", 0)]
+    [InlineData("1.4", 1)]
+    [InlineData("2.5", 3)]
+    public void Float_ConstantRoundingUsesF24Value(string literal, int expected)
+    {
+        var sl = Body(Transpile($"10 DEFINT A-Z:A={literal}").Output!);
+        Assert.Contains($"V_A={(expected < 0 ? $"(0-{-expected})" : expected.ToString())};", sl);
+        // 65535.4 は f24 では 65535.5 になり、丸めると範囲を超えるので、変換のときに丸めず実行時のエラー 6 に任せる
+        Assert.Contains("V_A=BAS_FTOIR(H_FK[0]);", Body(Transpile("10 DEFINT A-Z:A=65535.4").Output!));
+    }
+
+    [Fact]
+    public void Float_QuantizeMatchesSlangEncoding()
+    {
+        Assert.Equal(0.5, SLANGCompiler.HuBasic.HuF24.Quantize(0.499999));
+        Assert.Equal(65536.0, SLANGCompiler.HuBasic.HuF24.Quantize(65535.9));
+        Assert.Equal(40000.0, SLANGCompiler.HuBasic.HuF24.Quantize(40000));
+        Assert.Equal(-2.5, SLANGCompiler.HuBasic.HuF24.Quantize(-2.5));
+    }
+
+    /// <summary>整数の定数を浮動小数にするときは 16 ビットの符号付きの値 (&HFFFF は -1。変数に入れて比べたときと同じ)</summary>
+    [Fact]
+    public void Float_IntegerLiteralPromotionIsSigned()
+    {
+        var sl = Transpile("10 DEFINT A-Z:PRINT &HFFFF<0.5;&H8000*1.5").Output!;
+        var table = Regex.Match(sl, @"ARRAY FLOAT H_FK\[\] = \{ (.*) \};").Groups[1].Value.Split(", ");
+        Assert.Contains("-1.0", table);
+        Assert.Contains("-32768.0", table);
+        Assert.DoesNotContain("65535.0", table);
+    }
+
+    /// <summary>浮動小数を含む定数式は、項ごとに丸めて整数として計算しない (\ の 0 の検査を外さない)</summary>
+    [Fact]
+    public void Float_ConstantExpressionsWithFloatAreNotFoldedAsIntegers()
+    {
+        var sl = Body(Transpile("10 DEFINT A-Z:A=7\\(.5-.4):B=7\\2.5:C=7 MOD (1.4*2)").Output!);
+        Assert.Contains("V_A=BAS_IDIV(7, BAS_FTOIR((H_FK[", sl);   // 0 で割るかは実行時に調べる
+        Assert.Contains("V_B=((7)./.(3));", sl);                    // 定数 1 つなら変換のときに丸めてよい (2.5 → 3)
+        Assert.Contains("V_C=BAS_IMOD(7, BAS_FTOIR(", sl);
+    }
+
     [Fact]
     public void Float_ComparisonAndConditionAndConversion()
     {
