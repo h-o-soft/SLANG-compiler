@@ -170,9 +170,11 @@ public class HuBasicFrontendTests
     [Fact]
     public void Lexer_DataModeKeepsRawItems()
     {
-        var t = Lex("DATA 1, \"A,B:C\" ,PRINT,,  X Y  :PRINT 1");
+        // 引用符のない項目は頭の空白だけを除き、後ろの空白は残す (Hu-BASIC の実測: DATA  X , は "X ")
+        var t = Lex("DATA 1, \"A,B:C\" ,PRINT ,,  X Y  :PRINT 1");
         var data = t.Single(x => x.Kind == HuTokenKind.Data);
-        Assert.Equal(new[] { "1", "A,B:C", "PRINT", "", "X Y" }, data.DataItems);
+        Assert.Equal(new[] { "1", "A,B:C", "PRINT ", "", "X Y  " }, data.DataItems);
+        Assert.Equal(new[] { " Q ", "R " }, Lex("DATA \" Q \" , R ").Single(x => x.Kind == HuTokenKind.Data).DataItems);
         // DATA の後の ':' で続く文は普通に読まれる
         Assert.Contains(t, x => x.IsKeyword("PRINT"));
     }

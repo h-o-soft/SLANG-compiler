@@ -288,6 +288,7 @@ public sealed class HuLexer
         return new HuToken(HuTokenKind.Data, "DATA", 0, Col(start)) { DataItems = items };
     }
 
+    /// <summary>引用符のない項目は頭の空白だけを除く (後ろの空白は残す。Hu-BASIC の実測: DATA  X , は "X ")</summary>
     private static string FinishItem(StringBuilder cur, bool quoted)
-        => quoted ? cur.ToString() : cur.ToString().Trim(' ');
+        => quoted ? cur.ToString() : cur.ToString().TrimStart(' ');
 }
