@@ -67,11 +67,11 @@ public sealed record HuRead(IReadOnlyList<HuExpr> Targets, HuPos Pos) : HuStmt(P
 public sealed record HuRestore(int? Line, HuPos Pos) : HuStmt(Pos);
 public sealed record HuOut(HuExpr Port, HuExpr Value, HuPos Pos) : HuStmt(Pos);
 
-/// <summary>PRINT の項目: 式 / 区切り (";" ",") / SPC(n)</summary>
+/// <summary>PRINT の項目: 式 / 区切り (";" ",") / SPC(n) / TAB(n) (Tab が真)</summary>
 public abstract record HuPrintItem;
 public sealed record HuPrintExpr(HuExpr Expr) : HuPrintItem;
 public sealed record HuPrintSep(char Sep) : HuPrintItem;
-public sealed record HuPrintSpc(HuExpr Count) : HuPrintItem;
+public sealed record HuPrintSpc(HuExpr Count, bool Tab = false) : HuPrintItem;
 
 public sealed record HuPrint(int? Channel, HuExpr? Using, IReadOnlyList<HuPrintItem> Items, HuPos Pos) : HuStmt(Pos);
 

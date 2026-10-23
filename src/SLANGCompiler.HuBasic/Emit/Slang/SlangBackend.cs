@@ -386,6 +386,10 @@ public sealed class SlangBackend : IHuBackend
                     "FIX" => Int(c.Args[0]),
                     "SGN" => c.Args[0].Type == HuType.Float ? $"BAS_FSGN({Flt(c.Args[0])})" : $"BAS_ISGN({Int(c.Args[0])})",
                     "CINT" => Int(c.Args[0]),
+                    "LEN" => $"BAS_SLEN({Str(c.Args[0])})",
+                    "INSTR" => c.Args.Count > 2
+                        ? Call("BAS_SINSTR", (c.Args[0], K.Int), (c.Args[1], K.Str), (c.Args[2], K.Str))
+                        : $"BAS_SINSTR(1, {string.Join(", ", Seq((c.Args[0], K.Str), (c.Args[1], K.Str)))})",
                     _ => throw new InvalidOperationException(c.Name),
                 };
         }
@@ -681,6 +685,9 @@ public sealed class SlangBackend : IHuBackend
                     "CHR$" => $"BAS_SCHR({Int(c.Args[0])})",
                     "HEXCHR$" => $"BAS_SHEX({Str(c.Args[0])})",
                     "CGPAT$" => $"BAS_SCGPAT({Int(c.Args[0])})",
+                    "HEX$" => $"BAS_SHEXS({Int(c.Args[0])})",
+                    // SPACE$(n) は STRING$(n," ") と同じ (n の範囲の検査も同じ)
+                    "SPACE$" => $"BAS_SSTR({Int(c.Args[0])}, BAS_SCHR(32))",
                     // STR$ は整数も浮動小数にしてから PRINT の形で文字列にする (後ろの空白は付けない)
                     "STR$" => $"BAS_SFSTR({Flt(c.Args[0])})",
                     "INKEY$" => "BAS_SINKEY()",

@@ -568,6 +568,19 @@ public sealed class HuAnalyzer
                 // 整数に入れる位置と同じ丸め
                 ExpectNum(a[0], intConv: true);
                 return HuType.Int;
+            case "LEN":
+                ExpectStr(a[0]);
+                return HuType.Int;
+            case "INSTR":
+                // INSTR([n,]a,b)。n は整数に入れる位置と同じに丸める
+                if (a.Count > 2) ExpectNum(a[0], intConv: true);
+                ExpectStr(a[^2]);
+                ExpectStr(a[^1]);
+                return HuType.Int;
+            case "HEX$":
+            case "SPACE$":
+                ExpectNum(a[0], intConv: true);
+                return HuType.Str;
             case "SQR":
             case "SIN":
             case "COS":
@@ -720,6 +733,12 @@ public sealed class HuAnalyzer
         if (cmd.Name == "PLAY")
         {
             ExpectStr(cmd.Args[0]!);
+            return;
+        }
+        if (cmd.Name == "RANDOMIZE")
+        {
+            // 本物は範囲を調べない (40000 もエラーにならない)
+            if (cmd.Args.Count > 0) ExpectNum(cmd.Args[0]!, intConv: false);
             return;
         }
         if (cmd.Name == "KBUF")

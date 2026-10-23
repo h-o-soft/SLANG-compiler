@@ -93,6 +93,14 @@ public class HuBasicEmitTests
         40 END
         """;
 
+    /// <summary>段階 F3b の文字列の関数・TAB・RANDOMIZE をひととおり使う小さなプログラム (自作。PLAY と TAB を一緒に使う)</summary>
+    private const string StringFuncProgram = """
+        10 DEFINT I:A$="ABCABC":I=2
+        20 PRINT LEN(A$);INSTR(A$,"C");INSTR(I,A$,"B");HEX$(I*100);"[";SPACE$(I);"]";TAB(10);"X"
+        30 RANDOMIZE:RANDOMIZE I:RANDOMIZE 40000:PRINT RND
+        40 PLAY "CDE":END
+        """;
+
     private const string FullProgram = """
         10 DEFINT A-Z:CLS:INIT:WIDTH 40:CLICK OFF:TEMPO 300
         20 A$="AB":B$=A$+CHR$(65):C$=MID$(A$,1,1)+MID$(A$,2)+RIGHT$(A$,1)+HEXCHR$("41")+CGPAT$(65)+INKEY$
@@ -574,6 +582,40 @@ public class HuBasicEmitTests
         Assert.Matches(@"BAS_PFLT\(\(H_FK\[\d+\]\*H_FK\[\d+\]\)\);", sl3);
     }
 
+    /// <summary>F3b: LEN・INSTR は Int、HEX$・SPACE$ は一時文字列。TAB は PRINT の項目、RANDOMIZE は式を評価して捨てる</summary>
+    [Fact]
+    public void StringFunctions_TabAndRandomize()
+    {
+        var sl = Body(Transpile(StringFuncProgram).Output!);
+        foreach (var expected in new[]
+        {
+            "BAS_PNUM(BAS_SLEN(S_A));", "BAS_PNUM(BAS_SINSTR(1, S_A, K_1));", "BAS_PNUM(BAS_SINSTR(V_I, S_A, K_2));",
+            "BAS_PSTR(BAS_SHEXS(((V_I)*(100))));", "BAS_PSTR(BAS_SSTR(V_I, BAS_SCHR(32)));", "BAS_PRTAB(10);",
+            "BAS_RANDOMIZE();", "BAS_RANDOMIZE(H_F1);", "BAS_RANDOMIZE(H_FK[",
+        })
+            Assert.Contains(expected, sl);
+        // INSTR の n・HEX$・SPACE$ の引数は整数に入れる位置と同じに丸める。TAB も同じ
+        var sl2 = Body(Transpile("10 X=1.5:PRINT INSTR(X,\"AB\",\"B\");HEX$(X);SPACE$(X);TAB(X)").Output!);
+        Assert.Contains("BAS_SINSTR(BAS_FTOIR(F_X), K_", sl2);
+        Assert.Contains("BAS_SHEXS(BAS_FTOIR(F_X))", sl2);
+        Assert.Contains("BAS_SSTR(BAS_FTOIR(F_X), BAS_SCHR(32))", sl2);
+        Assert.Contains("BAS_PRTAB(BAS_FTOIR(F_X));", sl2);
+        // LEN の引数に数、TAB を PRINT の外に書くのはエラー
+        Assert.True(HuTranspiler.Transpile("10 A=LEN(1)").Diagnostics.HasErrors);
+        Assert.True(HuTranspiler.Transpile("10 A=TAB(1)").Diagnostics.HasErrors);
+        Assert.True(HuTranspiler.Transpile("10 RANDOMIZE \"A\"").Diagnostics.HasErrors);
+    }
+
+    /// <summary>ランタイムの関数の名前は重ならない (同じ名前は後のもので上書きされる。TAB を BAS_PTAB にすると PLAY の音程の表を壊す)</summary>
+    [Fact]
+    public void Runtime_FunctionNamesAreUnique()
+    {
+        var path = Path.Combine(RepoRoot(), "runtime", "libx1_basic.asm");
+        var dups = RuntimeParser.Parse(File.ReadAllText(path), path).GroupBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        Assert.True(dups.Count == 0, "重なった名前: " + string.Join(", ", dups));
+    }
+
     [Fact]
     public void Lowering_WhileResetsTempsInsideLoopHead()
     {
@@ -952,6 +994,13 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "MATH"));
             RunSlangbuild(root, dir, sl7, asmPath, Path.Combine(dir, "MATHS"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "MATHS"));
+            // 文字列の関数・TAB・RANDOMIZE (段階 F3b) も両方で組み立てまで通る
+            var sl8 = Path.Combine(dir, "SFN.SL");
+            File.WriteAllText(sl8, Transpile(StringFuncProgram).Output!);
+            RunSlangbuild(root, dir, sl8, asmPath, Path.Combine(dir, "SFN"));
+            AssertBuilt(Path.Combine(dir, "SFN"));
+            RunSlangbuild(root, dir, sl8, asmPath, Path.Combine(dir, "SFNS"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "SFNS"));
         }
         finally
         {

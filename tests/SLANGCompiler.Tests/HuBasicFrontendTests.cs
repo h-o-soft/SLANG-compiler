@@ -298,6 +298,20 @@ public class HuBasicFrontendTests
         Assert.Contains(diag.Items, d => d.Code == code);
     }
 
+    /// <summary>PRINT の TAB(n) は SPC と同じく項目として読み、RANDOMIZE の式は省略できる</summary>
+    [Fact]
+    public void Parser_PrintTabAndRandomize()
+    {
+        var diag = new HuDiagnosticBag();
+        var line = HuParser.ParseSingleLine("10 PRINT \"A\";TAB(5);SPC(2):RANDOMIZE:RANDOMIZE 3", diag);
+        Assert.False(diag.HasErrors);
+        var items = ((HuPrint)line!.Statements[0]).Items.OfType<HuPrintSpc>().ToList();
+        Assert.True(items[0].Tab);
+        Assert.False(items[1].Tab);
+        Assert.Empty(((HuCommand)line.Statements[1]).Args);
+        Assert.Single(((HuCommand)line.Statements[2]).Args);
+    }
+
     /// <summary>PAI・RAD は本物と同じく予約語 (名前の頭に書けない。設計 1 章の 8)</summary>
     [Theory]
     [InlineData("10 RADIUS=5")]

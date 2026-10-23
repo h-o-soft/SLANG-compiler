@@ -380,7 +380,7 @@ public sealed class HuLowerer
                     Call("BAS_PZONE");
                     break;
                 case HuPrintSpc sp:
-                    Call("BAS_PSPC", E(sp.Count));
+                    Call(sp.Tab ? "BAS_PRTAB" : "BAS_PSPC", E(sp.Count));
                     if (MakesTemps(sp.Count)) Call("BAS_STMP");
                     break;
             }
@@ -415,6 +415,12 @@ public sealed class HuLowerer
                 break; // 何もしない (解析で warning を出している)
             case "CLICK": Call("BAS_CLICK", E(Arg(0)!)); break;
             case "PAUSE": Call("BAS_PAUSE", E(Arg(0)!)); break;
+            case "RANDOMIZE":
+                // 式は評価して捨てる (BAS_RANDOMIZE は引数を見ない)
+                Emit(Arg(0) is HuExpr r
+                    ? new FCall("BAS_RANDOMIZE", new FArg[] { new FFloatArg(r) })
+                    : new FCall("BAS_RANDOMIZE", Array.Empty<FArg>()));
+                break;
         }
     }
 

@@ -24,7 +24,7 @@ public sealed class HuParser
         ["ABS"] = (1, 1), ["SGN"] = (1, 1), ["SQR"] = (1, 1), ["SIN"] = (1, 1), ["COS"] = (1, 1),
         ["TAN"] = (1, 1), ["ATN"] = (1, 1), ["LOG"] = (1, 1), ["EXP"] = (1, 1), ["FIX"] = (1, 1),
         ["CINT"] = (1, 1), ["FRAC"] = (1, 1), ["CSNG"] = (1, 1), ["CDBL"] = (1, 1), ["PAI"] = (1, 1),
-        ["RAD"] = (1, 1),
+        ["RAD"] = (1, 1), ["LEN"] = (1, 1), ["INSTR"] = (2, 3), ["HEX$"] = (1, 1), ["SPACE$"] = (1, 1),
     };
 
 
@@ -273,6 +273,9 @@ public sealed class HuParser
                 return new HuCommand(t.Text, new HuExpr?[] { ParseExpr() }, pos);
             case "PLAY":
                 return new HuCommand("PLAY", new HuExpr?[] { ParseExpr() }, pos);
+            case "RANDOMIZE":
+                // RANDOMIZE [式]。式は評価して捨てる (本物も同じ式で同じ乱数の並びにならない)
+                return new HuCommand("RANDOMIZE", AtStatementEnd ? Array.Empty<HuExpr?>() : new HuExpr?[] { ParseExpr() }, pos);
             case "BEEP":
                 // BEEP (短く 1 回) / BEEP 1 (鳴らし始める) / BEEP 0 (止める)
                 return new HuCommand("BEEP", AtStatementEnd ? Array.Empty<HuExpr?>() : new HuExpr?[] { ParseExpr() }, pos);
@@ -570,12 +573,13 @@ public sealed class HuParser
         {
             if (AcceptSymbol(";")) { items.Add(new HuPrintSep(';')); continue; }
             if (AcceptSymbol(",")) { items.Add(new HuPrintSep(',')); continue; }
-            if (AcceptKeyword("SPC"))
+            if (Peek.Is(HuTokenKind.Keyword) && Peek.Text is "SPC" or "TAB")
             {
+                bool tab = Next().Text == "TAB";
                 ExpectSymbol("(");
                 var n = ParseExpr();
                 ExpectSymbol(")");
-                items.Add(new HuPrintSpc(n));
+                items.Add(new HuPrintSpc(n, tab));
                 continue;
             }
             items.Add(new HuPrintExpr(ParseExpr()));

@@ -4724,6 +4724,189 @@ JP BAS_ERROR
 .bpw_n DW 0
 
 
+; @name BAS_SLEN
+; @resident shared
+; @param_count 1
+; HL = 文字列 → HL = 長さ (LEN 関数)
+LD L, (HL)
+LD H, 0
+RET
+
+
+; @name BAS_SINSTR
+; @resident shared
+; @param_count 3
+; @calls BAS_ERROR
+; HL = 探し始める位置 n (1〜255、それ以外はエラー 5)、DE = 文字列 a、BC = 探す文字列 b
+; → HL = a の n 文字目から探して、b が見つかった位置 (1 始まり)。なければ 0 (INSTR 関数)。
+; n の範囲を先に調べ、b が空なら 0 (本物の実測)
+LD A, H
+OR A
+JP NZ, .bin_err
+LD A, L
+OR A
+JP Z, .bin_err
+LD A, (BC)
+OR A
+JP Z, .bin_none     ; b が空
+LD (.bin_b), BC
+LD A, (DE)          ; A = a の長さ
+SUB L
+JP C, .bin_none     ; n が a の長さより大きい
+INC A               ; A = n 文字目から後ろの文字数
+LD H, A
+LD A, (BC)
+LD C, A             ; C = b の長さ
+LD A, H
+SUB C
+JP C, .bin_none     ; 残りが b より短い
+INC A
+LD B, A             ; B = 比べる位置の数
+LD A, L
+LD (.bin_pos), A
+LD H, 0
+ADD HL, DE          ; HL = a の n 文字目
+.bin_loop
+PUSH HL
+PUSH BC
+LD DE, (.bin_b)
+INC DE
+.bin_cmp
+LD A, (DE)
+CP (HL)
+JP NZ, .bin_ne
+INC HL
+INC DE
+DEC C
+JP NZ, .bin_cmp
+POP BC
+POP HL
+LD A, (.bin_pos)
+LD L, A
+LD H, 0
+RET
+.bin_ne
+POP BC
+POP HL
+INC HL
+LD A, (.bin_pos)
+INC A
+LD (.bin_pos), A
+DJNZ .bin_loop
+.bin_none
+LD HL, 0
+RET
+.bin_err
+LD HL, 5
+JP BAS_ERROR
+.bin_b DW 0
+.bin_pos DB 0
+
+
+; @name BAS_SHEXS
+; @resident shared
+; @param_count 1
+; @calls BAS_TALLOC
+; HL = 16 ビットの値 → その 16 進 (大文字、頭の 0 なし。0 は "0") の一時文字列 (HEX$ 関数)
+LD DE, .bhs_buf
+LD A, H
+CALL .bhs_byte
+LD A, L
+CALL .bhs_byte
+LD HL, .bhs_buf
+LD B, 4
+.bhs_lz
+LD A, B
+CP 1
+JP Z, .bhs_go       ; 最後の 1 桁は残す
+LD A, (HL)
+CP '0'
+JP NZ, .bhs_go
+INC HL
+DEC B
+JP .bhs_lz
+.bhs_go
+PUSH HL
+PUSH BC
+LD A, B
+CALL BAS_TALLOC
+POP BC
+POP DE              ; DE = 最初の桁
+PUSH HL
+INC HL
+.bhs_cp
+LD A, (DE)
+LD (HL), A
+INC HL
+INC DE
+DJNZ .bhs_cp
+POP HL
+RET
+.bhs_byte           ; A の 2 桁を DE に書く
+PUSH AF
+RRCA
+RRCA
+RRCA
+RRCA
+CALL .bhs_nib
+POP AF
+.bhs_nib
+AND $0F
+ADD A, '0'
+CP '9' + 1
+JP C, .bhs_st
+ADD A, 7
+.bhs_st
+LD (DE), A
+INC DE
+RET
+.bhs_buf DB 0, 0, 0, 0
+
+
+; @name BAS_PRTAB
+; @resident shared
+; @param_count 1
+; @calls BAS_WORK,BAS_PSPC,BAS_ERROR
+; HL = 桁 n (0〜255、それ以外はエラー 5) → いまの桁 (0 始まり) が n より小さければ、差の分だけ空白を出す
+; (行の端では折り返す)。n 以上なら何もしない (PRINT の TAB)
+LD A, H
+OR A
+JP NZ, .btb_err
+LD A, (BAS_CX)
+LD B, A
+LD A, L
+SUB B
+RET Z
+RET C
+LD L, A
+JP BAS_PSPC
+.btb_err
+LD HL, 5
+JP BAS_ERROR
+
+
+; @name BAS_RANDOMIZE
+; @resident shared
+; @param_count 0
+; @calls z80rand
+; 乱数の種を R レジスタから作り直す (RANDOMIZE。引数は見ない。FRAND の初期化と同じ)
+LD HL, seed0
+LD B, 2
+.brz_0
+LD A, R
+LD (HL), A
+INC HL
+DJNZ .brz_0
+LD HL, seed1
+LD B, 4
+.brz_1
+LD A, R
+LD (HL), A
+INC HL
+DJNZ .brz_1
+RET
+
+
 ; @name BAS_FSTR
 ; @resident shared
 ; @param_count 1
