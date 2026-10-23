@@ -366,11 +366,14 @@ public sealed class HuParser
 
     private static HuRem MakeRem(string text, HuPos pos)
     {
-        var body = text.Trim();
+        var body = text.Trim(' ');
         if (body.StartsWith("#VSYNC", StringComparison.OrdinalIgnoreCase))
         {
-            var rest = body[6..].Trim();
-            int arg = int.TryParse(rest, out var n) && n > 0 ? n : 1;
+            var rest = body[6..].Trim(' ');
+            // 空白は X1 の 0x20 だけ (Trim 済み)。符号と ASCII の数字だけの数を読む (制御コードや NUL を読み飛ばさない)
+            int arg = System.Text.RegularExpressions.Regex.IsMatch(rest, "^[+-]?[0-9]+$")
+                      && int.TryParse(rest, System.Globalization.NumberStyles.AllowLeadingSign,
+                          System.Globalization.CultureInfo.InvariantCulture, out var n) && n > 0 ? n : 1;
             return new HuRem("VSYNC", arg, pos);
         }
         return new HuRem(null, 0, pos);

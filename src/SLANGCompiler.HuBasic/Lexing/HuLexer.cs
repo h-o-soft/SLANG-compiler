@@ -267,7 +267,7 @@ public sealed class HuLexer
                 _pos++;
                 continue;
             }
-            if (ch == '"' && !quoted && cur.ToString().Trim().Length == 0)
+            if (ch == '"' && !quoted && cur.ToString().Trim(' ').Length == 0)
             {
                 cur.Clear();
                 quoted = true;

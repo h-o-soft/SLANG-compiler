@@ -167,6 +167,120 @@ public class HuBasicFrontendTests
         Assert.Contains(diag.Items, d => d.Code == "HB0101");
     }
 
+    /// <summary>X1 の文字コードのファイル (アスキーセーブ): 1 バイトが X1 の 1 文字。CR LF・CR・LF で行を分け、0x1A でファイルを終える</summary>
+    [Fact]
+    public void Source_X1BytesKeepsEveryByte()
+    {
+        var bytes = new byte[]
+        {
+            (byte)'1', (byte)'0', (byte)' ', (byte)'P', (byte)'"', 0x87, 0x1D, 0xA0, 0x85, (byte)'\t', (byte)'"', 0x0D, 0x0A,
+            0xA0, 0x0D,                                   // 0xA0 だけの行は空白の行ではない (X1 の文字)
+            (byte)'2', (byte)'0', (byte)' ', (byte)'E', 0x0A,
+            (byte)' ', (byte)' ', 0x0D, 0x0A,                // 空白だけの行は捨てる
+            (byte)'3', (byte)'0', 0x1A, (byte)'4', (byte)'0', 0x0D, // 0x1A でファイル全体が終わる
+        };
+        var src = HuSource.FromX1Bytes(bytes);
+        Assert.Equal(new[] { 1, 2, 3, 5 }, src.Lines.Select(l => l.SourceLine));
+        Assert.Equal("10 P\"\u0087\u001D\u00A0\u0085 \"", src.Lines[0].Text);
+        Assert.Equal("\u00A0", src.Lines[1].Text);
+        Assert.Equal("20 E", src.Lines[2].Text);
+        Assert.Equal("30", src.Lines[3].Text);
+    }
+
+    private static string TempFile(byte[] bytes)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"hub2sl_{Guid.NewGuid():N}.bas");
+        File.WriteAllBytes(path, bytes);
+        return path;
+    }
+
+    [Fact]
+    public void Source_AutoReadsX1FileWithWarning()
+    {
+        // UTF-8 として読めないファイルは、既定 (auto) では X1 の文字コードとして読み、warning HB0110 (例外で落ちない)
+        var path = TempFile(new byte[] { (byte)'1', (byte)'0', (byte)' ', (byte)'P', (byte)'R', (byte)'I', (byte)'N', (byte)'T',
+                                         (byte)'"', 0x87, 0x1D, (byte)'"', 0x0D, 0x0A });
+        try
+        {
+            var diag = new HuDiagnosticBag();
+            var src = HuSource.FromFile(path, "auto", diag);
+            Assert.False(diag.HasErrors);
+            var w = Assert.Single(diag.Items, d => d.Code == "HB0110");
+            Assert.Equal((1, 10), (w.SourceLine, w.Column));
+            Assert.Equal("10 PRINT\"\u0087\u001D\"", src.Lines[0].Text);
+            // 変換の全体も通る (文字列の中の X1 の文字はそのままのバイト)
+            var r = HuTranspiler.TranspileFile(path, "auto", new HuTranspileOptions());
+            Assert.False(r.Diagnostics.HasErrors);
+            Assert.Contains("{ 2,135,29 }", r.Output!);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Source_Utf8ExplicitReportsErrorInsteadOfException()
+    {
+        var path = TempFile(new byte[] { (byte)'1', (byte)'0', 0x0D, 0x0A, (byte)'2', (byte)'0', (byte)' ', 0xF7, 0x0D, 0x0A });
+        try
+        {
+            var diag = new HuDiagnosticBag();
+            HuSource.FromFile(path, "utf8", diag);
+            var e = Assert.Single(diag.Items, d => d.Code == "HB0111");
+            Assert.Equal((2, 4), (e.SourceLine, e.Column));   // 2 行目の 4 バイト目
+            Assert.True(diag.HasErrors);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void Source_AutoKeepsUtf8Results()
+    {
+        // UTF-8 として正しいファイルは、auto でも utf8 と同じ (BOM・半角カナ・¥・行の中の 0x1A とその後の行)
+        var text = "\uFEFF10 PRINT\"ｱ¥\":REM\u001AX\n20 END\n";
+        var path = TempFile(System.Text.Encoding.UTF8.GetBytes(text));
+        try
+        {
+            var d1 = new HuDiagnosticBag();
+            var d2 = new HuDiagnosticBag();
+            var a = HuSource.FromFile(path, "auto", d1);
+            var b = HuSource.FromFile(path, "utf8", d2);
+            Assert.Empty(d1.Items);
+            Assert.Empty(d2.Items);
+            Assert.Equal(b.Lines.Select(l => (l.SourceLine, l.Text)), a.Lines.Select(l => (l.SourceLine, l.Text)));
+            Assert.Equal(2, a.Lines.Count);
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>REM #VSYNC の数は 0x20 のほかの文字 (制御コードなど) を空白として読み飛ばさない</summary>
+    [Theory]
+    [InlineData("10 REM #VSYNC 2", 2)]
+    [InlineData("10 REM #VSYNC\u000B2", 1)]
+    [InlineData("10 REM #VSYNC 2\u000C", 1)]
+    [InlineData("10 REM #VSYNC 2\u0000", 1)]
+    [InlineData("10 REM #VSYNC +3", 3)]
+    public void Parser_VsyncArgumentAcceptsOnlySpace(string line, int expected)
+    {
+        var diag = new HuDiagnosticBag();
+        var rem = Assert.IsType<HuRem>(HuParser.ParseSingleLine(line, diag)!.Statements[0]);
+        Assert.Equal(expected, rem.DirectiveArg);
+    }
+
+    [Fact]
+    public void Lexer_DataKeepsX1Characters()
+    {
+        // 引用符のない DATA の項目は、X1 の文字もそのまま (空白は 0x20 だけ。本物の実測: <A0> は文字、ASC は 160)
+        static string[] DataItems(string x1Text)
+        {
+            var diag = new HuDiagnosticBag();
+            var tokens = new HuLexer(x1Text, 3, new HuPos(1, 1, 10), diag).Tokenize();
+            Assert.False(diag.HasErrors);
+            return tokens.Single(x => x.Kind == HuTokenKind.Data).DataItems!.ToArray();
+        }
+        Assert.Equal(new[] { "\u0087A", "\u00A0X", "\u0085 " }, DataItems("DATA \u0087A,\u00A0X, \u0085 "));
+        // 引用符の前の 0xA0 は空白ではないので、引用符の項目にならない
+        Assert.Equal(new[] { "\u00A0\"X\"" }, DataItems("DATA \u00A0\"X\""));
+    }
+
     [Fact]
     public void Lexer_DataModeKeepsRawItems()
     {

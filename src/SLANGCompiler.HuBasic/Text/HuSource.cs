@@ -38,16 +38,54 @@ public sealed class HuSource
                 }
                 sb.Append((char)code);
             }
-            if (sb.ToString().Trim().Length > 0)
+            if (sb.ToString().Trim(' ').Length > 0)
                 lines.Add(new Line(i + 1, sb.ToString()));
         }
         return new HuSource(lines);
     }
 
+    /// <summary>
+    /// X1 の文字コードのバイト列 (X1 でアスキーセーブしたファイル) から作る。1 バイトが X1 の 1 文字
+    /// (グラフィックの文字・カナ・カーソルの制御コードもそのまま)。CR・LF・CR LF で行を分け、0x1A で終わる
+    /// </summary>
+    public static HuSource FromX1Bytes(byte[] bytes)
+    {
+        var lines = new List<Line>();
+        var sb = new StringBuilder();
+        int lineNo = 1;
+        void Flush()
+        {
+            // 空白は X1 の 0x20 だけ (0x85・0xA0 などは X1 の文字なので、Unicode の空白として扱わない)
+            if (sb.ToString().Trim(' ').Length > 0) lines.Add(new Line(lineNo, sb.ToString()));
+            sb.Clear();
+            lineNo++;
+        }
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            var b = bytes[i];
+            if (b == 0x1A) break;
+            if (b == 0x0D)
+            {
+                if (i + 1 < bytes.Length && bytes[i + 1] == 0x0A) i++;
+                Flush();
+                continue;
+            }
+            if (b == 0x0A) { Flush(); continue; }
+            sb.Append(b == '\t' ? ' ' : (char)b);
+        }
+        if (sb.Length > 0) Flush();
+        return new HuSource(lines);
+    }
+
+    /// <summary>
+    /// ファイルを読む。encoding は auto (既定。UTF-8 として読めなければ X1 の文字コードとして読み、warning)・utf8・sjis・x1。
+    /// UTF-8 として読めないファイルを utf8 で読むと、例外ではなく error HB0111 にする (auto の warning は HB0110)
+    /// </summary>
     public static HuSource FromFile(string path, string encoding, HuDiagnosticBag diag)
     {
         var bytes = File.ReadAllBytes(path);
         string text;
+        if (encoding == "x1") return FromX1Bytes(bytes);
         if (encoding == "sjis")
         {
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
@@ -55,9 +93,56 @@ public sealed class HuSource
         }
         else
         {
+            int bad = FirstInvalidUtf8(bytes);
+            if (bad >= 0)
+            {
+                var pos = PosOfByte(bytes, bad);
+                if (encoding == "auto")
+                {
+                    diag.Warning("HB0110", $"UTF-8 として読めないので (${bytes[bad]:X2})、X1 の文字コード (アスキーセーブしたファイル) として読みました", pos);
+                    return FromX1Bytes(bytes);
+                }
+                diag.Error("HB0111", $"UTF-8 として読めないバイト ${bytes[bad]:X2} があります (桁は行の中のバイトの位置)。" +
+                                     "X1 でアスキーセーブしたファイルなら --input-encoding x1 を指定してください", pos);
+                return new HuSource(new List<Line>());
+            }
             text = new UTF8Encoding(false, true).GetString(bytes);
         }
         return FromText(text, diag);
+    }
+
+    /// <summary>UTF-8 として読めない最初のバイトの位置 (すべて読めれば -1)</summary>
+    private static int FirstInvalidUtf8(byte[] bytes)
+    {
+        var span = bytes.AsSpan();
+        int at = 0;
+        while (at < span.Length)
+        {
+            if (Rune.DecodeFromUtf8(span[at..], out _, out int used) != System.Buffers.OperationStatus.Done) return at;
+            at += used;
+        }
+        return -1;
+    }
+
+    /// <summary>バイトの位置の行と桁 (どちらも 1 から。行は CR LF・CR・LF で数える。桁は行の中のバイトの位置)</summary>
+    private static HuPos PosOfByte(byte[] bytes, int index)
+    {
+        int line = 1, start = 0;
+        for (int i = 0; i < index; i++)
+        {
+            if (bytes[i] == 0x0D)
+            {
+                if (i + 1 < index && bytes[i + 1] == 0x0A) i++;
+                line++;
+                start = i + 1;
+            }
+            else if (bytes[i] == 0x0A)
+            {
+                line++;
+                start = i + 1;
+            }
+        }
+        return new HuPos(line, index - start + 1, 0);
     }
 
     /// <summary>Unicode 1 文字を X1 の文字コードに。変換できなければ -1。</summary>

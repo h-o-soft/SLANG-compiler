@@ -25,7 +25,7 @@ class Program
         }
 
         string? input = null, output = null, checkBin = null, checkLst = null;
-        string encoding = "utf8";
+        string encoding = "auto";
         var opt = new HuTranspileOptions();
         for (int i = 0; i < args.Length; i++)
         {
@@ -57,8 +57,8 @@ class Program
                     break;
                 case "--input-encoding":
                     encoding = NextArg() ?? "";
-                    if (encoding != "utf8" && encoding != "sjis")
-                        return Fail($"--input-encoding は utf8 か sjis です: {encoding}");
+                    if (encoding is not ("auto" or "utf8" or "sjis" or "x1"))
+                        return Fail($"--input-encoding は auto・utf8・sjis・x1 のどれかです: {encoding}");
                     break;
                 case "--emit-line-comments":
                     opt = opt with { LineComments = true };
@@ -158,7 +158,8 @@ class Program
         Console.Error.WriteLine("  --wait <mode>            none (既定) / line[:N] / frame[:N]");
         Console.Error.WriteLine("                           line:N = 各行の頭で約 0.1ms × N 待つ (N=450〜500 で Hu-BASIC に近い速さの目安)");
         Console.Error.WriteLine("                           frame:N = '#VSYNC の指示コメントの位置で N フレーム待つ");
-        Console.Error.WriteLine("  --input-encoding <enc>   utf8 (既定) / sjis");
+        Console.Error.WriteLine("  --input-encoding <enc>   auto (既定。UTF-8 として読めなければ X1 の文字コード) / utf8 / sjis /");
+        Console.Error.WriteLine("                           x1 (X1 でアスキーセーブしたファイル。1 バイト = X1 の 1 文字)");
         Console.Error.WriteLine("  --emit-line-comments     元の行をコメントで出す");
         Console.Error.WriteLine("  --assume-defint          接尾辞も DEFxxx もない変数を整数にする (Hu-BASIC の既定は単精度の浮動小数)");
         Console.Error.WriteLine("  --data-budget <bytes>    静的データの上限 (既定 24576)");
