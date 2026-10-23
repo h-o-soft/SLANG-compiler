@@ -255,6 +255,21 @@ public class HuBasicEmitTests
         Assert.DoesNotContain("LDDR", code);
     }
 
+    /// <summary>INPUT の数の読み取り (BAS_SVALF) は、符号の前でも後でも &H・&O・&B を整数の VAL に任せる (-&H10 は -16)</summary>
+    [Fact]
+    public void Runtime_SvalfDelegatesSignedRadix()
+    {
+        var path = Path.Combine(RepoRoot(), "runtime", "libx1_basic.asm");
+        var f = RuntimeParser.Parse(File.ReadAllText(path), path).Single(x => x.Name == "BAS_SVALF");
+        var code = f.Code.Split('\n').Select(l => l.Split(';')[0].Trim()).Where(l => l.Length > 0).ToList();
+        int sign = code.IndexOf(".bsv_sg1");
+        int digits = code.IndexOf(".bsv_int");
+        Assert.True(sign >= 0 && digits > sign);
+        Assert.Contains("CP '&'", code.GetRange(sign, digits - sign));       // 符号の後
+        Assert.Contains("CP '&'", code.GetRange(0, sign));                   // 符号の前
+        Assert.Contains("BAS_SVAL", f.Dependencies);
+    }
+
     /// <summary>引数の多い CHR$ も、結果の長さ分だけを確保する (42 個でも、1 行に書ける最大の 110 個でも一時領域があふれない)</summary>
     [Theory]
     [InlineData(42)]

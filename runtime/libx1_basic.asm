@@ -4783,6 +4783,12 @@ LD (.bsv_neg), A
 .bsv_sg1
 INC HL
 DEC B
+LD A, B                 ; 符号の後の &H・&O・&B も、整数の VAL に任せる (-&H10 は -16。Hu-BASIC の実測)
+OR A
+JP Z, .bsv_conv
+LD A, (HL)
+CP '&'
+JP Z, .bsv_radix
 .bsv_int                ; 整数部
 LD A, B
 OR A
