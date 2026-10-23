@@ -18,8 +18,11 @@ public sealed class HuParser
     {
         ["INP"] = (1, 1), ["MID$"] = (2, 3), ["RIGHT$"] = (2, 2), ["CHR$"] = (1, 1),
         ["ASC"] = (1, 1), ["VAL"] = (1, 1), ["HEXCHR$"] = (1, 1), ["CGPAT$"] = (1, 1),
-        ["STICK"] = (1, 1), ["STRIG"] = (1, 1),
+        ["STICK"] = (1, 1), ["STRIG"] = (1, 1), ["RND"] = (0, 1), ["INT"] = (1, 1),
     };
+
+    /// <summary>SLANG の FLOAT (f24) で表せる最大の大きさ (約 9.2E+18)</summary>
+    public const double MaxFloat = 9.2e18;
 
     private readonly HuDiagnosticBag _diag;
     private List<HuToken> _tokens = new();
@@ -175,7 +178,7 @@ public sealed class HuParser
             case "GOSUB":
                 return new HuGosub(ParseLineNumber(), pos);
             case "RETURN":
-                return new HuReturn(Peek.Is(HuTokenKind.Number) ? ParseLineNumber() : null, pos);
+                return new HuReturn(AtLineNumber ? ParseLineNumber() : null, pos);
             case "ON":
                 return ParseOn(pos);
             case "IF":
@@ -225,7 +228,7 @@ public sealed class HuParser
                 return new HuRead(targets, pos);
             }
             case "RESTORE":
-                return new HuRestore(Peek.Is(HuTokenKind.Number) ? ParseLineNumber() : null, pos);
+                return new HuRestore(AtLineNumber ? ParseLineNumber() : null, pos);
             case "OUT":
             {
                 var port = ParseExpr();
@@ -342,9 +345,19 @@ public sealed class HuParser
         return t.Text;
     }
 
+    /// <summary>次の字句が行番号として読めるか (32768 以上の行番号は浮動小数の字句になっている)</summary>
+    private bool AtLineNumber
+        => Peek.Is(HuTokenKind.Number) || (Peek.Is(HuTokenKind.Float) && Peek.Text.All(char.IsAsciiDigit));
+
     private int ParseLineNumber()
     {
         var t = Peek;
+        // 32768 以上の行番号は、字句解析では浮動小数の数になっている (数字だけの綴りなら行番号として読む)
+        if (t.Kind == HuTokenKind.Float && t.Text.All(char.IsAsciiDigit) && int.TryParse(t.Text, out var big))
+        {
+            Next();
+            return big;
+        }
         if (t.Kind != HuTokenKind.Number)
         {
             Error("HB0206", $"行番号が必要です ('{t}' があります)");
@@ -397,7 +410,7 @@ public sealed class HuParser
     /// <summary>THEN / ELSE の後ろ: 行番号だけなら GOTO、そうでなければ ELSE か行末までの文</summary>
     private List<HuStmt> ParseIfBranch()
     {
-        if (Peek.Is(HuTokenKind.Number))
+        if (AtLineNumber)
         {
             var pos = Here;
             return new List<HuStmt> { new HuGoto(ParseLineNumber(), pos) };
@@ -641,9 +654,18 @@ public sealed class HuParser
                 Next();
                 return new HuNum(t.Value, pos);
             case HuTokenKind.Float:
+            {
                 Next();
-                _diag.Error("HB0401", $"小数・指数を含む数値 {t.Text} は未対応です (整数のみ)", pos);
-                return new HuNum(0, pos);
+                // 接尾辞の ! # を外し、倍精度の指数 D を E に読み替える
+                var text = t.Text.TrimEnd('!', '#').Replace('D', 'E').Replace('d', 'E');
+                if (!double.TryParse(text, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out var fv) || fv > MaxFloat)
+                {
+                    _diag.Error("HB0103", $"浮動小数として大きすぎる数値 {t.Text} (約 9.2E+18 まで)", pos);
+                    fv = 0;
+                }
+                return new HuFloat(fv, pos);
+            }
             case HuTokenKind.String:
                 Next();
                 if (t.Text.Length > 255)
@@ -685,6 +707,8 @@ public sealed class HuParser
         Next();
         if (t.Text == "INKEY$")
             return new HuCall("INKEY$", Array.Empty<HuExpr>(), pos);
+        if (t.Text == "RND" && !Peek.IsSymbol("("))
+            return new HuCall("RND", Array.Empty<HuExpr>(), pos);
         if (!Functions.TryGetValue(t.Text, out var arity))
         {
             _diag.Error("HB0302", $"未対応の関数または予約語 {t.Text}", pos);

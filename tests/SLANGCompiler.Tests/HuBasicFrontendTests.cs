@@ -60,17 +60,53 @@ public class HuBasicFrontendTests
         Assert.Contains(diag.Items, d => d.Code == "HB0103");
     }
 
+    /// <summary>32768 以上の 10 進の数は浮動小数の定数 (Hu-BASIC と同じく、変数に入れるまでそのままの値)。
+    /// % を付けたものだけ 16 ビットの整数として警告する</summary>
     [Theory]
-    [InlineData("A=40000", true)]
-    [InlineData("A=65535", true)]
-    [InlineData("A=32767", false)]
-    [InlineData("A=&HFFFF", false)] // 16 進はビットの並びとして使うので警告しない
-    public void Lexer_WarnsDecimalLiteralsAbove32767(string body, bool warns)
+    [InlineData("A=40000", false, true)]
+    [InlineData("A=65535", false, true)]
+    [InlineData("A=99999999999", false, true)]
+    [InlineData("A=32767", false, false)]
+    [InlineData("A=40000%", true, false)]
+    [InlineData("A=&HFFFF", false, false)] // 16 進はビットの並び (整数のまま)
+    public void Lexer_LargeDecimalLiteralsAreFloat(string body, bool warns, bool isFloat)
     {
         var diag = new HuDiagnosticBag();
-        HuParser.ParseSingleLine("10 " + body, diag);
+        var line = HuParser.ParseSingleLine("10 " + body, diag);
         Assert.Equal(warns, diag.Items.Any(d => d.Code == "HB0109" && d.Severity == HuSeverity.Warning));
         Assert.False(diag.HasErrors);
+        var value = Assert.IsType<HuAssign>(line!.Statements[0]).Value;
+        Assert.Equal(isFloat, value is HuFloat);
+    }
+
+    [Theory]
+    [InlineData("A=1.5", 1.5)]
+    [InlineData("A=.25", 0.25)]
+    [InlineData("A=1E6", 1e6)]
+    [InlineData("A=1.5D2", 150.0)]
+    [InlineData("A=2!", 2.0)]
+    [InlineData("A=3#", 3.0)]
+    [InlineData("A=40000", 40000.0)]
+    public void Parser_FloatLiterals(string body, double value)
+    {
+        var diag = new HuDiagnosticBag();
+        var line = HuParser.ParseSingleLine("10 " + body, diag);
+        Assert.False(diag.HasErrors);
+        Assert.Equal(value, Assert.IsType<HuFloat>(Assert.IsType<HuAssign>(line!.Statements[0]).Value).Value);
+    }
+
+    [Fact]
+    public void Parser_LargeLineNumbersInJumps()
+    {
+        // 32768 以上の行番号は浮動小数の字句になるが、飛び先としては行番号に読む
+        var diag = new HuDiagnosticBag();
+        var line = HuParser.ParseSingleLine("10 GOTO 40000:GOSUB 65000:IF A THEN 50000 ELSE 60000", diag);
+        Assert.False(diag.HasErrors);
+        Assert.Equal(40000, Assert.IsType<HuGoto>(line!.Statements[0]).Line);
+        Assert.Equal(65000, Assert.IsType<HuGosub>(line.Statements[1]).Line);
+        var f = Assert.IsType<HuIf>(line.Statements[2]);
+        Assert.Equal(50000, Assert.IsType<HuGoto>(f.Then[0]).Line);
+        Assert.Equal(60000, Assert.IsType<HuGoto>(f.Else![0]).Line);
     }
 
     /// <summary>同じ番号をエラーと警告の両方に使わない (別の意味の診断が同じ番号にならないように)</summary>
@@ -103,7 +139,7 @@ public class HuBasicFrontendTests
     [Fact]
     public void Lexer_AcceptsLargestLiterals()
     {
-        var t = Lex("A=&HFFFF+&O177777+&B1111111111111111+65535");
+        var t = Lex("A=&HFFFF+&O177777+&B1111111111111111+65535%");
         Assert.Equal(4, t.Count(x => x.Kind == HuTokenKind.Number && x.Value == 65535));
     }
 
@@ -238,7 +274,7 @@ public class HuBasicFrontendTests
     }
 
     [Theory]
-    [InlineData("10 A=1.5", "HB0401")]
+    [InlineData("10 A=1E99", "HB0103")]   // f24 で表せない大きさ
     [InlineData("10 CALL 100", "HB0301")]
     [InlineData("10 X=ABS(1)", "HB0302")]
     [InlineData("10 DIM A(2,3)", "HB0303")]
@@ -282,8 +318,9 @@ public class HuBasicFrontendTests
     [InlineData("10 DEFINT A-Z:DIM A(8192)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A(-1)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A$(3)", "HB0306")]         // 文字列の配列
-    [InlineData("10 DEFINT A-Z:A=5/2*2", "HB0402")]           // / の結果を算術に使う
-    [InlineData("10 DEFINT A-Z:IF A/2>1 THEN 10", "HB0402")]  // / の結果を比べる
+    [InlineData("10 DEFINT A-Z:A!=1.5", "HB0403")]            // 浮動小数の変数は段階 F2 から
+    [InlineData("10 DEFINT A-Z:PRINT USING \"##.#\";1.5", "HB0407")]
+    [InlineData("10 DEFINT A-Z:DIM A(40000)", "HB0305")]       // 32768 以上の 10 進 (浮動小数の定数) も範囲を検査
     [InlineData("10 DEFINT A-Z:A$=1", "HB0404")]
     [InlineData("10 DEFINT A-Z:A=\"X\"+1", "HB0404")]
     [InlineData("10 DEFINT A-Z:FOR I=1 TO 2:NEXT A$", "HB0404")] // NEXT の変数も整数

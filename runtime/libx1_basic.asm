@@ -3585,3 +3585,630 @@ JP BAS_PSGW
 LD A, L
 LD (BAS_CLK), A
 RET
+
+
+; ============================================================ 浮動小数 (段階 F1a)
+; 浮動小数は SLANG の FLOAT (f24): A = 符号 1 ビット + 指数 7 ビット (偏り 63。0 なら値 0、$7F なら無限大・NaN)、
+; HL = 仮数 16 ビット (頭の 1 は省略)。記憶の上では 仮数の下位・上位・符号と指数 の 3 バイト。
+
+; @name BAS_FTOIR
+; @resident shared
+; @param_count 1
+; @calls BAS_ERROR
+; AHL = 浮動小数 → HL = 整数。四捨五入 (0 から遠い側)。絶対値が 65535 以下なら 16 ビットに回り込ませ
+; (整数の代入と同じ)、それを超える値・無限大・NaN はエラー 6 (Overflow)
+LD C, A
+AND $7F
+JP Z, .bft_zero
+CP $7F
+JP Z, .bft_ovf
+SUB 63
+JP C, .bft_small
+CP 16
+JP NC, .bft_ovf
+LD B, A             ; B = 2 の指数 (0〜15)
+LD D, 0
+LD A, 1             ; D:A = 整数部 (頭の 1 から)
+INC B
+DEC B
+JP Z, .bft_int
+.bft_sh
+ADD HL, HL
+RLA
+RL D
+DJNZ .bft_sh
+.bft_int
+LD E, A             ; DE = 整数部、HL = 小数部
+BIT 7, H
+JP Z, .bft_sign
+INC DE              ; 小数部が 0.5 以上なら切り上げ
+LD A, D
+OR E
+JP Z, .bft_ovf      ; 65535 を超えた
+.bft_sign
+EX DE, HL
+BIT 7, C
+RET Z
+XOR A
+SUB L
+LD L, A
+SBC A, A
+SUB H
+LD H, A
+RET
+.bft_small
+CP $FF              ; 0.5 以上 1 未満なら ±1、それより小さければ 0
+JP NZ, .bft_zero
+LD HL, 1
+BIT 7, C
+RET Z
+LD HL, $FFFF
+RET
+.bft_zero
+LD HL, 0
+RET
+.bft_ovf
+LD HL, 6
+JP BAS_ERROR
+
+
+; @name BAS_FDIV
+; @resident shared
+; @param_count 2
+; @result_type float
+; @calls BAS_ERROR,f24div
+; HL = 割られる数の番地、DE = 割る数の番地 (どちらも浮動小数 3 バイト) → AHL = 商。割る数が 0 ならエラー 11
+PUSH HL
+EX DE, HL
+LD E, (HL)
+INC HL
+LD D, (HL)
+INC HL
+LD A, (HL)
+LD C, A             ; CDE = 割る数
+AND $7F
+JP NZ, .bfd_ok
+POP HL
+LD HL, 11
+JP BAS_ERROR
+.bfd_ok
+POP HL
+PUSH DE
+LD E, (HL)
+INC HL
+LD D, (HL)
+INC HL
+LD A, (HL)
+EX DE, HL           ; AHL = 割られる数
+POP DE
+JP f24div
+
+
+; @name BAS_FCMP
+; @resident shared
+; @param_count 2
+; @calls BAS_ERROR
+; HL・DE = 比べる 2 つの浮動小数の番地 → HL = -1 (左 < 右) / 0 (等しい) / 1 (左 > 右)。
+; 厳密に比べる (libfloat の f24cmp は仮数の下位のビットの差を許すので使わない)。0 は符号に関係なく等しい。
+; 無限大・NaN はエラー 6
+PUSH DE
+LD DE, .bfc_a
+CALL .bfc_key
+POP HL
+LD DE, .bfc_b
+CALL .bfc_key
+; 鍵を上の桁から符号なしで比べる
+LD HL, .bfc_a + 2
+LD DE, .bfc_b + 2
+LD B, 3
+.bfc_cmp
+LD A, (DE)
+CP (HL)             ; 右 - 左
+JP NZ, .bfc_ne
+DEC HL
+DEC DE
+DJNZ .bfc_cmp
+LD HL, 0
+RET
+.bfc_ne
+LD HL, 1            ; キャリー = 右 < 左
+RET C
+LD HL, $FFFF
+RET
+; (HL) の浮動小数を、値の大小の順に並ぶ 24 ビットの鍵にして (DE) に書く (下位から 3 バイト)。
+; 鍵 = 指数:仮数 (負なら 2 の補数で反転)、最上位のビットを反転して符号なしの並びにする
+.bfc_key
+LD C, (HL)
+INC HL
+LD B, (HL)
+INC HL
+LD A, (HL)
+LD L, A             ; L = 符号と指数
+AND $7F
+JP Z, .bfc_k0
+CP $7F
+JP Z, .bfc_ovf
+LD H, A             ; H:B:C = 指数:仮数
+BIT 7, L
+JP Z, .bfc_kput
+LD A, C
+CPL
+LD C, A
+LD A, B
+CPL
+LD B, A
+LD A, H
+CPL
+LD H, A
+INC C
+JP NZ, .bfc_kput
+INC B
+JP NZ, .bfc_kput
+INC H
+JP .bfc_kput
+.bfc_k0
+LD H, A
+LD B, A
+LD C, A
+.bfc_kput
+LD A, C
+LD (DE), A
+INC DE
+LD A, B
+LD (DE), A
+INC DE
+LD A, H
+XOR $80
+LD (DE), A
+RET
+.bfc_ovf
+LD HL, 6
+JP BAS_ERROR
+.bfc_a DB 0, 0, 0
+.bfc_b DB 0, 0, 0
+
+
+; @name BAS_FFLOOR
+; @resident shared
+; @param_count 1
+; @result_type float
+; @calls f24sub
+; AHL → AHL = 床関数 (AHL を超えない最大の整数。INT 関数)。無限大・NaN はそのまま
+LD C, A
+AND $7F
+RET Z               ; 0
+CP $7F
+JP Z, .bff_same
+SUB 63
+JP C, .bff_lt1
+CP 16
+JP NC, .bff_same    ; 小数部がない大きさ
+; 2 の指数 E (0〜15): 仮数の下位 16-E ビットが小数部
+LD B, A
+LD DE, $FFFF
+LD A, 16
+SUB B
+.bff_m
+SLA E
+RL D
+DEC A
+JP NZ, .bff_m       ; DE = 整数部を残すマスク
+LD A, E
+CPL
+AND L
+LD B, A
+LD A, D
+CPL
+AND H
+OR B
+LD B, A             ; B = 0 なら小数部がない
+LD A, L
+AND E
+LD L, A
+LD A, H
+AND D
+LD H, A             ; HL = 小数部を捨てた仮数
+LD A, C
+BIT 7, C
+RET Z               ; 正: 切り捨てたもの
+INC B
+DEC B
+RET Z               ; 負で小数部なし: そのまま
+LD C, $3F           ; 負で小数部あり: 切り捨てたもの - 1 (CDE = 1.0)
+LD DE, 0
+JP f24sub
+.bff_same
+LD A, C
+RET
+.bff_lt1
+BIT 7, C            ; 絶対値が 1 未満: 正なら 0、負なら -1
+JP NZ, .bff_m1
+XOR A
+LD H, A
+LD L, A
+RET
+.bff_m1
+LD A, $BF
+LD HL, 0
+RET
+
+
+; @name BAS_FSTR
+; @resident shared
+; @param_count 1
+; @calls BAS_ERROR,f24toa
+; AHL = 浮動小数 → HL = Hu-BASIC の形の文字列 (0 終端)。頭に符号の桁 (正は空白、負は '-')、後ろの空白は付けない。
+; 小数部のない値で 8 桁以下のものは整数として正確に出す。それ以外は f24toa の有効 5 桁を組み直す:
+; 小数点の位置 X (数字の並びの頭から数えた位置) が 0〜8 なら 123.45 / .5 の形、X が負で桁が 8 以内なら .000123 の形、
+; それ以外は 1.2345E+18 の形 (指数は 2 桁)。無限大・NaN はエラー 6
+LD (.bfs_hl), HL
+LD (.bfs_a), A
+LD C, A
+LD DE, .bfs_out
+LD A, ' '
+BIT 7, C
+JP Z, .bfs_sg
+LD A, '-'
+.bfs_sg
+LD (DE), A
+INC DE
+LD (.bfs_dst), DE
+LD A, C
+AND $7F
+JP Z, .bfs_zero
+CP $7F
+JP Z, .bfs_ovf
+SUB 63
+JP C, .bfs_f24
+CP 27
+JP NC, .bfs_f24
+; 小数部のない値 (2 の指数 0〜26) は、32 ビットの整数にして正確に出す (8 桁まで)
+LD B, A
+LD A, L
+LD (.bfs_q), A
+LD A, H
+LD (.bfs_q + 1), A
+LD A, 1
+LD (.bfs_q + 2), A
+XOR A
+LD (.bfs_q + 3), A
+LD A, B
+CP 16
+JP NC, .bfs_shl
+LD A, 16            ; 指数が 16 未満: 16 - 指数 ビット右へ。1 が落ちたら小数部がある
+SUB B
+LD B, A
+.bfs_shr
+LD HL, .bfs_q + 2
+SRL (HL)
+DEC HL
+RR (HL)
+DEC HL
+RR (HL)
+JP C, .bfs_f24
+DJNZ .bfs_shr
+JP .bfs_dec
+.bfs_shl
+SUB 16
+JP Z, .bfs_dec
+LD B, A
+.bfs_shl1
+LD HL, .bfs_q
+SLA (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+DJNZ .bfs_shl1
+.bfs_dec
+LD DE, .bfs_dig     ; 10 で割り続けて、下の桁から並べる
+LD C, 0
+.bfs_dl
+CALL .bfs_div10
+ADD A, '0'
+LD (DE), A
+INC DE
+INC C
+LD HL, (.bfs_q)
+LD A, H
+OR L
+LD HL, (.bfs_q + 2)
+OR H
+OR L
+JP NZ, .bfs_dl
+LD A, C
+CP 9
+JP NC, .bfs_f24     ; 9 桁以上は指数の形にする
+LD DE, (.bfs_dst)
+LD HL, .bfs_dig - 1
+LD B, 0
+ADD HL, BC
+.bfs_rv
+LD A, (HL)
+LD (DE), A
+INC DE
+DEC HL
+DEC C
+JP NZ, .bfs_rv
+XOR A
+LD (DE), A
+LD HL, .bfs_out
+RET
+; .bfs_q (32 ビット) を 10 で割る → A = 余り (HL・B を壊す)
+.bfs_div10
+XOR A
+LD B, 32
+.bfs_dv
+LD HL, .bfs_q
+SLA (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+RLA
+CP 10
+JP C, .bfs_dvn
+SUB 10
+LD HL, .bfs_q
+INC (HL)
+.bfs_dvn
+DJNZ .bfs_dv
+RET
+.bfs_f24
+LD A, (.bfs_a)
+AND $7F             ; 符号は書いたので、絶対値を文字にする
+LD HL, (.bfs_hl)
+LD DE, .bfs_raw
+CALL f24toa         ; HL = 文字列 (例: 2.5 / .5 / 123460 / 1e18 / 1.23e-4)
+; 数字を .bfs_dig に集める。B = 数字の数、C = 小数点の前の数字の数 ($FF = 小数点なし)
+LD DE, .bfs_dig
+LD BC, $00FF
+XOR A
+LD (.bfs_n), A
+.bfs_p
+LD A, (HL)
+OR A
+JP Z, .bfs_pend
+INC HL
+CP '.'
+JP NZ, .bfs_p1
+LD C, B
+JP .bfs_p
+.bfs_p1
+CP 'e'
+JP Z, .bfs_pe
+CP '0'
+JP C, .bfs_p
+CP '9' + 1
+JP NC, .bfs_p
+LD (DE), A
+INC DE
+INC B
+JP .bfs_p
+.bfs_pe
+PUSH BC             ; 指数: [-]数字
+LD C, 0
+LD A, (HL)
+CP '-'
+JP NZ, .bfs_pe1
+INC C
+INC HL
+.bfs_pe1
+LD B, 0
+.bfs_pe2
+LD A, (HL)
+SUB '0'
+JP C, .bfs_pe3
+CP 10
+JP NC, .bfs_pe3
+LD E, A
+LD A, B
+ADD A, A
+LD D, A
+ADD A, A
+ADD A, A
+ADD A, D
+ADD A, E
+LD B, A
+INC HL
+JP .bfs_pe2
+.bfs_pe3
+LD A, B
+DEC C
+JP NZ, .bfs_pe4
+NEG
+.bfs_pe4
+LD (.bfs_n), A
+POP BC
+.bfs_pend
+LD A, C             ; X = 小数点の前の数字の数 + 指数
+CP $FF
+JP NZ, .bfs_x1
+LD A, B
+.bfs_x1
+LD HL, .bfs_n
+ADD A, (HL)
+LD (.bfs_x), A
+LD HL, .bfs_dig     ; 頭の 0 を除く (1 つごとに X を 1 減らす)
+.bfs_lz
+LD A, B
+OR A
+JP Z, .bfs_tz
+LD A, (HL)
+CP '0'
+JP NZ, .bfs_tz
+INC HL
+DEC B
+LD A, (.bfs_x)
+DEC A
+LD (.bfs_x), A
+JP .bfs_lz
+.bfs_tz
+LD A, B             ; 後ろの 0 を除く
+OR A
+JP Z, .bfs_fmt
+PUSH HL
+LD E, B
+LD D, 0
+ADD HL, DE
+DEC HL
+LD A, (HL)
+POP HL
+CP '0'
+JP NZ, .bfs_fmt
+DEC B
+JP .bfs_tz
+.bfs_fmt
+LD A, B
+OR A
+JP Z, .bfs_zero
+LD DE, (.bfs_dst)
+LD A, (.bfs_x)
+BIT 7, A
+JP NZ, .bfs_neg
+CP 9
+JP NC, .bfs_exp
+LD C, A             ; 0 <= X <= 8: 小数点の前に X 桁 (数字が尽きたら 0)
+OR A
+JP Z, .bfs_pt
+.bfs_ip
+LD A, B
+OR A
+JP Z, .bfs_ipz
+LD A, (HL)
+INC HL
+DEC B
+JP .bfs_ipw
+.bfs_ipz
+LD A, '0'
+.bfs_ipw
+LD (DE), A
+INC DE
+DEC C
+JP NZ, .bfs_ip
+LD A, B
+OR A
+JP Z, .bfs_end
+.bfs_pt
+LD A, '.'
+LD (DE), A
+INC DE
+.bfs_rest
+LD A, B
+OR A
+JP Z, .bfs_end
+LD A, (HL)
+INC HL
+LD (DE), A
+INC DE
+DEC B
+JP .bfs_rest
+.bfs_neg
+NEG                 ; X < 0: 0 の数 (-X) と数字の数の合計が 8 以内なら .000ddd
+LD C, A
+ADD A, B
+CP 9
+JP NC, .bfs_exp
+LD A, '.'
+LD (DE), A
+INC DE
+.bfs_nz
+LD A, '0'
+LD (DE), A
+INC DE
+DEC C
+JP NZ, .bfs_nz
+JP .bfs_rest
+.bfs_exp
+LD A, (HL)          ; d.dddE±nn (nn = X - 1)
+INC HL
+LD (DE), A
+INC DE
+DEC B
+LD A, B
+OR A
+JP Z, .bfs_e
+LD A, '.'
+LD (DE), A
+INC DE
+.bfs_e1
+LD A, B
+OR A
+JP Z, .bfs_e
+LD A, (HL)
+INC HL
+LD (DE), A
+INC DE
+DEC B
+JP .bfs_e1
+.bfs_e
+LD A, 'E'
+LD (DE), A
+INC DE
+LD A, (.bfs_x)
+DEC A
+LD C, '+'
+BIT 7, A
+JP Z, .bfs_e2
+NEG
+LD C, '-'
+.bfs_e2
+LD B, A
+LD A, C
+LD (DE), A
+INC DE
+LD A, B
+LD C, '0' - 1
+.bfs_e3
+INC C
+SUB 10
+JP NC, .bfs_e3
+ADD A, 10 + '0'
+LD B, A
+LD A, C
+LD (DE), A
+INC DE
+LD A, B
+LD (DE), A
+INC DE
+.bfs_end
+XOR A
+LD (DE), A
+LD HL, .bfs_out
+RET
+.bfs_zero
+LD HL, .bfs_out
+LD (HL), ' '
+INC HL
+LD (HL), '0'
+INC HL
+LD (HL), 0
+LD HL, .bfs_out
+RET
+.bfs_ovf
+LD HL, 6
+JP BAS_ERROR
+.bfs_hl DW 0
+.bfs_a DB 0
+.bfs_dst DW 0
+.bfs_n DB 0
+.bfs_x DB 0
+.bfs_q DB 0, 0, 0, 0
+.bfs_raw DB 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.bfs_dig DB 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.bfs_out DB 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+
+; @name BAS_PFLT
+; @resident shared
+; @param_count 1
+; @calls BAS_FSTR,BAS_PSTRZ,BAS_PCHR
+; AHL = 浮動小数を PRINT の形で出す (符号の桁 + 数 + 後ろに空白 1 つ。整数の BAS_PNUM と同じ並び)
+CALL BAS_FSTR
+CALL BAS_PSTRZ
+LD L, ' '
+JP BAS_PCHR

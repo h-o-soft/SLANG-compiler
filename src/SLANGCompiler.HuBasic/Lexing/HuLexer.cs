@@ -168,7 +168,11 @@ public sealed class HuLexer
         var text = _text[start.._pos];
         if (isFloat)
             return new HuToken(HuTokenKind.Float, text, 0, Col(start));
+        bool intSuffix = text.EndsWith('%');
         var digits = text.TrimEnd('%');
+        // 32768 以上の 10 進の数は、Hu-BASIC と同じく浮動小数の定数 (変数に入れるまでそのままの値)
+        if (!intSuffix && (!long.TryParse(digits, out var big) || big > 32767))
+            return new HuToken(HuTokenKind.Float, text, 0, Col(start));
         if (!long.TryParse(digits, out var v) || v > 65535)
         {
             _diag.Error("HB0103", $"整数として大きすぎる数値 {digits}", At(start));
@@ -176,9 +180,8 @@ public sealed class HuLexer
         }
         else if (v > 32767)
         {
-            // Hu-BASIC は変数に入れるまでは 40000 のまま扱うが、hub2sl は 16 ビットの整数として扱う
-            _diag.Warning("HB0109", $"数値 {digits} は 16 ビットの整数 {v - 65536} として扱います" +
-                                    " (変数に入れずに計算や表示に使うと Hu-BASIC と結果が違います)", At(start));
+            // % の付いた 32768 以上の数は、16 ビットの整数として扱う
+            _diag.Warning("HB0109", $"数値 {text} は 16 ビットの整数 {v - 65536} として扱います", At(start));
         }
         return new HuToken(HuTokenKind.Number, text, (int)v, Col(start));
     }

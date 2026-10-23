@@ -47,6 +47,18 @@ public class HuBasicEmitTests
         """;
 
     /// <summary>MVP のすべての命令・関数を使うプログラム (自作)。ランタイムの契約と組み立ての通しに使う</summary>
+    /// <summary>段階 F1a の浮動小数の式をひととおり使う小さなプログラム (自作。変数は整数と文字列だけ)</summary>
+    private const string FloatProgram = """
+        10 DEFINT A-Z:CLS
+        20 PRINT 2.5;-.25;40000;1E18;1/3:A=5/2*2:B=7/2:C=X/Y*2:D=-2.5
+        30 IF RND<.6 THEN E=INT(RND*3)-1
+        40 IF .25 THEN 50 ELSE 60
+        50 F=(1.5<X)+(X=2.5)-(NOT(X>.5)):G=INT(X)+INT(-2.5)
+        60 ON 1.6 GOTO 70,70
+        70 FOR I=1 TO 2.5:NEXT:H=7\2.6+(7 MOD 2.6)+(3.5 AND 6)
+        80 END
+        """;
+
     private const string FullProgram = """
         10 DEFINT A-Z:CLS:INIT:WIDTH 40:CLICK OFF:TEMPO 300
         20 A$="AB":B$=A$+CHR$(65):C$=MID$(A$,1,1)+MID$(A$,2)+RIGHT$(A$,1)+HEXCHR$("41")+CGPAT$(65)+INKEY$
@@ -169,6 +181,67 @@ public class HuBasicEmitTests
     }
 
     private const string HuBasicEmitTests_FullProgramForExprs = FullProgram;
+
+    // ------------------------------------------------------------ 浮動小数 (段階 F1a)
+
+    private static string Body(string sl) => sl[sl.IndexOf("MAIN()", StringComparison.Ordinal)..];
+
+    [Fact]
+    public void Float_IntegerOnlyProgramHasNoFloatCode()
+    {
+        // 整数だけのプログラムには、浮動小数の宣言・定数の表・関数が一切出ない
+        foreach (var prog in new[] { Stage1Program, FullProgram })
+        {
+            var sl = Transpile(prog).Output!;
+            Assert.DoesNotContain("FLOAT", sl);
+            Assert.DoesNotContain("H_FK", sl);
+            Assert.DoesNotMatch(@"BAS_F(TOIR|DIV|CMP|FLOOR|STR)\(|BAS_PFLT|FRAND", sl);
+        }
+    }
+
+    [Fact]
+    public void Float_DivisionUsesIdivrOnlyWhereRoundedImmediately()
+    {
+        var sl = Body(Transpile("10 DEFINT A-Z:A=B/C:D=B/C*2:E=(B/C)\\1").Output!);
+        Assert.Contains("V_A=BAS_IDIVR(V_B, V_C);", sl);              // 整数に入れる位置の / は整数の割り算
+        Assert.Matches(@"V_D=BAS_FTOIR\(\(BAS_FDIV\(&H_F\d, &H_F\d\)\*H_FK\[\d\]\)\);", sl); // それ以外は浮動小数
+        Assert.Contains("V_E=((BAS_IDIVR(V_B, V_C))./.(1));", sl);    // \ の左右は整数に丸めてから
+    }
+
+    [Fact]
+    public void Float_ConstantsComeFromTableWithoutExponent()
+    {
+        var sl = Transpile("10 DEFINT A-Z:PRINT 1E18;2.5;40000;2.5:A=X+.000123").Output!;
+        var table = Regex.Match(sl, @"ARRAY FLOAT H_FK\[\] = \{ (.*) \};").Groups[1].Value;
+        Assert.Equal(new[] { "1000000000000000000.0", "2.5", "40000.0", "0.000123" }, table.Split(", "));
+        // 本体には FLOAT の定数を直接書かない (SLANG が小数部のない FLOAT の定数を整数として畳み込むため)
+        Assert.DoesNotMatch(@"\d\.\d", Body(sl));
+    }
+
+    [Fact]
+    public void Float_TempsAreDeclaredWithFloatEachAndBeforeTheLine()
+    {
+        var sl = Transpile("10 DEFINT A-Z:A=X/Y+Z/W").Output!;
+        Assert.Contains("VAR FLOAT H_F1, FLOAT H_F2, FLOAT H_F3, FLOAT H_F4;", sl);
+        // 一時変数への代入は、その文の行の前に、左から順に出る
+        var lines = Body(sl).Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+        int a = lines.FindIndex(l => l.StartsWith("V_A="));
+        Assert.Equal(new[] { "H_F1=V_X;", "H_F2=V_Y;", "H_F3=V_Z;", "H_F4=V_W;" }, lines.GetRange(a - 4, 4));
+    }
+
+    [Fact]
+    public void Float_ComparisonAndConditionAndConversion()
+    {
+        var sl = Body(Transpile("10 DEFINT A-Z:IF X*.25 THEN 10\n20 C=(X<1.5):A=40000:B=-2.5:PRINT RND;INT(X):IF .25 THEN 10").Output!);
+        Assert.Contains("IF (BAS_FTOIR((H_F1*H_FK[0])))==0 THEN", sl); // 浮動小数の条件は丸めて判定
+        Assert.Contains("IF (0)==0 THEN", sl);                         // 定数の条件は変換のときに丸める (.25 → 0)
+        Assert.Matches(@"BAS_FCMP\(&H_F1, \(H_FK\+\d+\)\) \.<\. 0", sl); // 比較は BAS_FCMP と 0
+        Assert.Contains("V_A=(0-25536);", sl);                        // 定数の丸めは変換のときに (40000 → -25536)
+        Assert.Contains("V_B=(0-3);", sl);
+        Assert.Contains("BAS_PFLT(FRAND());", sl);
+        Assert.Contains("BAS_PFLT(BAS_FFLOOR(H_F1));", sl);           // INT は浮動小数を返す (Hu-BASIC と同じ)
+        Assert.Contains("V_G=V_X;", Body(Transpile("10 DEFINT A-Z:G=INT(X)").Output!)); // 整数に入れる INT(整数) は何もしない
+    }
 
     [Fact]
     public void Lowering_WhileResetsTempsInsideLoopHead()
@@ -297,7 +370,7 @@ public class HuBasicEmitTests
     {
         var path = Path.Combine(RepoRoot(), "runtime", "libx1_basic.asm");
         var functions = RuntimeParser.Parse(File.ReadAllText(path), path).ToDictionary(f => f.Name);
-        var sl = Transpile(Stage1Program).Output! + Transpile(FullProgram).Output!;
+        var sl = Transpile(Stage1Program).Output! + Transpile(FullProgram).Output! + Transpile(FloatProgram).Output!;
         var called = Regex.Matches(sl, @"\b(BAS_[A-Z0-9]+)\(").Select(m => m.Groups[1].Value).Distinct().ToList();
         Assert.NotEmpty(called);
         foreach (var name in called)
@@ -375,6 +448,13 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "PROG"));
             RunSlangbuild(root, dir, sl2, asmPath, Path.Combine(dir, "FULL"));
             AssertBuilt(Path.Combine(dir, "FULL"));
+            // 浮動小数の式 (libfloat を呼ぶ) も、x1native と x1native_slfs の両方で組み立てまで通る
+            var sl3 = Path.Combine(dir, "FLT.SL");
+            File.WriteAllText(sl3, Transpile(FloatProgram).Output!);
+            RunSlangbuild(root, dir, sl3, asmPath, Path.Combine(dir, "FLT"));
+            AssertBuilt(Path.Combine(dir, "FLT"));
+            RunSlangbuild(root, dir, sl3, asmPath, Path.Combine(dir, "FLTS"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "FLTS"));
         }
         finally
         {
@@ -382,7 +462,7 @@ public class HuBasicEmitTests
         }
     }
 
-    private static void RunSlangbuild(string root, string dir, string sl, string asmPath, string outBase)
+    private static void RunSlangbuild(string root, string dir, string sl, string asmPath, string outBase, string env = "x1native")
     {
         var psi = new ProcessStartInfo("dotnet")
         {
@@ -394,7 +474,7 @@ public class HuBasicEmitTests
         psi.Environment["SLANG_HOME"] = root;
         psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         foreach (var a in new[] { "run", "--project", Path.Combine(root, "src", "SLANGCompiler.Build", "SLANGCompiler.Build.csproj"),
-                     "-c", "Release", "--", sl, "-E", "x1native", "--asm", asmPath, "--keep-asm", "-o", outBase })
+                     "-c", "Release", "--", sl, "-E", env, "--asm", asmPath, "--keep-asm", "-o", outBase })
             psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         var so = proc.StandardOutput.ReadToEndAsync();

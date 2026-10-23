@@ -3,7 +3,7 @@ namespace SLANGCompiler.HuBasic.Lexing;
 public enum HuTokenKind
 {
     Number,      // 整数 (10 進 / &H / &O / &B)。Value に値 (0-65535)
-    Float,       // 小数点・指数を含む数値 (MVP では構文解析でエラー)
+    Float,       // 浮動小数の数値 (小数点・指数・! # を含むもの、32768 以上の 10 進)。Text に綴り
     String,      // "..." (Text は中身、引用符なし)
     Ident,       // 変数名 (大文字化済み、型の接尾辞 $ % を含む)
     Keyword,     // 予約語 (Text は正規化した綴り)

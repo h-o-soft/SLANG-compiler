@@ -338,6 +338,10 @@ public sealed class HuLowerer
                     Call("BAS_PSTR", E(pe.Expr));
                     if (MakesTemps(pe.Expr)) Call("BAS_STMP");
                     break;
+                case HuPrintExpr pe when pe.Expr.Type == HuType.Float:
+                    Emit(new FCall("BAS_PFLT", new FArg[] { new FFloatArg(pe.Expr) }));
+                    if (MakesTemps(pe.Expr)) Call("BAS_STMP");
+                    break;
                 case HuPrintExpr pe:
                     Call("BAS_PNUM", E(pe.Expr));
                     if (MakesTemps(pe.Expr)) Call("BAS_STMP");

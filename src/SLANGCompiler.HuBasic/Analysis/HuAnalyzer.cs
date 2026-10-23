@@ -5,7 +5,7 @@ namespace SLANGCompiler.HuBasic.Analysis;
 /// <summary>
 /// 構文木を検査して <see cref="HuProgram"/> を作る。
 /// - 行の並べ替え・重複・飛び先の検査
-/// - 型 (整数 / 文字列) の決定と検査、浮動小数の拒否、'/' の位置の検査
+/// - 型 (整数 / 文字列 / 浮動小数) の決定と検査 (浮動小数の変数は段階 F2 までエラー)、'/' の型の決定
 /// - REPEAT/UNTIL・WHILE/WEND の字面の対応、FOR が回らないときの飛び先の走査
 /// - 配列・文字列リテラル・DATA の表、GOSUB の戻り先 ID、静的データの合計
 /// </summary>
@@ -181,6 +181,8 @@ public sealed class HuAnalyzer
         long? v = e switch
         {
             HuNum n => n.Value,
+            // 浮動小数の定数は四捨五入した値 (DIM の上限などで、32768 以上の 10 進の数も範囲の検査に乗せる)
+            HuFloat f when Math.Abs(f.Value) <= Limit => (long)Math.Round(f.Value, MidpointRounding.AwayFromZero),
             HuUnary { Op: "-" } u => ConstValue(u.Operand) is long x ? -x : null,
             HuUnary { Op: "+" } u => ConstValue(u.Operand),
             HuBinary { Op: "+" } b => ConstValue(b.Left) is long l && ConstValue(b.Right) is long r ? l + r : null,
@@ -198,6 +200,7 @@ public sealed class HuAnalyzer
     private static bool ConstExprOnly(HuExpr e) => e switch
     {
         HuNum => true,
+        HuFloat => true,
         HuUnary { Op: "-" or "+" } u => ConstExprOnly(u.Operand),
         HuBinary { Op: "+" or "-" or "*" } b => ConstExprOnly(b.Left) && ConstExprOnly(b.Right),
         _ => false,
@@ -254,6 +257,9 @@ public sealed class HuAnalyzer
             case HuNum:
                 t = HuType.Int;
                 break;
+            case HuFloat:
+                t = HuType.Float;
+                break;
             case HuStr s:
                 AddLiteral(s.Text);
                 t = HuType.Str;
@@ -264,13 +270,16 @@ public sealed class HuAnalyzer
                 break;
             case HuIndex ix:
                 UseArray(ix.Name, ix.Pos);
-                ExpectInt(ix.Index, intConv: true);
+                ExpectNum(ix.Index, intConv: true);
                 t = HuType.Int;
                 break;
             case HuUnary u:
-                ExpectInt(u.Operand, intConv: u.Op == "NOT");
-                t = HuType.Int;
+            {
+                var ot = ExpectNum(u.Operand, intConv: u.Op == "NOT");
+                // 符号は中身の型のまま、NOT は整数 (浮動小数は丸めてからビットを反転する)
+                t = u.Op == "NOT" ? HuType.Int : ot;
                 break;
+            }
             case HuBinary b:
                 t = CheckBinary(b, intConv);
                 break;
@@ -285,11 +294,25 @@ public sealed class HuAnalyzer
         return t;
     }
 
-    private void ExpectInt(HuExpr e, bool intConv)
+    /// <summary>
+    /// 数の式 (整数か浮動小数) を求める。浮動小数は、整数が要る位置では出力のときに四捨五入で整数にする。
+    /// 返り値は式の型 (文字列ならエラーにして Int を返す)。
+    /// </summary>
+    private HuType ExpectNum(HuExpr e, bool intConv)
     {
-        if (CheckExpr(e, intConv) != HuType.Int)
-            _diag.Error("HB0404", "整数の式が必要です (文字列が書かれています)", e.Pos);
+        var t = CheckExpr(e, intConv);
+        if (t == HuType.Str)
+        {
+            _diag.Error("HB0404", "数の式が必要です (文字列が書かれています)", e.Pos);
+            return HuType.Int;
+        }
+        return t;
     }
+
+    private static bool IsNum(HuType t) => t != HuType.Str;
+
+    /// <summary>数の演算の結果の型: どちらかが浮動小数なら浮動小数</summary>
+    private static HuType NumResult(HuType l, HuType r) => l == HuType.Float || r == HuType.Float ? HuType.Float : HuType.Int;
 
     private void ExpectStr(HuExpr e)
     {
@@ -305,9 +328,12 @@ public sealed class HuAnalyzer
             {
                 var lt = CheckExpr(b.Left, false);
                 var rt = CheckExpr(b.Right, false);
-                if (lt != rt)
-                    _diag.Error("HB0404", "文字列と整数を + でつなげません", b.Pos);
-                return lt;
+                if (IsNum(lt) != IsNum(rt))
+                {
+                    _diag.Error("HB0404", "文字列と数を + でつなげません", b.Pos);
+                    return lt;
+                }
+                return lt == HuType.Str ? HuType.Str : NumResult(lt, rt);
             }
             case "=":
             case "<>":
@@ -318,27 +344,30 @@ public sealed class HuAnalyzer
             {
                 var lt = CheckExpr(b.Left, false);
                 var rt = CheckExpr(b.Right, false);
-                if (lt != rt)
-                    _diag.Error("HB0404", "文字列と整数は比べられません", b.Pos);
+                if (IsNum(lt) != IsNum(rt))
+                    _diag.Error("HB0404", "文字列と数は比べられません", b.Pos);
                 return HuType.Int;
             }
             case "AND":
             case "OR":
             case "XOR":
-                ExpectInt(b.Left, intConv: true);
-                ExpectInt(b.Right, intConv: true);
+                ExpectNum(b.Left, intConv: true);
+                ExpectNum(b.Right, intConv: true);
                 return HuType.Int;
             case "/":
-                if (!intConv)
-                    _diag.Error("HB0402",
-                        "この位置の '/' は浮動小数の中間値が必要なので未対応です " +
-                        "(代入の右辺・ビット演算・添字・整数の引数の位置でだけ使えます)", b.Pos);
-                ExpectInt(b.Left, intConv: false);
-                ExpectInt(b.Right, intConv: false);
-                return HuType.Int;
-            default: // - * \ MOD
-                ExpectInt(b.Left, intConv: false);
-                ExpectInt(b.Right, intConv: false);
+            {
+                // Hu-BASIC の / は浮動小数の割り算。ただし左右とも整数で、結果がその場で整数に丸められる
+                // 位置なら、整数の割り算を四捨五入する BAS_IDIVR で同じ値になる (型を Int にして目印にする)
+                var lt = ExpectNum(b.Left, intConv: false);
+                var rt = ExpectNum(b.Right, intConv: false);
+                return intConv && lt == HuType.Int && rt == HuType.Int ? HuType.Int : HuType.Float;
+            }
+            case "-":
+            case "*":
+                return NumResult(ExpectNum(b.Left, intConv: false), ExpectNum(b.Right, intConv: false));
+            default: // \ MOD (左右は整数に丸めてから計算する)
+                ExpectNum(b.Left, intConv: true);
+                ExpectNum(b.Right, intConv: true);
                 return HuType.Int;
         }
     }
@@ -351,7 +380,7 @@ public sealed class HuAnalyzer
             case "INP":
             case "STICK":
             case "STRIG":
-                ExpectInt(a[0], intConv: true);
+                ExpectNum(a[0], intConv: true);
                 return HuType.Int;
             case "ASC":
             case "VAL":
@@ -359,7 +388,7 @@ public sealed class HuAnalyzer
                 return HuType.Int;
             case "CHR$":
             case "CGPAT$":
-                ExpectInt(a[0], intConv: true);
+                ExpectNum(a[0], intConv: true);
                 return HuType.Str;
             case "HEXCHR$":
                 ExpectStr(a[0]);
@@ -367,10 +396,17 @@ public sealed class HuAnalyzer
             case "MID$":
             case "RIGHT$":
                 ExpectStr(a[0]);
-                for (int i = 1; i < a.Count; i++) ExpectInt(a[i], intConv: true);
+                for (int i = 1; i < a.Count; i++) ExpectNum(a[i], intConv: true);
                 return HuType.Str;
             case "INKEY$":
                 return HuType.Str;
+            case "RND":
+                // 引数の意味は記録にないので、読んで捨てる
+                if (a.Count > 0) ExpectNum(a[0], intConv: false);
+                return HuType.Float;
+            case "INT":
+                ExpectNum(a[0], intConv: false);
+                return HuType.Float;
             default:
                 return HuType.Int;
         }
@@ -389,7 +425,7 @@ public sealed class HuAnalyzer
             {
                 var tt = CheckExpr(asg.Target, false);
                 var vt = CheckExpr(asg.Value, intConv: tt == HuType.Int);
-                if (tt != vt)
+                if (IsNum(tt) != IsNum(vt))
                     _diag.Error("HB0404", "代入の左右の型が違います", asg.Pos);
                 break;
             }
@@ -404,12 +440,12 @@ public sealed class HuAnalyzer
                 if (r.Line is int rl) CheckTarget(rl, r.Pos);
                 break;
             case HuOnJump on:
-                ExpectInt(on.Selector, intConv: false);
+                ExpectNum(on.Selector, intConv: false);
                 foreach (var l in on.Lines) CheckTarget(l, on.Pos);
                 if (on.Kind == "GOSUB") _gosubIds[on] = _gosubCount++;
                 break;
             case HuIf f:
-                ExpectInt(f.Cond, intConv: false);
+                ExpectNum(f.Cond, intConv: false);
                 foreach (var t in f.Then) CheckStatement(t);
                 if (f.Else != null)
                     foreach (var e in f.Else) CheckStatement(e);
@@ -418,9 +454,9 @@ public sealed class HuAnalyzer
                 UseVar(fr.Var, fr.Pos);
                 if (VarType(fr.Var) != HuType.Int)
                     _diag.Error("HB0404", "FOR の変数は整数にしてください", fr.Pos);
-                ExpectInt(fr.From, intConv: true);
-                ExpectInt(fr.To, intConv: false);
-                if (fr.Step != null) ExpectInt(fr.Step, intConv: false);
+                ExpectNum(fr.From, intConv: true);
+                ExpectNum(fr.To, intConv: false);
+                if (fr.Step != null) ExpectNum(fr.Step, intConv: false);
                 _forIds[fr] = _forCount++;
                 break;
             case HuNext nx:
@@ -432,10 +468,10 @@ public sealed class HuAnalyzer
                 }
                 break;
             case HuUntil u:
-                ExpectInt(u.Cond, intConv: false);
+                ExpectNum(u.Cond, intConv: false);
                 break;
             case HuWhile w:
-                ExpectInt(w.Cond, intConv: false);
+                ExpectNum(w.Cond, intConv: false);
                 break;
             case HuRead rd:
                 foreach (var t in rd.Targets) CheckExpr(t, false);
@@ -444,8 +480,8 @@ public sealed class HuAnalyzer
                 if (rs.Line is int line) CheckTarget(line, rs.Pos);
                 break;
             case HuOut o:
-                ExpectInt(o.Port, intConv: true);
-                ExpectInt(o.Value, intConv: true);
+                ExpectNum(o.Port, intConv: true);
+                ExpectNum(o.Value, intConv: true);
                 break;
             case HuPrint p:
                 if (p.Using != null) ExpectStr(p.Using);
@@ -454,25 +490,27 @@ public sealed class HuAnalyzer
                     if (item is HuPrintExpr pe)
                     {
                         var t = CheckExpr(pe.Expr, false);
-                        if (p.Using != null && t != HuType.Int)
+                        if (p.Using != null && t == HuType.Str)
                             _diag.Error("HB0406", "PRINT USING は数値の書式だけに対応しています", pe.Expr.Pos);
+                        else if (p.Using != null && t == HuType.Float)
+                            _diag.Error("HB0407", "PRINT USING の浮動小数は未対応です (段階 F2 で対応)", pe.Expr.Pos);
                     }
                     else if (item is HuPrintSpc sp)
-                        ExpectInt(sp.Count, intConv: true);
+                        ExpectNum(sp.Count, intConv: true);
                 }
                 break;
             case HuCommand cmd:
                 CheckCommand(cmd);
                 break;
             case HuLineText lt:
-                ExpectInt(lt.X1, true);
-                ExpectInt(lt.Y1, true);
-                ExpectInt(lt.X2, true);
-                ExpectInt(lt.Y2, true);
+                ExpectNum(lt.X1, true);
+                ExpectNum(lt.Y1, true);
+                ExpectNum(lt.X2, true);
+                ExpectNum(lt.Y2, true);
                 ExpectStr(lt.Char);
                 break;
             case HuDefChr dc:
-                ExpectInt(dc.Code, true);
+                ExpectNum(dc.Code, true);
                 ExpectStr(dc.Pattern);
                 break;
             case HuDim:
@@ -495,7 +533,7 @@ public sealed class HuAnalyzer
             return;
         }
         foreach (var a in cmd.Args)
-            if (a != null) ExpectInt(a, intConv: true);
+            if (a != null) ExpectNum(a, intConv: true);
         if (cmd.Name == "WIDTH" && cmd.Args[0] is HuNum w && w.Value != 40 && w.Value != 80)
             _diag.Error("HB0311", "WIDTH は 40 か 80 です", cmd.Pos);
     }

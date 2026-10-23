@@ -4,7 +4,8 @@ namespace SLANGCompiler.HuBasic.Parsing;
 // Hu-BASIC の構文木。出力の形 (SLANG など) には依存しない。
 // ============================================================================
 
-public enum HuType { Int, Str }
+/// <summary>式の型。Float は SLANG の FLOAT (24 ビットの浮動小数) で持つ</summary>
+public enum HuType { Int, Str, Float }
 
 // ---------------------------------------------------------------- 式
 
@@ -15,6 +16,9 @@ public abstract record HuExpr(HuPos Pos)
 }
 
 public sealed record HuNum(int Value, HuPos Pos) : HuExpr(Pos);
+
+/// <summary>浮動小数の定数 (小数点・指数・! # を含む数、または 32768 以上の 10 進の数)</summary>
+public sealed record HuFloat(double Value, HuPos Pos) : HuExpr(Pos);
 
 /// <summary>文字列リテラル。Text は X1 文字コードの string。</summary>
 public sealed record HuStr(string Text, HuPos Pos) : HuExpr(Pos);
@@ -30,7 +34,7 @@ public sealed record HuUnary(string Op, HuExpr Operand, HuPos Pos) : HuExpr(Pos)
 public sealed record HuBinary(string Op, HuExpr Left, HuExpr Right, HuPos Pos) : HuExpr(Pos);
 // Op: "+","-","*","/","\\","MOD","=","<>","<",">","<=",">=","AND","OR","XOR"
 
-/// <summary>組み込み関数 (INP, MID$, RIGHT$, CHR$, ASC, VAL, HEXCHR$, CGPAT$, INKEY$, STICK, STRIG)</summary>
+/// <summary>組み込み関数 (INP, MID$, RIGHT$, CHR$, ASC, VAL, HEXCHR$, CGPAT$, INKEY$, STICK, STRIG, RND, INT)</summary>
 public sealed record HuCall(string Name, IReadOnlyList<HuExpr> Args, HuPos Pos) : HuExpr(Pos);
 
 // ---------------------------------------------------------------- 文
