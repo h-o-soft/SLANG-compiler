@@ -21,8 +21,7 @@ public sealed class HuParser
         ["STICK"] = (1, 1), ["STRIG"] = (1, 1), ["RND"] = (0, 1), ["INT"] = (1, 1),
     };
 
-    /// <summary>SLANG の FLOAT (f24) で表せる最大の大きさ (約 9.2E+18)</summary>
-    public const double MaxFloat = 9.2e18;
+
 
     private readonly HuDiagnosticBag _diag;
     private List<HuToken> _tokens = new();
@@ -659,9 +658,9 @@ public sealed class HuParser
                 // 接尾辞の ! # を外し、倍精度の指数 D を E に読み替える
                 var text = t.Text.TrimEnd('!', '#').Replace('D', 'E').Replace('d', 'E');
                 if (!double.TryParse(text, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out var fv) || fv > MaxFloat)
+                        System.Globalization.CultureInfo.InvariantCulture, out var fv) || HuF24.Overflows(fv))
                 {
-                    _diag.Error("HB0103", $"浮動小数として大きすぎる数値 {t.Text} (約 9.2E+18 まで)", pos);
+                    _diag.Error("HB0103", $"浮動小数として大きすぎる数値 {t.Text} (約 1.8E+19 まで)", pos);
                     fv = 0;
                 }
                 return new HuFloat(fv, pos);

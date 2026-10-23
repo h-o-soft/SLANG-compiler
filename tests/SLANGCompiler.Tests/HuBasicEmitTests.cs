@@ -244,9 +244,24 @@ public class HuBasicEmitTests
         Assert.Contains("V_A=BAS_FTOIR(H_FK[0]);", Body(Transpile("10 DEFINT A-Z:A=65535.4").Output!));
     }
 
+    [Theory]
+    [InlineData("1E19", false)]
+    [InlineData("1.8E19", false)]
+    [InlineData("1.8446E19", false)]    // 最大 (2^63 × 1.99998、約 1.84466E19) より少し下
+    [InlineData("1.8447E19", true)]     // 丸めると無限大
+    [InlineData("1E20", true)]
+    public void Float_LiteralRangeMatchesF24(string literal, bool rejected)
+    {
+        var r = HuTranspiler.Transpile($"10 DEFINT A-Z:PRINT {literal}");
+        Assert.Equal(rejected, r.Diagnostics.Items.Any(d => d.Code == "HB0103"));
+    }
+
     [Fact]
     public void Float_QuantizeMatchesSlangEncoding()
     {
+        Assert.True(double.IsPositiveInfinity(SLANGCompiler.HuBasic.HuF24.Quantize(1.8447e19)));
+        Assert.Equal(SLANGCompiler.HuBasic.HuF24.MaxFinite, SLANGCompiler.HuBasic.HuF24.Quantize(SLANGCompiler.HuBasic.HuF24.MaxFinite));
+        Assert.Equal(4.0, SLANGCompiler.HuBasic.HuF24.Quantize(3.99999));   // 仮数の繰り上がりで指数が 1 上がる
         Assert.Equal(0.5, SLANGCompiler.HuBasic.HuF24.Quantize(0.499999));
         Assert.Equal(65536.0, SLANGCompiler.HuBasic.HuF24.Quantize(65535.9));
         Assert.Equal(40000.0, SLANGCompiler.HuBasic.HuF24.Quantize(40000));

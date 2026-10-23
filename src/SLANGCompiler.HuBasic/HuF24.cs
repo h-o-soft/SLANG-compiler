@@ -18,8 +18,21 @@ public static class HuF24
         if (exp > 63) return sign * double.PositiveInfinity;
         if (exp < -62) return 0;
         double q = Math.Floor((m - 1.0) * 65536 + 0.5);
+        if (q >= 65536)
+        {
+            // 丸めで仮数が繰り上がる (SLANG も指数を 1 上げる。指数が上限を超えれば無限大)
+            q = 0;
+            exp++;
+            if (exp > 63) return sign * double.PositiveInfinity;
+        }
         return sign * (1.0 + q / 65536) * Math.Pow(2, exp);
     }
+
+    /// <summary>f24 で表せる最大の大きさ (2^63 × (1 + 65535/65536)、約 1.8E+19)</summary>
+    public static readonly double MaxFinite = (1.0 + 65535.0 / 65536) * Math.Pow(2, 63);
+
+    /// <summary>f24 に直すと無限大になるか (表せる範囲を超えるか)</summary>
+    public static bool Overflows(double v) => double.IsInfinity(Quantize(v));
 
     /// <summary>整数の定数の値 (構文木では 0〜65535 のビットの並び) を、16 ビットの符号付きの値にする</summary>
     public static int SignedInt(int bits) => unchecked((short)bits);
