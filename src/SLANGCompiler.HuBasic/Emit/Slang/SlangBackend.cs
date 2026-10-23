@@ -415,26 +415,16 @@ public sealed class SlangBackend : IHuBackend
         return ITempName(_itemp);
     }
 
-    /// <summary>実行するたびに結果が変わる・状態を進める関数 (入力・乱数・DATA の読み出し)</summary>
-    private static readonly HashSet<string> ImpureCalls = new()
-    {
-        "INKEY$", "RND", "STICK", "STRIG", "INP", FlatPseudo.ReadNum, FlatPseudo.ReadStr,
-    };
-
-    /// <summary>式に、実行するたびに結果が変わる関数が含まれるか</summary>
-    private static bool IsImpure(HuExpr e) => e switch
-    {
-        HuCall c => ImpureCalls.Contains(c.Name) || c.Args.Any(IsImpure),
-        HuBinary b => IsImpure(b.Left) || IsImpure(b.Right),
-        HuUnary u => IsImpure(u.Operand),
-        HuIndex ix => IsImpure(ix.Index),
-        _ => false,
-    };
+    /// <summary>
+    /// 評価の順を守る必要がある式か: 定数と単純変数の読み出し以外のすべて (関数・演算・配列の要素は、入力や乱数で
+    /// 結果が変わったり、0 で割る・添字の範囲外などの実行時エラーになったりするので、後ろの式より先に評価する)
+    /// </summary>
+    private static bool NeedsOrder(HuExpr e) => e is not (HuNum or HuFloat or HuStr or HuVar);
 
     /// <summary>
     /// 式の並びを、左から順に評価される形で出す。後ろの式が前置きの代入 (一時変数) を出したときは、それより前にある
-    /// 「実行するたびに結果が変わる」式を一時変数に入れて、その前置きの前に置く (前置きは文の行より前に実行されるため、
-    /// そのままだと後ろの式の一部が先に評価される)。
+    /// 定数と単純変数以外の式を一時変数に入れて、その前置きの前に置く (前置きは文の行より前に実行されるため、
+    /// そのままだと後ろの式の一部が先に評価され、入力の順や実行時エラーの順が変わる)。
     /// </summary>
     private string[] Seq(params (HuExpr E, K K)[] items)
     {
@@ -448,7 +438,7 @@ public sealed class SlangBackend : IHuBackend
             int at = mark;
             for (int j = 0; j < i; j++)
             {
-                if (done[j] || !IsImpure(items[j].E)) continue;
+                if (done[j] || !NeedsOrder(items[j].E)) continue;
                 var t = items[j].K == K.Flt ? NewFTemp() : NewITemp();
                 _pre.Insert(at++, $"{t}={outs[j]};");
                 outs[j] = t;

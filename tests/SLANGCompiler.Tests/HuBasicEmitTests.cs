@@ -222,11 +222,12 @@ public class HuBasicEmitTests
     public void Float_TempsAreDeclaredWithFloatEachAndBeforeTheLine()
     {
         var sl = Transpile("10 DEFINT A-Z:A=X/Y+Z/W").Output!;
-        Assert.Contains("VAR FLOAT H_F1, FLOAT H_F2, FLOAT H_F3, FLOAT H_F4;", sl);
-        // 一時変数への代入は、その文の行の前に、左から順に出る
+        Assert.Contains("VAR FLOAT H_F1, FLOAT H_F2, FLOAT H_F3, FLOAT H_F4, FLOAT H_F5;", sl);
+        // 一時変数への代入は、その文の行の前に、左から順に出る (左の割り算は、右の割り算の準備より先に計算する)
         var lines = Body(sl).Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
         int a = lines.FindIndex(l => l.StartsWith("V_A="));
-        Assert.Equal(new[] { "H_F1=V_X;", "H_F2=V_Y;", "H_F3=V_Z;", "H_F4=V_W;" }, lines.GetRange(a - 4, 4));
+        Assert.Equal(new[] { "H_F1=V_X;", "H_F2=V_Y;", "H_F5=BAS_FDIV(&H_F1, &H_F2);", "H_F3=V_Z;", "H_F4=V_W;" },
+            lines.GetRange(a - 5, 5));
     }
 
     /// <summary>定数を整数に丸めるときは、実行時と同じ f24 の値で丸める</summary>
@@ -304,7 +305,12 @@ public class HuBasicEmitTests
         Assert.StartsWith("H_F1=BAS_SASC(BAS_SINKEY())", lines[first + 1]);
         Assert.Contains("V_A=BAS_IDIV(H_I1, ", sl);
         Assert.Contains("VAR H_I1;", Transpile("10 DEFINT A-Z:A=ASC(INKEY$)\\(ASC(INKEY$)*1.0+1.0)").Output!);
-        // 副作用のない左の式は、そのまま (一時変数を増やさない)
+        // 実行時エラーになりうる左の式 (配列の要素) も先に評価する (添字の範囲外が 0 で割るより先に出る)
+        var err = Body(Transpile("10 DEFINT A-Z:A=A(11)\\((1/0)/1)").Output!).Split('\n').Select(l => l.Trim()).ToList();
+        int arr = err.FindIndex(l => l.StartsWith("H_I1=A_A[BAS_AIDX("));
+        int div = err.FindIndex(l => l.Contains("BAS_FDIV("));
+        Assert.True(arr >= 0 && arr < div, string.Join("\n", err));
+        // 定数と単純変数の左の式は、そのまま (一時変数を増やさない)
         Assert.DoesNotContain("H_I1", Body(Transpile("10 DEFINT A-Z:A=X\\(Y*1.5)").Output!));
     }
 
