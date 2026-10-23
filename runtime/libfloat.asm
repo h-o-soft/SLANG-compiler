@@ -2050,7 +2050,8 @@ call f24add
 ;return (45/32)/acc
 ex de,hl
 ld c,a
-ld a,$3F \ ld hl,26624  ;45/32
+ld a,$3F
+ld hl,26624  ;45/32
 jp f24div
 
 
@@ -2352,7 +2353,7 @@ ret
 ; @name f24geomean
 ; @resident shared
 ; @result_type float
-; @calls f24mul,f24sqrt
+; @calls f24mul,FSQRT
 ;sqrt(AHL*CDE) ==> AHL
 
 ;return NaN if the product is negative
