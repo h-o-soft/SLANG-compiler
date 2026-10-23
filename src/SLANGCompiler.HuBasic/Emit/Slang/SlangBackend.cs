@@ -417,9 +417,16 @@ public sealed class SlangBackend : IHuBackend
 
     /// <summary>
     /// 評価の順を守る必要がある式か: 定数と単純変数の読み出し以外のすべて (関数・演算・配列の要素は、入力や乱数で
-    /// 結果が変わったり、0 で割る・添字の範囲外などの実行時エラーになったりするので、後ろの式より先に評価する)
+    /// 結果が変わったり、0 で割る・添字の範囲外などの実行時エラーになったりするので、後ろの式より先に評価する)。
+    /// 整数にする位置の浮動小数の定数は、変換のときに整数にできるもの (丸めて 65535 以内) だけを除く
+    /// (それ以外は実行時に BAS_FTOIR でエラー 6 になる)
     /// </summary>
-    private static bool NeedsOrder(HuExpr e) => e is not (HuNum or HuFloat or HuStr or HuVar);
+    private static bool NeedsOrder(HuExpr e, K k) => e switch
+    {
+        HuNum or HuStr or HuVar => false,
+        HuFloat f => k == K.Int && Math.Abs(Math.Round(HuF24.Quantize(f.Value), MidpointRounding.AwayFromZero)) > 65535,
+        _ => true,
+    };
 
     /// <summary>
     /// 式の並びを、左から順に評価される形で出す。後ろの式が前置きの代入 (一時変数) を出したときは、それより前にある
@@ -438,7 +445,7 @@ public sealed class SlangBackend : IHuBackend
             int at = mark;
             for (int j = 0; j < i; j++)
             {
-                if (done[j] || !NeedsOrder(items[j].E)) continue;
+                if (done[j] || !NeedsOrder(items[j].E, items[j].K)) continue;
                 var t = items[j].K == K.Flt ? NewFTemp() : NewITemp();
                 _pre.Insert(at++, $"{t}={outs[j]};");
                 outs[j] = t;

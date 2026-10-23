@@ -310,6 +310,13 @@ public class HuBasicEmitTests
         int arr = err.FindIndex(l => l.StartsWith("H_I1=A_A[BAS_AIDX("));
         int div = err.FindIndex(l => l.Contains("BAS_FDIV("));
         Assert.True(arr >= 0 && arr < div, string.Join("\n", err));
+        // 整数にするとエラーになる浮動小数の定数 (70000) も先に変換する (あふれが 0 で割るより先に出る)
+        var ovf = Body(Transpile("10 DEFINT A-Z:A=70000\\((1.0/0.0)/1.0)").Output!).Split('\n').Select(l => l.Trim()).ToList();
+        int conv = ovf.FindIndex(l => l.StartsWith("H_I1=BAS_FTOIR("));
+        int div0 = ovf.FindIndex(l => l.Contains("BAS_FDIV("));
+        Assert.True(conv >= 0 && conv < div0, string.Join("\n", ovf));
+        // 整数にできる浮動小数の定数 (2.5) は変換のときに 3 になるので、そのまま
+        Assert.DoesNotContain("H_I1", Body(Transpile("10 DEFINT A-Z:A=2.5\\(Y*1.5)").Output!));
         // 定数と単純変数の左の式は、そのまま (一時変数を増やさない)
         Assert.DoesNotContain("H_I1", Body(Transpile("10 DEFINT A-Z:A=X\\(Y*1.5)").Output!));
     }
