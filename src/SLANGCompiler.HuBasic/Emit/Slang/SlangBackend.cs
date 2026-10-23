@@ -379,10 +379,8 @@ public sealed class SlangBackend : IHuBackend
                 {
                     "INP" => $"PORT[{Int(c.Args[0])}]",
                     "ASC" => $"BAS_SASC({Str(c.Args[0])})",
-                    "VAL" => $"BAS_SVAL({Str(c.Args[0])})",
                     "STICK" => $"BAS_STICK({Int(c.Args[0])})",
                     "STRIG" => $"BAS_STRIG({Int(c.Args[0])})",
-                    FlatPseudo.ReadNum => "BAS_READN()",
                     _ => throw new InvalidOperationException(c.Name),
                 };
         }
@@ -489,6 +487,10 @@ public sealed class SlangBackend : IHuBackend
                 return "FRAND()";
             case HuCall { Name: FlatPseudo.InputNum }:
                 return "BAS_INFN()";
+            case HuCall { Name: FlatPseudo.ReadNum }:
+                return "BAS_READF()";
+            case HuCall { Name: "VAL" } c:
+                return $"BAS_SVALF({Str(c.Args[0])})";
             case HuCall { Name: "INT" } c:
                 return $"BAS_FFLOOR({Flt(c.Args[0])})";
         }
@@ -658,6 +660,8 @@ public sealed class SlangBackend : IHuBackend
                     "CHR$" => $"BAS_SCHR({Int(c.Args[0])})",
                     "HEXCHR$" => $"BAS_SHEX({Str(c.Args[0])})",
                     "CGPAT$" => $"BAS_SCGPAT({Int(c.Args[0])})",
+                    // STR$ は整数も浮動小数にしてから PRINT の形で文字列にする (後ろの空白は付けない)
+                    "STR$" => $"BAS_SFSTR({Flt(c.Args[0])})",
                     "INKEY$" => "BAS_SINKEY()",
                     FlatPseudo.ReadStr => "BAS_READS()",
                     _ => throw new InvalidOperationException(c.Name),

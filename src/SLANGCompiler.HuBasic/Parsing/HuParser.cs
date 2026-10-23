@@ -20,6 +20,7 @@ public sealed class HuParser
         ["ASC"] = (1, 1), ["VAL"] = (1, 1), ["HEXCHR$"] = (1, 1), ["CGPAT$"] = (1, 1),
         ["STICK"] = (1, 1), ["STRIG"] = (1, 1), ["RND"] = (0, 1), ["INT"] = (1, 1),
         ["LEFT$"] = (2, 2), ["STRING$"] = (2, 2), ["CHARACTER$"] = (2, 2), ["INPUT$"] = (1, 1),
+        ["STR$"] = (1, 1),
     };
 
 

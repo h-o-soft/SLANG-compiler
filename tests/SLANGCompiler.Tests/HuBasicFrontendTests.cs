@@ -312,8 +312,6 @@ public class HuBasicFrontendTests
     }
 
     [Theory]
-    [InlineData("10 READ A:DATA 1", "HB0408")]                 // 浮動小数の READ は段階 F2c から
-    [InlineData("10 DEFINT A-Z:READ X(1),A!:DATA 1,2", "HB0408")]
     [InlineData("10 DIM A(5461)", "HB0305")]                   // 浮動小数の配列は 1 要素 3 バイト (上限 5460)
     [InlineData("10 DEFSTR A:DIM A(3)", "HB0306")]             // DEFSTR の頭文字の配列は文字列の配列
     [InlineData("10 DEFSTR A:A(1)=\"X\"", "HB0306")]
@@ -326,7 +324,6 @@ public class HuBasicFrontendTests
     [InlineData("10 DEFINT A-Z:DIM A(8192)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A(-1)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A$(3)", "HB0306")]         // 文字列の配列
-    [InlineData("10 DEFINT A-Z:PRINT USING \"##.#\";1.5", "HB0407")]
     [InlineData("10 DEFINT A-Z:DIM A(40000)", "HB0305")]       // 32768 以上の 10 進 (浮動小数の定数) も範囲を検査
     [InlineData("10 DEFINT A-Z:DIM A(1.25+1.25)", "HB0313")]   // 浮動小数を含む計算の上限は未対応 (項ごとに丸めると値が違う)
     [InlineData("10 DEFINT A-Z:DIM A(+(1.25+1.25))", "HB0313")] // 符号で包んでも同じ

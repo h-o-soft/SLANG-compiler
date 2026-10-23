@@ -229,8 +229,9 @@ public sealed class HuLowerer
                     }
                     else
                     {
-                        // 数値の READ も内部で一時文字列を使う (BAS_READN は項目を文字列で読んでから解釈する)
-                        Emit(new FAssign(t, new HuCall(FlatPseudo.ReadNum, Array.Empty<HuExpr>(), rd.Pos) { Type = HuType.Int }));
+                        // 数値の READ も内部で一時文字列を使う (項目を文字列で読んでから、VAL と同じ読み方で浮動小数にする。
+                        // 整数の変数には四捨五入して入れる)
+                        Emit(new FAssign(t, new HuCall(FlatPseudo.ReadNum, Array.Empty<HuExpr>(), rd.Pos) { Type = HuType.Float }));
                         Call("BAS_STMP");
                     }
                 }
@@ -359,7 +360,8 @@ public sealed class HuLowerer
             switch (item)
             {
                 case HuPrintExpr pe when p.Using != null:
-                    Call("BAS_PUSING", E(pe.Expr));
+                    if (pe.Expr.Type == HuType.Float) Emit(new FCall("BAS_PUSINGF", new FArg[] { new FFloatArg(pe.Expr) }));
+                    else Call("BAS_PUSING", E(pe.Expr));
                     if (MakesTemps(pe.Expr)) Call("BAS_STMP");
                     break;
                 case HuPrintExpr pe when pe.Expr.Type == HuType.Str:

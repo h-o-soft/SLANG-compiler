@@ -52,7 +52,7 @@ public sealed record FDataTableArg(bool LineTable) : FArg;  // DATA の本体 (f
 /// <summary>DATA を読むための疑似関数 (READ の展開で使う)</summary>
 public static class FlatPseudo
 {
-    public const string ReadNum = "#READN";
+    public const string ReadNum = "#READN";     // DATA の次の項目を数として (浮動小数)
     public const string ReadStr = "#READS";
     public const string InputNum = "#INPUTN";   // INPUT の次の項目を数として (浮動小数)
     public const string InputStr = "#INPUTS";   // INPUT の次の項目を文字列として

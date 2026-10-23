@@ -131,7 +131,8 @@ public class HuBasicEmitTests
         var flat = Transpile("10 PRINT USING \"#\";VAL(A$+A$);VAL(A$+A$):PRINT SPC(VAL(A$+A$));SPC(VAL(A$+A$))").Flat!;
         var calls = flat.Ops.OfType<FCall>().Select(c => c.Function).ToList();
         var text = string.Join(",", calls.SkipWhile(c => c != "BAS_PUFMT"));
-        Assert.StartsWith("BAS_PUFMT,BAS_STMP,BAS_PUSING,BAS_STMP,BAS_PUSING,BAS_STMP,BAS_PNL,BAS_STMP,BAS_PSPC,BAS_STMP,BAS_PSPC,BAS_STMP,BAS_PNL", text);
+        // VAL は浮動小数なので、PRINT USING は BAS_PUSINGF
+        Assert.StartsWith("BAS_PUFMT,BAS_STMP,BAS_PUSINGF,BAS_STMP,BAS_PUSINGF,BAS_STMP,BAS_PNL,BAS_STMP,BAS_PSPC,BAS_STMP,BAS_PSPC,BAS_STMP,BAS_PNL", text);
     }
 
     /// <summary>READ は項目を一時文字列で読むので、前の文の一時文字列が残らないよう、文の頭でも必ず空に戻す</summary>
@@ -312,8 +313,9 @@ public class HuBasicEmitTests
     [Fact]
     public void Float_IntegerOnlyProgramHasNoFloatCode()
     {
-        // 整数だけのプログラムには、浮動小数の宣言・定数の表・関数が一切出ない
-        foreach (var prog in new[] { Stage1Program, FullProgram })
+        // 整数だけのプログラムには、浮動小数の宣言・定数の表・関数が一切出ない (VAL と数の READ を使わないもの。
+        // VAL と数の READ は Hu-BASIC と同じく浮動小数で読む: 設計 1 章の意図した変更 2・5)
+        foreach (var prog in new[] { Stage1Program, FullProgram.Replace("VAL(", "ASC(").Replace("READ D$,M:", "READ D$:") })
         {
             var sl = Transpile(prog).Output!;
             Assert.DoesNotContain("FLOAT", sl);
@@ -632,6 +634,28 @@ public class HuBasicEmitTests
         Assert.DoesNotContain("BAS_FF", si);
     }
 
+    /// <summary>
+    /// 段階 F2c: VAL は浮動小数 (BAS_SVALF)、数の READ は BAS_READF、STR$ は浮動小数にしてから BAS_SFSTR、
+    /// PRINT USING の浮動小数は BAS_PUSINGF (整数はいままでどおり BAS_PUSING)
+    /// </summary>
+    [Fact]
+    public void Slang_StageF2cFunctions()
+    {
+        var sl = Transpile("10 A=VAL(B$):C%=VAL(\"1.6\"):READ D,E%,F(1):S$=STR$(A)+STR$(C%)\n" +
+                           "20 PRINT USING \"##.##\";A;C%;40000\n30 DATA 1,2,3").Output!;
+        Assert.Contains("F_A=BAS_SVALF(S_B);", sl);
+        Assert.Contains("V_C=BAS_FTOIR(BAS_SVALF(K_0));", sl);
+        Assert.Contains("F_D=BAS_READF();", sl);
+        Assert.Contains("V_E=BAS_FTOIR(BAS_READF());", sl);
+        // 配列の要素への READ は、添字を先に調べる (本物: DIM A(5):READ A(9) は DATA がなくても Subscript out of range)
+        Assert.Contains("H_I1=BAS_AIDX(1, &H_DIM_F_F, &H_UB_F_F);\n  FA_F[H_I1]=BAS_READF();", sl);
+        // 左の STR$ を先に評価する (右の引数を浮動小数にする前置きの代入より前に出す)
+        Assert.Contains("H_I1=BAS_SFSTR(F_A);\n  H_F1=V_C;\n  BAS_SSET(S_S, BAS_SCAT(H_I1, BAS_SFSTR(H_F1)));", sl);
+        Assert.Contains("BAS_PUSINGF(F_A);", sl);
+        Assert.Contains("BAS_PUSING(V_C);", sl);
+        Assert.Contains("BAS_PUSINGF(H_FK[", sl);   // 32768 以上の 10 進の数は浮動小数 (以前は HB0407)
+    }
+
     [Fact]
     public void Slang_SingleDoubleIntAndStrWithSameNameAreSeparate()
     {
@@ -711,7 +735,7 @@ public class HuBasicEmitTests
         var sl = Transpile("10 DEFINT A-Z:READ A:RESTORE 20\n20 DATA 7").Output!;
         Assert.Contains("BAS_DATAINIT(H_DATA, H_DLINE);", sl);
         Assert.Contains("ARRAY H_DLINE[] = { %20,%0,%$FFFF,%2 };", sl);
-        Assert.Contains("V_A=BAS_READN();", sl);
+        Assert.Contains("V_A=BAS_FTOIR(BAS_READF());", sl);   // 数の READ は VAL と同じ読み方で浮動小数にして丸める
         Assert.Contains("BAS_RESTORE(20);", sl);
     }
 

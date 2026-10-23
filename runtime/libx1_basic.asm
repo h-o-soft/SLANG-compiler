@@ -19,7 +19,7 @@
 ; @name BAS_WORK
 ; @resident shared
 ; @param_count 0
-; @works BAS_CXY:2,BAS_WID:1,BAS_ATTR:1,BAS_CSZ:1,BAS_RAW:1,BAS_PAL:3,BAS_CSP:2,BAS_CSTK:640,BAS_TMPP:2,BAS_TMP:1024,BAS_NUMBUF:8,BAS_DBASE:2,BAS_DLTAB:2,BAS_DPOS:2,BAS_DEND:2,BAS_UFMT:256,BAS_PCGBUF:32,BAS_TEMPN:2,BAS_PLST:9,BAS_PLCH:15,BAS_LASTKEY:1,BAS_CLK:1,BAS_LNPTR:2,BAS_INBUF:256,BAS_INPOS:2
+; @works BAS_CXY:2,BAS_WID:1,BAS_ATTR:1,BAS_CSZ:1,BAS_RAW:1,BAS_PAL:3,BAS_CSP:2,BAS_CSTK:640,BAS_TMPP:2,BAS_TMP:1024,BAS_NUMBUF:8,BAS_DBASE:2,BAS_DLTAB:2,BAS_DPOS:2,BAS_DEND:2,BAS_UFMT:256,BAS_PCGBUF:32,BAS_TEMPN:2,BAS_PLST:9,BAS_PLCH:15,BAS_LASTKEY:1,BAS_CLK:1,BAS_LNPTR:2,BAS_INBUF:256,BAS_INPOS:2,BAS_PUST:10
 ; BAS_CX/CY: カーソル、BAS_WID: 桁数 (40/80)、BAS_ATTR: 現在の属性 (色 + CR/CF/CG)
 ; BAS_CSZ: CSIZE (0-3)、BAS_RAW: PRINT#0 中なら 1、BAS_PAL*: パレットの影 (書込専用ポートのため)
 ; BAS_CSP/BAS_CSTK: 制御スタック (10 バイト × 64 枠)
@@ -31,12 +31,22 @@
 ; BAS_LASTKEY: INKEY$ の押した瞬間の判定用、BAS_CLK: CLICK の状態
 ; BAS_LNPTR: 実行中の行番号を持つ変数のアドレス (0 なら行番号を出さない)
 ; BAS_INBUF: INPUT で読んだ 1 行 (長さ付き)、BAS_INPOS: 次の項目の始まり (1 始まりの位置)
+; BAS_PUST: PRINT USING の数値の欄 (BAS_PUPARSE が読み、BAS_PULAY が使う。下の EQU)
 ; カーソルとパレットは連続した番地が要るので、まとめて確保して EQU で分ける
 BAS_CX EQU BAS_CXY
 BAS_CY EQU BAS_CXY + 1
 BAS_PALB EQU BAS_PAL
 BAS_PALR EQU BAS_PAL + 1
 BAS_PALG EQU BAS_PAL + 2
+BAS_PUWID EQU BAS_PUST          ; 欄の桁 ('+' と '**' と ',' を含む。小数部は含まない)
+BAS_PUPLUS EQU BAS_PUST + 1     ; 先頭の '+' があれば 1
+BAS_PUSTAR EQU BAS_PUST + 2     ; '**' があれば 1
+BAS_PUMINUS EQU BAS_PUST + 3    ; 末尾の '-' があれば 1
+BAS_PUFRAC EQU BAS_PUST + 4     ; 小数部の桁
+BAS_PUCOMMA EQU BAS_PUST + 5    ; 欄の中に ',' があれば 0 以外
+BAS_PURESTN EQU BAS_PUST + 6    ; 書式の後ろの文字の数
+BAS_PUNEG EQU BAS_PUST + 7      ; 値が負なら 1 (BAS_PULAY に渡す)
+BAS_PUREST EQU BAS_PUST + 8     ; 書式の後ろの文字の先頭 (2 バイト)
 RET
 
 
@@ -2076,144 +2086,26 @@ LDIR
 RET
 
 
+;; PRINT USING: 書式を読む所 (BAS_PUPARSE) と数字を欄に並べる所 (BAS_PULAY) を、整数 (BAS_PUSING) と
+;; 浮動小数 (BAS_PUSINGF) で共通にする
+
 ; @name BAS_PUSING
 ; @resident shared
 ; @param_count 1
-; @calls BAS_WORK,BAS_PCHR,BAS_UTOA,BAS_ERROR,BAS_PNUM
-; HL = 値。書式バッファの「前置きの文字 + 数値の欄 + 後ろの文字」で出す。
-; 数値の欄: 先頭の '+' (常に符号)、'**' (前を * で埋める、2 桁に数える)、'#'、'.'+'#' (小数部は 0)、
-; 末尾の '-' (負なら後ろに -)。欄の中の ',' は 1 桁に数え、整数部を 3 桁ごとに ',' で区切る
-; (欄より前の ',' はただの文字)。桁あふれはエラー 36 (Format over)。
+; @calls BAS_WORK,BAS_PUPARSE,BAS_PULAY,BAS_UTOA,BAS_PNUM
+; HL = 整数の値。書式バッファの「前置きの文字 + 数値の欄 + 後ろの文字」で出す (小数部は 0 を並べる)。
+; 数値の欄がない書式は、前置きの文字の後に値をふつうに出す
 LD (.bpu_val), HL
-LD HL, BAS_UFMT
-LD B, (HL)          ; B = 書式の残り
-INC HL
-; 前置きの文字 (数値の欄が始まるまで)
-.bpu_pre
-LD A, B
+CALL BAS_PUPARSE
 OR A
-JP Z, .bpu_noform
-LD A, (HL)
-CP '#'
-JP Z, .bpu_field
-CP '+'
-JP Z, .bpu_field
-CP '*'
-JP NZ, .bpu_prechar
-INC HL
-LD A, (HL)
-DEC HL
-CP '*'
-JP Z, .bpu_field
-LD A, '*'
-.bpu_prechar
-PUSH HL
-PUSH BC
-LD L, A
-CALL BAS_PCHR
-POP BC
-POP HL
-INC HL
-DEC B
-JP .bpu_pre
+JP NZ, .bpu_field
+LD HL, (.bpu_val)
+JP BAS_PNUM
 .bpu_field
-XOR A
-LD (.bpu_width), A
-LD (.bpu_plus), A
-LD (.bpu_star), A
-LD (.bpu_minus), A
-LD (.bpu_frac), A
-LD (.bpu_comma), A
-LD A, (HL)
-CP '+'
-JP NZ, .bpu_nolead
-LD A, 1
-LD (.bpu_plus), A
-LD A, (.bpu_width)
-INC A
-LD (.bpu_width), A
-INC HL
-DEC B
-.bpu_nolead
-LD A, B
-OR A
-JP Z, .bpu_fmtend
-LD A, (HL)
-CP '*'
-JP NZ, .bpu_hash
-INC HL
-DEC B
-LD A, B
-OR A
-JP Z, .bpu_fmtend
-LD A, (HL)
-CP '*'
-JP NZ, .bpu_hash
-LD A, 1
-LD (.bpu_star), A
-LD A, (.bpu_width)
-ADD A, 2
-LD (.bpu_width), A
-INC HL
-DEC B
-.bpu_hash
-LD A, B
-OR A
-JP Z, .bpu_fmtend
-LD A, (HL)
-CP '#'
-JP Z, .bpu_h1
-CP ','
-JP NZ, .bpu_dot
-LD (.bpu_comma), A  ; 0 でなければ区切る
-.bpu_h1
-LD A, (.bpu_width)
-INC A
-LD (.bpu_width), A
-INC HL
-DEC B
-JP .bpu_hash
-.bpu_dot
-CP '.'
-JP NZ, .bpu_trail
-INC HL
-DEC B
-.bpu_fr
-LD A, B
-OR A
-JP Z, .bpu_fmtend
-LD A, (HL)
-CP '#'
-JP NZ, .bpu_trail
-LD A, (.bpu_frac)
-INC A
-LD (.bpu_frac), A
-INC HL
-DEC B
-JP .bpu_fr
-.bpu_trail
-LD A, B
-OR A
-JP Z, .bpu_fmtend
-LD A, (HL)
-CP '-'
-JP NZ, .bpu_fmtend
-LD A, 1
-LD (.bpu_minus), A
-INC HL
-DEC B
-.bpu_fmtend
-LD (.bpu_rest), HL
-LD A, B
-LD (.bpu_restn), A
-; 数字列を作る
 LD HL, (.bpu_val)
 XOR A
-LD (.bpu_neg), A
 BIT 7, H
-JP Z, .bpu_abs
-LD A, 1
-LD (.bpu_neg), A
+JP Z, .bpu_pos
 LD A, L
 CPL
 LD L, A
@@ -2221,174 +2113,370 @@ LD A, H
 CPL
 LD H, A
 INC HL
-.bpu_abs
-CALL BAS_UTOA       ; HL = 数字列 (0 終端)
-LD (.bpu_digits), HL
-LD A, (.bpu_comma)
+LD A, 1
+.bpu_pos
+LD (BAS_PUNEG), A
+CALL BAS_UTOA       ; HL = 絶対値の数字列 (0 終端)
+LD DE, 0            ; 小数部は 0 を並べる
+JP BAS_PULAY
+.bpu_val DW 0
+
+
+; @name BAS_PUPARSE
+; @resident shared
+; @param_count 0
+; @calls BAS_WORK,BAS_PCHR
+; 書式バッファの前置きの文字 (数値の欄が始まるまで) を出し、数値の欄を読んで BAS_PU* に置く。A = 欄があれば 1、
+; なければ 0 (前置きの文字はすべて出した)。数値の欄: 先頭の '+' (常に符号)、'**' (前を * で埋める、2 桁に数える)、
+; '#' と欄の中の ',' (1 桁に数え、整数部を 3 桁ごとに区切る)、'.'+'#' (小数部の桁)、末尾の '-' (負なら後ろに -)。
+; '#'・'+'・'**'・'.#' のどれかで欄が始まる (欄より前の ',' や、後ろが '#' でない '.' はただの文字)
+LD HL, BAS_UFMT
+LD B, (HL)          ; B = 書式の残り
+INC HL
+.bpp_pre
+LD A, B
 OR A
-JP Z, .bpu_ngrp
-; 3 桁ごとに ',' を入れた数字列を .bpu_gbuf に作る (最初の組は 長さ mod 3、0 なら 3 桁)
+RET Z
+LD A, (HL)
+CP '#'
+JP Z, .bpp_field
+CP '+'
+JP Z, .bpp_field
+CP '*'
+JP Z, .bpp_twoq
+CP '.'
+JP NZ, .bpp_prechar
+LD C, '#'           ; '.' は後ろが '#' なら欄の始まり
+JP .bpp_next
+.bpp_twoq
+LD C, '*'           ; '*' は後ろも '*' なら欄の始まり
+.bpp_next
+LD A, B
+CP 2
+JP C, .bpp_one
+INC HL
+LD A, (HL)
+DEC HL
+CP C
+JP Z, .bpp_field
+.bpp_one
+LD A, (HL)
+.bpp_prechar
+PUSH HL
+PUSH BC
+LD L, A
+CALL BAS_PCHR
+POP BC
+POP HL
+INC HL
+DEC B
+JP .bpp_pre
+.bpp_field
+XOR A
+LD (BAS_PUWID), A
+LD (BAS_PUPLUS), A
+LD (BAS_PUSTAR), A
+LD (BAS_PUMINUS), A
+LD (BAS_PUFRAC), A
+LD (BAS_PUCOMMA), A
+LD A, (HL)
+CP '+'
+JP NZ, .bpp_nolead
+LD A, 1
+LD (BAS_PUPLUS), A
+LD (BAS_PUWID), A
+INC HL
+DEC B
+.bpp_nolead
+LD A, B
+OR A
+JP Z, .bpp_end
+LD A, (HL)
+CP '*'
+JP NZ, .bpp_hash
+INC HL
+DEC B
+LD A, B
+OR A
+JP Z, .bpp_end
+LD A, (HL)
+CP '*'
+JP NZ, .bpp_hash
+LD A, 1
+LD (BAS_PUSTAR), A
+LD A, (BAS_PUWID)
+ADD A, 2
+LD (BAS_PUWID), A
+INC HL
+DEC B
+.bpp_hash
+LD A, B
+OR A
+JP Z, .bpp_end
+LD A, (HL)
+CP '#'
+JP Z, .bpp_h1
+CP ','
+JP NZ, .bpp_dot
+LD (BAS_PUCOMMA), A
+.bpp_h1
+LD A, (BAS_PUWID)
+INC A
+LD (BAS_PUWID), A
+INC HL
+DEC B
+JP .bpp_hash
+.bpp_dot
+CP '.'
+JP NZ, .bpp_trail
+INC HL
+DEC B
+.bpp_fr
+LD A, B
+OR A
+JP Z, .bpp_end
+LD A, (HL)
+CP '#'
+JP NZ, .bpp_trail
+LD A, (BAS_PUFRAC)
+INC A
+LD (BAS_PUFRAC), A
+INC HL
+DEC B
+JP .bpp_fr
+.bpp_trail
+LD A, B
+OR A
+JP Z, .bpp_end
+LD A, (HL)
+CP '-'
+JP NZ, .bpp_end
+LD A, 1
+LD (BAS_PUMINUS), A
+INC HL
+DEC B
+.bpp_end
+LD (BAS_PUREST), HL
+LD A, B
+LD (BAS_PURESTN), A
+LD A, 1
+RET
+
+
+; @name BAS_PULAY
+; @resident shared
+; @param_count 0
+; @calls BAS_WORK,BAS_PCHR,BAS_ERROR
+; BAS_PUPARSE で読んだ数値の欄に数を並べて出し、書式の後ろの文字を出す。HL = 整数部の数字列 (0 終端、区切りなし)、
+; DE = 小数部の数字列 (0 終端。小数部の桁より短ければ後ろを 0 で埋める。DE = 0 なら全部 0)、BAS_PUNEG = 負なら 1。
+; 符号の文字 (先頭の '+'、または負で末尾の '-' がないときの '-') は数字の直前に置き、前を空白 ('**' なら *) で埋める。
+; 整数部が 0 で小数部があるとき、符号の文字が欄の中にあるか、整数部の桁がなければ、頭の 0 を出さない
+; (Hu-BASIC の実測: ###.## の -.5 は "  -.50"、+#.## の .5 は " +.50"、#.## の .5 は "0.50"、.## の .5 は ".50")。
+; 欄に入らなければエラー 36 (Format over。Hu-BASIC の実測)
+LD (.bpl_frac), DE
+LD C, 0             ; C = 符号の文字が欄の中に要るか
+LD A, (BAS_PUPLUS)
+OR A
+JP NZ, .bpl_signin
+LD A, (BAS_PUNEG)
+OR A
+JP Z, .bpl_sgok
+LD A, (BAS_PUMINUS)
+OR A
+JP NZ, .bpl_sgok
+.bpl_signin
+LD C, 1
+.bpl_sgok
+LD A, (BAS_PUPLUS)
+LD B, A
+LD A, (BAS_PUWID)
+SUB B
+LD E, A             ; E = 数字の欄の桁 ('+' の分を除く)
+; 整数部が "0" で小数部があるときの頭の 0
+LD A, (HL)
+CP '0'
+JP NZ, .bpl_grp
+INC HL
+LD A, (HL)
+DEC HL
+OR A
+JP NZ, .bpl_grp
+LD A, (BAS_PUFRAC)
+OR A
+JP Z, .bpl_grp
+LD A, C
+OR A
+JP NZ, .bpl_nozero
+LD A, E
+OR A
+JP NZ, .bpl_grp
+.bpl_nozero
+INC HL              ; 空の数字列 (0 終端を指す)
+.bpl_grp
+LD (.bpl_digits), HL
+LD A, (BAS_PUCOMMA)
+OR A
+JP Z, .bpl_ngrp
+; 3 桁ごとに ',' を入れた数字列を .bpl_gbuf に作る (最初の組は 長さ mod 3、0 なら 3 桁)
+PUSH DE
+PUSH BC
 PUSH HL
 LD B, 0
-.bpu_glen
+.bpl_glen
 LD A, (HL)
 OR A
-JP Z, .bpu_glok
+JP Z, .bpl_glok
 INC B
 INC HL
-JP .bpu_glen
-.bpu_glok
+JP .bpl_glen
+.bpl_glok
 POP HL
 LD A, B
-.bpu_gmod
+OR A
+JP Z, .bpl_gnone    ; 数字がない
+.bpl_gmod
 CP 4
-JP C, .bpu_gmok
+JP C, .bpl_gmok
 SUB 3
-JP .bpu_gmod
-.bpu_gmok
+JP .bpl_gmod
+.bpl_gmok
 LD C, A             ; C = いまの組の残りの桁
-LD DE, .bpu_gbuf
-.bpu_gl
+LD DE, .bpl_gbuf
+.bpl_gl
 LD A, (HL)
 LD (DE), A
 INC HL
 INC DE
 DEC B
-JP Z, .bpu_gend
+JP Z, .bpl_gend
 DEC C
-JP NZ, .bpu_gl
+JP NZ, .bpl_gl
 LD A, ','
 LD (DE), A
 INC DE
 LD C, 3
-JP .bpu_gl
-.bpu_gend
+JP .bpl_gl
+.bpl_gend
 XOR A
 LD (DE), A
-LD HL, .bpu_gbuf
-LD (.bpu_digits), HL
-.bpu_ngrp
+LD HL, .bpl_gbuf
+LD (.bpl_digits), HL
+.bpl_gnone
+POP BC
+POP DE
+.bpl_ngrp
+LD HL, (.bpl_digits)
 LD B, 0
-.bpu_len
+.bpl_len
 LD A, (HL)
 OR A
-JP Z, .bpu_lenok
+JP Z, .bpl_lenok
 INC B
 INC HL
-JP .bpu_len
-.bpu_lenok
-; 符号の文字が欄の中に要るか (先頭の + あり、または負で末尾の - なし)
-LD C, 0
-LD A, (.bpu_plus)
-OR A
-JP NZ, .bpu_signin
-LD A, (.bpu_neg)
-OR A
-JP Z, .bpu_cnt
-LD A, (.bpu_minus)
-OR A
-JP NZ, .bpu_cnt
-.bpu_signin
-LD C, 1
-.bpu_cnt
-; 必要な桁 = 数字 + 符号 (+ の分は width に含めて数えている)
-LD A, (.bpu_plus)
+JP .bpl_len
+.bpl_lenok
+; 必要な桁 D = 数字 + 符号 ('+' の 1 桁は欄の桁から除いてある)
+LD A, (BAS_PUPLUS)
 OR A
 LD A, B
-JP NZ, .bpu_need    ; + の 1 桁は width に含まれている
+JP NZ, .bpl_need
 ADD A, C
-.bpu_need
-LD D, A             ; D = 必要な桁 (+ の場合は数字の桁)
-LD A, (.bpu_plus)
-OR A
-LD A, (.bpu_width)
-JP Z, .bpu_w
-DEC A               ; + の分を除いた数字の欄
-.bpu_w
-LD E, A             ; E = 数字の欄の桁
+.bpl_need
+LD D, A
 LD A, E
 CP D
-JP NC, .bpu_fit
-; 桁あふれはエラー 36 (Format over。Hu-BASIC の実測)
+JP NC, .bpl_fit
 LD HL, 36
 JP BAS_ERROR
-.bpu_fit
-; 詰め文字 (E - D 個)
-LD A, E
+.bpl_fit
+LD A, E             ; 詰め文字 (E - D 個)
 SUB D
 LD B, A
-.bpu_pad
+.bpl_pad
 LD A, B
 OR A
-JP Z, .bpu_sign
+JP Z, .bpl_sign
 PUSH BC
-PUSH DE
-LD A, (.bpu_star)
+LD A, (BAS_PUSTAR)
 OR A
 LD L, ' '
-JP Z, .bpu_padc
+JP Z, .bpl_padc
 LD L, '*'
-.bpu_padc
+.bpl_padc
 CALL BAS_PCHR
-POP DE
 POP BC
 DEC B
-JP .bpu_pad
-.bpu_sign
+JP .bpl_pad
+.bpl_sign
 LD A, C
 OR A
-JP Z, .bpu_dig
-LD A, (.bpu_neg)
+JP Z, .bpl_dig
+LD A, (BAS_PUNEG)
 OR A
 LD L, '+'
-JP Z, .bpu_sgn
+JP Z, .bpl_sgn
 LD L, '-'
-.bpu_sgn
+.bpl_sgn
 CALL BAS_PCHR
-.bpu_dig
-LD HL, (.bpu_digits)
-.bpu_dl
+.bpl_dig
+LD HL, (.bpl_digits)
+.bpl_dl
 LD A, (HL)
 OR A
-JP Z, .bpu_frac0
+JP Z, .bpl_frac0
 PUSH HL
 LD L, A
 CALL BAS_PCHR
 POP HL
 INC HL
-JP .bpu_dl
-.bpu_frac0
-LD A, (.bpu_frac)
+JP .bpl_dl
+.bpl_frac0
+LD A, (BAS_PUFRAC)
 OR A
-JP Z, .bpu_tm
+JP Z, .bpl_tm
 LD B, A
+PUSH BC
 LD L, '.'
-PUSH BC
 CALL BAS_PCHR
 POP BC
-.bpu_fz
-PUSH BC
-LD L, '0'
-CALL BAS_PCHR
-POP BC
-DJNZ .bpu_fz
-.bpu_tm
-LD A, (.bpu_minus)
+LD HL, (.bpl_frac)
+.bpl_fl
+LD A, H
+OR L
+JP Z, .bpl_f0       ; 小数部の数字列がない、または終わった: 0
+LD A, (HL)
 OR A
-JP Z, .bpu_post
-LD A, (.bpu_neg)
+JP Z, .bpl_fz
+INC HL
+JP .bpl_fput
+.bpl_fz
+LD HL, 0
+.bpl_f0
+LD A, '0'
+.bpl_fput
+PUSH HL
+PUSH BC
+LD L, A
+CALL BAS_PCHR
+POP BC
+POP HL
+DJNZ .bpl_fl
+.bpl_tm
+LD A, (BAS_PUMINUS)
+OR A
+JP Z, .bpl_post
+LD A, (BAS_PUNEG)
 OR A
 LD L, ' '
-JP Z, .bpu_tmc
+JP Z, .bpl_tmc
 LD L, '-'
-.bpu_tmc
+.bpl_tmc
 CALL BAS_PCHR
-.bpu_post
-; 後ろの文字
-LD HL, (.bpu_rest)
-LD A, (.bpu_restn)
+.bpl_post
+LD HL, (BAS_PUREST) ; 書式の後ろの文字
+LD A, (BAS_PURESTN)
 LD B, A
-.bpu_pl
+.bpl_pl
 LD A, B
 OR A
 RET Z
@@ -2400,23 +2488,262 @@ POP BC
 POP HL
 INC HL
 DEC B
-JP .bpu_pl
-.bpu_noform
-; 数値の欄がない書式: 値をふつうに出す
-LD HL, (.bpu_val)
-JP BAS_PNUM
-.bpu_val DW 0
-.bpu_digits DW 0
-.bpu_rest DW 0
-.bpu_restn DB 0
-.bpu_width DB 0
-.bpu_plus DB 0
-.bpu_star DB 0
-.bpu_minus DB 0
-.bpu_frac DB 0
-.bpu_neg DB 0
-.bpu_comma DB 0
-.bpu_gbuf DB 0, 0, 0, 0, 0, 0, 0, 0
+JP .bpl_pl
+.bpl_frac DW 0
+.bpl_digits DW 0
+.bpl_gbuf DB 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+
+; @name BAS_PUSINGF
+; @resident shared
+; @param_count 1
+; @calls BAS_WORK,BAS_PUPARSE,BAS_PULAY,BAS_PFLT,BAS_ERROR
+; AHL = 浮動小数。PRINT USING の書式で出す (BAS_PUSING の浮動小数版。数値の欄がない書式は値をふつうに出す)。
+; 数字は f24 の値を正確な 10 進にして、小数部の桁で四捨五入したもの: |x| × 10^d (d は小数部の桁、9 まで。その下は 0) を
+; 64 ビットの整数で正確に計算して丸める (f24 の値 = 頭の 1 を付けた 17 ビットの仮数 × 2^(指数 - 79))。
+; 符号は丸める前の値で決める (-.004 は "-.00")。64 ビットに収まらない値はエラー 36、無限大・NaN はエラー 6
+LD (.bpf_m), HL
+LD (.bpf_a), A
+CALL BAS_PUPARSE
+OR A
+JP NZ, .bpf_field
+LD HL, (.bpf_m)
+LD A, (.bpf_a)
+JP BAS_PFLT
+.bpf_field
+LD A, (.bpf_a)
+LD C, A
+AND $7F
+CP $7F
+JP Z, .bpf_inf
+LD B, A             ; B = 指数 (0 なら値は 0)
+LD (.bpf_e), A
+XOR A
+BIT 7, C
+JP Z, .bpf_sg
+OR B                ; -0 は負でない
+JP Z, .bpf_sg
+LD A, 1
+.bpf_sg
+LD (BAS_PUNEG), A
+LD HL, .bpf_q       ; q = 0
+LD B, 8
+XOR A
+.bpf_clr
+LD (HL), A
+INC HL
+DJNZ .bpf_clr
+LD A, (BAS_PUFRAC)  ; d = 小数部の桁 (9 まで)
+CP 10
+JP C, .bpf_d
+LD A, 9
+.bpf_d
+LD (.bpf_dd), A
+LD A, (.bpf_e)
+OR A
+JP Z, .bpf_digits   ; 値が 0
+LD HL, (.bpf_m)
+LD (.bpf_q), HL
+LD A, 1
+LD (.bpf_q + 2), A  ; q = 仮数 (17 ビット)
+LD A, (.bpf_dd)
+OR A
+JP Z, .bpf_scale
+LD C, A
+.bpf_m10            ; q × 10^d (2^47 未満なのであふれない)
+PUSH BC
+CALL .bpf_x10
+POP BC
+DEC C
+JP NZ, .bpf_m10
+.bpf_scale
+LD A, (.bpf_e)
+SUB 79
+JP Z, .bpf_digits
+JP C, .bpf_right
+LD C, A             ; 2 の指数が正: 左へ C ビット (あふれたらエラー 36)
+.bpf_shl
+CALL .bpf_sl1
+JP C, .bpf_big
+DEC C
+JP NZ, .bpf_shl
+JP .bpf_digits
+.bpf_right
+NEG                 ; 2 の指数が負: 右へ A ビット (1〜78)。最後に落ちるビットで四捨五入する
+LD C, A
+DEC C
+JP Z, .bpf_rnd
+.bpf_shr
+CALL .bpf_sr1
+DEC C
+JP NZ, .bpf_shr
+.bpf_rnd
+CALL .bpf_sr1
+JP NC, .bpf_digits
+CALL .bpf_inc
+.bpf_digits
+; 10 で割り続けて、下の桁から .bpf_rev に並べる (桁の数が d + 1 になるまでは 0 を足す)
+LD DE, .bpf_rev
+LD C, 0
+.bpf_dl
+PUSH DE
+PUSH BC
+CALL .bpf_div10
+POP BC
+POP DE
+ADD A, '0'
+LD (DE), A
+INC DE
+INC C
+CALL .bpf_isz
+JP NZ, .bpf_dl
+LD A, (.bpf_dd)
+CP C
+JP NC, .bpf_dl
+LD A, C
+LD (.bpf_n), A
+; 小数部 = 下の d 桁を上の桁から .bpf_fbuf へ
+LD HL, .bpf_rev
+LD A, (.bpf_dd)
+LD E, A
+LD D, 0
+ADD HL, DE          ; HL = 小数部の上の桁の 1 つ上 (.bpf_rev + d)
+PUSH HL
+LD DE, .bpf_fbuf
+LD A, (.bpf_dd)
+OR A
+JP Z, .bpf_fend
+LD B, A
+.bpf_fc
+DEC HL
+LD A, (HL)
+LD (DE), A
+INC DE
+DJNZ .bpf_fc
+.bpf_fend
+XOR A
+LD (DE), A
+; 整数部 = 残りの上の桁 (.bpf_rev + n - 1 から .bpf_rev + d まで) を .bpf_ibuf へ
+POP DE              ; DE = .bpf_rev + d
+LD HL, .bpf_rev
+LD A, (.bpf_n)
+LD C, A
+LD B, 0
+ADD HL, BC          ; HL = .bpf_rev + n
+LD A, (.bpf_dd)
+LD B, A
+LD A, C
+SUB B
+LD B, A             ; B = 整数部の桁 (1 以上)
+LD DE, .bpf_ibuf
+.bpf_ic2
+DEC HL
+LD A, (HL)
+LD (DE), A
+INC DE
+DJNZ .bpf_ic2
+XOR A
+LD (DE), A
+LD HL, .bpf_ibuf
+LD DE, .bpf_fbuf
+JP BAS_PULAY
+.bpf_inf
+LD HL, 6
+JP BAS_ERROR
+.bpf_big
+LD HL, 36
+JP BAS_ERROR
+; q × 10 (q × 4 + q を 2 倍する)
+.bpf_x10
+LD HL, .bpf_q
+LD DE, .bpf_t
+LD BC, 8
+LDIR
+CALL .bpf_sl1
+CALL .bpf_sl1
+LD HL, .bpf_q
+LD DE, .bpf_t
+LD B, 8
+OR A
+.bpf_add
+LD A, (DE)
+ADC A, (HL)
+LD (HL), A
+INC HL
+INC DE
+DJNZ .bpf_add
+JP .bpf_sl1
+; q を左へ 1 ビット (キャリー = 落ちたビット。BC と A は保つ)
+.bpf_sl1
+PUSH BC
+LD HL, .bpf_q
+LD B, 8
+OR A
+.bpf_sl
+RL (HL)
+INC HL
+DJNZ .bpf_sl
+POP BC
+RET
+; q を右へ 1 ビット (キャリー = 落ちたビット。BC と A は保つ)
+.bpf_sr1
+PUSH BC
+LD HL, .bpf_q + 7
+LD B, 8
+OR A
+.bpf_sr
+RR (HL)
+DEC HL
+DJNZ .bpf_sr
+POP BC
+RET
+; q + 1
+.bpf_inc
+LD HL, .bpf_q
+LD B, 8
+.bpf_inl
+INC (HL)
+RET NZ
+INC HL
+DJNZ .bpf_inl
+RET
+; q が 0 なら Z
+.bpf_isz
+LD HL, .bpf_q
+LD B, 8
+XOR A
+.bpf_izl
+OR (HL)
+INC HL
+DJNZ .bpf_izl
+OR A
+RET
+; q を 10 で割る → A = 余り (C・HL を壊す)
+.bpf_div10
+XOR A
+LD C, 64
+.bpf_dv
+CALL .bpf_sl1
+RLA
+CP 10
+JP C, .bpf_dvn
+SUB 10
+LD HL, .bpf_q
+INC (HL)
+.bpf_dvn
+DEC C
+JP NZ, .bpf_dv
+RET
+.bpf_m DW 0
+.bpf_a DB 0
+.bpf_e DB 0
+.bpf_dd DB 0
+.bpf_n DB 0
+.bpf_q DB 0, 0, 0, 0, 0, 0, 0, 0
+.bpf_t DB 0, 0, 0, 0, 0, 0, 0, 0
+.bpf_rev DB 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.bpf_ibuf DB 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+.bpf_fbuf DB 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
 
 ; ============================================================ 文字の装飾
@@ -4509,6 +4836,35 @@ JP BAS_ERROR
 .bfs_out DB 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
 
+; @name BAS_SFSTR
+; @resident shared
+; @param_count 1
+; @calls BAS_FSTR,BAS_TALLOC
+; AHL = 浮動小数 → 一時領域の文字列 (STR$。PRINT の形から後ろの空白を除いたもの: 頭に符号の桁)
+CALL BAS_FSTR       ; HL = 0 終端の文字列
+PUSH HL
+LD B, 0
+.bsf_len
+LD A, (HL)
+OR A
+JP Z, .bsf_lenok
+INC B
+INC HL
+JP .bsf_len
+.bsf_lenok
+LD A, B
+CALL BAS_TALLOC     ; HL = [長さ][本体]
+POP DE              ; DE = 0 終端の文字列
+PUSH HL
+INC HL
+EX DE, HL
+LD C, B
+LD B, 0
+LDIR
+POP HL
+RET
+
+
 ; @name BAS_PFLT
 ; @resident shared
 ; @param_count 1
@@ -4966,13 +5322,25 @@ CALL BAS_INFS
 JP BAS_SVALF
 
 
+; @name BAS_READF
+; @resident shared
+; @param_count 0
+; @result_type float
+; @calls BAS_READS,BAS_SVALF
+; 次の DATA の項目を数として読む → AHL (VAL と同じ読み方。読めなければ 0、空の項目も 0。Hu-BASIC の実測:
+; DATA 12X は 12、DATA ABC は 0。読み尽くしたらエラー 4)
+CALL BAS_READS
+JP BAS_SVALF
+
+
 ; @name BAS_SVALF
 ; @resident shared
 ; @param_count 1
 ; @result_type float
 ; @calls BAS_SVAL,i16tof24,f24mul,f24div,f24pow10_LUT
 ; HL = 文字列 → AHL = 数として読めた所までの値 (VAL と同じ読み方で、小数点と指数 E・D も読む。読めなければ 0)。
-; 有効数字は 9 桁まで (それより下の桁は捨てる)。&H・&O・&B は整数の VAL (BAS_SVAL) と同じ
+; 有効数字は 9 桁まで (それより下の桁は捨てる)。&H・&O・&B は整数の VAL (BAS_SVAL) と同じ。
+; 10 進の数の中の空白は読み飛ばす (Hu-BASIC の実測: "1 2" は 12、" - 1" は -1、"1. 5" は 1.5、"1 E2" は 100)
 LD (.bsv_str), HL
 LD B, (HL)              ; B = 残りの文字数
 INC HL
@@ -5020,6 +5388,8 @@ LD A, B
 OR A
 JP Z, .bsv_conv
 LD A, (HL)
+CP ' '
+JP Z, .bsv_isp
 CP '.'
 JP Z, .bsv_dot
 CALL .bsv_isexp
@@ -5036,6 +5406,7 @@ INC HL
 LD (.bsv_x), HL
 POP HL
 .bsv_i1
+.bsv_isp
 INC HL
 DEC B
 JP .bsv_int
@@ -5047,6 +5418,8 @@ LD A, B
 OR A
 JP Z, .bsv_conv
 LD A, (HL)
+CP ' '
+JP Z, .bsv_f1
 CALL .bsv_isexp
 JP Z, .bsv_exp
 SUB '0'
@@ -5067,10 +5440,17 @@ JP .bsv_frac
 .bsv_exp                ; 指数: [+-]数字
 INC HL
 DEC B
+.bsv_esg
 LD A, B
 OR A
 JP Z, .bsv_conv
 LD A, (HL)
+CP ' '
+JP NZ, .bsv_esg1
+INC HL
+DEC B
+JP .bsv_esg
+.bsv_esg1
 CP '+'
 JP Z, .bsv_e0
 CP '-'
@@ -5085,6 +5465,8 @@ LD A, B
 OR A
 JP Z, .bsv_conv
 LD A, (HL)
+CP ' '
+JP Z, .bsv_e3
 SUB '0'
 JP C, .bsv_conv
 CP 10
@@ -5108,6 +5490,7 @@ LD HL, 999              ; 大きすぎる指数は 999 で止める
 .bsv_e2
 LD (.bsv_e), HL
 POP HL
+.bsv_e3
 INC HL
 DEC B
 JP .bsv_e1

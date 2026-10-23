@@ -38,7 +38,7 @@ public sealed record HuBinary(string Op, HuExpr Left, HuExpr Right, HuPos Pos) :
 // Op: "+","-","*","/","\\","MOD","=","<>","<",">","<=",">=","AND","OR","XOR"
 
 /// <summary>組み込み関数 (INP, MID$, LEFT$, RIGHT$, CHR$, ASC, VAL, HEXCHR$, CGPAT$, INKEY$, STICK, STRIG, RND, INT,
-/// STRING$, CHARACTER$, INPUT$)</summary>
+/// STRING$, CHARACTER$, INPUT$, STR$)</summary>
 public sealed record HuCall(string Name, IReadOnlyList<HuExpr> Args, HuPos Pos) : HuExpr(Pos);
 
 // ---------------------------------------------------------------- 文

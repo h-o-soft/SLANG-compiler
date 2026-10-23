@@ -6,7 +6,7 @@ namespace SLANGCompiler.HuBasic.Analysis;
 /// 構文木を検査して <see cref="HuProgram"/> を作る。
 /// - 行の並べ替え・重複・飛び先の検査
 /// - 変数の鍵 (名前と型の種類) と型 (整数 / 文字列 / 浮動小数) の決定と検査、'/' の型の決定
-///   (浮動小数の READ は段階 F2c までエラー)
+
 /// - REPEAT/UNTIL・WHILE/WEND の字面の対応、FOR が回らないときの飛び先の走査
 /// - 配列・文字列リテラル・DATA の表、GOSUB の戻り先 ID、静的データの合計
 /// </summary>
@@ -497,9 +497,15 @@ public sealed class HuAnalyzer
                 ExpectNum(a[0], intConv: true);
                 return HuType.Int;
             case "ASC":
-            case "VAL":
                 ExpectStr(a[0]);
                 return HuType.Int;
+            case "VAL":
+                // Hu-BASIC の VAL は浮動小数を返す (VAL("1.6") は 1.6。整数に入れるときに四捨五入)
+                ExpectStr(a[0]);
+                return HuType.Float;
+            case "STR$":
+                ExpectNum(a[0], intConv: false);
+                return HuType.Str;
             case "CHR$":
                 // CHR$(a, b, …) は、それぞれの文字をつなげる
                 foreach (var x in a) ExpectNum(x, intConv: true);
@@ -611,9 +617,7 @@ public sealed class HuAnalyzer
                 ExpectNum(w.Cond, intConv: false);
                 break;
             case HuRead rd:
-                foreach (var t in rd.Targets)
-                    if (CheckExpr(t, false) == HuType.Float)
-                        _diag.Error("HB0408", "READ の浮動小数の変数は未対応です (段階 F2c で対応)", t.Pos);
+                foreach (var t in rd.Targets) CheckExpr(t, false);
                 break;
             case HuRestore rs:
                 if (rs.Line is int line) CheckTarget(line, rs.Pos);
@@ -631,8 +635,6 @@ public sealed class HuAnalyzer
                         var t = CheckExpr(pe.Expr, false);
                         if (p.Using != null && t == HuType.Str)
                             _diag.Error("HB0406", "PRINT USING は数値の書式だけに対応しています", pe.Expr.Pos);
-                        else if (p.Using != null && t == HuType.Float)
-                            _diag.Error("HB0407", "PRINT USING の浮動小数は未対応です (段階 F2 で対応)", pe.Expr.Pos);
                     }
                     else if (item is HuPrintSpc sp)
                         ExpectNum(sp.Count, intConv: true);
