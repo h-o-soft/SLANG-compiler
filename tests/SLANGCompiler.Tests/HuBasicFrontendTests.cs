@@ -60,6 +60,19 @@ public class HuBasicFrontendTests
         Assert.Contains(diag.Items, d => d.Code == "HB0103");
     }
 
+    [Theory]
+    [InlineData("A=40000", true)]
+    [InlineData("A=65535", true)]
+    [InlineData("A=32767", false)]
+    [InlineData("A=&HFFFF", false)] // 16 進はビットの並びとして使うので警告しない
+    public void Lexer_WarnsDecimalLiteralsAbove32767(string body, bool warns)
+    {
+        var diag = new HuDiagnosticBag();
+        HuParser.ParseSingleLine("10 " + body, diag);
+        Assert.Equal(warns, diag.Items.Any(d => d.Code == "HB0104" && d.Severity == HuSeverity.Warning));
+        Assert.False(diag.HasErrors);
+    }
+
     [Fact]
     public void Lexer_AcceptsLargestLiterals()
     {

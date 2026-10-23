@@ -252,6 +252,16 @@ public class HuBasicEmitTests
         Assert.Matches(@"L20:\s+H_LINE=20;", sl);
     }
 
+    /// <summary>GOSUB・ON GOSUB から戻った所で、実行中の行番号を呼び出した行に戻す</summary>
+    [Fact]
+    public void Slang_RestoresCurrentLineAfterGosub()
+    {
+        var sl = Transpile("10 GOSUB 100:ON 1 GOSUB 100:A%=1\n20 END\n100 RETURN").Output!;
+        var afterReturns = System.Text.RegularExpressions.Regex.Matches(sl, @"\bR\d+:\s+H_LINE=(\d+);");
+        Assert.Equal(2, afterReturns.Count);
+        Assert.All(afterReturns, m => Assert.Equal("10", m.Groups[1].Value));
+    }
+
     [Fact]
     public void Slang_DataTables()
     {

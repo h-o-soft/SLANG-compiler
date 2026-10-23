@@ -27,6 +27,8 @@ public sealed class HuLowerer
 
     private readonly HuProgram _prog;
     private readonly HuLowerOptions _opt;
+    /// <summary>いま変換している行の番号 (GOSUB から戻った後に実行中の行番号を戻すのに使う)</summary>
+    private int _curLine;
     private readonly List<FlatOp> _ops = new();
     private int _labelSeq;
 
@@ -73,6 +75,7 @@ public sealed class HuLowerer
 
         foreach (var line in _prog.Lines)
         {
+            _curLine = line.Number;
             Emit(new FLabel(LineLabel(line.Number)));
             Emit(new FAssignHidden(CurrentLine, new HuNum(line.Number, line.Pos)));
             if (_opt.LineMarks) Emit(new FLineMark(line.Number, line.SourceText));
@@ -126,6 +129,7 @@ public sealed class HuLowerer
                 Call("BAS_GPUSH", I(id));
                 Emit(new FGoto(LineLabel(g.Line)));
                 Emit(new FLabel(ReturnPoint(id)));
+                RestoreCurrentLine(g.Pos);
                 break;
             }
             case HuReturn r:
@@ -268,6 +272,7 @@ public sealed class HuLowerer
                 Call("BAS_GPUSH", I(id));
                 Emit(new FDispatch(Temp, on.Lines.Select((l, i) => (i + 1, LineLabel(l))).ToList()));
                 Emit(new FLabel(ret));
+                RestoreCurrentLine(on.Pos);
                 break;
             }
             case "RESTORE":
@@ -307,6 +312,10 @@ public sealed class HuLowerer
         }
         Emit(new FLabel(end));
     }
+
+    /// <summary>GOSUB から戻った所で、実行中の行番号を呼び出した行に戻す (実行時エラーの「in 行番号」のため)</summary>
+    private void RestoreCurrentLine(HuPos pos)
+        => Emit(new FAssignHidden(CurrentLine, new HuNum(_curLine, pos)));
 
     private void LowerPrint(HuPrint p)
     {

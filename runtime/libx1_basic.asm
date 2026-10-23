@@ -2068,7 +2068,8 @@ RET
 ; @calls BAS_WORK,BAS_PCHR,BAS_UTOA,BAS_ERROR,BAS_PNUM
 ; HL = 値。書式バッファの「前置きの文字 + 数値の欄 + 後ろの文字」で出す。
 ; 数値の欄: 先頭の '+' (常に符号)、'**' (前を * で埋める、2 桁に数える)、'#'、'.'+'#' (小数部は 0)、
-; 末尾の '-' (負なら後ろに -)。桁あふれはエラー 36 (Format over)。
+; 末尾の '-' (負なら後ろに -)。欄の中の ',' は 1 桁に数え、整数部を 3 桁ごとに ',' で区切る
+; (欄より前の ',' はただの文字)。桁あふれはエラー 36 (Format over)。
 LD (.bpu_val), HL
 LD HL, BAS_UFMT
 LD B, (HL)          ; B = 書式の残り
@@ -2108,6 +2109,7 @@ LD (.bpu_plus), A
 LD (.bpu_star), A
 LD (.bpu_minus), A
 LD (.bpu_frac), A
+LD (.bpu_comma), A
 LD A, (HL)
 CP '+'
 JP NZ, .bpu_nolead
@@ -2149,6 +2151,7 @@ CP '#'
 JP Z, .bpu_h1
 CP ','
 JP NZ, .bpu_dot
+LD (.bpu_comma), A  ; 0 でなければ区切る
 .bpu_h1
 LD A, (.bpu_width)
 INC A
@@ -2207,6 +2210,50 @@ INC HL
 .bpu_abs
 CALL BAS_UTOA       ; HL = 数字列 (0 終端)
 LD (.bpu_digits), HL
+LD A, (.bpu_comma)
+OR A
+JP Z, .bpu_ngrp
+; 3 桁ごとに ',' を入れた数字列を .bpu_gbuf に作る (最初の組は 長さ mod 3、0 なら 3 桁)
+PUSH HL
+LD B, 0
+.bpu_glen
+LD A, (HL)
+OR A
+JP Z, .bpu_glok
+INC B
+INC HL
+JP .bpu_glen
+.bpu_glok
+POP HL
+LD A, B
+.bpu_gmod
+CP 4
+JP C, .bpu_gmok
+SUB 3
+JP .bpu_gmod
+.bpu_gmok
+LD C, A             ; C = いまの組の残りの桁
+LD DE, .bpu_gbuf
+.bpu_gl
+LD A, (HL)
+LD (DE), A
+INC HL
+INC DE
+DEC B
+JP Z, .bpu_gend
+DEC C
+JP NZ, .bpu_gl
+LD A, ','
+LD (DE), A
+INC DE
+LD C, 3
+JP .bpu_gl
+.bpu_gend
+XOR A
+LD (DE), A
+LD HL, .bpu_gbuf
+LD (.bpu_digits), HL
+.bpu_ngrp
 LD B, 0
 .bpu_len
 LD A, (HL)
@@ -2354,6 +2401,8 @@ JP BAS_PNUM
 .bpu_minus DB 0
 .bpu_frac DB 0
 .bpu_neg DB 0
+.bpu_comma DB 0
+.bpu_gbuf DB 0, 0, 0, 0, 0, 0, 0, 0
 
 
 ; ============================================================ 文字の装飾
