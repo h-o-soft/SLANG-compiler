@@ -881,6 +881,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitExpressionStmt(ExpressionStmt node)
     {
+        // 代入の文の値に、FLOAT の定数の四則演算を正しい値で畳み込む印を付ける (式の中の代入式には付けない。
+        // 条件の中の (C=1.0/2.0) などで、FLOAT の値を条件に持ち込まないため)。FLOAT の値を作ってよいのは、
+        // 代入先がすべて FLOAT の変数・FLOAT の配列の要素のときだけ (それ以外は整数の値を正すだけ)
+        if (node.Expr is AssignExpr assign) MarkFloatFold(assign.Value, IsFloatTarget(assign.Target));
         node.Expr.Accept(this);
         return IrOperand.None;
     }
@@ -1441,7 +1445,25 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (_globalSymbols != null)
         {
             var constEval = new ConstEvaluator(_globalSymbols);
-            var constResult = constEval.Evaluate(node);
+            // 代入する値の中の FLOAT が関わる四則演算は、整数としてではなく正しい値で畳み込む (A=5.0/2.0 は FLOAT の 2.5)。
+            // f24 で正確に表せないものは畳み込まず実行時に計算する。代入の値の外 (条件・添字・引数など) は今までどおり
+            bool marked = _floatFoldNodes.Contains(node);
+            var floatFold = marked || _intFoldNodes.Contains(node) ? constEval.FoldFloatArithmetic(node) : null;
+            // 代入先が FLOAT でないときは、整数の値を正すだけ (FLOAT の値・実行時の計算は作らず、今までどおり)
+            if (!marked && floatFold is { Kind: not ConstEvaluator.FloatFoldKind.Int }) floatFold = null;
+            if (floatFold is { Kind: ConstEvaluator.FloatFoldKind.Float } ff) return EmitLoadFloatConst(ff.FloatValue);
+            // FLOAT が要る位置 (実行時に計算する FLOAT の演算の辺) では、整数の結果も FLOAT の定数にする
+            if (floatFold is { Kind: ConstEvaluator.FloatFoldKind.Int } fr && _floatRequiredNodes.Contains(node))
+                return EmitLoadFloatConst(fr.FloatValue);
+            // 実行時に計算するときは、辺の FLOAT の定数の演算を FLOAT のまま作る (整数に畳み込むと親が整数の演算になる)
+            if (floatFold is { Kind: ConstEvaluator.FloatFoldKind.Runtime })
+            {
+                RequireFloat(node.Left);
+                RequireFloat(node.Right);
+            }
+            var constResult = floatFold is { } fi
+                ? (fi.Kind == ConstEvaluator.FloatFoldKind.Int ? fi.IntValue : (int?)null)
+                : constEval.Evaluate(node);
             if (constResult.HasValue)
             {
                 var t = IrOperand.Temp(AllocTemp());
@@ -1451,23 +1473,26 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
             // no-op算術のIR正規化: CodeGeneratorのスタック整合バグ回避
             // Add(x,0)/Sub(x,0) → x, Mul(x,1)/Div(x,1) → x
+            // 実行時に計算する定数の演算 (Runtime) では、FLOAT が関わる辺を整数の評価で 0・1 と見ない
+            // (1.0+1.0/3.0 の 1.0/3.0 を 0 と見て消さない)。それ以外は今までどおり
+            bool runtimeFold = floatFold is { Kind: ConstEvaluator.FloatFoldKind.Runtime };
             if (node.Op is BinaryOp.Add or BinaryOp.Sub)
             {
-                var rc = constEval.Evaluate(node.Right);
+                var rc = NormalizationConst(constEval, node.Right, runtimeFold);
                 if (rc.HasValue && rc.Value == 0) return node.Left.Accept(this);
                 if (node.Op == BinaryOp.Add)
                 {
-                    var lc = constEval.Evaluate(node.Left);
+                    var lc = NormalizationConst(constEval, node.Left, runtimeFold);
                     if (lc.HasValue && lc.Value == 0) return node.Right.Accept(this);
                 }
             }
             if (node.Op is BinaryOp.Mul or BinaryOp.SMul or BinaryOp.Div or BinaryOp.SDiv)
             {
-                var rc = constEval.Evaluate(node.Right);
+                var rc = NormalizationConst(constEval, node.Right, runtimeFold);
                 if (rc.HasValue && rc.Value == 1) return node.Left.Accept(this);
                 if (node.Op is BinaryOp.Mul or BinaryOp.SMul)
                 {
-                    var lc = constEval.Evaluate(node.Left);
+                    var lc = NormalizationConst(constEval, node.Left, runtimeFold);
                     if (lc.HasValue && lc.Value == 1) return node.Right.Accept(this);
                 }
             }
@@ -1509,13 +1534,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
         // FLOAT専用パターン: A*A → f24sqr, 2*A → f24mul2
         // ASTレベルで早期検出（i16tof24変換前に拾う必要がある）
-        // 現段階ではglobal FLOAT identifierのみ対象（ローカルFLOATやCastExprは取りこぼし）
+        // 現段階ではglobal FLOAT identifierのみ対象（ローカルFLOATやCastExprは取りこぼし）。
+        // 同じ名前の局所変数があれば局所が優先 (VisitIdentifier と同じ)、配列はアドレスなので対象外
         if (node.Op == BinaryOp.Mul)
         {
-            bool leftIsFloat = node.Left is IdentifierExpr li2
-                && _globalSymbols?.Resolve(li2.Name)?.Type?.ByteSize == 3;
-            bool rightIsFloat = node.Right is IdentifierExpr ri2
-                && _globalSymbols?.Resolve(ri2.Name)?.Type?.ByteSize == 3;
+            bool leftIsFloat = node.Left is IdentifierExpr li2 && IsGlobalFloatScalar(li2);
+            bool rightIsFloat = node.Right is IdentifierExpr ri2 && IsGlobalFloatScalar(ri2);
 
             // f24sqr: X*X（同一FLOAT変数）
             if (leftIsFloat && rightIsFloat
@@ -1551,11 +1575,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         int leftDs = left.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(left.TempIndex, out int lds) ? lds : 2;
 
         // rightがFLOATかどうかを事前推定（AcceptしないとtempDataSizeは不明だが、
-        // FloatLiteralやFLOAT変数は先に型が分かる）
-        bool rightMightBeFloat = node.Right is FloatLiteral
-            || (node.Right is IdentifierExpr rid
-                && (_globalSymbols?.Resolve(rid.Name)?.Type?.ByteSize == 3
-                    || (_localVars?.TryGetValue(rid.Name, out var rli) == true && rli.ByteSize == 3)));
+        // FloatLiteralやFLOAT変数、それらを含む四則演算は先に型が分かる）
+        bool rightMightBeFloat = MightBeFloat(node.Right);
 
         // leftが整数でrightがFLOATの場合、leftの変換をright Accept前に行う
         if (leftDs != 3 && rightMightBeFloat)
@@ -1613,6 +1634,167 @@ public class IrGenerator : IAstVisitor<IrOperand>
         Emit(op, dest, left, right, dataSize: resultDs);
         _tempDataSize[dest.TempIndex] = resultDs;
         return dest;
+    }
+
+    /// <summary>
+    /// 式を Accept した結果が FLOAT (DataSize 3) になるか。二項演算で、右辺を Accept する前に左辺を FLOAT に変換するための
+    /// 事前推定。偽なのに FLOAT だと、後からの左辺の変換が右辺の値に対して行われ、真なのに整数だと、周りの演算の型が
+    /// 変わる。どちらも誤りなので、Accept の規則 (定数の畳み込み・何もしない演算の正規化・結果の型) をそのままなぞる。
+    /// FLOAT を返す関数・FLOAT の配列の要素は扱わない (偽。今までどおり。今回の畳み込みで新しく FLOAT になる経路ではない)。
+    /// 条件式・複合代入・前置の増減は、結果の一時値に型を付けないので整数 (偽)
+    /// </summary>
+    private bool MightBeFloat(Expression e) => e switch
+    {
+        FloatLiteral => true,
+        IdentifierExpr id => IdentifierIsFloat(id),
+        CastExpr c => MightBeFloat(c.Operand),                 // VisitCastExpr は中身をそのまま返す
+        CommaExpr c => MightBeFloat(c.Right),                  // VisitCommaExpr は右の値を返す
+        AssignExpr a => MightBeFloat(a.Value),                 // VisitAssignExpr は代入する値を返す
+        CodeEvalExpr ce => MightBeFloat(ce.Inner),             // 中身をそのまま Accept する
+        UnaryExpr { Op: UnaryOp.Negate or UnaryOp.Plus } u => MightBeFloat(u.Operand),
+        IncrementExpr { IsPrefix: false } inc => MightBeFloat(inc.Operand), // 後置は元の値を返す (前置は型なしの結果)
+        AddressOfExpr a => AddressOfIsFloat(a),
+        BinaryExpr b => BinaryResultIsFloat(b),
+        _ => false,
+    };
+
+    /// <summary>VisitAddressOfExpr の結果が FLOAT になるか (&MEM[x]・&PORT[x] と、変数・配列以外の &(式) は中身の値を返す)</summary>
+    private bool AddressOfIsFloat(AddressOfExpr a)
+    {
+        if (a.Operand is IdentifierExpr) return false;
+        if (a.Operand is ArrayAccessExpr arr)
+        {
+            var arrName = (arr.Array as IdentifierExpr)?.Name;
+            if (arrName != null && (_globalSymbols?.Resolve(arrName)?.Type is MemoryArrayType
+                    || arrName.Equals("PORT", StringComparison.OrdinalIgnoreCase)
+                    || arrName.Equals("PORTW", StringComparison.OrdinalIgnoreCase)))
+                return MightBeFloat(arr.Indices[0]);
+            return false;                                      // 配列・ポインタの要素のアドレス
+        }
+        return MightBeFloat(a.Operand);
+    }
+
+    /// <summary>局所変数に隠されていない、大域の FLOAT のスカラー変数か (A*A → f24sqr などの特殊処理の条件)</summary>
+    private bool IsGlobalFloatScalar(IdentifierExpr id)
+        => !(_localVars?.ContainsKey(id.Name) ?? false) && _globalSymbols?.Resolve(id.Name)?.Type?.ByteSize == 3
+           && IdentifierIsFloat(id);
+
+    /// <summary>VisitIdentifier の結果が FLOAT になるか (同じ順に解決する: 局所変数 → 定数 → コードブロック → 変数)</summary>
+    private bool IdentifierIsFloat(IdentifierExpr id)
+    {
+        if (_localVars != null && _localVars.TryGetValue(id.Name, out var li))
+            return li.Kind == VarKind.Scalar && li.ByteSize == 3;   // 配列はアドレス、ポインタは 2 バイト
+        var sym = _globalSymbols?.Resolve(id.Name);
+        if (sym is { Kind: SymbolKind.Constant }) return sym.ConstValue is not int && sym.ConstFloatValue.HasValue;
+        if (sym is { IsCodeBlock: true }) return false;
+        var vi = ResolveVarInfo(id.Name);
+        return vi.Kind != VarKind.Array && vi.VarDataSize == 3;
+    }
+
+    /// <summary>
+    /// FLOAT の定数の四則演算を正しい値で畳み込んでよい二項演算 (代入する値の中で、値がそのまま代入に届くもの)。
+    /// ここにない二項演算 (条件・添字・関数の引数・ビット演算の中など) は、今までどおり整数として畳み込む
+    /// </summary>
+    private readonly HashSet<BinaryExpr> _floatFoldNodes = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// 代入先が FLOAT でない代入の値の中の二項演算 (FoldFloatArithmetic は整数の結果だけを使う。FLOAT の値は作らない)
+    /// </summary>
+    private readonly HashSet<BinaryExpr> _intFoldNodes = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>
+    /// 代入する値の式をたどり、値がそのまま代入に届く二項演算に印を付ける。たどるのは、子の値をそのまま使う四則演算の
+    /// 両辺・単項の +/-・キャスト・カンマ式の右・代入式の値・CodeEvalExpr の中身だけ。
+    /// floatTarget は、値が届く代入先がすべて FLOAT の変数・FLOAT の配列の要素か (真なら _floatFoldNodes、偽なら _intFoldNodes)。
+    /// MEM・PORT への代入は FLOAT からの変換がなく、WORD の変数への代入は FTOI で値を変えてから外側の代入に渡すので、
+    /// FLOAT の値を届けてはいけない
+    /// </summary>
+    private void MarkFloatFold(Expression e, bool floatTarget)
+    {
+        switch (e)
+        {
+            case BinaryExpr b when b.Op is BinaryOp.Add or BinaryOp.Sub or BinaryOp.Mul or BinaryOp.Div
+                                         or BinaryOp.SMul or BinaryOp.SDiv:
+                (floatTarget ? _floatFoldNodes : _intFoldNodes).Add(b);
+                MarkFloatFold(b.Left, floatTarget);
+                MarkFloatFold(b.Right, floatTarget);
+                break;
+            case UnaryExpr { Op: UnaryOp.Negate or UnaryOp.Plus } u: MarkFloatFold(u.Operand, floatTarget); break;
+            case CastExpr c: MarkFloatFold(c.Operand, floatTarget); break;
+            case CommaExpr c: MarkFloatFold(c.Right, floatTarget); break;
+            case AssignExpr a: MarkFloatFold(a.Value, floatTarget && IsFloatTarget(a.Target)); break;
+            case CodeEvalExpr ce: MarkFloatFold(ce.Inner, floatTarget); break;
+        }
+    }
+
+    /// <summary>代入先が FLOAT の変数 (スカラー) か、FLOAT の配列・ポインタの要素か (EmitStore が 3 バイトで書く所)</summary>
+    private bool IsFloatTarget(Expression target)
+    {
+        if (target is IdentifierExpr id)
+        {
+            var vi = ResolveVarInfo(id.Name);
+            return vi.IsResolved && vi.Kind == VarKind.Scalar && vi.VarDataSize == 3;
+        }
+        if (target is ArrayAccessExpr { Array: IdentifierExpr an })
+        {
+            if (an.Name.Equals("PORT", StringComparison.OrdinalIgnoreCase) || an.Name.Equals("PORTW", StringComparison.OrdinalIgnoreCase))
+                return false;
+            var vi = ResolveVarInfo(an.Name);
+            if (vi.GlobalSym?.Type is MemoryArrayType) return false;
+            return vi.IsResolved && vi.Kind is VarKind.Array or VarKind.Pointer && vi.ElemSize == 3;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 実行時に計算する FLOAT の演算の辺で、FLOAT の値が要る二項演算 (整数の結果も FLOAT の定数にする)。
+    /// 子の値をそのまま使う辺 (単項の +/-・キャスト・カンマ式の右・CodeEvalExpr) をたどって入れる
+    /// </summary>
+    private readonly HashSet<BinaryExpr> _floatRequiredNodes = new(ReferenceEqualityComparer.Instance);
+
+    private void RequireFloat(Expression e)
+    {
+        switch (e)
+        {
+            case BinaryExpr b: _floatRequiredNodes.Add(b); break;
+            case UnaryExpr { Op: UnaryOp.Negate or UnaryOp.Plus } u: RequireFloat(u.Operand); break;
+            case CastExpr c: RequireFloat(c.Operand); break;
+            case CommaExpr c: RequireFloat(c.Right); break;
+            case CodeEvalExpr ce: RequireFloat(ce.Inner); break;
+        }
+    }
+
+    /// <summary>何もしない演算の正規化で見る辺の整数の値。実行時に計算する定数の演算で FLOAT が関わる辺は見ない (null)</summary>
+    private static int? NormalizationConst(ConstEvaluator ce, Expression side, bool runtimeFold)
+        => runtimeFold && ce.InvolvesFloat(side) ? null : ce.Evaluate(side);
+
+    /// <summary>VisitBinaryExpr の結果が FLOAT になるか (MightBeFloat 用。VisitBinaryExpr と同じ順に判定する)</summary>
+    private bool BinaryResultIsFloat(BinaryExpr b)
+    {
+        if (_globalSymbols != null)
+        {
+            var ce = new ConstEvaluator(_globalSymbols);
+            bool marked = _floatFoldNodes.Contains(b);
+            var fold = marked || _intFoldNodes.Contains(b) ? ce.FoldFloatArithmetic(b) : null;
+            if (!marked && fold is { Kind: not ConstEvaluator.FloatFoldKind.Int }) fold = null;
+            if (fold is { Kind: ConstEvaluator.FloatFoldKind.Float }) return true;
+            if (fold is { Kind: ConstEvaluator.FloatFoldKind.Int }) return _floatRequiredNodes.Contains(b);
+            if (fold is { Kind: ConstEvaluator.FloatFoldKind.Runtime }) return true;  // 辺を FLOAT のまま実行時に計算する
+            if (ce.Evaluate(b) != null) return false;                    // 整数の即値に畳み込まれる
+            // 何もしない演算の正規化 (残る側の型になる)
+            if (b.Op is BinaryOp.Add or BinaryOp.Sub)
+            {
+                if (ce.Evaluate(b.Right) == 0) return MightBeFloat(b.Left);
+                if (b.Op == BinaryOp.Add && ce.Evaluate(b.Left) == 0) return MightBeFloat(b.Right);
+            }
+            if (b.Op is BinaryOp.Mul or BinaryOp.SMul or BinaryOp.Div or BinaryOp.SDiv)
+            {
+                if (ce.Evaluate(b.Right) == 1) return MightBeFloat(b.Left);
+                if (b.Op is BinaryOp.Mul or BinaryOp.SMul && ce.Evaluate(b.Left) == 1) return MightBeFloat(b.Right);
+            }
+        }
+        if (b.Op is BinaryOp.LogAnd or BinaryOp.LogOr) return false;  // 短絡評価は 0/1 の整数
+        return MightBeFloat(b.Left) || MightBeFloat(b.Right);         // どちらかが FLOAT なら結果も FLOAT
     }
 
     public IrOperand VisitUnaryExpr(UnaryExpr node)

@@ -100,6 +100,127 @@ public class ConstEvaluator
         };
     }
 
+    /// <summary>
+    /// 式に FLOAT が関わるか (FloatLiteral・FLOAT 定数・FLOAT へのキャストを含むか)
+    /// </summary>
+    public bool InvolvesFloat(Expression expr)
+    {
+        return expr switch
+        {
+            FloatLiteral => true,
+            IdentifierExpr id => _symbols?.Resolve(id.Name) is { Kind: SymbolKind.Constant, ConstFloatValue: not null },
+            CastExpr cast => cast.TargetSize == DataSize.Float || InvolvesFloat(cast.Operand),
+            UnaryExpr unary => InvolvesFloat(unary.Operand),
+            BinaryExpr binary => InvolvesFloat(binary.Left) || InvolvesFloat(binary.Right),
+            HighLowExpr hl => InvolvesFloat(hl.Operand),
+            ConditionalExpr cond => InvolvesFloat(cond.Condition) || InvolvesFloat(cond.TrueExpr) || InvolvesFloat(cond.FalseExpr),
+            _ => false,
+        };
+    }
+
+    /// <summary>FoldFloatArithmetic の結果の種類</summary>
+    public enum FloatFoldKind
+    {
+        /// <summary>整数の即値 (IntValue)</summary>
+        Int,
+        /// <summary>FLOAT の定数 (FloatValue。f24 で正確に表せ、実行時の計算と同じ値)</summary>
+        Float,
+        /// <summary>
+        /// 畳み込まない (実行時に f24 で計算する)。定数や途中の値が f24 で正確に表せず、コンパイル時の計算が実行時と
+        /// 同じ値になると言えないとき。FloatValue は double で求めた値
+        /// </summary>
+        Runtime,
+    }
+
+    public readonly record struct FloatFold(FloatFoldKind Kind, int IntValue, double FloatValue);
+
+    /// <summary>
+    /// Evaluate が整数として畳み込む式のうち、FLOAT が関わる四則演算の正しい値。
+    /// Evaluate は小数部のない FloatLiteral を整数として読むので、5.0/2.0 を 2、40000.0+40000.0 を 14464 にしてしまう。
+    /// 実行時と同じ規則で求め直して、次の順に決める:
+    /// (0) 定数・途中の値のどれかが f24 で正確に表せない → Runtime (畳み込まない)。
+    /// (1) 小数部がなく -32768〜65535 で、Evaluate の値と 16 ビットで同じ → Evaluate の値そのもの (今までと同じコード)。
+    /// (2) 小数部がなく -32768〜32767 → その整数 (FLOAT に入れても符号付きの変換で同じ値に戻る)。
+    /// (3) それ以外 → FLOAT の値 (32768〜65535 を整数にすると、FLOAT に入れたときに負の数になるため)。
+    /// 当たらない式 (FLOAT が関わらない・四則演算と単項の +/- 以外を含む・Evaluate が値を返さない・0 で割る) は null
+    /// (呼び出し側は今までどおり Evaluate を使う)。
+    /// </summary>
+    public FloatFold? FoldFloatArithmetic(Expression expr)
+    {
+        if (!InvolvesFloat(expr) || Evaluate(expr) is not int iv) return null;
+        bool exact = true;
+        if (EvaluateFloatArithmetic(expr, ref exact) is not double d) return null;
+        if (!exact) return new FloatFold(FloatFoldKind.Runtime, 0, d);
+        if (d == Math.Truncate(d))
+        {
+            if (d >= -32768 && d <= 65535 && ((long)iv - (long)d) % 65536 == 0) return new FloatFold(FloatFoldKind.Int, iv, d);
+            if (d >= -32768 && d <= 32767) return new FloatFold(FloatFoldKind.Int, (int)d, d);
+        }
+        return new FloatFold(FloatFoldKind.Float, 0, d);
+    }
+
+    /// <summary>
+    /// FLOAT が関わる四則演算の定数式を、実行時と同じ規則で求める。FLOAT の値は double のまま、FLOAT が関わらない
+    /// 部分は整数の規則 (16 ビット) で求めて符号付きとして読む (実行時の i16tof24 と同じ)。
+    /// FLOAT の定数・途中の結果が f24 で正確に表せなければ exact を偽にする (実行時は f24 に丸めながら計算するため)
+    /// </summary>
+    private double? EvaluateFloatArithmetic(Expression expr, ref bool exact)
+    {
+        double? v;
+        if (!InvolvesFloat(expr))
+            v = Evaluate(expr) is int i ? (short)(i & 0xFFFF) : null;
+        else
+        {
+            switch (expr)
+            {
+                case FloatLiteral flt:
+                    v = flt.Value;
+                    break;
+                case IdentifierExpr id:
+                    v = _symbols?.Resolve(id.Name)?.ConstFloatValue;
+                    break;
+                case UnaryExpr { Op: UnaryOp.Negate } u:
+                    v = -EvaluateFloatArithmetic(u.Operand, ref exact);
+                    break;
+                case UnaryExpr { Op: UnaryOp.Plus } u:
+                    v = EvaluateFloatArithmetic(u.Operand, ref exact);
+                    break;
+                case BinaryExpr b when b.Op is BinaryOp.Add or BinaryOp.Sub or BinaryOp.Mul or BinaryOp.Div
+                                             or BinaryOp.SMul or BinaryOp.SDiv:
+                {
+                    var l = EvaluateFloatArithmetic(b.Left, ref exact);
+                    var r = EvaluateFloatArithmetic(b.Right, ref exact);
+                    if (l is not double x || r is not double y) return null;
+                    v = b.Op switch
+                    {
+                        BinaryOp.Add => x + y,
+                        BinaryOp.Sub => x - y,
+                        BinaryOp.Mul or BinaryOp.SMul => x * y,
+                        _ => y != 0 ? x / y : null,
+                    };
+                    break;
+                }
+                default:
+                    return null;
+            }
+        }
+        if (v is double d && !IsExactF24(d)) exact = false;
+        return v;
+    }
+
+    /// <summary>double の値が f24 (LabelUtils.ConvertToF24) で正確に表せるか</summary>
+    public static bool IsExactF24(double v)
+    {
+        if (v == 0) return true;
+        if (double.IsNaN(v) || double.IsInfinity(v)) return false;
+        var b = LabelUtils.ConvertToF24(v);
+        int e = b[2] & 0x7F;
+        if (e == 0 || e == 0x7F) return false;               // 0 か無限大に丸まった
+        double m = 1 + (b[0] | (b[1] << 8)) / 65536.0;
+        double back = Math.ScaleB(m, e - 63) * ((b[2] & 0x80) != 0 ? -1 : 1);
+        return back == v;
+    }
+
     private int? EvaluateHighLow(HighLowExpr expr)
     {
         var operand = Evaluate(expr.Operand);
