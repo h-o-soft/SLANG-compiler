@@ -5,7 +5,7 @@ namespace SLANGCompiler.HuBasic.Parsing;
 
 /// <summary>
 /// Hu-BASIC の再帰下降の構文解析。
-/// 優先順位 (強い順): 括弧・関数 / 単項 - + / * / / \ / MOD / + - / 比較 / NOT / AND / OR XOR
+/// 優先順位 (強い順): 括弧・関数 / ^ / 単項 - + / * / / \ / MOD / + - / 比較 / NOT / AND / OR XOR
 /// (Hu-BASIC で実測した順序)。IF は行末までを THEN 節・ELSE 節として吸収する。
 /// </summary>
 public sealed class HuParser
@@ -21,6 +21,10 @@ public sealed class HuParser
         ["STICK"] = (1, 1), ["STRIG"] = (1, 1), ["RND"] = (0, 1), ["INT"] = (1, 1),
         ["LEFT$"] = (2, 2), ["STRING$"] = (2, 2), ["CHARACTER$"] = (2, 2), ["INPUT$"] = (1, 1),
         ["STR$"] = (1, 1),
+        ["ABS"] = (1, 1), ["SGN"] = (1, 1), ["SQR"] = (1, 1), ["SIN"] = (1, 1), ["COS"] = (1, 1),
+        ["TAN"] = (1, 1), ["ATN"] = (1, 1), ["LOG"] = (1, 1), ["EXP"] = (1, 1), ["FIX"] = (1, 1),
+        ["CINT"] = (1, 1), ["FRAC"] = (1, 1), ["CSNG"] = (1, 1), ["CDBL"] = (1, 1), ["PAI"] = (1, 1),
+        ["RAD"] = (1, 1),
     };
 
 
@@ -704,6 +708,31 @@ public sealed class HuParser
         {
             var op = Next();
             return new HuUnary(op.Text, ParseUnary(), PosOf(op));
+        }
+        return ParsePower();
+    }
+
+    /// <summary>
+    /// べき乗 (^)。単項の - + より強く、左結合 (実測: -2^2 は -4、3^2^2 は 81)。右の項には単項の - + を付けられる
+    /// (2^-2 は .25)
+    /// </summary>
+    private HuExpr ParsePower()
+    {
+        var left = ParsePrimary();
+        while (Peek.IsSymbol("^"))
+        {
+            var op = Next();
+            left = new HuBinary("^", left, ParsePowerOperand(), PosOf(op));
+        }
+        return left;
+    }
+
+    private HuExpr ParsePowerOperand()
+    {
+        if (Peek.IsSymbol("-") || Peek.IsSymbol("+"))
+        {
+            var op = Next();
+            return new HuUnary(op.Text, ParsePowerOperand(), PosOf(op));
         }
         return ParsePrimary();
     }

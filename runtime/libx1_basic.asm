@@ -4470,6 +4470,252 @@ LD HL, 0
 RET
 
 
+; @name BAS_IABS
+; @resident shared
+; @param_count 1
+; HL = 整数 → HL = 絶対値 (ABS 関数)。-32768 はそのまま (16 ビットの回り込み)
+BIT 7, H
+RET Z
+XOR A
+SUB L
+LD L, A
+SBC A, A
+SUB H
+LD H, A
+RET
+
+
+; @name BAS_ISGN
+; @resident shared
+; @param_count 1
+; HL = 整数 → HL = 符号 (SGN 関数。負は -1、0 は 0、正は 1)
+LD A, H
+OR L
+RET Z
+BIT 7, H
+LD HL, 1
+RET Z
+LD HL, $FFFF
+RET
+
+
+; @name BAS_FSGN
+; @resident shared
+; @param_count 1
+; AHL = 浮動小数 → HL = 符号 (SGN 関数。負は -1、0 (-0 も) は 0、正は 1)
+LD C, A
+AND $7F
+LD HL, 0
+RET Z
+INC HL
+BIT 7, C
+RET Z
+LD HL, $FFFF
+RET
+
+
+; @name BAS_FFIX
+; @resident shared
+; @param_count 1
+; @result_type float
+; @calls BAS_FFLOOR
+; AHL → AHL = 0 の方向への切り捨て (FIX 関数)。負の数は絶対値の床に符号を付ける。結果が 0 なら符号を付けない
+OR A
+JP P, BAS_FFLOOR    ; 正: 床と同じ
+AND $7F
+CALL BAS_FFLOOR
+LD C, A
+AND $7F
+RET Z               ; 0 (A = 0)
+LD A, C
+OR $80
+RET
+
+
+; @name BAS_FFRAC
+; @resident shared
+; @param_count 1
+; @result_type float
+; @calls BAS_FFIX,f24sub
+; AHL → AHL = 小数部 (FRAC 関数。x - FIX(x))
+PUSH HL
+PUSH AF
+CALL BAS_FFIX
+LD C, A
+EX DE, HL           ; CDE = FIX(x)
+POP AF
+POP HL              ; AHL = x
+JP f24sub
+
+
+; @name BAS_FSQR
+; @resident shared
+; @param_count 1
+; @result_type float
+; @calls BAS_ERROR,FSQRT
+; AHL → AHL = 平方根 (SQR 関数)。負の数はエラー 5。0 (-0 も) は 0
+LD C, A
+AND $7F
+RET Z
+BIT 7, C
+JP NZ, .bsq_err
+LD A, C
+JP f24sqrt
+.bsq_err
+LD HL, 5
+JP BAS_ERROR
+
+
+; @name BAS_FLOG
+; @resident shared
+; @param_count 1
+; @result_type float
+; @calls BAS_ERROR,FLOG
+; AHL → AHL = 自然対数 (LOG 関数)。0 以下はエラー 5
+LD C, A
+AND $7F
+JP Z, .blg_err
+BIT 7, C
+JP NZ, .blg_err
+LD A, C
+JP f24log
+.blg_err
+LD HL, 5
+JP BAS_ERROR
+
+
+; @name BAS_FPOW
+; @resident shared
+; @param_count 2
+; @result_type float
+; @calls BAS_ERROR,f24mul,f24inv,FPOW
+; HL = 底 x の番地、DE = 指数 y の番地 (どちらも浮動小数 3 バイト) → AHL = x^y。
+; x が 0: y が 0 なら 1、それ以外は 0 (本物は 0 の負の累乗も 0)。y が 0 なら 1。
+; y が整数で絶対値が 32767 以下: 2 進の累乗で掛け算を繰り返す (x は負でもよい)。y が負なら、先に底を 1/x にしてから
+; |y| 乗する (後で割ると、.5^-63 の途中の 2^-63 が下にあふれて 0 になるため)。
+; それ以外: x が正なら libfloat の FPOW (exp(y × log x))、負ならエラー 5
+PUSH DE
+LD E, (HL)
+INC HL
+LD D, (HL)
+INC HL
+LD A, (HL)
+LD (.bpw_x), DE
+LD (.bpw_xa), A
+POP HL
+LD E, (HL)
+INC HL
+LD D, (HL)
+INC HL
+LD A, (HL)
+LD (.bpw_y), DE
+LD (.bpw_ya), A
+LD A, (.bpw_xa)
+AND $7F
+JP NZ, .bpw_nz
+LD A, (.bpw_ya)
+AND $7F
+JP Z, .bpw_one      ; 0^0 = 1
+XOR A               ; 0^y = 0
+LD H, A
+LD L, A
+RET
+.bpw_nz
+LD A, (.bpw_ya)
+AND $7F
+JP Z, .bpw_one      ; x^0 = 1
+CP $7F
+JP Z, .bpw_real     ; y が無限大・NaN
+SUB 63
+JP C, .bpw_real     ; |y| < 1 (整数でない)
+CP 15
+JP NC, .bpw_real    ; |y| >= 32768
+; |y| = 1.仮数 × 2^E (E = 0〜14): 仮数の上の E ビットを整数部に移し、残りが 0 なら整数
+LD B, A
+LD HL, (.bpw_y)
+LD DE, 1
+OR A
+JP Z, .bpw_chk
+.bpw_sh
+ADD HL, HL
+RL E
+RL D
+DJNZ .bpw_sh
+.bpw_chk
+LD A, H
+OR L
+JP NZ, .bpw_real    ; 小数部がある
+LD (.bpw_n), DE
+LD A, (.bpw_ya)
+OR A
+JP P, .bpw_pos
+LD HL, (.bpw_x)
+LD A, (.bpw_xa)
+CALL f24inv         ; 底 = 1/x
+LD (.bpw_x), HL
+LD (.bpw_xa), A
+.bpw_pos
+LD HL, 0
+LD (.bpw_r), HL
+LD A, $3F
+LD (.bpw_ra), A     ; 結果 = 1.0
+.bpw_loop
+LD HL, (.bpw_n)
+SRL H
+RR L
+LD (.bpw_n), HL
+JP NC, .bpw_sq
+LD DE, (.bpw_x)
+LD A, (.bpw_xa)
+LD C, A
+LD HL, (.bpw_r)
+LD A, (.bpw_ra)
+CALL f24mul         ; 結果 ×= 底
+LD (.bpw_r), HL
+LD (.bpw_ra), A
+.bpw_sq
+LD HL, (.bpw_n)
+LD A, H
+OR L
+JP Z, .bpw_done
+LD DE, (.bpw_x)
+LD A, (.bpw_xa)
+LD C, A
+LD HL, (.bpw_x)
+CALL f24mul         ; 底 ×= 底
+LD (.bpw_x), HL
+LD (.bpw_xa), A
+JP .bpw_loop
+.bpw_done
+LD HL, (.bpw_r)
+LD A, (.bpw_ra)
+RET
+.bpw_real
+LD A, (.bpw_xa)
+OR A
+JP M, .bpw_err      ; 負の数の、整数でない累乗
+LD A, (.bpw_ya)
+LD C, A
+LD DE, (.bpw_y)
+LD HL, (.bpw_x)
+LD A, (.bpw_xa)
+JP f24pow
+.bpw_one
+LD A, $3F
+LD HL, 0
+RET
+.bpw_err
+LD HL, 5
+JP BAS_ERROR
+.bpw_x DW 0
+.bpw_xa DB 0
+.bpw_y DW 0
+.bpw_ya DB 0
+.bpw_r DW 0
+.bpw_ra DB 0
+.bpw_n DW 0
+
+
 ; @name BAS_FSTR
 ; @resident shared
 ; @param_count 1

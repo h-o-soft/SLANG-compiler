@@ -479,6 +479,11 @@ public sealed class HuAnalyzer
             case "-":
             case "*":
                 return NumResult(ExpectNum(b.Left, intConv: false), ExpectNum(b.Right, intConv: false));
+            case "^":
+                // べき乗はいつも浮動小数 (2^3 も)
+                ExpectNum(b.Left, intConv: false);
+                ExpectNum(b.Right, intConv: false);
+                return HuType.Float;
             default: // \ MOD (左右は整数に丸めてから計算する)
                 ExpectNum(b.Left, intConv: true);
                 ExpectNum(b.Right, intConv: true);
@@ -549,6 +554,32 @@ public sealed class HuAnalyzer
                 }
                 return HuType.Float;
             case "INT":
+                ExpectNum(a[0], intConv: false);
+                return HuType.Float;
+            // 本物は整数どうしの計算でも 16 ビットに収めないので、返す型は外から見えない。値が整数で済む関数は、
+            // 速さのため Int を返す (ABS・FIX は引数が Int のときだけ)
+            case "ABS":
+            case "FIX":
+                return ExpectNum(a[0], intConv: false);
+            case "SGN":
+                ExpectNum(a[0], intConv: false);
+                return HuType.Int;
+            case "CINT":
+                // 整数に入れる位置と同じ丸め
+                ExpectNum(a[0], intConv: true);
+                return HuType.Int;
+            case "SQR":
+            case "SIN":
+            case "COS":
+            case "TAN":
+            case "ATN":
+            case "LOG":
+            case "EXP":
+            case "FRAC":
+            case "CSNG":
+            case "CDBL":
+            case "PAI":
+            case "RAD":
                 ExpectNum(a[0], intConv: false);
                 return HuType.Float;
             default:

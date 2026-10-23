@@ -85,6 +85,14 @@ public class HuBasicEmitTests
         60 END
         """;
 
+    /// <summary>段階 F3a の数の関数と ^ をひととおり使う小さなプログラム (自作)</summary>
+    private const string MathProgram = """
+        10 DEFINT I:I=-5:X=2.5
+        20 PRINT ABS(I);ABS(X);SGN(I);SGN(X);FIX(I);FIX(X);CINT(X);FRAC(X);CSNG(I);CDBL(X)
+        30 PRINT SQR(X);SIN(X);COS(X);TAN(X);ATN(X);LOG(X);EXP(X);PAI(1);RAD(X);X^I;2^.5;-2^2
+        40 END
+        """;
+
     private const string FullProgram = """
         10 DEFINT A-Z:CLS:INIT:WIDTH 40:CLICK OFF:TEMPO 300
         20 A$="AB":B$=A$+CHR$(65):C$=MID$(A$,1,1)+MID$(A$,2)+RIGHT$(A$,1)+HEXCHR$("41")+CGPAT$(65)+INKEY$
@@ -535,6 +543,37 @@ public class HuBasicEmitTests
         Assert.Contains("V_G=V_X;", Body(Transpile("10 DEFINT A-Z:G=INT(X)").Output!)); // 整数に入れる INT(整数) は何もしない
     }
 
+    /// <summary>
+    /// F3a: 値が整数で済む関数は Int (ABS・FIX は引数が Int のときだけ)、ほかは Float。数学の関数は libfloat をそのまま、
+    /// 範囲を調べる関数と ^ はランタイムの BAS_ 関数を呼ぶ
+    /// </summary>
+    [Fact]
+    public void Math_FunctionsTypesAndCalls()
+    {
+        var sl = Body(Transpile(MathProgram).Output!);
+        foreach (var expected in new[]
+        {
+            "BAS_PNUM(BAS_IABS(V_I));", "BAS_PFLT(FABS(F_X));", "BAS_PNUM(BAS_ISGN(V_I));", "BAS_PNUM(BAS_FSGN(F_X));",
+            "BAS_PNUM(V_I);", "BAS_PFLT(BAS_FFIX(F_X));", "BAS_PNUM(BAS_FTOIR(F_X));", "BAS_PFLT(BAS_FFRAC(F_X));",
+            "BAS_PFLT(F_X);", "BAS_PFLT(BAS_FSQR(F_X));", "BAS_PFLT(FSIN(F_X));", "BAS_PFLT(FCOS(F_X));",
+            "BAS_PFLT(FTAN(F_X));", "BAS_PFLT(FATAN(F_X));", "BAS_PFLT(BAS_FLOG(F_X));", "BAS_PFLT(FEXP(F_X));",
+            "BAS_PFLT((F_X*H_FK[", "BAS_FPOW(&F_X, &H_F1)",
+        })
+            Assert.Contains(expected, sl);
+        Assert.Matches(@"BAS_PFLT\(\(H_FK\[\d+\]-BAS_FPOW\(", sl);         // -2^2 は -(2^2)
+        // CINT は整数に入れる位置と同じ (定数は変換のときに丸める)、FIX・ABS の Int の引数は整数のまま
+        var sl2 = Body(Transpile("10 DEFINT A-Z:A=CINT(2.5):B=FIX(C)+ABS(D):E=SGN(-.1)").Output!);
+        Assert.Contains("V_A=3;", sl2);
+        Assert.Contains("V_B=((V_C)+(BAS_IABS(V_D)));", sl2);
+        Assert.Contains("V_E=BAS_FSGN(", sl2);
+        // ^ はいつも Float (2^3 も)。整数に入れるときに丸める
+        Assert.Contains("V_A=BAS_FTOIR(BAS_FPOW(", Body(Transpile("10 DEFINT A-Z:A=2^3").Output!));
+        // PAI・RAD は予約語: 式の中の PAI(1) は配列ではなく π の関数 (設計 1 章の 8 の b)
+        var sl3 = Transpile("10 DEFINT A-Z:PRINT PAI(1)").Output!;
+        Assert.DoesNotContain("A_PAI", sl3);
+        Assert.Matches(@"BAS_PFLT\(\(H_FK\[\d+\]\*H_FK\[\d+\]\)\);", sl3);
+    }
+
     [Fact]
     public void Lowering_WhileResetsTempsInsideLoopHead()
     {
@@ -906,6 +945,13 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "FVAR"));
             RunSlangbuild(root, dir, sl6, asmPath, Path.Combine(dir, "FVARS"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "FVARS"));
+            // 数の関数と ^ (段階 F3a。libfloat の LOG・ATN・FPOW を含む) も両方で組み立てまで通る
+            var sl7 = Path.Combine(dir, "MATH.SL");
+            File.WriteAllText(sl7, Transpile(MathProgram).Output!);
+            RunSlangbuild(root, dir, sl7, asmPath, Path.Combine(dir, "MATH"));
+            AssertBuilt(Path.Combine(dir, "MATH"));
+            RunSlangbuild(root, dir, sl7, asmPath, Path.Combine(dir, "MATHS"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "MATHS"));
         }
         finally
         {

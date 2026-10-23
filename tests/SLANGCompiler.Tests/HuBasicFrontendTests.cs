@@ -224,6 +224,15 @@ public class HuBasicFrontendTests
     [InlineData("-7\\2", "((- 7) \\ 2)")]
     [InlineData("MF2*-(MF2<16)", "(MF2 * (- (MF2 < 16)))")]
     [InlineData("A MOD 3\\2", "(A MOD (3 \\ 2))")]
+    // ^ は単項の - より強く、左結合。右の項には単項の - を付けられる (F3a の実測)
+    [InlineData("-2^2", "(- (2 ^ 2))")]
+    [InlineData("3^2^2", "((3 ^ 2) ^ 2)")]
+    [InlineData("2^-2", "(2 ^ (- 2))")]
+    [InlineData("-2^-2", "(- (2 ^ (- 2)))")]
+    [InlineData("2^-2^2", "((2 ^ (- 2)) ^ 2)")]
+    [InlineData("2*-3^2", "(2 * (- (3 ^ 2)))")]
+    [InlineData("A^2*B", "((A ^ 2) * B)")]
+    [InlineData("PAI(1)+RAD(A)", "(PAI[1] + RAD[A])")]
     public void Parser_OperatorPrecedenceMatchesHuBasic(string expr, string expected)
         => Assert.Equal(expected, Show(ParseExpr(expr)));
 
@@ -278,7 +287,7 @@ public class HuBasicFrontendTests
     [Theory]
     [InlineData("10 A=1E99", "HB0103")]   // f24 で表せない大きさ
     [InlineData("10 CALL 100", "HB0301")]
-    [InlineData("10 X=ABS(1)", "HB0302")]
+    [InlineData("10 X$=OCT$(1)", "HB0302")]
     [InlineData("10 DIM A(2,3)", "HB0303")]
     [InlineData("10 LINE(0,0)-(1,1),\"A\",X", "HB0203")]   // B と BF のほかは書けない
     [InlineData("10 PRINT#1,A", "HB0308")]
@@ -287,6 +296,17 @@ public class HuBasicFrontendTests
         var diag = new HuDiagnosticBag();
         HuParser.ParseSingleLine(line, diag);
         Assert.Contains(diag.Items, d => d.Code == code);
+    }
+
+    /// <summary>PAI・RAD は本物と同じく予約語 (名前の頭に書けない。設計 1 章の 8)</summary>
+    [Theory]
+    [InlineData("10 RADIUS=5")]
+    [InlineData("10 PAIR=5")]
+    public void Parser_PaiRadAreReserved(string line)
+    {
+        var diag = new HuDiagnosticBag();
+        HuParser.ParseSingleLine(line, diag);
+        Assert.True(diag.HasErrors);
     }
 
     // ------------------------------------------------------------ 解析

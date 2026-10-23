@@ -12,7 +12,7 @@ namespace SLANGCompiler.HuBasic.Lexing;
 public sealed class HuLexer
 {
     private static readonly string[] TwoCharSymbols = { "<>", "><", "<=", "=<", ">=", "=>" };
-    private const string OneCharSymbols = "+-*/\\=<>(),;:#";
+    private const string OneCharSymbols = "+-*/\\=<>(),;:#^";
 
     private readonly string _text;
     private readonly int _columnOffset;

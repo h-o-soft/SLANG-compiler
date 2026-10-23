@@ -381,6 +381,11 @@ public sealed class SlangBackend : IHuBackend
                     "ASC" => $"BAS_SASC({Str(c.Args[0])})",
                     "STICK" => $"BAS_STICK({Int(c.Args[0])})",
                     "STRIG" => $"BAS_STRIG({Int(c.Args[0])})",
+                    // ABS・FIX は引数が Int のとき (Float の引数なら式が Float になり、上で丸める)
+                    "ABS" => $"BAS_IABS({Int(c.Args[0])})",
+                    "FIX" => Int(c.Args[0]),
+                    "SGN" => c.Args[0].Type == HuType.Float ? $"BAS_FSGN({Flt(c.Args[0])})" : $"BAS_ISGN({Int(c.Args[0])})",
+                    "CINT" => Int(c.Args[0]),
                     _ => throw new InvalidOperationException(c.Name),
                 };
         }
@@ -481,6 +486,7 @@ public sealed class SlangBackend : IHuBackend
                 {
                     "+" or "-" or "*" => FltPair(b),
                     "/" => $"BAS_FDIV({FAddr(b.Left)}, {FAddr(b.Right)})",
+                    "^" => $"BAS_FPOW({FAddr(b.Left)}, {FAddr(b.Right)})",
                     _ => throw new InvalidOperationException(b.Op),
                 };
             case HuCall { Name: "RND" }:
@@ -493,12 +499,27 @@ public sealed class SlangBackend : IHuBackend
                 return $"BAS_SVALF({Str(c.Args[0])})";
             case HuCall { Name: "INT" } c:
                 return $"BAS_FFLOOR({Flt(c.Args[0])})";
+            case HuCall { Name: "CSNG" or "CDBL" } c:
+                return Flt(c.Args[0]);
+            case HuCall { Name: "PAI" } c:
+                return $"({Flt(c.Args[0])}*{FConst(Math.PI)})";
+            case HuCall { Name: "RAD" } c:
+                return $"({Flt(c.Args[0])}*{FConst(Math.PI / 180)})";
+            case HuCall c when c.Type == HuType.Float && FloatFunctions.TryGetValue(c.Name, out var fn):
+                return $"{fn}({Flt(c.Args[0])})";
         }
         // 整数の式: 浮動小数の一時変数に入れる (SLANG が i16tof24 で変換する)
         var t = NewFTemp();
         _pre.Add($"{t}={Int(e)};");
         return t;
     }
+
+    /// <summary>浮動小数を 1 つ受けて浮動小数を返す関数と、ランタイムの名前 (ABS・FIX は引数が Float のとき)</summary>
+    private static readonly Dictionary<string, string> FloatFunctions = new()
+    {
+        ["ABS"] = "FABS", ["FIX"] = "BAS_FFIX", ["FRAC"] = "BAS_FFRAC", ["SQR"] = "BAS_FSQR", ["LOG"] = "BAS_FLOG",
+        ["EXP"] = "FEXP", ["SIN"] = "FSIN", ["COS"] = "FCOS", ["TAN"] = "FTAN", ["ATN"] = "FATAN",
+    };
 
     private string FltPair(HuBinary b)
     {
