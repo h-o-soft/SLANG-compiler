@@ -69,8 +69,35 @@ public class HuBasicFrontendTests
     {
         var diag = new HuDiagnosticBag();
         HuParser.ParseSingleLine("10 " + body, diag);
-        Assert.Equal(warns, diag.Items.Any(d => d.Code == "HB0104" && d.Severity == HuSeverity.Warning));
+        Assert.Equal(warns, diag.Items.Any(d => d.Code == "HB0109" && d.Severity == HuSeverity.Warning));
         Assert.False(diag.HasErrors);
+    }
+
+    /// <summary>同じ番号をエラーと警告の両方に使わない (別の意味の診断が同じ番号にならないように)</summary>
+    [Fact]
+    public void Diagnostics_CodesAreNotSharedAcrossSeverities()
+    {
+        var dir = Path.Combine(RepoRootForDiag(), "src", "SLANGCompiler.HuBasic");
+        var re = new System.Text.RegularExpressions.Regex(@"\.(Error|Warning)\(""(HB\d{4})""");
+        var kinds = new Dictionary<string, HashSet<string>>();
+        foreach (var f in Directory.EnumerateFiles(dir, "*.cs", SearchOption.AllDirectories))
+        {
+            if (f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")) continue;
+            foreach (System.Text.RegularExpressions.Match m in re.Matches(File.ReadAllText(f)))
+            {
+                if (!kinds.TryGetValue(m.Groups[2].Value, out var set)) kinds[m.Groups[2].Value] = set = new();
+                set.Add(m.Groups[1].Value);
+            }
+        }
+        Assert.NotEmpty(kinds);
+        Assert.All(kinds, kv => Assert.True(kv.Value.Count == 1, $"{kv.Key} がエラーと警告の両方に使われています"));
+    }
+
+    private static string RepoRootForDiag()
+    {
+        var d = new DirectoryInfo(AppContext.BaseDirectory);
+        while (d != null && !File.Exists(Path.Combine(d.FullName, "SLANGCompiler.sln"))) d = d.Parent;
+        return d!.FullName;
     }
 
     [Fact]

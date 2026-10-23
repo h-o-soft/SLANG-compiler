@@ -177,7 +177,7 @@ public sealed class HuLexer
         else if (v > 32767)
         {
             // Hu-BASIC は変数に入れるまでは 40000 のまま扱うが、hub2sl は 16 ビットの整数として扱う
-            _diag.Warning("HB0104", $"数値 {digits} は 16 ビットの整数 {v - 65536} として扱います" +
+            _diag.Warning("HB0109", $"数値 {digits} は 16 ビットの整数 {v - 65536} として扱います" +
                                     " (変数に入れずに計算や表示に使うと Hu-BASIC と結果が違います)", At(start));
         }
         return new HuToken(HuTokenKind.Number, text, (int)v, Col(start));
