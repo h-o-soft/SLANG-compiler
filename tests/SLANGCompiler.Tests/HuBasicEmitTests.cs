@@ -776,6 +776,39 @@ public class HuBasicEmitTests
                 Assert.True(all.Contains(dep), $"{f.Name} の @calls {dep} がどのライブラリにもない");
     }
 
+    /// <summary>
+    /// ランタイムの関数が CALL・JP で呼ぶほかの関数は、すべて @calls に書いてある (組み込みは @calls だけをたどるので、
+    /// 書き漏らすと、その関数だけを使うプログラムで名前が解決できない。F2b R1-F1)
+    /// </summary>
+    [Fact]
+    public void Runtime_CalledFunctionsAreDeclared()
+    {
+        var path = Path.Combine(RepoRoot(), "runtime", "libx1_basic.asm");
+        var functions = RuntimeParser.Parse(File.ReadAllText(path), path).ToList();
+        var names = functions.Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var root = RepoRoot();
+        foreach (var lib in EnvironmentLoader.Load(Path.Combine(root, "runtime", "env", "x1native.env")).Libraries)
+        {
+            var lp = Path.Combine(root, "runtime", Path.GetFileName(lib));
+            if (File.Exists(lp))
+                foreach (var f in RuntimeParser.Parse(File.ReadAllText(lp), lp)) names.Add(f.Name);
+        }
+        var missing = new List<string>();
+        foreach (var f in functions)
+        {
+            var deps = f.Dependencies.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var line in f.Code.Split('\n'))
+            {
+                var m = Regex.Match(line.Split(';')[0], @"^\s*(?:CALL|JP)\s+(?:(?:N?Z|N?C|P|M|PE|PO)\s*,\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*$", RegexOptions.IgnoreCase);
+                if (!m.Success) continue;
+                var target = m.Groups[1].Value;
+                if (names.Contains(target) && !string.Equals(target, f.Name, StringComparison.OrdinalIgnoreCase) && !deps.Contains(target))
+                    missing.Add($"{f.Name} → {target}");
+            }
+        }
+        Assert.True(missing.Count == 0, "@calls に書いていない呼び出し: " + string.Join(", ", missing));
+    }
+
     /// <summary>DATA のないプログラムで RESTORE を呼んでも、初期化されていない行の表を走査しない</summary>
     [Fact]
     public void Runtime_RestoreGuardsMissingDataTable()

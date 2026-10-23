@@ -3891,7 +3891,7 @@ JP .bfs_loop
 
 ; @name BAS_FFORPUSH
 ; @resident shared
-; @calls BAS_WORK,BAS_FWORK,BAS_CSPUSH,BAS_FORFIND,BAS_FCMP,BAS_FSLOT
+; @calls BAS_WORK,BAS_FWORK,BAS_CSPUSH,BAS_FORFIND,BAS_FCMP,BAS_FSLOT,BAS_FSTEPNEG
 ; @stack_cleanup callee
 ; スタック引数 (&変数, &上限, &増分, 出現番号)。浮動小数の FOR の入口の判定 (増分が負でなければ 変数 <= 上限、負なら
 ; 変数 >= 上限。BAS_FCMP で厳密に比べる。変数・上限・増分の無限大・NaN はエラー 6) をして、回るなら浮動小数の FOR 枠を
