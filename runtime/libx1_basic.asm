@@ -444,7 +444,7 @@ RET
 ; @name BAS_PCHR
 ; @resident shared
 ; @param_count 1
-; @calls BAS_WORK,BAS_VOFF,BAS_VPUT,BAS_NEWLINE,BAS_CLSTEXT
+; @calls BAS_WORK,BAS_VOFF,BAS_VPUT,BAS_NEWLINE,BAS_CLSTEXT,BAS_SCROLL
 ; L = 文字コード。生出力 (PRINT#0) でなければ制御コード ($0D 改行、$0B HOME、$0C CLS) を解釈し、
 ; ほかの $00-$1F は出さない。生出力では CSIZE の拡大で書く。
 LD A, (BAS_RAW)
@@ -461,30 +461,13 @@ CP $20
 RET C
 .bp_char
 LD E, A             ; E = 文字
-; 折り返し: X >= 桁数 (拡大中は X+1 >= 桁数) なら次の行へ
-LD A, (BAS_CSZ)
-AND $02             ; 横 2 倍か
-LD A, (BAS_CX)
-JP Z, .bp_w1
-INC A
-.bp_w1
-LD HL, BAS_WID
-CP (HL)
-JP C, .bp_put
-PUSH DE
-CALL BAS_NEWLINE
-POP DE
-.bp_put
 LD A, (BAS_RAW)
 OR A
 LD A, (BAS_CSZ)
 JP NZ, .bp_sz
 XOR A               ; 生出力でなければ拡大しない
 .bp_sz
-OR A
-JP Z, .bp_normal
-; 拡大: 属性に HS/VS を付けて、横 2 マス・縦 2 行に同じ文字を書く
-LD C, A             ; C = CSIZE (1 縦 / 2 横 / 3 縦横)
+LD C, A             ; C = 拡大 (0 なし / 1 縦 / 2 横 / 3 縦横)
 LD A, (BAS_ATTR)
 BIT 0, C
 JP Z, .bp_nv
@@ -494,43 +477,60 @@ BIT 1, C
 JP Z, .bp_nh
 OR $80
 .bp_nh
-LD D, A
+LD D, A             ; D = 属性 (拡大なら HS/VS 付き)
+CALL .bp_one
+BIT 1, C
+RET Z
+; 横 2 倍は右半分をもう 1 マス (左半分で右端を越えていれば、次の行の左端に書く。Hu-BASIC と同じ)
+.bp_one
 PUSH BC
+PUSH DE
 LD HL, (BAS_CX)     ; L = X, H = Y
 CALL .bp_cell
+POP DE
 POP BC
-PUSH BC
-BIT 1, C
-JP Z, .bp_noright
-LD HL, (BAS_CX)
-INC L
-CALL .bp_cell
-.bp_noright
-POP BC
-PUSH BC
 BIT 0, C
-JP Z, .bp_nodown
-LD HL, (BAS_CX)
+JP Z, .bp_adv
+LD HL, (BAS_CX)     ; 縦 2 倍は 1 行下にも (最下行なら書かない)
 INC H
 LD A, H
 CP 25
-JP NC, .bp_nodown
-CALL .bp_cell
-POP BC
+JP NC, .bp_adv
 PUSH BC
-BIT 1, C
-JP Z, .bp_nodown
-LD HL, (BAS_CX)
-INC H
-INC L
+PUSH DE
 CALL .bp_cell
-.bp_nodown
+POP DE
 POP BC
-LD HL, BAS_CX
-INC (HL)
-BIT 1, C
-RET Z
-INC (HL)
+.bp_adv
+; カーソルを進める。右端を越えたら、その場で次の行の左端へ (縦 2 倍なら 2 行下)。
+; 最下行を越えたらスクロールする (右下の隅に書いた直後にもスクロールする。Hu-BASIC と同じ)
+LD A, (BAS_CX)
+INC A
+LD (BAS_CX), A
+LD HL, BAS_WID
+CP (HL)
+RET C
+XOR A
+LD (BAS_CX), A
+LD A, (BAS_CY)
+INC A
+BIT 0, C
+JP Z, .bp_wy
+INC A
+.bp_wy
+CP 25
+JP C, .bp_wset
+PUSH BC
+PUSH DE
+PUSH AF
+CALL BAS_SCROLL
+POP AF
+POP DE
+POP BC
+DEC A
+JP .bp_wy
+.bp_wset
+LD (BAS_CY), A
 RET
 .bp_cell
 PUSH DE
@@ -539,17 +539,6 @@ POP DE
 PUSH DE
 CALL BAS_VPUT
 POP DE
-RET
-.bp_normal
-LD A, (BAS_ATTR)
-LD D, A
-LD HL, (BAS_CX)
-PUSH DE
-CALL BAS_VOFF
-POP DE
-CALL BAS_VPUT
-LD HL, BAS_CX
-INC (HL)
 RET
 .bp_home
 XOR A

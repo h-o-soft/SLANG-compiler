@@ -83,7 +83,7 @@ public class HuBasicEmitTests
         var flat = Transpile("10 DEFINT A-Z:PRINT A$+B$;C$+D$:READ E$,F$\n20 DATA X,Y").Flat!;
         var calls = flat.Ops.OfType<FCall>().Select(c => c.Function).ToList();
         var text = string.Join(",", calls.SkipWhile(c => c != "BAS_PSTR"));
-        Assert.StartsWith("BAS_PSTR,BAS_STMP,BAS_PSTR,BAS_STMP,BAS_PNL,BAS_SSET,BAS_STMP,BAS_SSET,BAS_STMP", text);
+        Assert.StartsWith("BAS_PSTR,BAS_STMP,BAS_PSTR,BAS_STMP,BAS_PNL,BAS_STMP,BAS_SSET,BAS_STMP,BAS_SSET,BAS_STMP", text);
     }
 
     /// <summary>PRINT USING と SPC の項目も、一時文字列を作るなら項目ごとに空に戻す</summary>
@@ -94,6 +94,18 @@ public class HuBasicEmitTests
         var calls = flat.Ops.OfType<FCall>().Select(c => c.Function).ToList();
         var text = string.Join(",", calls.SkipWhile(c => c != "BAS_PUFMT"));
         Assert.StartsWith("BAS_PUFMT,BAS_STMP,BAS_PUSING,BAS_STMP,BAS_PUSING,BAS_STMP,BAS_PNL,BAS_STMP,BAS_PSPC,BAS_STMP,BAS_PSPC,BAS_STMP,BAS_PNL", text);
+    }
+
+    /// <summary>READ は項目を一時文字列で読むので、前の文の一時文字列が残らないよう、文の頭でも必ず空に戻す</summary>
+    [Fact]
+    public void Lowering_ReadResetsTempsBeforeFirstItem()
+    {
+        var flat = Transpile("10 A$=RIGHT$(B$,255):READ C$\n20 DATA X").Flat!;
+        var calls = flat.Ops.OfType<FCall>().Select(c => c.Function).ToList();
+        int first = calls.IndexOf("BAS_SSET"), second = calls.LastIndexOf("BAS_SSET");
+        Assert.True(first >= 0 && second > first);
+        // A$ の代入と READ C$ の間に、一時領域を空に戻す呼び出しがある
+        Assert.Contains("BAS_STMP", calls.GetRange(first + 1, second - first - 1));
     }
 
     [Fact]

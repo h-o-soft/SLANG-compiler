@@ -383,10 +383,10 @@ public sealed class HuLowerer
     /// <summary>
     /// 文の頭で一時領域を空に戻すか。文が持つ式 (代入先の添字・FOR の式なども含む) のどれかが一時文字列を作るなら戻す。
     /// IF の THEN 節・ELSE 節の文は、それぞれの文の頭で判定する。WHILE の条件はループの先頭ラベルの後ろで戻す (別扱い)。
-    /// PRINT は項目ごとに戻すので常に戻す。
+    /// PRINT は項目ごとに戻すので常に戻す。READ は項目を一時文字列で読むので、前の文の一時文字列が残らないよう常に戻す。
     /// </summary>
     internal static bool NeedsTempReset(HuStmt s)
-        => s is HuPrint || (s is not HuWhile && StatementExprs(s).Any(MakesTemps));
+        => s is HuPrint or HuRead || (s is not HuWhile && StatementExprs(s).Any(MakesTemps));
 
     /// <summary>文が直接持つ式をすべて列挙する (IF の THEN 節・ELSE 節の中の文は含まない)</summary>
     internal static IEnumerable<HuExpr> StatementExprs(HuStmt s)
