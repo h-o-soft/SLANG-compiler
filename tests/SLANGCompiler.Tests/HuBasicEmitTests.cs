@@ -213,7 +213,9 @@ public class HuBasicEmitTests
     {
         var sl = Transpile("10 DEFINT A-Z:PRINT 1E18;2.5;40000;2.5:A=X+.000123").Output!;
         var table = Regex.Match(sl, @"ARRAY FLOAT H_FK\[\] = \{ (.*) \};").Groups[1].Value;
-        Assert.Equal(new[] { "1000000000000000000.0", "2.5", "40000.0", "0.000123" }, table.Split(", "));
+        Assert.Equal(4, table.Split(", ").Length);                // 1E18・2.5・40000・.000123 (同じ値は 1 つにまとめる)
+        Assert.Contains("2.5", table.Split(", "));
+        Assert.Contains("40000.0", table.Split(", "));
         // 本体には FLOAT の定数を直接書かない (SLANG が小数部のない FLOAT の定数を整数として畳み込むため)
         Assert.DoesNotMatch(@"\d\.\d", Body(sl));
     }
@@ -255,6 +257,31 @@ public class HuBasicEmitTests
     {
         var r = HuTranspiler.Transpile($"10 DEFINT A-Z:PRINT {literal}");
         Assert.Equal(rejected, r.Diagnostics.Items.Any(d => d.Code == "HB0103"));
+    }
+
+    /// <summary>定数の表の綴りは f24 の値を正確に表す (SLANG が f24 に直しても同じ値になる)</summary>
+    [Theory]
+    [InlineData(0.4999980926513671875, "0.5")]          // f24 では .5
+    [InlineData(2.5, "2.5")]
+    [InlineData(40000, "40000.0")]
+    [InlineData(1e18, "1000001427415760896.0")]          // f24 での 1E18 の値 (仮数 16 ビット)
+    [InlineData(0.1, "0.100000381469726562")]
+    public void Float_LiteralSpellsExactF24Value(double v, string expected)
+    {
+        var text = SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.FloatLiteral(v);
+        Assert.StartsWith(expected, text);
+        var back = double.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(SLANGCompiler.HuBasic.HuF24.Quantize(v), back);             // 綴りを読み直すと f24 の値そのもの
+        Assert.Equal(back, SLANGCompiler.HuBasic.HuF24.Quantize(back));          // SLANG が丸め直しても変わらない
+    }
+
+    [Fact]
+    public void Float_ConstantFoldingMatchesRuntimeAtBoundary()
+    {
+        // 変換のときに丸める A と、実行時に丸める B が同じ値の f24 を使う (どちらも .5 → 1)
+        var sl = Transpile("10 DEFINT A-Z:A=.4999980926513671875:B=.4999980926513671875*1.0").Output!;
+        Assert.Contains("V_A=1;", Body(sl));
+        Assert.Contains("ARRAY FLOAT H_FK[] = { 0.5, 1.0 };", sl);
     }
 
     [Fact]

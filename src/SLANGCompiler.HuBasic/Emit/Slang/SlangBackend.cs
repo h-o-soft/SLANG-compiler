@@ -359,9 +359,34 @@ public sealed class SlangBackend : IHuBackend
     /// <summary>浮動小数の定数の番地 (1 要素 3 バイト)</summary>
     private string FConstAddr(double v) => $"(H_FK+{FConstId(v) * 3})";
 
-    /// <summary>SLANG の FLOAT の定数の綴り (SLANG の字句は指数の書き方を読めないので、指数を使わずに書く)</summary>
+    /// <summary>
+    /// SLANG の FLOAT の定数の綴り。先に f24 の値にしてから、その値を正確に表す 10 進で書く (桁を落とすと、SLANG が
+    /// f24 に直したときに別の値になることがある)。f24 の値は「整数 × 2 の累乗」なので、有限の桁で正確に書ける。
+    /// SLANG の字句は指数の書き方を読めないので、指数は使わない。
+    /// </summary>
     public static string FloatLiteral(double v)
-        => v.ToString("0.0" + new string('#', 40), System.Globalization.CultureInfo.InvariantCulture);
+    {
+        var q = HuF24.Quantize(v);
+        if (q == 0) return "0.0";
+        var neg = q < 0;
+        long bits = BitConverter.DoubleToInt64Bits(Math.Abs(q));
+        int exp = (int)((bits >> 52) & 0x7FF);
+        long mant = bits & 0xFFFFFFFFFFFFFL;
+        if (exp != 0) mant |= 1L << 52; else exp = 1;
+        exp -= 1075;                                  // |q| = mant × 2^exp
+        string text;
+        if (exp >= 0)
+            text = (new System.Numerics.BigInteger(mant) << exp).ToString() + ".0";
+        else
+        {
+            // mant × 2^exp = mant × 5^(-exp) / 10^(-exp)
+            var digits = (mant * System.Numerics.BigInteger.Pow(5, -exp)).ToString().PadLeft(-exp + 1, '0');
+            var intPart = digits[..^(-exp)];
+            var frac = digits[^(-exp)..].TrimEnd('0');
+            text = intPart + "." + (frac.Length > 0 ? frac : "0");
+        }
+        return neg ? "-" + text : text;
+    }
 
     /// <summary>浮動小数の式 (SLANG の FLOAT の式)。整数の式は一時変数に入れて浮動小数にする</summary>
     private string Flt(HuExpr e)
