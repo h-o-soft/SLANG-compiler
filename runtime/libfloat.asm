@@ -1710,7 +1710,7 @@ jp f24log
 ; @name FACOS
 ; @resident shared
 ; @result_type float
-; @calls f24sub,f24bg,f24sqr,f24rsub
+; @calls f24sub,f24bg,f24sqr
 f24acos:
 ;acos(AHL) ==> AHL
 ;sqrt(1-x^2)/BG(x,1)
