@@ -255,6 +255,9 @@ public sealed class HuLowerer
             case HuOut o:
                 Emit(new FPortOut(o.Port, o.Value));
                 break;
+            case HuSwap sw:
+                Emit(new FSwap(sw.A, sw.B));
+                break;
             case HuPrint p:
                 LowerPrint(p);
                 break;
@@ -402,8 +405,9 @@ public sealed class HuLowerer
             case "WIDTH": Call("BAS_WIDTH", E(Arg(0)!)); break;
             case "CFLASH": Call("BAS_CFLASH", ArgOr(0, 0)); break;
             case "CSIZE": Call("BAS_CSIZE", ArgOr(0, 0)); break;
-            case "CGEN": Call("BAS_CGEN", E(Arg(0)!)); break;
-            case "PLAY": Call("BAS_PLAY", E(Arg(0)!)); break;
+            case "CGEN": Call("BAS_CGEN", ArgOr(0, 0)); break;
+            // PLAY 数はテンポ (TEMPO と同じ)
+            case "PLAY": Call(Arg(0)!.Type == HuType.Str ? "BAS_PLAY" : "BAS_TEMPO", E(Arg(0)!)); break;
             case "TEMPO": Call("BAS_TEMPO", E(Arg(0)!)); break;
             case "BEEP":
                 if (Arg(0) is HuExpr b) Call("BAS_BEEPN", E(b));   // 1: 鳴らし始める、0: 止める
@@ -415,6 +419,13 @@ public sealed class HuLowerer
                 break; // 何もしない (解析で warning を出している)
             case "CLICK": Call("BAS_CLICK", E(Arg(0)!)); break;
             case "PAUSE": Call("BAS_PAUSE", E(Arg(0)!)); break;
+            case "KEY": Call("BAS_KEY", E(Arg(0)!), E(Arg(1)!)); break;   // 番号の範囲だけを調べる
+            case "REPEAT": Call("BAS_KREPEAT", E(Arg(0)!)); break;        // REPEAT ON (1) / OFF (0)
+            case "PALET":
+                if (c.Args.Count == 0) Call("BAS_PALRST");
+                else Call("BAS_PALET", E(Arg(0)!), E(Arg(1)!));
+                break;
+            case "PRW": Call("BAS_PRW", ArgOr(0, 0)); break;
             case "RANDOMIZE":
                 // 式は評価して捨てる (BAS_RANDOMIZE は引数を見ない)
                 Emit(Arg(0) is HuExpr r
@@ -462,6 +473,7 @@ public sealed class HuLowerer
             case HuDim d: foreach (var (_, b) in d.Arrays) yield return b; break;
             case HuRead r: foreach (var t in r.Targets) yield return t; break;
             case HuOut o: yield return o.Port; yield return o.Value; break;
+            case HuSwap sw: yield return sw.A; yield return sw.B; break;
             case HuPrint p:
                 if (p.Using != null) yield return p.Using;
                 foreach (var item in p.Items)

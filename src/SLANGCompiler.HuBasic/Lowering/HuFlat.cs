@@ -36,6 +36,9 @@ public sealed record FDispatch(string Hidden, IReadOnlyList<(int Value, string L
 /// <summary>I/O ポートへの 1 バイトの書き込み</summary>
 public sealed record FPortOut(HuExpr Port, HuExpr Value) : FlatOp;
 
+/// <summary>SWAP a, b (A・B は HuVar / HuIndex。添字は A・B の順に調べる)</summary>
+public sealed record FSwap(HuExpr A, HuExpr B) : FlatOp;
+
 /// <summary>元の行の目印 (出力でコメントにする)</summary>
 public sealed record FLineMark(int Line, string Source) : FlatOp;
 

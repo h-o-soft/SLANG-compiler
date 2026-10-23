@@ -207,6 +207,16 @@ public sealed class SlangBackend : IHuBackend
                 Line($"PORT[{pv[0]}]={pv[1]};");
                 break;
             }
+            case FSwap sw:
+            {
+                // 添字の検査は A・B の順に一時変数へ入れる (評価とエラーの順を左から右に)
+                var a = SwapAddress(sw.A);
+                var b = SwapAddress(sw.B);
+                // 大きさ: 整数 2、浮動小数 3、文字列 0 (ランタイムが長さの大きい方 + 1 バイトを入れ替える)
+                var size = sw.A.Type switch { HuType.Str => 0, HuType.Float => 3, _ => 2 };
+                Line($"BAS_SWAP({a}, {b}, {size});");
+                break;
+            }
         }
     }
 
@@ -259,6 +269,24 @@ public sealed class SlangBackend : IHuBackend
         HuIndex ix => ArrayElement(ix),
         _ => throw new InvalidOperationException(e.ToString()),
     };
+
+    /// <summary>SWAP の相手の番地 (文字列の変数は 256 バイトのバッファの名前がそのまま番地)</summary>
+    private string SwapAddress(HuExpr e)
+    {
+        switch (e)
+        {
+            case HuVar v:
+                return v.Type == HuType.Str ? Var(v) : "&" + Var(v);
+            case HuIndex ix:
+            {
+                var t = NewITemp();
+                _pre.Add($"{t}={ArrayIndex(ix)};");
+                return $"&{ArrayName(_prog.Key(ix.Name))}[{t}]";
+            }
+            default:
+                throw new InvalidOperationException("SWAP " + e);
+        }
+    }
 
     private string ArrayElement(HuIndex ix) => $"{ArrayName(_prog.Key(ix.Name))}[{ArrayIndex(ix)}]";
 
@@ -676,6 +704,7 @@ public sealed class SlangBackend : IHuBackend
                         ? Call("BAS_SSTR", (c.Args[0], K.Int), (c.Args[1], K.Str))
                         : StringOfCode(c),
                     "CHARACTER$" => Call("BAS_SCHARA", (c.Args[0], K.Int), (c.Args[1], K.Int)),
+                    "SCRN$" => Call("BAS_SSCRN", (c.Args[0], K.Int), (c.Args[1], K.Int), (c.Args[2], K.Int)),
                     "INKEY$" when c.Args.Count > 0 => "BAS_SINKEY0()",
                     "INPUT$" => $"BAS_SINPUT({Int(c.Args[0])})",
                     FlatPseudo.InputStr => "BAS_INFS()",

@@ -19,7 +19,7 @@
 ; @name BAS_WORK
 ; @resident shared
 ; @param_count 0
-; @works BAS_CXY:2,BAS_WID:1,BAS_ATTR:1,BAS_CSZ:1,BAS_RAW:1,BAS_PAL:3,BAS_CSP:2,BAS_CSTK:640,BAS_TMPP:2,BAS_TMP:1024,BAS_NUMBUF:8,BAS_DBASE:2,BAS_DLTAB:2,BAS_DPOS:2,BAS_DEND:2,BAS_UFMT:256,BAS_PCGBUF:32,BAS_TEMPN:2,BAS_PLST:9,BAS_PLCH:15,BAS_LASTKEY:1,BAS_CLK:1,BAS_LNPTR:2,BAS_INBUF:256,BAS_INPOS:2,BAS_PUST:10
+; @works BAS_CXY:2,BAS_WID:1,BAS_ATTR:1,BAS_CSZ:1,BAS_RAW:1,BAS_PAL:3,BAS_CSP:2,BAS_CSTK:640,BAS_TMPP:2,BAS_TMP:1024,BAS_NUMBUF:8,BAS_DBASE:2,BAS_DLTAB:2,BAS_DPOS:2,BAS_DEND:2,BAS_UFMT:256,BAS_PCGBUF:32,BAS_TEMPN:2,BAS_PLST:9,BAS_PLCH:15,BAS_LASTKEY:1,BAS_CLK:1,BAS_LNPTR:2,BAS_INBUF:256,BAS_INPOS:2,BAS_PUST:10,BAS_KREP:1
 ; BAS_CX/CY: カーソル、BAS_WID: 桁数 (40/80)、BAS_ATTR: 現在の属性 (色 + CR/CF/CG)
 ; BAS_CSZ: CSIZE (0-3)、BAS_RAW: PRINT#0 中なら 1、BAS_PAL*: パレットの影 (書込専用ポートのため)
 ; BAS_CSP/BAS_CSTK: 制御スタック (10 バイト × 64 枠)
@@ -32,6 +32,7 @@
 ; BAS_LNPTR: 実行中の行番号を持つ変数のアドレス (0 なら行番号を出さない)
 ; BAS_INBUF: INPUT で読んだ 1 行 (長さ付き)、BAS_INPOS: 次の項目の始まり (1 始まりの位置)
 ; BAS_PUST: PRINT USING の数値の欄 (BAS_PUPARSE が読み、BAS_PULAY が使う。下の EQU)
+; BAS_KREP: キーのリピート (REPEAT ON で 1、OFF で 0。起動したときは 1、INIT では戻さない)
 ; カーソルとパレットは連続した番地が要るので、まとめて確保して EQU で分ける
 BAS_CX EQU BAS_CXY
 BAS_CY EQU BAS_CXY + 1
@@ -58,7 +59,7 @@ RET
 ; @calls BAS_WORK,sWORK,INIT_CRTC,_C4025L,_C4025H,BAS_CLS,BAS_SETPAL,BAS_INITSTATE,BAS_SNDINIT
 ; Hu-BASIC 起動直後と同じ状態にする: WIDTH 40 (CRTC R0-R9 は _C4025L と同じ、
 ; R10/R11 は Hu-BASIC の値 $60/$07)、パレット AA CC F0、プライオリティ 0、
-; COLOR 7,0、制御スタックと一時領域を空に、CLS 4。
+; COLOR 7,0、REPEAT ON、制御スタックと一時領域を空に、CLS 4。
 LD A, 40
 LD (AT_WIDTH), A
 LD (BAS_WID), A
@@ -82,10 +83,9 @@ OUT (C), A
 LD BC, $1801
 LD A, $07
 OUT (C), A
-LD BC, $1300
-XOR A
-OUT (C), A          ; プライオリティ 0
-CALL BAS_INITSTATE
+LD A, 1
+LD (BAS_KREP), A    ; REPEAT ON
+CALL BAS_INITSTATE  ; プライオリティ 0 もここで書く
 CALL BAS_SNDINIT    ; 音: テンポ 120、各チャンネル O4・長さ 5・音量 15、PSG のミキサー $3F・音量 0
 LD HL, BAS_CSTK
 LD (BAS_CSP), HL
@@ -98,13 +98,23 @@ JP BAS_CLS
 ; @name BAS_INITSTATE
 ; @resident shared
 ; @param_count 0
-; @calls BAS_WORK,BAS_SETPAL
-; INIT 文と BAS_INIT で共通の初期値: 色 7、装飾なし、パレット既定
+; @calls BAS_WORK,BAS_PALRST
+; INIT 文と BAS_INIT で共通の初期値: 色 7、装飾なし、プライオリティ 0、パレット既定 (INIT 文もプライオリティを戻す。Hu-BASIC の実測)
 LD A, $07
 LD (BAS_ATTR), A
 XOR A
 LD (BAS_CSZ), A
 LD (BAS_RAW), A
+LD BC, $1300
+OUT (C), A          ; プライオリティ 0
+JP BAS_PALRST
+
+
+; @name BAS_PALRST
+; @resident shared
+; @param_count 0
+; @calls BAS_WORK,BAS_SETPAL
+; PALET (引数なし): パレットの影を既定 (B $AA、R $CC、G $F0) に戻してポートに書く
 LD A, $AA
 LD (BAS_PALB), A
 LD A, $CC
@@ -456,8 +466,8 @@ RET
 ; @resident shared
 ; @param_count 1
 ; @calls BAS_WORK,BAS_VOFF,BAS_VPUT,BAS_NEWLINE,BAS_CLSTEXT,BAS_SCROLL
-; L = 文字コード。生出力 (PRINT#0) でなければ制御コード ($0D 改行、$0B HOME、$0C CLS) を解釈し、
-; ほかの $00-$1F は出さない。生出力では CSIZE の拡大で書く。
+; L = 文字コード。生出力 (PRINT#0) でなければ制御コード ($0D 改行、$0B HOME、$0C CLS、$1C-$1F カーソルの右・左・上・下)
+; を解釈し、ほかの $00-$1F は出さない。生出力では CSIZE の拡大で書く。
 LD A, (BAS_RAW)
 OR A
 LD A, L
@@ -469,7 +479,51 @@ JP Z, .bp_home
 CP $0C
 JP Z, BAS_CLSTEXT
 CP $20
+JP NC, .bp_char
+CP $1C
 RET C
+CP $1D
+JP Z, .bp_left
+CP $1E
+JP Z, .bp_up
+CP $1F
+JP Z, .bp_down
+; 右: 右端なら次の行の左端 (最下行ならスクロール。改行と同じ)
+LD A, (BAS_CX)
+INC A
+LD HL, BAS_WID
+CP (HL)
+JP NC, BAS_NEWLINE
+LD (BAS_CX), A
+RET
+.bp_left
+; 左: 左端なら前の行の右端 (いちばん上の行なら同じ行の右端。Hu-BASIC の実測)
+LD A, (BAS_CX)
+OR A
+JP Z, .bp_lwrap
+DEC A
+LD (BAS_CX), A
+RET
+.bp_lwrap
+LD A, (BAS_WID)
+DEC A
+LD (BAS_CX), A
+.bp_up
+; 上: いちばん上の行なら動かない
+LD A, (BAS_CY)
+OR A
+RET Z
+DEC A
+LD (BAS_CY), A
+RET
+.bp_down
+; 下: 最下行ならスクロールして最下行のまま (桁はそのまま)
+LD A, (BAS_CY)
+CP 24
+JP NC, BAS_SCROLL
+INC A
+LD (BAS_CY), A
+RET
 .bp_char
 LD E, A             ; E = 文字
 LD A, (BAS_RAW)
@@ -1852,6 +1906,7 @@ RET
 ; @calls BAS_WORK,sGETKY
 ; A = キーの文字 (なければ 0。一時文字列を作らない)。Hu-BASIC と同じく押しっぱなしでは自動でリピートする:
 ; 押した瞬間に 1 回、約 30 フレーム後から約 3.8 フレームごと (4,4,4,4,4,3 の繰り返し、実測に合わせた値)。
+; REPEAT OFF (BAS_KREP が 0) なら押した瞬間の 1 回だけ。
 ; フレームは呼ばれるたびに垂直帰線の切り替わり (8255 port B の bit 7) を見て数えるので、
 ; ループで頻繁に呼ばれる使い方を前提とする。
 ; フレームを数える
@@ -1889,7 +1944,10 @@ XOR A
 LD (.bik_phase), A
 JP .bik_ret
 .bik_held
-; 押しっぱなし: 次のリピートのフレームに達したか
+; 押しっぱなし: REPEAT OFF なら返さない。ON なら次のリピートのフレームに達したか
+LD A, (BAS_KREP)
+OR A
+JP Z, .bik_none
 LD HL, (.bik_frames)
 LD BC, (.bik_next)
 OR A
@@ -2779,6 +2837,124 @@ JP Z, .bcg_set
 OR $20
 .bcg_set
 LD (BAS_ATTR), A
+RET
+
+
+; @name BAS_KEY
+; @resident shared
+; @param_count 2
+; @calls BAS_ERROR
+; KEY n, 文字列: 何もしない (ファンクションキーの文字列は持たない)。n が 0〜10 の外ならエラー 5 (Hu-BASIC の実測)
+LD A, H
+OR A
+JP NZ, .bky_err
+LD A, L
+CP 11
+RET C
+.bky_err
+LD HL, 5
+JP BAS_ERROR
+
+
+; @name BAS_KREPEAT
+; @resident shared
+; @param_count 1
+; @calls BAS_WORK
+; HL = 1 なら REPEAT ON (押しっぱなしのキーを自動でリピートする)、0 なら REPEAT OFF
+LD A, L
+LD (BAS_KREP), A
+RET
+
+
+; @name BAS_PALET
+; @resident shared
+; @param_count 2
+; @calls BAS_WORK,BAS_SETPAL,BAS_ERROR
+; HL = 色のコード c、DE = パレットの色 p (どちらも 0〜7、範囲外はエラー 5)。パレットの影の B・R・G の
+; c ビット目に p のビット 0・1・2 を入れて、ポートに書く
+LD A, H
+OR D
+JP NZ, .bpl_err
+LD A, L
+CP 8
+JP NC, .bpl_err
+LD A, E
+CP 8
+JP NC, .bpl_err
+LD A, 1
+LD B, L
+INC B
+JP .bpl_m2
+.bpl_m
+RLCA
+.bpl_m2
+DJNZ .bpl_m
+LD C, A             ; C = c ビット目だけ 1
+LD HL, BAS_PALB
+LD B, 3
+.bpl_lp
+LD A, C
+CPL
+AND (HL)
+RR E                ; キャリー = p の次のビット
+JP NC, .bpl_n
+OR C
+.bpl_n
+LD (HL), A
+INC HL
+DJNZ .bpl_lp
+JP BAS_SETPAL
+.bpl_err
+LD HL, 5
+JP BAS_ERROR
+
+
+; @name BAS_PRW
+; @resident shared
+; @param_count 1
+; @calls BAS_ERROR
+; HL = プライオリティ (0〜255、範囲外はエラー 5) をポート $1300 に書く
+LD A, H
+OR A
+JP NZ, .bpw_err
+LD A, L
+LD BC, $1300
+OUT (C), A
+RET
+.bpw_err
+LD HL, 5
+JP BAS_ERROR
+
+
+; @name BAS_SWAP
+; @resident shared
+; @param_count 3
+; HL = a の番地、DE = b の番地、BC = 大きさ (0 なら文字列: 2 つの長さの大きい方 + 1 バイト) → 中身を入れ替える
+LD A, B
+OR C
+JP NZ, .bsw_lp
+LD A, (DE)
+CP (HL)
+JP NC, .bsw_s
+LD A, (HL)
+.bsw_s
+LD C, A
+LD B, 0
+INC BC
+.bsw_lp
+PUSH BC
+LD C, (HL)
+LD A, (DE)
+LD (HL), A
+LD A, C
+LD (DE), A
+INC HL
+INC DE
+POP BC
+DEC BC
+LD A, B
+OR C
+JP NZ, .bsw_lp
 RET
 
 
@@ -5409,6 +5585,76 @@ RET
 .bsa_err
 LD HL, 5
 JP BAS_ERROR
+
+
+; @name BAS_SSCRN
+; @resident shared
+; @param_count 3
+; @calls BAS_WORK,BAS_VOFF,BAS_TALLOC,BAS_ERROR
+; HL = x、DE = y、BC = n → 画面の (x, y) から n 文字 (SCRN$。テキスト VRAM を画面の順に読む。右端の次は次の行の左端、
+; 画面の最後の先は空白)。x が 0〜桁数-1、y が 0〜24、n が 0〜255 の外はエラー 5 (Hu-BASIC の実測)
+LD A, H
+OR D
+OR B
+JP NZ, .bsr_err
+LD A, (BAS_WID)
+DEC A
+CP L
+JP C, .bsr_err
+LD A, E
+CP 25
+JP NC, .bsr_err
+PUSH BC
+LD H, E                 ; H = y、L = x
+CALL BAS_VOFF           ; HL = 位置 (BC は壊れる)
+EX DE, HL               ; DE = 位置
+LD HL, 1000             ; 画面の文字の数 (40 桁)
+LD A, (BAS_WID)
+CP 80
+JP NZ, .bsr_40
+LD HL, 2000
+.bsr_40
+OR A
+SBC HL, DE
+LD (.bsr_rem), HL       ; 画面の最後までの文字の数
+POP BC
+LD A, C
+CALL BAS_TALLOC         ; HL = 結果 (DE・BC は残る)
+PUSH HL
+INC HL
+LD B, C
+.bsr_lp
+LD A, B
+OR A
+JP Z, .bsr_done
+PUSH BC
+LD BC, (.bsr_rem)
+LD A, B
+OR C
+LD A, $20               ; 画面の最後の先は空白
+JP Z, .bsr_put
+DEC BC
+LD (.bsr_rem), BC
+LD A, D
+AND $07
+OR $30
+LD B, A
+LD C, E
+IN A, (C)               ; テキスト
+.bsr_put
+LD (HL), A
+INC HL
+INC DE
+POP BC
+DEC B
+JP .bsr_lp
+.bsr_done
+POP HL
+RET
+.bsr_err
+LD HL, 5
+JP BAS_ERROR
+.bsr_rem DW 0
 
 
 ; @name BAS_SMIDSET

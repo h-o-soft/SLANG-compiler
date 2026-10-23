@@ -101,6 +101,16 @@ public class HuBasicEmitTests
         40 PLAY "CDE":END
         """;
 
+    /// <summary>段階 G1 の 8 種類の命令・関数をひととおり使う小さなプログラム (自作。REPEAT ON/OFF と REPEAT のループを一緒に使う)</summary>
+    private const string G1Program = """
+        10 DEFINT I:I=2:X=1.5:A$="AB":B$="C":DIM C(3),D%(3)
+        20 PLAY 144:PLAY X:PLAY "CDE":CGEN 1:CGEN:KEY 0,"":KEY I,A$:REPEAT OFF:REPEAT ON
+        30 PRINT "AB";CHR$(29);"X";SCRN$(0,0,2);SCRN$(I,X,I+1)
+        40 SWAP X,Y:SWAP A$,B$:SWAP C(I),C(I+1):SWAP D%(1),I:SWAP X,C(2)
+        50 PALET 3,5:PALET:PALET I,X:PRW 2:PRW:PRW I
+        60 REPEAT:I=I+1:UNTIL I>5:END
+        """;
+
     private const string FullProgram = """
         10 DEFINT A-Z:CLS:INIT:WIDTH 40:CLICK OFF:TEMPO 300
         20 A$="AB":B$=A$+CHR$(65):C$=MID$(A$,1,1)+MID$(A$,2)+RIGHT$(A$,1)+HEXCHR$("41")+CGPAT$(65)+INKEY$
@@ -189,6 +199,8 @@ public class HuBasicEmitTests
     [InlineData("10 LINE(VAL(CHR$(49)),0)-(1,1),\"*\":GOTO 10")]
     [InlineData("10 DEFCHR$(VAL(CHR$(49)))=\"\":GOTO 10")]
     [InlineData("10 READ A%(VAL(CHR$(49))):RESTORE:GOTO 10\n20 DATA 1")]
+    [InlineData("10 SWAP A%(LEN(CHR$(49))),B%(1):GOTO 10")]       // SWAP の左の添字 (段階 G1)
+    [InlineData("10 SWAP A%(1),B%(LEN(CHR$(49))):GOTO 10")]       // SWAP の右の添字
     public void Lowering_EveryAllocatingStatementResetsTemps(string program)
     {
         var r = Transpile(program);
@@ -206,11 +218,12 @@ public class HuBasicEmitTests
         Assert.Contains(ops, o => o is FCall { Function: "BAS_STMP" });
     }
 
-    [Fact]
-    public void Lowering_StatementExprsCoversEveryExpressionField()
+    [Theory]
+    [InlineData(HuBasicEmitTests_FullProgramForExprs)]
+    [InlineData(G1Program)]
+    public void Lowering_StatementExprsCoversEveryExpressionField(string program)
     {
         // 構文木の文の型のうち式を持つものは、すべて StatementExprs で式を返す
-        var program = HuBasicEmitTests_FullProgramForExprs;
         var prog = Transpile(program).Program!;
         foreach (var stmt in SLANGCompiler.HuBasic.Analysis.HuAnalyzer.AllStatements(prog.Lines))
         {
@@ -604,6 +617,26 @@ public class HuBasicEmitTests
         Assert.True(HuTranspiler.Transpile("10 A=LEN(1)").Diagnostics.HasErrors);
         Assert.True(HuTranspiler.Transpile("10 A=TAB(1)").Diagnostics.HasErrors);
         Assert.True(HuTranspiler.Transpile("10 RANDOMIZE \"A\"").Diagnostics.HasErrors);
+    }
+
+    /// <summary>段階 G1: 各命令の呼び出し。SWAP は添字を A・B の順に一時変数へ入れ、大きさは整数 2・浮動小数 3・文字列 0</summary>
+    [Fact]
+    public void Slang_StageG1Calls()
+    {
+        var sl = Body(Transpile(G1Program).Output!);
+        foreach (var expected in new[]
+        {
+            "BAS_TEMPO(144);", "BAS_TEMPO(BAS_FTOIR(F_X));", "BAS_PLAY(K_", "BAS_CGEN(1);", "BAS_CGEN(0);",
+            "BAS_KEY(0, K_", "BAS_KEY(V_I, S_A);", "BAS_KREPEAT(0);", "BAS_KREPEAT(1);",
+            "BAS_PSTR(BAS_SCHR(29));", "BAS_PSTR(BAS_SSCRN(0, 0, 2));", "BAS_PSTR(BAS_SSCRN(V_I, BAS_FTOIR(F_X), ((V_I)+(1))));",
+            "BAS_SWAP(&F_X, &F_Y, 3);", "BAS_SWAP(S_A, S_B, 0);",
+            "H_I1=BAS_AIDX(V_I, &H_DIM_F_C, &H_UB_F_C);\n  H_I2=BAS_AIDX(((V_I)+(1)), &H_DIM_F_C, &H_UB_F_C);\n  BAS_SWAP(&FA_C[H_I1], &FA_C[H_I2], 3);",
+            "BAS_SWAP(&A_D[H_I1], &V_I, 2);", "BAS_SWAP(&F_X, &FA_C[H_I1], 3);",
+            "BAS_PALET(3, 5);", "BAS_PALRST();", "BAS_PALET(V_I, BAS_FTOIR(F_X));", "BAS_PRW(2);", "BAS_PRW(0);", "BAS_PRW(V_I);",
+        })
+            Assert.Contains(expected, sl.Replace("\r\n", "\n"));
+        // REPEAT ON/OFF はループに数えない (REPEAT〜UNTIL は 1 つだけ)
+        Assert.Single(Regex.Matches(sl, @"^QL\d+:", RegexOptions.Multiline));
     }
 
     /// <summary>ランタイムの関数の名前は重ならない (同じ名前は後のもので上書きされる。TAB を BAS_PTAB にすると PLAY の音程の表を壊す)</summary>
@@ -1001,6 +1034,13 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "SFN"));
             RunSlangbuild(root, dir, sl8, asmPath, Path.Combine(dir, "SFNS"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "SFNS"));
+            // 段階 G1 の命令 (SWAP の配列の要素の番地・SCRN$・PALET など) も両方で組み立てまで通る
+            var sl9 = Path.Combine(dir, "G1.SL");
+            File.WriteAllText(sl9, Transpile(G1Program).Output!);
+            RunSlangbuild(root, dir, sl9, asmPath, Path.Combine(dir, "G1"));
+            AssertBuilt(Path.Combine(dir, "G1"));
+            RunSlangbuild(root, dir, sl9, asmPath, Path.Combine(dir, "G1S"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "G1S"));
         }
         finally
         {

@@ -38,7 +38,7 @@ public sealed record HuBinary(string Op, HuExpr Left, HuExpr Right, HuPos Pos) :
 // Op: "+","-","*","/","\\","MOD","=","<>","<",">","<=",">=","AND","OR","XOR"
 
 /// <summary>組み込み関数 (INP, MID$, LEFT$, RIGHT$, CHR$, ASC, VAL, HEXCHR$, CGPAT$, INKEY$, STICK, STRIG, RND, INT,
-/// STRING$, CHARACTER$, INPUT$, STR$)</summary>
+/// STRING$, CHARACTER$, INPUT$, STR$, SCRN$ など)</summary>
 public sealed record HuCall(string Name, IReadOnlyList<HuExpr> Args, HuPos Pos) : HuExpr(Pos);
 
 // ---------------------------------------------------------------- 文
@@ -66,6 +66,8 @@ public sealed record HuData(IReadOnlyList<string> Items, HuPos Pos) : HuStmt(Pos
 public sealed record HuRead(IReadOnlyList<HuExpr> Targets, HuPos Pos) : HuStmt(Pos);
 public sealed record HuRestore(int? Line, HuPos Pos) : HuStmt(Pos);
 public sealed record HuOut(HuExpr Port, HuExpr Value, HuPos Pos) : HuStmt(Pos);
+/// <summary>SWAP a, b (A・B は HuVar / HuIndex)</summary>
+public sealed record HuSwap(HuExpr A, HuExpr B, HuPos Pos) : HuStmt(Pos);
 
 /// <summary>PRINT の項目: 式 / 区切り (";" ",") / SPC(n) / TAB(n) (Tab が真)</summary>
 public abstract record HuPrintItem;
@@ -76,7 +78,7 @@ public sealed record HuPrintSpc(HuExpr Count, bool Tab = false) : HuPrintItem;
 public sealed record HuPrint(int? Channel, HuExpr? Using, IReadOnlyList<HuPrintItem> Items, HuPos Pos) : HuStmt(Pos);
 
 /// <summary>引数を取る画面・音などの命令 (LOCATE, COLOR, CLS, WIDTH, CFLASH, CSIZE, CGEN,
-/// PLAY, TEMPO, BEEP, CLICK, PAUSE)。省略された引数は null。</summary>
+/// PLAY, TEMPO, BEEP, CLICK, PAUSE, KEY, REPEAT (ON/OFF), PALET, PRW)。省略された引数は null。</summary>
 public sealed record HuCommand(string Name, IReadOnlyList<HuExpr?> Args, HuPos Pos) : HuStmt(Pos);
 
 /// <summary>テキスト版 LINE (x1,y1)-(x2,y2),"c"[,B|BF]。Fill は BF (箱の中も塗る)</summary>

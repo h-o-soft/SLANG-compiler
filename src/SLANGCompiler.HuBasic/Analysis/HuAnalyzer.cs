@@ -344,6 +344,14 @@ public sealed class HuAnalyzer
 
     private HuType VarType(string name) => HuProgram.TypeOfKind(HuProgram.KindOfKey(Key(name)));
 
+    /// <summary>代入先 (変数か配列の要素) の型の種類</summary>
+    private HuVarKind KindOfTarget(HuExpr target) => target switch
+    {
+        HuVar v => HuProgram.KindOfKey(Key(v.Name)),
+        HuIndex ix => HuProgram.KindOfKey(Key(ix.Name)),
+        _ => HuVarKind.Int,
+    };
+
     private void UseVar(string name, HuPos pos)
     {
         var key = CheckVarName(name, pos);
@@ -522,6 +530,11 @@ public sealed class HuAnalyzer
                 ExpectNum(a[0], intConv: true);
                 ExpectNum(a[1], intConv: true);
                 return HuType.Str;
+            case "SCRN$":
+                ExpectNum(a[0], intConv: true);
+                ExpectNum(a[1], intConv: true);
+                ExpectNum(a[2], intConv: true);
+                return HuType.Str;
             case "STRING$":
                 ExpectNum(a[0], intConv: true);
                 // 2 つ目は文字列 (それを繰り返す) か文字コード
@@ -670,6 +683,15 @@ public sealed class HuAnalyzer
                 ExpectNum(o.Port, intConv: true);
                 ExpectNum(o.Value, intConv: true);
                 break;
+            case HuSwap sw:
+            {
+                CheckExpr(sw.A, false);
+                CheckExpr(sw.B, false);
+                // 型の種類 (単精度と倍精度も別) が違えば、本物は Type mismatch
+                if (KindOfTarget(sw.A) != KindOfTarget(sw.B))
+                    _diag.Error("HB0404", "SWAP の 2 つの変数の型が違います", sw.Pos);
+                break;
+            }
             case HuPrint p:
                 if (p.Using != null) ExpectStr(p.Using);
                 foreach (var item in p.Items)
@@ -732,7 +754,15 @@ public sealed class HuAnalyzer
     {
         if (cmd.Name == "PLAY")
         {
-            ExpectStr(cmd.Args[0]!);
+            // 文字列なら MML、数ならテンポ (TEMPO と同じ。展開で見分ける)
+            CheckExpr(cmd.Args[0]!, false);
+            return;
+        }
+        if (cmd.Name == "KEY")
+        {
+            ExpectNum(cmd.Args[0]!, intConv: true);
+            ExpectStr(cmd.Args[1]!);
+            _diag.Warning("HB0704", "KEY は何もしない命令として扱います (ファンクションキーの文字列は定義しません。番号の範囲だけを調べます)", cmd.Pos);
             return;
         }
         if (cmd.Name == "RANDOMIZE")

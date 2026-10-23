@@ -25,6 +25,7 @@ public sealed class HuParser
         ["TAN"] = (1, 1), ["ATN"] = (1, 1), ["LOG"] = (1, 1), ["EXP"] = (1, 1), ["FIX"] = (1, 1),
         ["CINT"] = (1, 1), ["FRAC"] = (1, 1), ["CSNG"] = (1, 1), ["CDBL"] = (1, 1), ["PAI"] = (1, 1),
         ["RAD"] = (1, 1), ["LEN"] = (1, 1), ["INSTR"] = (2, 3), ["HEX$"] = (1, 1), ["SPACE$"] = (1, 1),
+        ["SCRN$"] = (3, 3),
     };
 
 
@@ -203,6 +204,9 @@ public sealed class HuParser
                 return new HuNext(vars, pos);
             }
             case "REPEAT":
+                // REPEAT ON / REPEAT OFF はキーのリピート。それ以外は REPEAT〜UNTIL のループの始まり
+                if (AcceptKeyword("ON")) return new HuCommand("REPEAT", new HuExpr?[] { new HuNum(1, pos) }, pos);
+                if (AcceptKeyword("OFF")) return new HuCommand("REPEAT", new HuExpr?[] { new HuNum(0, pos) }, pos);
                 return new HuRepeat(pos);
             case "UNTIL":
                 return new HuUntil(ParseExpr(), pos);
@@ -265,14 +269,37 @@ public sealed class HuParser
             case "CLS":
             case "CFLASH":
             case "CSIZE":
+            case "CGEN":    // 引数なしは CGEN 0
+            case "PRW":     // 引数なしは PRW 0
                 return new HuCommand(t.Text, new[] { AtStatementEnd ? null : ParseExpr() }, pos);
             case "WIDTH":
-            case "CGEN":
             case "TEMPO":
             case "PAUSE":
                 return new HuCommand(t.Text, new HuExpr?[] { ParseExpr() }, pos);
             case "PLAY":
+                // PLAY 文字列 (MML) / PLAY 数 (TEMPO と同じ。解析で見分ける)
                 return new HuCommand("PLAY", new HuExpr?[] { ParseExpr() }, pos);
+            case "KEY":
+            {
+                // KEY n, 文字列 (ファンクションキーの定義。何もしない)
+                var n = ParseExpr();
+                ExpectSymbol(",");
+                return new HuCommand("KEY", new HuExpr?[] { n, ParseExpr() }, pos);
+            }
+            case "PALET":
+            {
+                // PALET (既定に戻す) / PALET 色のコード, パレットの色
+                if (AtStatementEnd) return new HuCommand("PALET", Array.Empty<HuExpr?>(), pos);
+                var c = ParseExpr();
+                ExpectSymbol(",");
+                return new HuCommand("PALET", new HuExpr?[] { c, ParseExpr() }, pos);
+            }
+            case "SWAP":
+            {
+                var a = ParseLValue();
+                ExpectSymbol(",");
+                return new HuSwap(a, ParseLValue(), pos);
+            }
             case "RANDOMIZE":
                 // RANDOMIZE [式]。式は評価して捨てる (本物も同じ式で同じ乱数の並びにならない)
                 return new HuCommand("RANDOMIZE", AtStatementEnd ? Array.Empty<HuExpr?>() : new HuExpr?[] { ParseExpr() }, pos);

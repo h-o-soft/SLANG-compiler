@@ -437,6 +437,56 @@ public class HuBasicFrontendTests
         Assert.True(diag.HasErrors);
     }
 
+    /// <summary>段階 G1: KEY・PALET・PRW・SWAP・REPEAT ON/OFF・引数なしの CGEN の構文 (設計 G1 の 2 章)</summary>
+    [Fact]
+    public void Parser_StageG1Statements()
+    {
+        var diag = new HuDiagnosticBag();
+        var line = HuParser.ParseSingleLine("10 KEY0,\"\":PALET:PALET 3,5:PRW:PRW 2:SWAP A,B(1):CGEN:CGEN1:REPEAT ON:REPEAT OFF:REPEAT:UNTIL 1", diag);
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Items.Select(d => d.Message)));
+        var s = line!.Statements;
+        var key = Assert.IsType<HuCommand>(s[0]);
+        Assert.Equal("KEY", key.Name);
+        Assert.Equal(2, key.Args.Count);
+        Assert.Empty(((HuCommand)s[1]).Args);
+        Assert.Equal(2, ((HuCommand)s[2]).Args.Count);
+        Assert.Null(Assert.Single(((HuCommand)s[3]).Args));
+        Assert.NotNull(Assert.Single(((HuCommand)s[4]).Args));
+        var sw = Assert.IsType<HuSwap>(s[5]);
+        Assert.IsType<HuVar>(sw.A);
+        Assert.IsType<HuIndex>(sw.B);
+        Assert.Null(Assert.Single(((HuCommand)s[6]).Args));
+        Assert.IsType<HuNum>(Assert.Single(((HuCommand)s[7]).Args));
+        // REPEAT ON/OFF は命令、REPEAT だけはループの始まり
+        Assert.Equal(1, ((HuNum)((HuCommand)s[8]).Args[0]!).Value);
+        Assert.Equal(0, ((HuNum)((HuCommand)s[9]).Args[0]!).Value);
+        Assert.IsType<HuRepeat>(s[10]);
+    }
+
+    /// <summary>段階 G1: 本物で Syntax error になる形は変換のときの error</summary>
+    [Theory]
+    [InlineData("10 PALET 3")]
+    [InlineData("10 KEY 0")]
+    [InlineData("10 SWAP A")]
+    [InlineData("10 A$=SCRN$(1,0)")]
+    public void Parser_StageG1SyntaxErrors(string line)
+    {
+        var diag = new HuDiagnosticBag();
+        HuParser.ParseSingleLine(line, diag);
+        Assert.True(diag.HasErrors);
+    }
+
+    /// <summary>SCRN$・PRW は本物と同じく予約語 (設計 G1 の 4 章の 9)</summary>
+    [Fact]
+    public void Parser_ScrnPrwAreReserved()
+    {
+        Assert.Equal("PRW id:X = n:1", Kinds(Lex("PRWX=1")));
+        Assert.Equal("id:A$ = SCRN$ ( n:1 , n:2 , n:3 )", Kinds(Lex("A$=SCRN$(1,2,3)")));
+        var diag = new HuDiagnosticBag();
+        HuParser.ParseSingleLine("10 SCRN$=\"A\"", diag);
+        Assert.True(diag.HasErrors);
+    }
+
     // ------------------------------------------------------------ 解析
 
     private static (HuProgram? Prog, HuDiagnosticBag Diag) Analyze(string program)
@@ -757,5 +807,38 @@ public class HuBasicFrontendTests
     {
         var prog = AnalyzeOk("10 DEFINT A-Z:GOSUB 30:ON A GOSUB 30,30\n20 END\n30 RETURN");
         Assert.Equal(new[] { 0, 1 }, prog.GosubIds.Values.OrderBy(v => v));
+    }
+    /// <summary>段階 G1: SWAP は型の種類 (単精度と倍精度も別) が違えば error。同じ種類なら配列の要素とも組める</summary>
+    [Theory]
+    [InlineData("10 SWAP A%,B")]
+    [InlineData("10 SWAP A,B#")]
+    [InlineData("10 SWAP A,B$")]
+    [InlineData("10 DIM C%(3):SWAP C%(1),B")]
+    public void Analyzer_SwapKindMismatchIsError(string program) => AssertError(program, "HB0404");
+
+    [Theory]
+    [InlineData("10 SWAP A,B")]
+    [InlineData("10 SWAP A$,B$")]
+    [InlineData("10 DIM C(3):SWAP C(1),C(2):SWAP A,C(3):SWAP A,A")]
+    [InlineData("10 DEFINT A-Z:SWAP A,B%")]       // DEFINT の下の A と B% は同じ整数
+    public void Analyzer_SwapSameKindIsAccepted(string program) => AnalyzeOk(program);
+
+    [Fact]
+    public void Analyzer_SwapOfStringArrayElementIsStillUnsupported()
+        => AssertError("10 SWAP A$(0),A$(1)", "HB0306");
+
+    /// <summary>段階 G1: PLAY は文字列なら MML、数ならテンポ。KEY は 2 つ目が文字列で、warning HB0704 を出す</summary>
+    [Fact]
+    public void Analyzer_PlayNumberAndKey()
+    {
+        AnalyzeOk("10 PLAY 144:A=2.5:PLAY A:PLAY \"C\"");
+        var (_, diag) = Analyze("10 KEY 0,\"\"");
+        Assert.False(diag.HasErrors);
+        Assert.Contains(diag.Items, d => d.Code == "HB0704" && d.Severity == HuSeverity.Warning);
+        AssertError("10 KEY 0,1", "HB0404");
+        AssertError("10 KEY \"A\",\"B\"", "HB0404");
+        AssertError("10 A=SCRN$(0,0,1)", "HB0404");
+        AssertError("10 A$=SCRN$(\"A\",0,1)", "HB0404");
+        AssertError("10 PALET \"A\",1", "HB0404");
     }
 }
