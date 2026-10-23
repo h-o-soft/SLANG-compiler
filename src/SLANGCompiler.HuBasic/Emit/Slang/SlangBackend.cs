@@ -277,16 +277,18 @@ public sealed class SlangBackend : IHuBackend
     /// </summary>
     private void Assign(HuExpr target, HuExpr value)
     {
-        var lv = LValue(target);
+        // 添字の式は 1 回だけ作る (作るときに出た前置きの代入は、この時点より前に並んでいる)
+        var index = target is HuIndex ix ? ArrayIndex(ix) : null;
+        var lv = index != null ? $"{ArrayName(_prog.Key(((HuIndex)target).Name))}[{index}]" : LValue(target);
         int mark = _pre.Count;
         var v = target.Type == HuType.Float ? Flt(value) : Int(value);
         bool floatOrder = (target.Type == HuType.Float || HasFloat(value)) && NeedsOrder(value, K.Flt)
                           && value is not HuCall { Name: FlatPseudo.InputNum };
-        if ((_pre.Count > mark || floatOrder) && target is HuIndex ix)
+        if ((_pre.Count > mark || floatOrder) && index != null)
         {
             var t = NewITemp();
-            _pre.Insert(mark, $"{t}={ArrayIndex(ix)};");
-            lv = $"{ArrayName(_prog.Key(ix.Name))}[{t}]";
+            _pre.Insert(mark, $"{t}={index};");
+            lv = $"{ArrayName(_prog.Key(((HuIndex)target).Name))}[{t}]";
         }
         Line($"{lv}={v};");
     }

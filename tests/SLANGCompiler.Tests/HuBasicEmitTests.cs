@@ -593,6 +593,20 @@ public class HuBasicEmitTests
         Assert.Contains("BAS_PFLT(FA_C[BAS_AIDX(1, &H_DIM_F_C, &H_UB_F_C)]);", sl);
     }
 
+    /// <summary>
+    /// 添字の検査を先に出すときも、添字の式は 1 回だけ作る (添字の前置きの代入より後ろで読む。R1-F1: 添字を作り直すと、
+    /// 前置きの代入より前に一時変数を読んでいた)
+    /// </summary>
+    [Fact]
+    public void Slang_HoistedArrayIndexKeepsItsPrerequisites()
+    {
+        var sl = Transpile("10 I%=2:J=3:A(I%+J)=I%").Output!;
+        Assert.Contains("  H_F1=V_I;\n  H_I1=BAS_AIDX(BAS_FTOIR((H_F1+F_J)), &H_DIM_F_A, &H_UB_F_A);\n  H_F2=V_I;\n  FA_A[H_I1]=H_F2;", sl);
+        // 副作用のある添字 (キーの入力) も 1 回だけ評価する
+        var sl2 = Transpile("10 A(ASC(INKEY$))=I%").Output!;
+        Assert.Single(Regex.Matches(sl2, @"BAS_SINKEY\(\)"));
+    }
+
     [Fact]
     public void Slang_SingleDoubleIntAndStrWithSameNameAreSeparate()
     {
