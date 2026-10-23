@@ -10,6 +10,12 @@ namespace SLANGCompiler.HuBasic.Emit;
 public interface IHuBackend
 {
     string Emit(HuProgram program, HuFlat flat, HuEmitOptions options);
+
+    /// <summary>
+    /// 直前の Emit で、後段が自分で足した静的な領域のバイト数 (前段の <see cref="HuProgram.StaticDataBytes"/> に
+    /// 含まれないもの。SLANG の後段では浮動小数の定数の表と一時変数)。静的なデータの上限の検査に足す。
+    /// </summary>
+    int ExtraStaticBytes { get; }
 }
 
 public sealed record HuEmitOptions(string SourceName = "", bool LineComments = false);

@@ -158,7 +158,7 @@ public sealed class HuAnalyzer
                     _diag.Error("HB0304", $"DIM {name} の上限は定数で書いてください (変数を含む上限は未対応)", dim.Pos);
                     continue;
                 }
-                if (boundExpr is HuBinary && ContainsFloat(boundExpr))
+                if (ContainsFloat(boundExpr) && !IsSignedFloatConst(boundExpr))
                 {
                     _diag.Error("HB0313", $"DIM {name} の上限に浮動小数の計算は未対応です (浮動小数の定数 1 つなら書けます)", dim.Pos);
                     continue;
@@ -202,6 +202,14 @@ public sealed class HuAnalyzer
         static long? MulOrNull(long l, long r)
             => l != 0 && Math.Abs(r) > Limit / Math.Abs(l) ? null : l * r;
     }
+
+    /// <summary>浮動小数の定数 1 つに符号を付けただけの式か</summary>
+    private static bool IsSignedFloatConst(HuExpr e) => e switch
+    {
+        HuFloat => true,
+        HuUnary { Op: "-" or "+" } u => IsSignedFloatConst(u.Operand),
+        _ => false,
+    };
 
     /// <summary>浮動小数の定数を含む式か</summary>
     public static bool ContainsFloat(HuExpr e) => e switch

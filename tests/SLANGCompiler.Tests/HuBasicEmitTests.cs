@@ -264,6 +264,28 @@ public class HuBasicEmitTests
         Assert.DoesNotContain("65535.0", table);
     }
 
+    /// <summary>浮動小数の定数の表と一時変数も、静的なデータの上限に数える</summary>
+    [Fact]
+    public void Float_StorageCountsTowardDataBudget()
+    {
+        const string prog = "10 DEFINT A-Z:PRINT 1.5;2.5";
+        var baseBytes = HuTranspiler.Transpile(prog).Program!.StaticDataBytes;  // 浮動小数の分を含まない
+        var ok = HuTranspiler.Transpile(prog, new HuTranspileOptions(DataBudget: baseBytes + 6));
+        Assert.False(ok.Diagnostics.HasErrors);                                  // 定数 2 つ = 6 バイトまでなら通る
+        var ng = HuTranspiler.Transpile(prog, new HuTranspileOptions(DataBudget: baseBytes + 5));
+        Assert.Contains(ng.Diagnostics.Items, d => d.Code == "HB0309");
+        Assert.Null(ng.Output);
+    }
+
+    /// <summary>整数の -X は整数で計算してから浮動小数にする (X が -32768 のとき値が変わらないように)</summary>
+    [Fact]
+    public void Float_IntegerNegationIsComputedBeforePromotion()
+    {
+        var sl = Body(Transpile("10 DEFINT A-Z:PRINT (-X)<.5;-2.5").Output!);
+        Assert.Contains("H_F1=(0-(V_X));", sl);          // 整数で符号を変えてから一時変数へ
+        Assert.Contains("BAS_PFLT((H_FK[", sl);           // 浮動小数の -2.5 は浮動小数で計算
+    }
+
     /// <summary>浮動小数を含む定数式は、項ごとに丸めて整数として計算しない (\ の 0 の検査を外さない)</summary>
     [Fact]
     public void Float_ConstantExpressionsWithFloatAreNotFoldedAsIntegers()

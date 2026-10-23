@@ -23,6 +23,9 @@ public sealed class SlangBackend : IHuBackend
     private int _ftemp;      // いまの文で使った浮動小数の一時変数の数
     private int _maxFtemp;   // 文ごとの最大 (宣言する数)
 
+    /// <summary>浮動小数の定数の表と一時変数の大きさ (1 つ 3 バイト)</summary>
+    public int ExtraStaticBytes => (_fconsts.Count + _maxFtemp) * 3;
+
     public string Emit(HuProgram program, HuFlat flat, HuEmitOptions options)
     {
         _prog = program;
@@ -344,9 +347,11 @@ public sealed class SlangBackend : IHuBackend
                 return FConst(f.Value);
             case HuNum n:
                 return FConst(HuF24.SignedInt(n.Value));
-            case HuUnary { Op: "+" } u:
+            // 符号は、浮動小数の式のときだけ浮動小数で計算する (整数の -X は整数で計算してから変換する。
+            // X が -32768 のとき、先に浮動小数にすると 32768 になって値が変わるため)
+            case HuUnary { Op: "+" } u when u.Type == HuType.Float:
                 return Flt(u.Operand);
-            case HuUnary { Op: "-" } u:
+            case HuUnary { Op: "-" } u when u.Type == HuType.Float:
                 return $"({FConst(0)}-{Flt(u.Operand)})";
             case HuBinary b when b.Type == HuType.Float:
                 return b.Op switch
