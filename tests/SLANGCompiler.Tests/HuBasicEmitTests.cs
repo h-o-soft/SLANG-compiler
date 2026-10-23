@@ -268,6 +268,9 @@ public class HuBasicEmitTests
         Assert.Contains("CP '&'", code.GetRange(sign, digits - sign));       // 符号の後
         Assert.Contains("CP '&'", code.GetRange(0, sign));                   // 符号の前
         Assert.Contains("BAS_SVAL", f.Dependencies);
+        // 小さくするときは 10^k で割る (10^-k は f24 で正確でなく、0.50000 が 0.5 を下回るため)
+        Assert.Contains("f24div", f.Dependencies);
+        Assert.Contains(".bsv_tz", code);                                   // 仮数の後ろの 0 を先に除く
     }
 
     /// <summary>引数の多い CHR$ も、結果の長さ分だけを確保する (42 個でも、1 行に書ける最大の 110 個でも一時領域があふれない)</summary>

@@ -4744,7 +4744,7 @@ JP BAS_SVALF
 ; @resident shared
 ; @param_count 1
 ; @result_type float
-; @calls BAS_SVAL,i16tof24,u16tof24,f24mul,f24add,f24pow10_LUT
+; @calls BAS_SVAL,i16tof24,u16tof24,f24mul,f24add,f24div,f24pow10_LUT
 ; HL = 文字列 → AHL = 数として読めた所までの値 (VAL と同じ読み方で、小数点と指数 E・D も読む。読めなければ 0)。
 ; 有効数字は 9 桁まで (それより下の桁は捨てる)。&H・&O・&B は整数の VAL (BAS_SVAL) と同じ
 LD (.bsv_str), HL
@@ -4902,6 +4902,23 @@ LD H, A
 LD L, A
 RET
 .bsv_c1
+; 後ろの 0 を除く (M が 10 で割り切れる間 M を 10 で割り、桁の補正を 1 増やす)。0.50000 を 5 × 10^-1 にして、
+; 10 の累乗で割る回数と誤差を減らす
+.bsv_tz
+CALL .bsv_d10
+OR A
+JP NZ, .bsv_tzd
+LD HL, (.bsv_t)
+LD (.bsv_m), HL
+LD HL, (.bsv_t + 2)
+LD (.bsv_m + 2), HL
+LD HL, (.bsv_x)
+INC HL
+LD (.bsv_x), HL
+JP .bsv_tz
+.bsv_tzd
+LD HL, (.bsv_m)
+LD DE, (.bsv_m + 2)
 EX DE, HL
 CALL u16tof24
 LD C, $4F               ; × 65536 (2^16)
@@ -4955,23 +4972,26 @@ LD HL, 0
 LD (.bsv_xx), HL
 CALL .bsv_mulp
 JP .bsv_sgn
-.bsv_scn
-LD DE, 18
-ADD HL, DE
-BIT 7, H
-JP Z, .bsv_scq          ; X >= -18
-LD HL, (.bsv_xx)
-LD DE, 18
-ADD HL, DE
-LD (.bsv_xx), HL
-LD DE, -18
-CALL .bsv_mulp
-JP .bsv_sc
-.bsv_scq
-LD DE, (.bsv_xx)
+.bsv_scn                ; X < 0: f24 で正確に表せる 10^k (k = 1〜6) で割る (10^-k を掛けると誤差が出る)
+EX DE, HL
 LD HL, 0
-LD (.bsv_xx), HL
-CALL .bsv_mulp
+OR A
+SBC HL, DE              ; HL = -X
+PUSH HL
+LD DE, 6
+OR A
+SBC HL, DE
+POP HL
+JP C, .bsv_sk           ; -X < 6 なら k = -X
+LD HL, 6
+.bsv_sk
+PUSH HL
+LD DE, (.bsv_xx)
+ADD HL, DE
+LD (.bsv_xx), HL        ; X += k
+POP DE
+CALL .bsv_divp
+JP .bsv_sc
 .bsv_sgn
 LD HL, (.bsv_f)
 LD A, (.bsv_f + 2)
@@ -5004,6 +5024,52 @@ LD A, (.bsv_f + 2)
 CALL f24mul
 LD (.bsv_f), HL
 LD (.bsv_f + 2), A
+RET
+.bsv_divp               ; (.bsv_f) /= 10^k (DE = k、1〜6。表の値は正確)
+LD HL, 19
+OR A
+SBC HL, DE
+LD D, H
+LD E, L
+ADD HL, HL
+ADD HL, DE
+LD DE, f24pow10_LUT
+ADD HL, DE
+LD E, (HL)
+INC HL
+LD D, (HL)
+INC HL
+LD C, (HL)
+LD HL, (.bsv_f)
+LD A, (.bsv_f + 2)
+CALL f24div
+LD (.bsv_f), HL
+LD (.bsv_f + 2), A
+RET
+.bsv_d10                ; .bsv_t = M / 10、A = 余り (M は変えない)
+LD HL, (.bsv_m)
+LD (.bsv_t), HL
+LD HL, (.bsv_m + 2)
+LD (.bsv_t + 2), HL
+XOR A
+LD B, 32
+.bsv_dv
+LD HL, .bsv_t
+SLA (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+RLA
+CP 10
+JP C, .bsv_dvn
+SUB 10
+LD HL, .bsv_t
+INC (HL)
+.bsv_dvn
+DJNZ .bsv_dv
 RET
 .bsv_isexp              ; A が指数の文字 (E e D d) なら Z
 CP 'E'
