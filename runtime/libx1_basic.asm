@@ -4591,9 +4591,10 @@ JP BAS_ERROR
 ; @calls BAS_ERROR,f24mul,f24inv,FPOW
 ; HL = 底 x の番地、DE = 指数 y の番地 (どちらも浮動小数 3 バイト) → AHL = x^y。
 ; x が 0: y が 0 なら 1、それ以外は 0 (本物は 0 の負の累乗も 0)。y が 0 なら 1。
-; y が整数で絶対値が 32767 以下: 2 進の累乗で掛け算を繰り返す (x は負でもよい)。y が負なら、先に底を 1/x にしてから
+; y が整数で絶対値が 65535 以下: 2 進の累乗で掛け算を繰り返す (x は負でもよい。本物も (-1)^32769 は -1)。y が負なら、先に底を 1/x にしてから
 ; |y| 乗する (後で割ると、.5^-63 の途中の 2^-63 が下にあふれて 0 になるため)。
-; それ以外: x が正なら libfloat の FPOW (exp(y × log x))、負ならエラー 5
+; それ以外: x が正なら libfloat の FPOW (exp(y × log x))。x が負なら、y が整数でなければエラー 5、
+; 絶対値が 65535 を超える整数ならエラー 6 (本物の実測: (-1)^65536 は Overflow)
 PUSH DE
 LD E, (HL)
 INC HL
@@ -4628,9 +4629,9 @@ CP $7F
 JP Z, .bpw_real     ; y が無限大・NaN
 SUB 63
 JP C, .bpw_real     ; |y| < 1 (整数でない)
-CP 15
-JP NC, .bpw_real    ; |y| >= 32768
-; |y| = 1.仮数 × 2^E (E = 0〜14): 仮数の上の E ビットを整数部に移し、残りが 0 なら整数
+CP 16
+JP NC, .bpw_real    ; |y| >= 65536 (仮数が 16 ビットなので整数)
+; |y| = 1.仮数 × 2^E (E = 0〜15): 仮数の上の E ビットを整数部に移し、残りが 0 なら整数
 LD B, A
 LD HL, (.bpw_y)
 LD DE, 1
@@ -4693,7 +4694,14 @@ RET
 .bpw_real
 LD A, (.bpw_xa)
 OR A
-JP M, .bpw_err      ; 負の数の、整数でない累乗
+JP P, .bpw_pow
+LD A, (.bpw_ya)     ; 負の数の累乗: |y| >= 65536 (無限大・NaN も) はエラー 6、それ以外 (整数でない) はエラー 5
+AND $7F
+CP 63 + 16
+JP C, .bpw_err
+LD HL, 6
+JP BAS_ERROR
+.bpw_pow
 LD A, (.bpw_ya)
 LD C, A
 LD DE, (.bpw_y)
