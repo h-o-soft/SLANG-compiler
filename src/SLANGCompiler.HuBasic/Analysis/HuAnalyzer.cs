@@ -6,7 +6,7 @@ namespace SLANGCompiler.HuBasic.Analysis;
 /// 構文木を検査して <see cref="HuProgram"/> を作る。
 /// - 行の並べ替え・重複・飛び先の検査
 /// - 変数の鍵 (名前と型の種類) と型 (整数 / 文字列 / 浮動小数) の決定と検査、'/' の型の決定
-///   (浮動小数の FOR は段階 F2b、浮動小数の READ は段階 F2c までエラー)
+///   (浮動小数の READ は段階 F2c までエラー)
 /// - REPEAT/UNTIL・WHILE/WEND の字面の対応、FOR が回らないときの飛び先の走査
 /// - 配列・文字列リテラル・DATA の表、GOSUB の戻り先 ID、静的データの合計
 /// </summary>
@@ -591,7 +591,8 @@ public sealed class HuAnalyzer
             case HuFor fr:
                 UseVar(fr.Var, fr.Pos);
                 CheckForVar(fr.Var, "FOR", fr.Pos);
-                ExpectNum(fr.From, intConv: true);
+                // 整数の FOR の初めの値は、変数に入れる位置 (整数に丸める)
+                ExpectNum(fr.From, intConv: VarType(fr.Var) == HuType.Int);
                 ExpectNum(fr.To, intConv: false);
                 if (fr.Step != null) ExpectNum(fr.Step, intConv: false);
                 _forIds[fr] = _forCount++;
@@ -677,11 +678,8 @@ public sealed class HuAnalyzer
 
     private void CheckForVar(string name, string stmt, HuPos pos)
     {
-        var t = VarType(name);
-        if (t == HuType.Str)
+        if (VarType(name) == HuType.Str)
             _diag.Error("HB0404", $"{stmt} の変数 {name} に文字列の変数は使えません", pos);
-        else if (t == HuType.Float)
-            _diag.Error("HB0405", $"{stmt} の浮動小数の変数 {name} は未対応です (段階 F2b で対応。DEFINT か % で整数にしてください)", pos);
     }
 
     private void CheckCommand(HuCommand cmd)

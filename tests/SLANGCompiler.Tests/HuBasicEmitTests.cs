@@ -81,7 +81,8 @@ public class HuBasicEmitTests
         20 A=1.5:B=A*2-A/4:I%=A:X=I%:R(I%)=A/B:R(2)=R(1)+X:D=A:PRINT A;B;-A;R(1);D;D!
         30 IF A THEN IF A<B THEN ON A GOTO 40,40
         40 INPUT C,R(3):C%=C+R(3):WHILE A<4:A=A+1:WEND
-        50 END
+        50 FOR X=0 TO 1 STEP .25:FOR I%=1 TO 2:NEXT I%:NEXT:FOR X=C TO C*2:NEXT X
+        60 END
         """;
 
     private const string FullProgram = """
@@ -602,9 +603,33 @@ public class HuBasicEmitTests
     {
         var sl = Transpile("10 I%=2:J=3:A(I%+J)=I%").Output!;
         Assert.Contains("  H_F1=V_I;\n  H_I1=BAS_AIDX(BAS_FTOIR((H_F1+F_J)), &H_DIM_F_A, &H_UB_F_A);\n  H_F2=V_I;\n  FA_A[H_I1]=H_F2;", sl);
+        // 整数の配列に浮動小数の変数を入れるときも、整数にする (Overflow になりうる) より先に添字を調べる (R2-F1)
+        var sl3 = Transpile("10 X=70000:DIM A%(1):A%(2)=X").Output!;
+        Assert.Contains("H_I1=BAS_AIDX(2, &H_DIM_A, &H_UB_A);\n  A_A[H_I1]=BAS_FTOIR(F_X);", sl3);
         // 副作用のある添字 (キーの入力) も 1 回だけ評価する
         var sl2 = Transpile("10 A(ASC(INKEY$))=I%").Output!;
         Assert.Single(Regex.Matches(sl2, @"BAS_SINKEY\(\)"));
+    }
+
+    /// <summary>
+    /// 浮動小数の FOR (段階 F2b): 上限と増分は番地で BAS_FFORPUSH に渡す (定数は表の要素、式は一時変数)。浮動小数の FOR が
+    /// あるプログラムの NEXT は、整数の FOR の NEXT も BAS_FFORNEXT にする
+    /// </summary>
+    [Fact]
+    public void Slang_FloatForLoops()
+    {
+        var sl = Transpile("10 FOR X=0 TO 1 STEP .25:FOR I%=1 TO N%*2:NEXT I%:NEXT\n20 FOR Y=1 TO X+N%:NEXT Y").Output!;
+        Assert.Contains("F_X=H_FK[0];\n  H_T=BAS_FFORPUSH(&F_X, (H_FK+3), (H_FK+6), 0);", sl);
+        Assert.Contains("H_T=BAS_FORPUSH(&V_I, ((V_N)*(2)), 1, 1);", sl);
+        Assert.Contains("H_T=BAS_FFORNEXT(&V_I);", sl);
+        Assert.Contains("H_T=BAS_FFORNEXT(0);", sl);
+        Assert.Contains("H_F1=V_N;\n  H_F2=(F_X+H_F1);\n  H_T=BAS_FFORPUSH(&F_Y, &H_F2, (H_FK+3), 2);", sl);
+        Assert.Contains("H_T=BAS_FFORNEXT(&F_Y);", sl);
+        Assert.DoesNotContain("BAS_FORNEXT(", sl);
+        // 整数だけのプログラムの NEXT は、いままでどおり BAS_FORNEXT
+        var si = Transpile("10 DEFINT A-Z:FOR I=1 TO 2:NEXT").Output!;
+        Assert.Contains("H_T=BAS_FORNEXT(0);", si);
+        Assert.DoesNotContain("BAS_FF", si);
     }
 
     [Fact]
@@ -733,6 +758,7 @@ public class HuBasicEmitTests
             // @calls に書いた依存がすべて (どこかのランタイムに) 存在するかは組み立ての通しで確かめる
         }
         Assert.True(functions["BAS_FORPUSH"].CalleeCleanup, "4 引数の BAS_FORPUSH は callee cleanup");
+        Assert.True(functions["BAS_FFORPUSH"].CalleeCleanup, "4 引数の BAS_FFORPUSH は callee cleanup");
         Assert.True(functions["BAS_TLINE"].CalleeCleanup, "6 引数の BAS_TLINE は callee cleanup");
         Assert.True(functions["BAS_SMIDSET"].CalleeCleanup, "4 引数の BAS_SMIDSET は callee cleanup");
         // ランタイム内部の @calls もすべて、このファイルか x1native の env のライブラリにある

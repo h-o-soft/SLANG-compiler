@@ -239,6 +239,7 @@ public sealed class SlangBackend : IHuBackend
         FFloatArg f => Flt(f.Expr),
         FIntArg i => Num(i.Value),
         FAddrArg av => "&" + LValueName(av.Var),
+        FFloatAddrArg fa => FAddr(fa.Expr),
         FHiddenAddrArg h => "&" + HiddenName(h.Hidden),
         FDataTableArg t => t.LineTable ? "H_DLINE" : "H_DATA",
         _ => throw new InvalidOperationException(a.ToString()),
@@ -282,7 +283,10 @@ public sealed class SlangBackend : IHuBackend
         var lv = index != null ? $"{ArrayName(_prog.Key(((HuIndex)target).Name))}[{index}]" : LValue(target);
         int mark = _pre.Count;
         var v = target.Type == HuType.Float ? Flt(value) : Int(value);
-        bool floatOrder = (target.Type == HuType.Float || HasFloat(value)) && NeedsOrder(value, K.Flt)
+        // 整数に入れる浮動小数の単純変数も、整数にするとき (BAS_FTOIR) にエラー 6 になりうる (R2-F1)
+        bool mayFail = NeedsOrder(value, target.Type == HuType.Float ? K.Flt : K.Int)
+                       || (target.Type != HuType.Float && value is HuVar { Type: HuType.Float });
+        bool floatOrder = (target.Type == HuType.Float || HasFloat(value)) && mayFail
                           && value is not HuCall { Name: FlatPseudo.InputNum };
         if ((_pre.Count > mark || floatOrder) && index != null)
         {

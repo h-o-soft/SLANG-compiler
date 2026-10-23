@@ -44,7 +44,8 @@ public abstract record FArg;
 public sealed record FExprArg(HuExpr Expr) : FArg;          // 式の値 (文字列なら文字列のポインタ、浮動小数は整数に丸める)
 public sealed record FFloatArg(HuExpr Expr) : FArg;         // 浮動小数のまま渡す値 (整数の式なら浮動小数にする)
 public sealed record FIntArg(int Value) : FArg;             // 定数
-public sealed record FAddrArg(HuExpr Var) : FArg;           // 整数の単純変数のアドレス
+public sealed record FAddrArg(HuExpr Var) : FArg;           // 数の単純変数のアドレス
+public sealed record FFloatAddrArg(HuExpr Expr) : FArg;     // 浮動小数の値の番地 (式なら一時変数に入れて、その番地)
 public sealed record FHiddenAddrArg(string Hidden) : FArg;  // 隠し変数のアドレス
 public sealed record FDataTableArg(bool LineTable) : FArg;  // DATA の本体 (false) / 行の表 (true) の先頭
 

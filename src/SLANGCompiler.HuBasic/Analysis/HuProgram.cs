@@ -90,6 +90,9 @@ public sealed class HuProgram
         _ => HuVarKind.Str,
     };
 
+    /// <summary>構文木の変数名 (ソースの綴り) の型</summary>
+    public HuType VarType(string name) => TypeOfKind(KindOfKey(Key(name)));
+
     public static HuType TypeOfKind(HuVarKind kind) => kind switch
     {
         HuVarKind.Int => HuType.Int,

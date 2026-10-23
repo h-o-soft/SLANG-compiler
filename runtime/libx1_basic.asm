@@ -3848,6 +3848,232 @@ JP BAS_ERROR
 .bfc_b DB 0, 0, 0
 
 
+; ============================================================ 浮動小数の FOR
+; 浮動小数の FOR 枠は種別 3 (整数は 2)。枠には整数の FOR 枠と同じく出現番号と変数の番地を持ち、上限と増分 (3 バイトずつ) は
+; 枠の深さごとの BAS_FSTK に置く (制御スタックの枠の大きさは変えない)。浮動小数の FOR があるプログラムの NEXT は、
+; どちらの枠にも対応する BAS_FFORNEXT を呼ぶ (整数だけのプログラムは、いままでどおり BAS_FORNEXT だけを使う)。
+
+; @name BAS_FWORK
+; @resident shared
+; @param_count 0
+; @works BAS_FSTK:384
+; BAS_FSTK: 浮動小数の FOR の上限と増分 (制御スタックの枠の深さごとに 6 バイト: 上限 3・増分 3。64 枠分)
+RET
+
+
+; @name BAS_FSLOT
+; @resident shared
+; @param_count 1
+; @calls BAS_WORK,BAS_FWORK
+; HL = 制御スタックの枠の先頭 → HL = その深さの BAS_FSTK の領域 (BAS_FSTK + 深さ × 6)。A・DE を壊す
+LD DE, BAS_CSTK
+OR A
+SBC HL, DE
+EX DE, HL           ; DE = 深さ × 10
+LD HL, BAS_FSTK
+.bfs_loop
+LD A, D
+OR E
+RET Z
+LD A, E
+SUB 10
+LD E, A
+LD A, D
+SBC A, 0
+LD D, A
+LD A, L
+ADD A, 6
+LD L, A
+JP NC, .bfs_loop
+INC H
+JP .bfs_loop
+
+
+; @name BAS_FFORPUSH
+; @resident shared
+; @calls BAS_WORK,BAS_FWORK,BAS_CSPUSH,BAS_FORFIND,BAS_FCMP,BAS_FSLOT
+; @stack_cleanup callee
+; スタック引数 (&変数, &上限, &増分, 出現番号)。浮動小数の FOR の入口の判定 (増分が負でなければ 変数 <= 上限、負なら
+; 変数 >= 上限。BAS_FCMP で厳密に比べる。変数・上限・増分の無限大・NaN はエラー 6) をして、回るなら浮動小数の FOR 枠を
+; 積み、その深さの BAS_FSTK に上限と増分を写して -1、回らないなら積まずに 0 を返す。積む前に、同じ変数の FOR 枠
+; (いちばん上の GOSUB 枠より上) とその上の枠を捨てる (整数の BAS_FORPUSH と同じ)。
+POP HL
+LD (.bfp_ret), HL
+POP HL
+LD (.bfp_id), HL
+POP HL
+LD (.bfp_step), HL
+POP HL
+LD (.bfp_lim), HL
+POP HL
+LD (.bfp_var), HL
+LD HL, (.bfp_ret)
+PUSH HL
+LD HL, (.bfp_step)
+LD D, H
+LD E, L
+CALL BAS_FCMP       ; 増分の無限大・NaN を調べる (自分と比べる)
+LD HL, (.bfp_var)
+LD DE, (.bfp_lim)
+CALL BAS_FCMP       ; HL = 変数と上限の大小 (-1 / 0 / 1)
+LD DE, (.bfp_step)
+CALL BAS_FSTEPNEG
+JP Z, .bfp_pos
+BIT 7, H            ; 増分が負: 変数 >= 上限 (大小が -1 でない) なら回る
+JP NZ, .bfp_skip
+JP .bfp_run
+.bfp_pos
+LD A, L             ; 増分が負でない: 変数 <= 上限 (大小が 1 でない) なら回る
+DEC A
+OR H
+JP Z, .bfp_skip
+.bfp_run
+LD HL, (.bfp_var)
+CALL BAS_FORFIND    ; 同じ変数の枠を探す (HL = 枠 / 0)
+LD A, H
+OR L
+JP Z, .bfp_push
+LD (BAS_CSP), HL    ; その枠とその上を捨てる
+.bfp_push
+LD DE, (.bfp_id)
+LD A, 3
+CALL BAS_CSPUSH     ; HL = 枠の先頭
+PUSH HL
+INC HL
+INC HL
+INC HL
+LD DE, (.bfp_var)
+LD (HL), E
+INC HL
+LD (HL), D
+POP HL
+CALL BAS_FSLOT
+EX DE, HL           ; DE = この深さの上限と増分の置き場
+LD HL, (.bfp_lim)
+LD BC, 3
+LDIR
+LD HL, (.bfp_step)
+LD BC, 3
+LDIR
+LD HL, $FFFF
+RET
+.bfp_skip
+LD HL, 0
+RET
+.bfp_ret DW 0
+.bfp_id DW 0
+.bfp_step DW 0
+.bfp_lim DW 0
+.bfp_var DW 0
+
+
+; @name BAS_FSTEPNEG
+; @resident shared
+; @param_count 1
+; DE = 増分の番地 (浮動小数 3 バイト) → 負なら NZ、負でなければ Z (-0 は負でない)。A を壊す
+INC DE
+INC DE
+LD A, (DE)
+DEC DE
+DEC DE
+BIT 7, A
+RET Z
+AND $7F             ; 符号が立っていても、指数が 0 (値が 0) なら負でない
+RET
+
+
+; @name BAS_FFORNEXT
+; @resident shared
+; @param_count 1
+; @calls BAS_WORK,BAS_FWORK,BAS_FORFIND,BAS_FORNEXT,BAS_FSLOT,BAS_FCMP,BAS_FSTEPNEG,f24add
+; HL = 変数のアドレス (0 = 指定なし)。浮動小数の FOR があるプログラムの NEXT。対応する枠が整数の FOR 枠なら (見つから
+; なければも) BAS_FORNEXT と同じ。浮動小数の FOR 枠なら、その上の枠を捨て、変数 + 増分 (f24add) を変数に書いて上限と
+; 厳密に比べる (無限大・NaN はエラー 6)。続行なら FOR の出現番号、終わりなら枠を外して -1 を返す。
+PUSH HL
+CALL BAS_FORFIND
+LD A, H
+OR L
+JP Z, .bfn_int
+LD A, (HL)
+CP 3
+JP Z, .bfn_float
+.bfn_int
+POP HL
+JP BAS_FORNEXT
+.bfn_float
+POP DE
+LD (.bfn_frame), HL
+LD DE, 10
+ADD HL, DE
+LD (BAS_CSP), HL    ; 見つかった枠の上を捨てる
+LD HL, (.bfn_frame)
+INC HL
+LD E, (HL)
+INC HL
+LD D, (HL)
+LD (.bfn_id), DE
+INC HL
+LD E, (HL)
+INC HL
+LD D, (HL)
+LD (.bfn_var), DE
+LD HL, (.bfn_frame)
+CALL BAS_FSLOT
+LD (.bfn_lim), HL   ; 上限 (その後ろの 3 バイトが増分)
+LD DE, 3
+ADD HL, DE
+LD (.bfn_step), HL
+LD E, (HL)
+INC HL
+LD D, (HL)
+INC HL
+LD C, (HL)          ; CDE = 増分
+PUSH DE
+LD HL, (.bfn_var)
+LD E, (HL)
+INC HL
+LD D, (HL)
+INC HL
+LD A, (HL)
+EX DE, HL           ; AHL = 変数
+POP DE
+CALL f24add         ; AHL = 変数 + 増分
+EX DE, HL
+LD HL, (.bfn_var)
+LD (HL), E
+INC HL
+LD (HL), D
+INC HL
+LD (HL), A
+LD HL, (.bfn_var)
+LD DE, (.bfn_lim)
+CALL BAS_FCMP       ; HL = 変数と上限の大小 (無限大・NaN はエラー 6)
+LD DE, (.bfn_step)
+CALL BAS_FSTEPNEG
+JP Z, .bfn_pos
+BIT 7, H            ; 増分が負: 変数 >= 上限なら続行
+JP NZ, .bfn_exit
+JP .bfn_cont
+.bfn_pos
+LD A, L             ; 増分が負でない: 変数 <= 上限なら続行
+DEC A
+OR H
+JP NZ, .bfn_cont
+.bfn_exit
+LD HL, (.bfn_frame)
+LD (BAS_CSP), HL    ; 枠を外す
+LD HL, $FFFF
+RET
+.bfn_cont
+LD HL, (.bfn_id)
+RET
+.bfn_frame DW 0
+.bfn_id DW 0
+.bfn_var DW 0
+.bfn_lim DW 0
+.bfn_step DW 0
+
+
 ; @name BAS_FFLOOR
 ; @resident shared
 ; @param_count 1

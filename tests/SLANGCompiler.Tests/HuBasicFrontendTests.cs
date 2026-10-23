@@ -310,9 +310,6 @@ public class HuBasicFrontendTests
     }
 
     [Theory]
-    [InlineData("10 FOR A=1 TO 2:NEXT", "HB0405")]            // 浮動小数の FOR は段階 F2b から
-    [InlineData("10 DEFINT A-Z:FOR I!=1 TO 2:NEXT", "HB0405")]
-    [InlineData("10 DEFINT A-Z:FOR I=1 TO 2:NEXT I!", "HB0405")]
     [InlineData("10 READ A:DATA 1", "HB0408")]                 // 浮動小数の READ は段階 F2c から
     [InlineData("10 DEFINT A-Z:READ X(1),A!:DATA 1,2", "HB0408")]
     [InlineData("10 DIM A(5461)", "HB0305")]                   // 浮動小数の配列は 1 要素 3 バイト (上限 5460)
@@ -552,6 +549,18 @@ public class HuBasicFrontendTests
         // DEFINT の下の I と I% は同じ変数なので、NEXT I% は FOR I に対応する
         var prog = AnalyzeOk("10 DEFINT A-Z:FOR I=1 TO 0:NEXT I%");
         Assert.Single(prog.ForExits);
+    }
+
+    /// <summary>浮動小数の FOR (段階 F2b)。初めの値は整数に丸めない。FOR と NEXT は変数の鍵で対応する</summary>
+    [Fact]
+    public void Analyzer_FloatForLoops()
+    {
+        var prog = AnalyzeOk("10 FOR X=.5 TO 2 STEP .25:FOR I%=1 TO 2:NEXT I%,X!:FOR Y=1 TO 0:NEXT");
+        Assert.Equal(3, prog.ForIds.Count);
+        Assert.Equal(3, prog.ForExits.Count);   // 回らないときの飛び先 (FOR X は NEXT の X! の部分、FOR Y は最後の NEXT)
+        Assert.Equal(1, prog.ForExits.Single(kv => kv.Key.Var == "X").Value.Part);
+        var fx = prog.ForIds.Keys.Single(f => f.Var == "X");
+        Assert.Equal(HuType.Float, fx.From.Type);
     }
 
     [Fact]

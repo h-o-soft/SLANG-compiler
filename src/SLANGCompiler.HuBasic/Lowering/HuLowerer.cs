@@ -10,7 +10,9 @@ public sealed record HuLowerOptions(HuWaitMode Wait = HuWaitMode.None, int WaitA
 /// <summary>
 /// <see cref="HuProgram"/> を、ラベルと飛び先とランタイム呼び出しの列に展開する。
 /// - GOSUB は制御スタックに戻り先 ID を積んで飛び、RETURN は共通の戻り処理 (H_RET) で分岐する
-/// - FOR / NEXT は制御スタックの FOR 枠で実行時に対応付け、NEXT の折り返しは共通の H_FOR で分岐する
+/// - FOR / NEXT は制御スタックの FOR 枠で実行時に対応付け、NEXT の折り返しは共通の H_FOR で分岐する。
+///   浮動小数の FOR は BAS_FFORPUSH で別の種類の枠を積み、浮動小数の FOR があるプログラムの NEXT は、どちらの枠にも
+///   対応する BAS_FFORNEXT を呼ぶ (整数だけのプログラムは BAS_FORNEXT のまま)
 /// - IF・REPEAT・WHILE はすべてラベルと条件付きの飛び先にする
 /// 隠し変数の名前は抽象名 ("T", "DIM:変数の鍵", "UB:変数の鍵") で、後段が実際の名前に写す。
 /// 変数・配列の名前は構文木のまま (ソースの綴り) 持ち、後段が <see cref="HuProgram.Key"/> で鍵にする。
@@ -35,6 +37,8 @@ public sealed class HuLowerer
 
     // FOR の出口 (NEXT の部分) → その出口を使う FOR の番号
     private readonly Dictionary<(HuNext, int), List<int>> _exitsAt = new(new NextPartComparer());
+    /// <summary>NEXT で呼ぶ関数 (浮動小数の FOR があれば BAS_FFORNEXT)</summary>
+    private readonly string _nextFunction;
 
     private HuLowerer(HuProgram prog, HuLowerOptions opt)
     {
@@ -46,6 +50,7 @@ public sealed class HuLowerer
             if (!_exitsAt.TryGetValue(key, out var list)) _exitsAt[key] = list = new List<int>();
             list.Add(prog.ForIds[fr]);
         }
+        _nextFunction = prog.ForIds.Keys.Any(f => prog.VarType(f.Var) == HuType.Float) ? "BAS_FFORNEXT" : "BAS_FORNEXT";
     }
 
     public static HuFlat Lower(HuProgram prog, HuLowerOptions? opt = null)
@@ -151,10 +156,14 @@ public sealed class HuLowerer
             case HuFor fr:
             {
                 var id = _prog.ForIds[fr];
-                var v = new HuVar(fr.Var, fr.Pos) { Type = HuType.Int };
+                var v = new HuVar(fr.Var, fr.Pos) { Type = _prog.VarType(fr.Var) };
                 Emit(new FAssign(v, fr.From));
                 var step = fr.Step ?? new HuNum(1, fr.Pos);
-                Emit(new FCall("BAS_FORPUSH", new[] { new FAddrArg(v), E(fr.To), E(step), I(id) }, Temp));
+                // 上限と増分は FOR の文で 1 回だけ評価して枠に写す (浮動小数は番地で渡す)
+                if (v.Type == HuType.Float)
+                    Emit(new FCall("BAS_FFORPUSH", new FArg[] { new FAddrArg(v), new FFloatAddrArg(fr.To), new FFloatAddrArg(step), I(id) }, Temp));
+                else
+                    Emit(new FCall("BAS_FORPUSH", new[] { new FAddrArg(v), E(fr.To), E(step), I(id) }, Temp));
                 if (_prog.ForExits.ContainsKey(fr))
                     Emit(new FIfHidden(Temp, "==", 0, ForExit(id)));
                 Emit(new FLabel(ForTop(id)));
@@ -167,8 +176,8 @@ public sealed class HuLowerer
                 {
                     FArg addr = nx.Vars.Count == 0
                         ? I(0)
-                        : new FAddrArg(new HuVar(nx.Vars[k], nx.Pos) { Type = HuType.Int });
-                    Emit(new FCall("BAS_FORNEXT", new[] { addr }, Temp));
+                        : new FAddrArg(new HuVar(nx.Vars[k], nx.Pos) { Type = _prog.VarType(nx.Vars[k]) });
+                    Emit(new FCall(_nextFunction, new[] { addr }, Temp));
                     Emit(new FIfHidden(Temp, ">=", 0, ForLabel));
                     if (_exitsAt.TryGetValue((nx, k), out var ids))
                         foreach (var id in ids) Emit(new FLabel(ForExit(id)));
