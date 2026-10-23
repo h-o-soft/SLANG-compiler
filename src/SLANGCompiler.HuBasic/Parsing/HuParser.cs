@@ -16,9 +16,10 @@ public sealed class HuParser
     /// <summary>MVP で対応する組み込み関数 (引数の個数の範囲)</summary>
     private static readonly Dictionary<string, (int Min, int Max)> Functions = new()
     {
-        ["INP"] = (1, 1), ["MID$"] = (2, 3), ["RIGHT$"] = (2, 2), ["CHR$"] = (1, 1),
+        ["INP"] = (1, 1), ["MID$"] = (2, 3), ["RIGHT$"] = (2, 2), ["CHR$"] = (1, 255),
         ["ASC"] = (1, 1), ["VAL"] = (1, 1), ["HEXCHR$"] = (1, 1), ["CGPAT$"] = (1, 1),
         ["STICK"] = (1, 1), ["STRIG"] = (1, 1), ["RND"] = (0, 1), ["INT"] = (1, 1),
+        ["LEFT$"] = (2, 2), ["STRING$"] = (2, 2), ["CHARACTER$"] = (2, 2), ["INPUT$"] = (1, 1),
     };
 
 
@@ -262,7 +263,37 @@ public sealed class HuParser
             case "PLAY":
                 return new HuCommand("PLAY", new HuExpr?[] { ParseExpr() }, pos);
             case "BEEP":
-                return new HuCommand("BEEP", Array.Empty<HuExpr?>(), pos);
+                // BEEP (短く 1 回) / BEEP 1 (鳴らし始める) / BEEP 0 (止める)
+                return new HuCommand("BEEP", AtStatementEnd ? Array.Empty<HuExpr?>() : new HuExpr?[] { ParseExpr() }, pos);
+            case "SOUND":
+            {
+                var reg = ParseExpr();
+                ExpectSymbol(",");
+                return new HuCommand("SOUND", new HuExpr?[] { reg, ParseExpr() }, pos);
+            }
+            case "KBUF":
+            {
+                bool on;
+                if (AcceptKeyword("ON")) on = true;
+                else if (AcceptKeyword("OFF")) on = false;
+                else { Error("HB0203", "KBUF の後に ON か OFF が必要です"); on = false; }
+                return new HuCommand("KBUF", new HuExpr?[] { new HuNum(on ? 1 : 0, pos) }, pos);
+            }
+            case "SCREEN":
+            {
+                // SCREEN [出す頁][,書く頁][,グラフィックのモード]。引数は省略できる
+                var args = new List<HuExpr?>();
+                if (!AtStatementEnd)
+                {
+                    do
+                    {
+                        args.Add(AtStatementEnd || Peek.IsSymbol(",") ? null : ParseExpr());
+                    } while (AcceptSymbol(","));
+                }
+                return new HuCommand("SCREEN", args, pos);
+            }
+            case "INPUT":
+                return ParseInput(pos);
             case "CLICK":
             {
                 bool on;
@@ -273,6 +304,18 @@ public sealed class HuParser
             }
             case "LINE":
                 return ParseLine(pos);
+            case "MID$":
+            {
+                // MID$(変数, 位置[, 長さ]) = 文字列
+                ExpectSymbol("(");
+                var name = ParseVarName();
+                ExpectSymbol(",");
+                var start = ParseExpr();
+                HuExpr? len = AcceptSymbol(",") ? ParseExpr() : null;
+                ExpectSymbol(")");
+                ExpectSymbol("=");
+                return new HuMidSet(name, start, len, ParseExpr(), pos);
+            }
             case "DEFCHR$":
             {
                 ExpectSymbol("(");
@@ -286,6 +329,25 @@ public sealed class HuParser
                 SkipToStatementEnd();
                 return null;
         }
+    }
+
+    /// <summary>INPUT ["案内" ; または ,] 変数, …</summary>
+    private HuStmt ParseInput(HuPos pos)
+    {
+        string? prompt = null;
+        bool question = true;
+        if (Peek.Is(HuTokenKind.String))
+        {
+            prompt = Next().Text;
+            if (AcceptSymbol(",")) question = false;      // , なら「? 」を出さない
+            else ExpectSymbol(";");
+        }
+        var targets = new List<HuExpr>();
+        do
+        {
+            targets.Add(ParseLValue());
+        } while (AcceptSymbol(","));
+        return new HuInput(prompt, question, targets, pos);
     }
 
     private static HuRem MakeRem(string text, HuPos pos)
@@ -525,19 +587,15 @@ public sealed class HuParser
         ExpectSymbol(")");
         ExpectSymbol(",");
         var ch = ParseExpr();
-        bool box = false;
+        bool box = false, fill = false;
         if (AcceptSymbol(","))
         {
             var t = Peek;
             if (t.Kind == HuTokenKind.Ident && t.Text == "B") { Next(); box = true; }
-            else if (t.Kind == HuTokenKind.Ident && t.Text == "BF")
-            {
-                _diag.Error("HB0307", "LINE の BF (塗りつぶし) は未対応です", PosOf(t));
-                Next();
-            }
-            else Error("HB0203", "LINE の最後の引数は B のみ対応しています");
+            else if (t.Kind == HuTokenKind.Ident && t.Text == "BF") { Next(); box = fill = true; }
+            else Error("HB0203", "LINE の最後の引数は B か BF です");
         }
-        return new HuLineText(x1, y1, x2, y2, ch, box, pos);
+        return new HuLineText(x1, y1, x2, y2, ch, box, pos) { Fill = fill };
     }
 
     // ------------------------------------------------------------ 式
@@ -705,7 +763,13 @@ public sealed class HuParser
     {
         Next();
         if (t.Text == "INKEY$")
-            return new HuCall("INKEY$", Array.Empty<HuExpr>(), pos);
+        {
+            // INKEY$(0) は押している間ずっとその文字を返す (INKEY$ は押した瞬間とリピートだけ)
+            if (!AcceptSymbol("(")) return new HuCall("INKEY$", Array.Empty<HuExpr>(), pos);
+            var a = ParseExpr();
+            ExpectSymbol(")");
+            return new HuCall("INKEY$", new[] { a }, pos);
+        }
         if (t.Text == "RND" && !Peek.IsSymbol("("))
             return new HuCall("RND", Array.Empty<HuExpr>(), pos);
         if (!Functions.TryGetValue(t.Text, out var arity))

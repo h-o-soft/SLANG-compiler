@@ -278,7 +278,7 @@ public class HuBasicFrontendTests
     [InlineData("10 CALL 100", "HB0301")]
     [InlineData("10 X=ABS(1)", "HB0302")]
     [InlineData("10 DIM A(2,3)", "HB0303")]
-    [InlineData("10 LINE(0,0)-(1,1),\"A\",BF", "HB0307")]
+    [InlineData("10 LINE(0,0)-(1,1),\"A\",X", "HB0203")]   // B と BF のほかは書けない
     [InlineData("10 PRINT#1,A", "HB0308")]
     public void Parser_ReportsUnsupported(string line, string code)
     {
@@ -342,6 +342,72 @@ public class HuBasicFrontendTests
         Assert.Equal(10, prog.Arrays["A"]);   // 上限が 10 未満なら 10 を確保する
         Assert.Equal(12, prog.Arrays["B"]);
     }
+
+    [Fact]
+    public void Parser_StageF1bStatementsAndFunctions()
+    {
+        var diag = new HuDiagnosticBag();
+        var line = HuParser.ParseSingleLine("10 MID$(A$,2,3)=\"X\":MID$(B$,5)=C$:LINE(0,0)-(1,1),\"#\",BF:" +
+            "D$=LEFT$(A$,2)+STRING$(3,\"AB\")+STRING$(2,65)+CHR$(29,29,65)+CHARACTER$(X,Y)", diag);
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Items.Select(d => d.Message)));
+        var m = Assert.IsType<HuMidSet>(line!.Statements[0]);
+        Assert.Equal("A$", m.Var);
+        Assert.NotNull(m.Length);
+        Assert.Null(Assert.IsType<HuMidSet>(line.Statements[1]).Length);
+        var lt = Assert.IsType<HuLineText>(line.Statements[2]);
+        Assert.True(lt.Box && lt.Fill);
+    }
+
+    [Fact]
+    public void Parser_StageF1cStatementsAndFunctions()
+    {
+        var diag = new HuDiagnosticBag();
+        var line = HuParser.ParseSingleLine("10 INPUT \"NAME\";N$:INPUT \"Y\",D,E$:INPUT A(1):SOUND 7,62:BEEP 0:BEEP:" +
+            "KBUF ON:SCREEN 0,1:SCREEN:A$=INKEY$(0)+INKEY$+INPUT$(2)", diag);
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Items.Select(d => d.Message)));
+        var a = Assert.IsType<HuInput>(line!.Statements[0]);
+        Assert.Equal("NAME", a.Prompt);
+        Assert.True(a.Question);                                  // ; なら「? 」を出す
+        var b = Assert.IsType<HuInput>(line.Statements[1]);
+        Assert.False(b.Question);                                 // , なら出さない
+        Assert.Equal(2, b.Targets.Count);
+        var c = Assert.IsType<HuInput>(line.Statements[2]);
+        Assert.Null(c.Prompt);
+        Assert.True(c.Question);
+        Assert.Equal(2, Assert.IsType<HuCommand>(line.Statements[3]).Args.Count);
+        Assert.Single(Assert.IsType<HuCommand>(line.Statements[4]).Args);   // BEEP 0
+        Assert.Empty(Assert.IsType<HuCommand>(line.Statements[5]).Args);    // BEEP
+    }
+
+    [Theory]
+    [InlineData("10 DEFINT A-Z:KBUF ON", "HB0701")]
+    [InlineData("10 DEFINT A-Z:SCREEN 0,1", "HB0702")]
+    [InlineData("10 DEFINT A-Z:SCREEN", "HB0702")]
+    public void Analyzer_NoOpCommandsWarn(string program, string code)
+    {
+        var (prog, diag) = Analyze(program);
+        Assert.NotNull(prog);
+        Assert.Contains(diag.Items, d => d.Code == code && d.Severity == HuSeverity.Warning);
+    }
+
+    [Fact]
+    public void Analyzer_ScreenDefaultPagesIsSilent()
+    {
+        // SCREEN 0,0 は INIT や WIDTH の後と同じ状態なので warning を出さない
+        var (_, diag) = Analyze("10 DEFINT A-Z:SCREEN 0,0:SCREEN 0,0,1");
+        Assert.DoesNotContain(diag.Items, d => d.Code == "HB0702");
+    }
+
+    [Theory]
+    [InlineData("10 DEFINT A-Z:A$=INKEY$(1)", "HB0302")]   // INKEY$(1)・(2) は別の意味なので未対応
+    [InlineData("10 DEFINT A-Z:A$=INPUT$(\"X\")", "HB0404")]
+    public void Analyzer_StageF1cErrors(string program, string code) => AssertError(program, code);
+
+    [Theory]
+    [InlineData("10 DEFINT A-Z:MID$(A,1)=\"X\"", "HB0404")]   // MID$ の文の変数は文字列
+    [InlineData("10 DEFINT A-Z:MID$(A$,1)=1", "HB0404")]
+    [InlineData("10 DEFINT A-Z:A$=CHARACTER$(\"X\",1)", "HB0404")]
+    public void Analyzer_StageF1bTypeErrors(string program, string code) => AssertError(program, code);
 
     [Fact]
     public void Analyzer_DuplicateLineNumberIsError()

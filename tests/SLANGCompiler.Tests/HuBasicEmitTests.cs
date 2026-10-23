@@ -47,6 +47,22 @@ public class HuBasicEmitTests
         """;
 
     /// <summary>MVP のすべての命令・関数を使うプログラム (自作)。ランタイムの契約と組み立ての通しに使う</summary>
+    /// <summary>段階 F1b の文字列と画面の命令・関数をひととおり使う小さなプログラム (自作)</summary>
+    private const string StringScreenProgram = """
+        10 DEFINT A-Z:CLS:A$="ABCDEF":MID$(A$,2,3)="xy":MID$(A$,5)="12"
+        20 B$=LEFT$(A$,2)+STRING$(3,"AB")+STRING$(2,65)+CHR$(29,29,65)+CHARACTER$(0,0)
+        30 LINE(1,1)-(5,5),"#",BF:LINE(1,1)-(5,5),"*",B:LINE(1,1)-(5,5),"-"
+        40 END
+        """;
+
+    /// <summary>段階 F1c の入力と音の命令・関数をひととおり使う小さなプログラム (自作)</summary>
+    private const string InputSoundProgram = """
+        10 DEFINT A-Z:CLS:KBUF ON:SCREEN 0,0
+        20 INPUT "NAME";N$:INPUT "X",A,B$:INPUT C(1)
+        30 I$=INPUT$(1)+INKEY$(0):SOUND 7,62:SOUND 8,15:BEEP 1:BEEP 0:BEEP
+        40 END
+        """;
+
     /// <summary>段階 F1a の浮動小数の式をひととおり使う小さなプログラム (自作。変数は整数と文字列だけ)</summary>
     private const string FloatProgram = """
         10 DEFINT A-Z:CLS
@@ -182,6 +198,61 @@ public class HuBasicEmitTests
 
     private const string HuBasicEmitTests_FullProgramForExprs = FullProgram;
 
+    // ------------------------------------------------------------ 文字列と画面 (段階 F1b)
+
+    [Fact]
+    public void Slang_StageF1bCalls()
+    {
+        var sl = Body(Transpile(StringScreenProgram).Output!);
+        Assert.Contains("BAS_SMIDSET(S_A, 2, 3, K_", sl);
+        Assert.Contains("BAS_SMIDSET(S_A, 5, 255, K_", sl);              // 長さの省略は 255
+        Assert.Contains("BAS_SMID(S_A, 1, 2)", sl);                       // LEFT$ は MID$(s, 1, n)
+        Assert.Contains("BAS_SSTR(3, K_", sl);
+        Assert.Contains("BAS_SSTR(2, BAS_SCHR(65))", sl);                // 文字コードは 1 文字にしてから繰り返す
+        Assert.Contains("BAS_SCAT(BAS_SCAT(BAS_SCHR(29), BAS_SCHR(29)), BAS_SCHR(65))", sl);
+        Assert.Contains("BAS_SCHARA(0, 0)", sl);
+        Assert.Matches(@"BAS_TLINE\(1, 1, 5, 5, K_\d+, 2\);", sl);      // BF は 2、B は 1、線は 0
+        Assert.Matches(@"BAS_TLINE\(1, 1, 5, 5, K_\d+, 1\);", sl);
+        Assert.Matches(@"BAS_TLINE\(1, 1, 5, 5, K_\d+, 0\);", sl);
+    }
+
+    [Fact]
+    public void Slang_StageF1cCalls()
+    {
+        var sl = Body(Transpile(InputSoundProgram).Output!);
+        Assert.Matches(@"BAS_INPUT\(K_\d+, 1\);\s+BAS_SSET\(S_N, BAS_INFS\(\)\);\s+BAS_STMP\(\);", sl);
+        Assert.Matches(@"BAS_INPUT\(K_\d+, 0\);\s+V_A=BAS_FTOIR\(BAS_INFN\(\)\);", sl);  // 数は浮動小数で読んで丸める
+        Assert.Contains("BAS_INPUT(0, 1);", sl);                         // 案内なしは「? 」だけ
+        Assert.Contains("BAS_SCAT(BAS_SINPUT(1), BAS_SINKEY0())", sl);
+        Assert.Contains("BAS_SOUND(7, 62);", sl);
+        Assert.Contains("BAS_BEEPN(1);", sl);
+        Assert.Contains("BAS_BEEPN(0);", sl);
+        Assert.Contains("BAS_BEEP();", sl);
+        Assert.DoesNotContain("KBUF", sl);
+        Assert.DoesNotContain("SCREEN", sl);
+    }
+
+    [Fact]
+    public void Runtime_KeyInputDoesNotAllocateWhileWaiting()
+    {
+        // キーを待つ INPUT・INPUT$ は、一時文字列を作らない BAS_KEYIN で待つ (待つ間に一時領域があふれないように)
+        var path = Path.Combine(RepoRoot(), "runtime", "libx1_basic.asm");
+        var fs = RuntimeParser.Parse(File.ReadAllText(path), path).ToDictionary(f => f.Name);
+        Assert.Contains("BAS_KEYIN", fs["BAS_INPUT"].Dependencies);
+        Assert.Contains("BAS_KEYIN", fs["BAS_SINPUT"].Dependencies);
+        Assert.DoesNotContain("BAS_SINKEY", fs["BAS_INPUT"].Dependencies);
+        Assert.DoesNotContain("BAS_TALLOC", fs["BAS_KEYIN"].Dependencies);
+    }
+
+    [Fact]
+    public void Lowering_MidSetResetsTemps()
+    {
+        // MID$ の文の右辺で一時文字列を作るなら、文の頭で一時領域を空に戻す
+        var ops = Transpile("10 DEFINT A-Z:MID$(A$,1)=CHR$(65):GOTO 10").Flat!.Ops.OfType<FCall>().Select(c => c.Function).ToList();
+        int i = ops.IndexOf("BAS_SMIDSET");
+        Assert.True(i > 0 && ops.GetRange(0, i).Contains("BAS_STMP"));
+    }
+
     // ------------------------------------------------------------ 浮動小数 (段階 F1a)
 
     private static string Body(string sl) => sl[sl.IndexOf("MAIN()", StringComparison.Ordinal)..];
@@ -251,7 +322,9 @@ public class HuBasicEmitTests
     [InlineData("1E19", false)]
     [InlineData("1.8E19", false)]
     [InlineData("1.8446E19", false)]    // 最大 (2^63 × 1.99998、約 1.84466E19) より少し下
-    [InlineData("1.8447E19", true)]     // 丸めると無限大
+    [InlineData("1.84466E19", false)]   // 丸めると最大の値
+    [InlineData("1.84467E19", true)]    // 2^64 より小さいが、丸めで仮数が繰り上がって無限大
+    [InlineData("1.8447E19", true)]
     [InlineData("1E20", true)]
     public void Float_LiteralRangeMatchesF24(string literal, bool rejected)
     {
@@ -519,7 +592,8 @@ public class HuBasicEmitTests
     {
         var path = Path.Combine(RepoRoot(), "runtime", "libx1_basic.asm");
         var functions = RuntimeParser.Parse(File.ReadAllText(path), path).ToDictionary(f => f.Name);
-        var sl = Transpile(Stage1Program).Output! + Transpile(FullProgram).Output! + Transpile(FloatProgram).Output!;
+        var sl = Transpile(Stage1Program).Output! + Transpile(FullProgram).Output! + Transpile(FloatProgram).Output!
+                 + Transpile(StringScreenProgram).Output! + Transpile(InputSoundProgram).Output!;
         var called = Regex.Matches(sl, @"\b(BAS_[A-Z0-9]+)\(").Select(m => m.Groups[1].Value).Distinct().ToList();
         Assert.NotEmpty(called);
         foreach (var name in called)
@@ -531,6 +605,7 @@ public class HuBasicEmitTests
         }
         Assert.True(functions["BAS_FORPUSH"].CalleeCleanup, "4 引数の BAS_FORPUSH は callee cleanup");
         Assert.True(functions["BAS_TLINE"].CalleeCleanup, "6 引数の BAS_TLINE は callee cleanup");
+        Assert.True(functions["BAS_SMIDSET"].CalleeCleanup, "4 引数の BAS_SMIDSET は callee cleanup");
         // ランタイム内部の @calls もすべて、このファイルか x1native の env のライブラリにある
         var root = RepoRoot();
         var envLibs = EnvironmentLoader.Load(Path.Combine(root, "runtime", "env", "x1native.env")).Libraries;
@@ -604,6 +679,14 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "FLT"));
             RunSlangbuild(root, dir, sl3, asmPath, Path.Combine(dir, "FLTS"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "FLTS"));
+            var sl4 = Path.Combine(dir, "STR.SL");
+            File.WriteAllText(sl4, Transpile(StringScreenProgram).Output!);
+            RunSlangbuild(root, dir, sl4, asmPath, Path.Combine(dir, "STR"));
+            AssertBuilt(Path.Combine(dir, "STR"));
+            var sl5 = Path.Combine(dir, "INP.SL");
+            File.WriteAllText(sl5, Transpile(InputSoundProgram).Output!);
+            RunSlangbuild(root, dir, sl5, asmPath, Path.Combine(dir, "INP"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "INP"));
         }
         finally
         {

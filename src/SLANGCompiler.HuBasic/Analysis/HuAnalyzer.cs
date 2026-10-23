@@ -419,18 +419,37 @@ public sealed class HuAnalyzer
                 ExpectStr(a[0]);
                 return HuType.Int;
             case "CHR$":
+                // CHR$(a, b, …) は、それぞれの文字をつなげる
+                foreach (var x in a) ExpectNum(x, intConv: true);
+                return HuType.Str;
             case "CGPAT$":
                 ExpectNum(a[0], intConv: true);
+                return HuType.Str;
+            case "CHARACTER$":
+                ExpectNum(a[0], intConv: true);
+                ExpectNum(a[1], intConv: true);
+                return HuType.Str;
+            case "STRING$":
+                ExpectNum(a[0], intConv: true);
+                // 2 つ目は文字列 (それを繰り返す) か文字コード
+                CheckExpr(a[1], intConv: true);
                 return HuType.Str;
             case "HEXCHR$":
                 ExpectStr(a[0]);
                 return HuType.Str;
             case "MID$":
+            case "LEFT$":
             case "RIGHT$":
                 ExpectStr(a[0]);
                 for (int i = 1; i < a.Count; i++) ExpectNum(a[i], intConv: true);
                 return HuType.Str;
             case "INKEY$":
+                // INKEY$(0) だけ (INKEY$(1)・(2) は別の意味なので未対応)
+                if (a.Count > 0 && !(a[0] is HuNum { Value: 0 }))
+                    _diag.Error("HB0302", "INKEY$ の引数は 0 だけに対応しています", c.Pos);
+                return HuType.Str;
+            case "INPUT$":
+                ExpectNum(a[0], intConv: true);
                 return HuType.Str;
             case "RND":
                 // 引数の意味は記録にないので、数の定数だけを受け付けて捨てる (式を書くと評価を省けないため)
@@ -550,6 +569,18 @@ public sealed class HuAnalyzer
                 ExpectNum(dc.Code, true);
                 ExpectStr(dc.Pattern);
                 break;
+            case HuInput inp:
+                if (inp.Prompt != null) AddLiteral(inp.Prompt);
+                foreach (var t in inp.Targets) CheckExpr(t, false);
+                break;
+            case HuMidSet ms:
+                UseVar(ms.Var, ms.Pos);
+                if (VarType(ms.Var) != HuType.Str)
+                    _diag.Error("HB0404", $"MID$ の文の変数 {ms.Var} は文字列の変数にしてください", ms.Pos);
+                ExpectNum(ms.Start, intConv: true);
+                if (ms.Length != null) ExpectNum(ms.Length, intConv: true);
+                ExpectStr(ms.Value);
+                break;
             case HuDim:
             case HuDefint:
             case HuData:
@@ -567,6 +598,22 @@ public sealed class HuAnalyzer
         if (cmd.Name == "PLAY")
         {
             ExpectStr(cmd.Args[0]!);
+            return;
+        }
+        if (cmd.Name == "KBUF")
+        {
+            _diag.Warning("HB0701", "KBUF は何もしない命令として扱います", cmd.Pos);
+            return;
+        }
+        if (cmd.Name == "SCREEN")
+        {
+            foreach (var a in cmd.Args)
+                if (a != null) ExpectNum(a, intConv: true);
+            // 0,0 (と省略) は INIT や WIDTH の後と同じ状態なので黙って何もしない。それ以外は見え方が本物と違う
+            bool defaultPages = cmd.Args.Take(2).All(a => a == null || a is HuNum { Value: 0 });
+            if (!defaultPages || cmd.Args.Count == 0)
+                _diag.Warning("HB0702", "SCREEN は何もしない命令として扱います (テキストの頁の切り替えは未対応。" +
+                                        "表示も書き込みも 0 頁のまま)", cmd.Pos);
             return;
         }
         foreach (var a in cmd.Args)

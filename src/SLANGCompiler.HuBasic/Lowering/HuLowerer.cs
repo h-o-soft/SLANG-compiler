@@ -227,6 +227,19 @@ public sealed class HuLowerer
             case HuRestore rs:
                 Call("BAS_RESTORE", I(rs.Line ?? 0));
                 break;
+            case HuInput inp:
+                // 1 行を読んでから、項目を順に代入する (項目が足りなければ空・0、多すぎれば捨てる。Hu-BASIC の実測)
+                Call("BAS_INPUT", inp.Prompt != null ? E(new HuStr(inp.Prompt, inp.Pos) { Type = HuType.Str }) : I(0),
+                    I(inp.Question ? 1 : 0));
+                foreach (var t in inp.Targets)
+                {
+                    if (t.Type == HuType.Str)
+                        Call("BAS_SSET", E(t), E(new HuCall(FlatPseudo.InputStr, Array.Empty<HuExpr>(), inp.Pos) { Type = HuType.Str }));
+                    else
+                        Emit(new FAssign(t, new HuCall(FlatPseudo.InputNum, Array.Empty<HuExpr>(), inp.Pos) { Type = HuType.Float }));
+                    Call("BAS_STMP");
+                }
+                break;
             case HuOut o:
                 Emit(new FPortOut(o.Port, o.Value));
                 break;
@@ -237,10 +250,14 @@ public sealed class HuLowerer
                 LowerCommand(c);
                 break;
             case HuLineText lt:
-                Call("BAS_TLINE", E(lt.X1), E(lt.Y1), E(lt.X2), E(lt.Y2), E(lt.Char), I(lt.Box ? 1 : 0));
+                Call("BAS_TLINE", E(lt.X1), E(lt.Y1), E(lt.X2), E(lt.Y2), E(lt.Char), I(lt.Fill ? 2 : lt.Box ? 1 : 0));
                 break;
             case HuDefChr dc:
                 Call("BAS_DEFCHR", E(dc.Code), E(dc.Pattern));
+                break;
+            case HuMidSet ms:
+                Call("BAS_SMIDSET", E(new HuVar(ms.Var, ms.Pos) { Type = HuType.Str }), E(ms.Start),
+                    ms.Length != null ? E(ms.Length) : I(255), E(ms.Value));
                 break;
             case HuRem rem:
                 if (rem.Directive == "VSYNC" && _opt.Wait == HuWaitMode.Frame)
@@ -375,7 +392,14 @@ public sealed class HuLowerer
             case "CGEN": Call("BAS_CGEN", E(Arg(0)!)); break;
             case "PLAY": Call("BAS_PLAY", E(Arg(0)!)); break;
             case "TEMPO": Call("BAS_TEMPO", E(Arg(0)!)); break;
-            case "BEEP": Call("BAS_BEEP"); break;
+            case "BEEP":
+                if (Arg(0) is HuExpr b) Call("BAS_BEEPN", E(b));   // 1: 鳴らし始める、0: 止める
+                else Call("BAS_BEEP");
+                break;
+            case "SOUND": Call("BAS_SOUND", E(Arg(0)!), E(Arg(1)!)); break;
+            case "KBUF":
+            case "SCREEN":
+                break; // 何もしない (解析で warning を出している)
             case "CLICK": Call("BAS_CLICK", E(Arg(0)!)); break;
             case "PAUSE": Call("BAS_PAUSE", E(Arg(0)!)); break;
         }
@@ -399,7 +423,7 @@ public sealed class HuLowerer
     /// PRINT は項目ごとに戻すので常に戻す。READ は項目を一時文字列で読むので、前の文の一時文字列が残らないよう常に戻す。
     /// </summary>
     internal static bool NeedsTempReset(HuStmt s)
-        => s is HuPrint or HuRead || (s is not HuWhile && StatementExprs(s).Any(MakesTemps));
+        => s is HuPrint or HuRead or HuInput || (s is not HuWhile && StatementExprs(s).Any(MakesTemps));
 
     /// <summary>文が直接持つ式をすべて列挙する (IF の THEN 節・ELSE 節の中の文は含まない)</summary>
     internal static IEnumerable<HuExpr> StatementExprs(HuStmt s)
@@ -432,6 +456,12 @@ public sealed class HuLowerer
                 yield return lt.X1; yield return lt.Y1; yield return lt.X2; yield return lt.Y2; yield return lt.Char;
                 break;
             case HuDefChr dc: yield return dc.Code; yield return dc.Pattern; break;
+            case HuInput inp: foreach (var t in inp.Targets) yield return t; break;
+            case HuMidSet ms:
+                yield return ms.Start;
+                if (ms.Length != null) yield return ms.Length;
+                yield return ms.Value;
+                break;
         }
     }
 

@@ -9,13 +9,13 @@ public static class HuKeywords
     public static readonly IReadOnlyList<string> All = new[]
     {
         "ABS", "AND", "ASC", "ATN", "ATTR$", "AUTO", "BASE", "BEEP", "BIN$", "BLOAD", "BSAVE",
-        "CALL", "CDBL", "CFLASH", "CGEN", "CGPAT$", "CHAIN", "CHR$", "CINT", "CIRCLE", "CLEAR",
+        "CALL", "CDBL", "CFLASH", "CGEN", "CGPAT$", "CHAIN", "CHARACTER$", "CHR$", "CINT", "CIRCLE", "CLEAR",
         "CLICK", "CLOSE", "CLR", "CLS", "COLOR", "CONSOLE", "CONT", "COS", "CREV", "CSIZE", "CSNG",
         "CSRLIN", "CVD", "CVI", "CVS", "DATA", "DATE$", "DEF", "DEFCHR$", "DEFDBL", "DEFINT",
         "DEFSNG", "DEFSTR", "DELETE", "DEVF", "DIM", "DSKF", "EDIT", "ELSE", "END", "EOF", "EQV",
         "ERASE", "ERL", "ERR", "ERROR", "EXP", "FIELD", "FILES", "FIX", "FN", "FOR", "FPOS", "FRAC",
         "FRE", "GET", "GOSUB", "GOTO", "HEX$", "HEXCHR$", "IF", "IMP", "INIT", "INKEY$", "INP",
-        "INPUT", "INSTR", "INT", "KBUF", "KEY", "KILL", "LEFT$", "LEN", "LET", "LINE", "LIST",
+        "INPUT", "INPUT$", "INSTR", "INT", "KBUF", "KEY", "KILL", "LEFT$", "LEN", "LET", "LINE", "LIST",
         "LLIST", "LOAD", "LOC", "LOCATE", "LOF", "LOG", "LPOS", "LPRINT", "LSET", "MERGE", "MID$",
         "MKD$", "MKI$", "MKS$", "MOD", "MON", "MUSIC", "NAME", "NEW", "NEXT", "NOT", "OCT$", "OFF",
         "ON", "OPEN", "OPTION", "OR", "OUT", "PAINT", "PALET", "PAUSE", "PEEK", "PLAY", "POINT",

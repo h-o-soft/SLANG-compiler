@@ -412,6 +412,8 @@ public sealed class SlangBackend : IHuBackend
                 };
             case HuCall { Name: "RND" }:
                 return "FRAND()";
+            case HuCall { Name: FlatPseudo.InputNum }:
+                return "BAS_INFN()";
             case HuCall { Name: "INT" } c:
                 return $"BAS_FFLOOR({Flt(c.Args[0])})";
         }
@@ -480,6 +482,20 @@ public sealed class SlangBackend : IHuBackend
         return outs;
     }
 
+    /// <summary>CHR$(a, b, …): それぞれの文字をつなげる (引数は左から順に評価する)</summary>
+    private string ChrOfCodes(HuCall c)
+    {
+        var v = Seq(c.Args.Select(x => (x, K.Int)).ToArray());
+        return v.Skip(1).Aggregate($"BAS_SCHR({v[0]})", (acc, x) => $"BAS_SCAT({acc}, BAS_SCHR({x}))");
+    }
+
+    /// <summary>STRING$(n, 文字コード): その文字を 1 文字にしてから繰り返す</summary>
+    private string StringOfCode(HuCall c)
+    {
+        var v = Seq((c.Args[0], K.Int), (c.Args[1], K.Int));
+        return $"BAS_SSTR({v[0]}, BAS_SCHR({v[1]}))";
+    }
+
     /// <summary>関数の呼び出しを、引数を左から順に評価する形で出す</summary>
     private string Call(string function, params (HuExpr E, K K)[] args)
         => $"{function}({string.Join(", ", Seq(args))})";
@@ -542,6 +558,16 @@ public sealed class SlangBackend : IHuBackend
                     "MID$" => c.Args.Count > 2
                         ? Call("BAS_SMID", (c.Args[0], K.Str), (c.Args[1], K.Int), (c.Args[2], K.Int))
                         : $"BAS_SMID({string.Join(", ", Seq((c.Args[0], K.Str), (c.Args[1], K.Int)))}, 255)",
+                    "LEFT$" => $"BAS_SMID({string.Join(", 1, ", Seq((c.Args[0], K.Str), (c.Args[1], K.Int)))})",
+                    "STRING$" => c.Args[1].Type == HuType.Str
+                        ? Call("BAS_SSTR", (c.Args[0], K.Int), (c.Args[1], K.Str))
+                        : StringOfCode(c),
+                    "CHARACTER$" => Call("BAS_SCHARA", (c.Args[0], K.Int), (c.Args[1], K.Int)),
+                    "INKEY$" when c.Args.Count > 0 => "BAS_SINKEY0()",
+                    "INPUT$" => $"BAS_SINPUT({Int(c.Args[0])})",
+                    FlatPseudo.InputStr => "BAS_INFS()",
+                    // CHR$(a, b, …) は 1 文字ずつ作って左からつなげる
+                    "CHR$" when c.Args.Count > 1 => ChrOfCodes(c),
                     "RIGHT$" => Call("BAS_SRIGHT", (c.Args[0], K.Str), (c.Args[1], K.Int)),
                     "CHR$" => $"BAS_SCHR({Int(c.Args[0])})",
                     "HEXCHR$" => $"BAS_SHEX({Str(c.Args[0])})",

@@ -34,7 +34,8 @@ public sealed record HuUnary(string Op, HuExpr Operand, HuPos Pos) : HuExpr(Pos)
 public sealed record HuBinary(string Op, HuExpr Left, HuExpr Right, HuPos Pos) : HuExpr(Pos);
 // Op: "+","-","*","/","\\","MOD","=","<>","<",">","<=",">=","AND","OR","XOR"
 
-/// <summary>組み込み関数 (INP, MID$, RIGHT$, CHR$, ASC, VAL, HEXCHR$, CGPAT$, INKEY$, STICK, STRIG, RND, INT)</summary>
+/// <summary>組み込み関数 (INP, MID$, LEFT$, RIGHT$, CHR$, ASC, VAL, HEXCHR$, CGPAT$, INKEY$, STICK, STRIG, RND, INT,
+/// STRING$, CHARACTER$, INPUT$)</summary>
 public sealed record HuCall(string Name, IReadOnlyList<HuExpr> Args, HuPos Pos) : HuExpr(Pos);
 
 // ---------------------------------------------------------------- 文
@@ -74,8 +75,17 @@ public sealed record HuPrint(int? Channel, HuExpr? Using, IReadOnlyList<HuPrintI
 /// PLAY, TEMPO, BEEP, CLICK, PAUSE)。省略された引数は null。</summary>
 public sealed record HuCommand(string Name, IReadOnlyList<HuExpr?> Args, HuPos Pos) : HuStmt(Pos);
 
-/// <summary>テキスト版 LINE (x1,y1)-(x2,y2),"c"[,B]</summary>
-public sealed record HuLineText(HuExpr X1, HuExpr Y1, HuExpr X2, HuExpr Y2, HuExpr Char, bool Box, HuPos Pos) : HuStmt(Pos);
+/// <summary>テキスト版 LINE (x1,y1)-(x2,y2),"c"[,B|BF]。Fill は BF (箱の中も塗る)</summary>
+public sealed record HuLineText(HuExpr X1, HuExpr Y1, HuExpr X2, HuExpr Y2, HuExpr Char, bool Box, HuPos Pos) : HuStmt(Pos)
+{
+    public bool Fill { get; init; }
+}
+
+/// <summary>INPUT ["案内" ; または ,] 変数, … (Question は案内の後に「? 」を出すか。案内なしなら出す)</summary>
+public sealed record HuInput(string? Prompt, bool Question, IReadOnlyList<HuExpr> Targets, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>MID$ の文: MID$(変数, 位置[, 長さ]) = 文字列 (変数の一部を置き換える。長さは変えない)</summary>
+public sealed record HuMidSet(string Var, HuExpr Start, HuExpr? Length, HuExpr Value, HuPos Pos) : HuStmt(Pos);
 
 public sealed record HuDefChr(HuExpr Code, HuExpr Pattern, HuPos Pos) : HuStmt(Pos);
 

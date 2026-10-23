@@ -19,7 +19,7 @@
 ; @name BAS_WORK
 ; @resident shared
 ; @param_count 0
-; @works BAS_CXY:2,BAS_WID:1,BAS_ATTR:1,BAS_CSZ:1,BAS_RAW:1,BAS_PAL:3,BAS_CSP:2,BAS_CSTK:640,BAS_TMPP:2,BAS_TMP:1024,BAS_NUMBUF:8,BAS_DBASE:2,BAS_DLTAB:2,BAS_DPOS:2,BAS_DEND:2,BAS_UFMT:256,BAS_PCGBUF:32,BAS_TEMPN:2,BAS_PLST:9,BAS_PLCH:15,BAS_LASTKEY:1,BAS_CLK:1,BAS_LNPTR:2
+; @works BAS_CXY:2,BAS_WID:1,BAS_ATTR:1,BAS_CSZ:1,BAS_RAW:1,BAS_PAL:3,BAS_CSP:2,BAS_CSTK:640,BAS_TMPP:2,BAS_TMP:1024,BAS_NUMBUF:8,BAS_DBASE:2,BAS_DLTAB:2,BAS_DPOS:2,BAS_DEND:2,BAS_UFMT:256,BAS_PCGBUF:32,BAS_TEMPN:2,BAS_PLST:9,BAS_PLCH:15,BAS_LASTKEY:1,BAS_CLK:1,BAS_LNPTR:2,BAS_INBUF:256,BAS_INPOS:2
 ; BAS_CX/CY: カーソル、BAS_WID: 桁数 (40/80)、BAS_ATTR: 現在の属性 (色 + CR/CF/CG)
 ; BAS_CSZ: CSIZE (0-3)、BAS_RAW: PRINT#0 中なら 1、BAS_PAL*: パレットの影 (書込専用ポートのため)
 ; BAS_CSP/BAS_CSTK: 制御スタック (10 バイト × 64 枠)
@@ -30,6 +30,7 @@
 ; (オクターブ・長さ (1/32 単位)・音量 × 3)、BAS_PLCH: PLAY 中のチャンネル (位置 2・残り 1・数え 1・動作中 1 × 3)
 ; BAS_LASTKEY: INKEY$ の押した瞬間の判定用、BAS_CLK: CLICK の状態
 ; BAS_LNPTR: 実行中の行番号を持つ変数のアドレス (0 なら行番号を出さない)
+; BAS_INBUF: INPUT で読んだ 1 行 (長さ付き)、BAS_INPOS: 次の項目の始まり (1 始まりの位置)
 ; カーソルとパレットは連続した番地が要るので、まとめて確保して EQU で分ける
 BAS_CX EQU BAS_CXY
 BAS_CY EQU BAS_CXY + 1
@@ -1835,11 +1836,11 @@ LD HL, 1
 RET
 
 
-; @name BAS_SINKEY
+; @name BAS_KEYIN
 ; @resident shared
 ; @param_count 0
-; @calls BAS_WORK,sGETKY,BAS_TALLOC
-; キーの文字を返す (なければ空文字列)。Hu-BASIC と同じく押しっぱなしでは自動でリピートする:
+; @calls BAS_WORK,sGETKY
+; A = キーの文字 (なければ 0。一時文字列を作らない)。Hu-BASIC と同じく押しっぱなしでは自動でリピートする:
 ; 押した瞬間に 1 回、約 30 フレーム後から約 3.8 フレームごと (4,4,4,4,4,3 の繰り返し、実測に合わせた値)。
 ; フレームは呼ばれるたびに垂直帰線の切り替わり (8255 port B の bit 7) を見て数えるので、
 ; ループで頻繁に呼ばれる使い方を前提とする。
@@ -1900,19 +1901,32 @@ DEC BC              ; 6 回に 1 回は 3
 ADD HL, BC
 LD (.bik_next), HL
 .bik_ret
+LD A, E
+RET
+.bik_none
+XOR A
+RET
+.bik_vprev DB 0
+.bik_frames DW 0
+.bik_next DW 0
+.bik_phase DB 0
+
+
+; @name BAS_SINKEY
+; @resident shared
+; @param_count 0
+; @calls BAS_KEYIN,BAS_TALLOC
+; INKEY$: キーの文字 (なければ空文字列)。押した瞬間とリピートの扱いは BAS_KEYIN
+CALL BAS_KEYIN
+LD E, A
+OR A
+JP Z, BAS_TALLOC        ; 長さ 0 の文字列
 LD A, 1
 CALL BAS_TALLOC
 INC HL
 LD (HL), E
 DEC HL
 RET
-.bik_none
-XOR A
-JP BAS_TALLOC
-.bik_vprev DB 0
-.bik_frames DW 0
-.bik_next DW 0
-.bik_phase DB 0
 
 
 ; ============================================================ DATA
@@ -2454,8 +2468,8 @@ RET
 ; @resident shared
 ; @calls BAS_WORK,BAS_VOFF,BAS_VPUT,BAS_ERROR
 ; @stack_cleanup callee
-; スタック引数 (x1, y1, x2, y2, 文字列, 箱なら 1)。指定した文字を現在の属性で、線 (水平・垂直・斜め)
-; または箱 (外周) に置く。画面の外のセルは書かない。カーソルは動かさない
+; スタック引数 (x1, y1, x2, y2, 文字列, 0 = 線 / 1 = 箱 / 2 = 塗りつぶした箱)。指定した文字を現在の属性で、
+; 線 (水平・垂直・斜め)、箱 (外周)、塗りつぶした箱 (BF) に置く。画面の外のセルは書かない。カーソルは動かさない
 POP HL
 LD (.btl_ret), HL
 POP HL
@@ -2483,6 +2497,8 @@ PUSH HL
 LD A, (.btl_box)
 OR A
 JP Z, .btl_line
+CP 2
+JP Z, .btl_fill
 ; 箱: 上下の辺と左右の辺
 LD HL, (.btl_y1)
 LD (.btl_hy), HL
@@ -2693,6 +2709,70 @@ RET
 LD A, D             ; 異符号: DE が負なら HL > DE
 RLA
 RET
+.btl_fill
+; 塗りつぶし: 先に画面の中 (左右は 0〜桁数-1、上下は 0〜24) に切り詰めてから、上から 1 行ずつ水平線を引く
+LD A, (BAS_WID)
+DEC A
+LD L, A
+LD H, 0
+LD (.btl_fxm), HL       ; 右端の桁
+LD HL, (.btl_x1)
+LD DE, (.btl_x2)
+CALL .btl_order
+BIT 7, D
+RET NZ                  ; 右端が負: 何も書かない
+BIT 7, H
+JP Z, .btl_fa
+LD HL, 0
+.btl_fa
+LD (.btl_x1), HL
+LD (.btl_x2), DE
+EX DE, HL               ; HL = x2
+LD DE, (.btl_fxm)
+CALL .btl_sgt           ; キャリー = x2 > 右端の桁
+JP NC, .btl_fb
+LD HL, (.btl_fxm)
+LD (.btl_x2), HL
+.btl_fb
+LD HL, (.btl_x1)
+LD DE, (.btl_x2)
+CALL .btl_sgt           ; 左端が右端を越えた (左端が画面の右の外): 何も書かない
+RET C
+LD HL, (.btl_y1)
+LD DE, (.btl_y2)
+CALL .btl_order
+BIT 7, D
+RET NZ                  ; 下端が負
+BIT 7, H
+JP Z, .btl_fc
+LD HL, 0
+.btl_fc
+LD (.btl_hy), HL
+LD (.btl_fy2), DE
+EX DE, HL               ; HL = y2
+LD DE, 24
+CALL .btl_sgt
+JP NC, .btl_fd
+LD HL, 24
+LD (.btl_fy2), HL
+.btl_fd
+LD HL, (.btl_hy)
+LD DE, (.btl_fy2)
+CALL .btl_sgt           ; 上端が 24 を越えた: 何も書かない
+RET C
+.btl_fl
+CALL .btl_hline
+LD HL, (.btl_hy)
+LD DE, (.btl_fy2)
+OR A
+SBC HL, DE
+RET Z
+LD HL, (.btl_hy)
+INC HL
+LD (.btl_hy), HL
+JP .btl_fl
+.btl_fxm DW 0
+.btl_fy2 DW 0
 .btl_ret DW 0
 .btl_box DW 0
 .btl_char DB 0
@@ -4212,3 +4292,839 @@ CALL BAS_FSTR
 CALL BAS_PSTRZ
 LD L, ' '
 JP BAS_PCHR
+
+
+; ============================================================ 文字列と画面 (段階 F1b)
+
+; @name BAS_SSTR
+; @resident shared
+; @param_count 2
+; @calls BAS_TALLOC,BAS_ERROR
+; HL = 回数 n、DE = 文字列 s → s を n 回つなげたもの (STRING$。s は全体を繰り返す)。
+; n が 0〜255 の外、s が空、結果が 255 バイトを超えるとエラー 5 (Hu-BASIC の実測)
+LD A, H
+OR A
+JP NZ, .bss_err
+LD A, (DE)
+OR A
+JP Z, .bss_err
+LD (.bss_s), DE
+LD (.bss_n), HL
+LD C, A
+LD B, L
+LD HL, 0
+LD D, 0
+LD E, C
+INC B
+DEC B
+JP Z, .bss_md
+.bss_ml
+ADD HL, DE
+DJNZ .bss_ml
+.bss_md
+LD A, H
+OR A
+JP NZ, .bss_err
+LD A, L
+CALL BAS_TALLOC         ; HL = 結果 (長さは書き込み済み)
+PUSH HL
+INC HL
+EX DE, HL               ; DE = 書き込み先
+LD A, (.bss_n)
+LD B, A
+INC B
+DEC B
+JP Z, .bss_done
+.bss_rep
+PUSH BC
+LD HL, (.bss_s)
+LD C, (HL)
+LD B, 0
+INC HL
+LDIR
+POP BC
+DJNZ .bss_rep
+.bss_done
+POP HL
+RET
+.bss_err
+LD HL, 5
+JP BAS_ERROR
+.bss_s DW 0
+.bss_n DW 0
+
+
+; @name BAS_SCHARA
+; @resident shared
+; @param_count 2
+; @calls BAS_WORK,BAS_VOFF,BAS_TALLOC,BAS_ERROR
+; HL = x、DE = y → 画面の (x, y) の文字 1 文字 (CHARACTER$。テキスト VRAM を読む)。範囲外はエラー 5
+LD A, H
+OR D
+JP NZ, .bsa_err
+LD A, (BAS_WID)
+DEC A
+CP L
+JP C, .bsa_err
+LD A, E
+CP 25
+JP NC, .bsa_err
+LD H, E                 ; H = y、L = x
+CALL BAS_VOFF
+LD A, H
+AND $07
+OR $30
+LD B, A
+LD C, L
+IN E, (C)               ; テキスト
+LD A, 1
+CALL BAS_TALLOC
+INC HL
+LD (HL), E
+DEC HL
+RET
+.bsa_err
+LD HL, 5
+JP BAS_ERROR
+
+
+; @name BAS_SMIDSET
+; @resident shared
+; @calls BAS_ERROR
+; @stack_cleanup callee
+; スタック引数 (変数の文字列, 位置 p, 長さ m, 文字列 s)。MID$ の文: 変数の p 文字目から、m・s の長さ・変数の残りの
+; 長さのうち いちばん短い数だけを s で置き換える (変数の長さは変えない)。p が 1〜255 の外、m が 0〜255 の外は
+; エラー 5。p が変数の長さより大きければ何もしない (Hu-BASIC の実測)
+POP HL
+LD (.bms_ret), HL
+POP HL
+LD (.bms_s), HL
+POP HL
+LD (.bms_m), HL
+POP HL
+LD (.bms_p), HL
+POP HL
+LD (.bms_v), HL
+LD HL, (.bms_ret)
+PUSH HL
+LD HL, (.bms_p)
+LD A, H
+OR A
+JP NZ, .bms_err
+LD A, L
+OR A
+JP Z, .bms_err
+LD HL, (.bms_m)
+LD A, H
+OR A
+JP NZ, .bms_err
+LD HL, (.bms_v)
+LD A, (HL)              ; 変数の長さ
+LD HL, .bms_p
+SUB (HL)
+RET C                   ; p が長さより大きい: 何もしない
+INC A                   ; 残りの長さ
+LD B, A
+LD A, (.bms_m)
+CP B
+JP NC, .bms_1
+LD B, A
+.bms_1
+LD HL, (.bms_s)
+LD A, (HL)
+CP B
+JP NC, .bms_2
+LD B, A
+.bms_2
+LD A, B
+OR A
+RET Z
+LD C, B
+LD B, 0                 ; BC = 置き換える数
+LD HL, (.bms_v)
+LD A, (.bms_p)
+LD E, A
+LD D, 0
+ADD HL, DE              ; HL = p 文字目
+EX DE, HL
+LD HL, (.bms_s)
+INC HL
+LDIR
+RET
+.bms_err
+LD HL, 5
+JP BAS_ERROR
+.bms_ret DW 0
+.bms_s DW 0
+.bms_m DW 0
+.bms_p DW 0
+.bms_v DW 0
+
+
+; ============================================================ 入力と音 (段階 F1c)
+
+; @name BAS_SINKEY0
+; @resident shared
+; @param_count 0
+; @calls sGETKY,BAS_TALLOC
+; INKEY$(0): いま押されているキーの文字 (押している間ずっと返す。なければ空文字列)
+CALL sGETKY
+LD E, A
+OR A
+JP Z, BAS_TALLOC
+LD A, 1
+CALL BAS_TALLOC
+INC HL
+LD (HL), E
+DEC HL
+RET
+
+
+; @name BAS_SINPUT
+; @resident shared
+; @param_count 1
+; @calls BAS_KEYIN,BAS_TALLOC,BAS_ERROR
+; HL = 文字数 n → キーを n 個待って読んだ文字列 (INPUT$。画面には出さない。RETURN なども 1 文字として読む)。
+; n が 0〜255 の外はエラー 5
+LD A, H
+OR A
+JP NZ, .bsi_err
+LD A, L
+LD (.bsi_n), A
+CALL BAS_TALLOC
+LD (.bsi_res), HL
+LD A, (.bsi_n)
+OR A
+RET Z
+LD B, A
+INC HL
+.bsi_loop
+PUSH BC
+PUSH HL
+.bsi_wait
+CALL BAS_KEYIN
+OR A
+JP Z, .bsi_wait
+POP HL
+LD (HL), A
+INC HL
+POP BC
+DJNZ .bsi_loop
+LD HL, (.bsi_res)
+RET
+.bsi_err
+LD HL, 5
+JP BAS_ERROR
+.bsi_n DB 0
+.bsi_res DW 0
+
+
+; @name BAS_INPUT
+; @resident shared
+; @param_count 2
+; @calls BAS_WORK,BAS_PSTR,BAS_PSTRZ,BAS_PCHR,BAS_KEYIN,BAS_NEWLINE,BAS_VOFF,BAS_VPUT
+; HL = 案内の文字列 (0 なら出さない)、DE = 1 なら「? 」を出す。キーを 1 行分読んで (画面に出しながら。BS で 1 文字消す、
+; RETURN で終わり) BAS_INBUF に入れ、次の項目の位置を先頭にする。項目は BAS_INFS / BAS_INFN で取り出す
+LD A, H
+OR L
+JP Z, .bin_np
+PUSH DE
+CALL BAS_PSTR
+POP DE
+.bin_np
+LD A, E
+OR A
+JP Z, .bin_rd
+LD HL, .bin_q
+CALL BAS_PSTRZ
+.bin_rd
+XOR A
+LD (BAS_INBUF), A
+.bin_key
+CALL BAS_KEYIN
+OR A
+JP Z, .bin_key
+CP $0D
+JP Z, .bin_end
+CP $08
+JP Z, .bin_bs
+CP $20
+JP C, .bin_key          ; ほかの制御コードは無視
+LD E, A
+LD HL, BAS_INBUF
+LD A, (HL)
+CP 255
+JP Z, .bin_key          ; いっぱい
+INC (HL)
+LD C, A
+LD B, 0
+INC HL
+ADD HL, BC
+LD (HL), E
+LD L, E
+CALL BAS_PCHR
+JP .bin_key
+.bin_bs
+LD HL, BAS_INBUF
+LD A, (HL)
+OR A
+JP Z, .bin_key
+DEC (HL)
+LD A, (BAS_CX)          ; カーソルを 1 つ戻して、そこを空白にする (行の頭なら前の行の末尾へ)
+OR A
+JP NZ, .bin_bs1
+LD A, (BAS_CY)
+OR A
+JP Z, .bin_key
+DEC A
+LD (BAS_CY), A
+LD A, (BAS_WID)
+.bin_bs1
+DEC A
+LD (BAS_CX), A
+LD HL, (BAS_CX)
+CALL BAS_VOFF
+LD E, ' '
+LD A, (BAS_ATTR)
+LD D, A
+CALL BAS_VPUT
+JP .bin_key
+.bin_end
+CALL BAS_NEWLINE
+LD HL, 1
+LD (BAS_INPOS), HL
+RET
+.bin_q DB "? ", 0
+
+
+; @name BAS_INFS
+; @resident shared
+; @param_count 0
+; @calls BAS_WORK,BAS_TALLOC
+; INPUT で読んだ行の次の項目 → 一時文字列。項目はカンマで区切り、頭と後ろの空白を除く。" で始まれば次の " までを
+; そのまま (カンマを含めてよい)。項目が尽きていれば空文字列 (Hu-BASIC は聞き直さない。実測)
+LD A, (BAS_INBUF)
+LD E, A
+LD D, 0
+LD HL, BAS_INBUF
+ADD HL, DE
+LD (.bif_end), HL       ; 最後の文字の番地
+LD DE, (BAS_INPOS)
+LD HL, BAS_INBUF
+ADD HL, DE              ; HL = 次の文字の番地
+LD (.bif_s), HL
+.bif_sp
+CALL .bif_past
+JP C, .bif_none
+LD A, (HL)
+CP ' '
+JP NZ, .bif_st
+INC HL
+JP .bif_sp
+.bif_st
+CP '"'
+JP Z, .bif_quote
+LD (.bif_s), HL
+.bif_sc
+CALL .bif_past
+JP C, .bif_cut
+LD A, (HL)
+CP ','
+JP Z, .bif_cut
+INC HL
+JP .bif_sc
+.bif_cut
+PUSH HL                 ; 区切り (カンマか末尾の次)
+DEC HL
+.bif_tr
+LD DE, (.bif_s)
+PUSH HL
+OR A
+SBC HL, DE
+POP HL
+JP C, .bif_trd          ; 項目が空になった
+LD A, (HL)
+CP ' '
+JP NZ, .bif_trd
+DEC HL
+JP .bif_tr
+.bif_trd
+INC HL
+LD DE, (.bif_s)
+OR A
+SBC HL, DE
+LD A, L                 ; 長さ
+POP HL
+PUSH AF
+CALL .bif_next
+POP AF
+JP .bif_make
+.bif_quote
+INC HL
+LD (.bif_s), HL
+.bif_qs
+CALL .bif_past
+JP C, .bif_qe
+LD A, (HL)
+CP '"'
+JP Z, .bif_qe
+INC HL
+JP .bif_qs
+.bif_qe
+PUSH HL
+LD DE, (.bif_s)
+OR A
+SBC HL, DE
+LD A, L
+POP HL
+PUSH AF
+.bif_qk                 ; 閉じの " の後ろは、次のカンマまで捨てる
+CALL .bif_past
+JP C, .bif_qk2
+LD A, (HL)
+CP ','
+JP Z, .bif_qk2
+INC HL
+JP .bif_qk
+.bif_qk2
+CALL .bif_next
+POP AF
+JP .bif_make
+.bif_none
+CALL .bif_next
+XOR A
+.bif_make
+LD C, A                 ; A = 長さ、(.bif_s) = 始まり → 一時文字列に写す
+CALL BAS_TALLOC
+PUSH HL
+LD A, C
+OR A
+JP Z, .bif_mk1
+INC HL
+EX DE, HL
+LD HL, (.bif_s)
+LD B, 0
+LDIR
+.bif_mk1
+POP HL
+RET
+.bif_past               ; HL が最後の文字を越えたか → キャリー
+PUSH DE
+EX DE, HL
+LD HL, (.bif_end)
+OR A
+SBC HL, DE
+EX DE, HL
+POP DE
+RET
+.bif_next               ; 区切りの番地 HL の次を、次の項目の始まりにする
+LD DE, BAS_INBUF
+OR A
+SBC HL, DE
+INC HL
+LD (BAS_INPOS), HL
+RET
+.bif_end DW 0
+.bif_s DW 0
+
+
+; @name BAS_INFN
+; @resident shared
+; @param_count 0
+; @result_type float
+; @calls BAS_INFS,BAS_SVALF
+; INPUT で読んだ行の次の項目を数として → AHL (VAL と同じ読み方。読めなければ 0。Hu-BASIC は聞き直さない。実測)
+CALL BAS_INFS
+JP BAS_SVALF
+
+
+; @name BAS_SVALF
+; @resident shared
+; @param_count 1
+; @result_type float
+; @calls BAS_SVAL,i16tof24,u16tof24,f24mul,f24add,f24pow10_LUT
+; HL = 文字列 → AHL = 数として読めた所までの値 (VAL と同じ読み方で、小数点と指数 E・D も読む。読めなければ 0)。
+; 有効数字は 9 桁まで (それより下の桁は捨てる)。&H・&O・&B は整数の VAL (BAS_SVAL) と同じ
+LD (.bsv_str), HL
+LD B, (HL)              ; B = 残りの文字数
+INC HL
+XOR A
+LD (.bsv_neg), A
+LD (.bsv_nd), A
+LD (.bsv_eneg), A
+LD (.bsv_m), A
+LD (.bsv_m + 1), A
+LD (.bsv_m + 2), A
+LD (.bsv_m + 3), A
+LD DE, 0
+LD (.bsv_x), DE
+LD (.bsv_e), DE
+.bsv_sp
+LD A, B
+OR A
+JP Z, .bsv_conv
+LD A, (HL)
+CP ' '
+JP NZ, .bsv_sg
+INC HL
+DEC B
+JP .bsv_sp
+.bsv_sg
+CP '&'
+JP Z, .bsv_radix
+CP '+'
+JP Z, .bsv_sg1
+CP '-'
+JP NZ, .bsv_int
+LD A, 1
+LD (.bsv_neg), A
+.bsv_sg1
+INC HL
+DEC B
+.bsv_int                ; 整数部
+LD A, B
+OR A
+JP Z, .bsv_conv
+LD A, (HL)
+CP '.'
+JP Z, .bsv_dot
+CALL .bsv_isexp
+JP Z, .bsv_exp
+SUB '0'
+JP C, .bsv_conv
+CP 10
+JP NC, .bsv_conv
+CALL .bsv_add           ; キャリー = 桁を捨てた (その分 10 倍)
+JP NC, .bsv_i1
+PUSH HL
+LD HL, (.bsv_x)
+INC HL
+LD (.bsv_x), HL
+POP HL
+.bsv_i1
+INC HL
+DEC B
+JP .bsv_int
+.bsv_dot
+INC HL
+DEC B
+.bsv_frac               ; 小数部
+LD A, B
+OR A
+JP Z, .bsv_conv
+LD A, (HL)
+CALL .bsv_isexp
+JP Z, .bsv_exp
+SUB '0'
+JP C, .bsv_conv
+CP 10
+JP NC, .bsv_conv
+CALL .bsv_add
+JP C, .bsv_f1
+PUSH HL
+LD HL, (.bsv_x)
+DEC HL
+LD (.bsv_x), HL
+POP HL
+.bsv_f1
+INC HL
+DEC B
+JP .bsv_frac
+.bsv_exp                ; 指数: [+-]数字
+INC HL
+DEC B
+LD A, B
+OR A
+JP Z, .bsv_conv
+LD A, (HL)
+CP '+'
+JP Z, .bsv_e0
+CP '-'
+JP NZ, .bsv_e1
+LD A, 1
+LD (.bsv_eneg), A
+.bsv_e0
+INC HL
+DEC B
+.bsv_e1
+LD A, B
+OR A
+JP Z, .bsv_conv
+LD A, (HL)
+SUB '0'
+JP C, .bsv_conv
+CP 10
+JP NC, .bsv_conv
+PUSH HL
+LD C, A
+LD HL, (.bsv_e)
+LD D, H
+LD E, L
+ADD HL, HL
+ADD HL, HL
+ADD HL, DE
+ADD HL, HL              ; × 10
+LD E, C
+LD D, 0
+ADD HL, DE
+LD A, H
+CP 4
+JP C, .bsv_e2
+LD HL, 999              ; 大きすぎる指数は 999 で止める
+.bsv_e2
+LD (.bsv_e), HL
+POP HL
+INC HL
+DEC B
+JP .bsv_e1
+.bsv_radix
+LD HL, (.bsv_str)
+CALL BAS_SVAL
+JP i16tof24
+.bsv_conv               ; 仮数 M (32 ビット) → f24 (上位 × 65536 + 下位)
+LD HL, (.bsv_m)
+LD DE, (.bsv_m + 2)
+LD A, H
+OR L
+OR D
+OR E
+JP NZ, .bsv_c1
+XOR A
+LD H, A
+LD L, A
+RET
+.bsv_c1
+EX DE, HL
+CALL u16tof24
+LD C, $4F               ; × 65536 (2^16)
+LD DE, 0
+CALL f24mul
+LD (.bsv_f), HL
+LD (.bsv_f + 2), A
+LD HL, (.bsv_m)
+CALL u16tof24
+LD DE, (.bsv_f)
+PUSH AF
+LD A, (.bsv_f + 2)
+LD C, A
+POP AF
+CALL f24add
+LD (.bsv_f), HL
+LD (.bsv_f + 2), A
+LD HL, (.bsv_e)         ; 10 進の指数 X = 桁の補正 ± 指数
+LD A, (.bsv_eneg)
+OR A
+JP Z, .bsv_x1
+EX DE, HL
+LD HL, 0
+OR A
+SBC HL, DE
+.bsv_x1
+LD DE, (.bsv_x)
+ADD HL, DE
+LD (.bsv_xx), HL
+.bsv_sc                 ; 10^X を、表 (1e19〜1e-18) の値を掛けて合わせる
+LD HL, (.bsv_xx)
+LD A, H
+OR L
+JP Z, .bsv_sgn
+BIT 7, H
+JP NZ, .bsv_scn
+LD DE, 20
+OR A
+SBC HL, DE
+JP C, .bsv_scp          ; X <= 19
+LD HL, (.bsv_xx)
+LD DE, -19
+ADD HL, DE
+LD (.bsv_xx), HL
+LD DE, 19
+CALL .bsv_mulp
+JP .bsv_sc
+.bsv_scp
+LD DE, (.bsv_xx)
+LD HL, 0
+LD (.bsv_xx), HL
+CALL .bsv_mulp
+JP .bsv_sgn
+.bsv_scn
+LD DE, 18
+ADD HL, DE
+BIT 7, H
+JP Z, .bsv_scq          ; X >= -18
+LD HL, (.bsv_xx)
+LD DE, 18
+ADD HL, DE
+LD (.bsv_xx), HL
+LD DE, -18
+CALL .bsv_mulp
+JP .bsv_sc
+.bsv_scq
+LD DE, (.bsv_xx)
+LD HL, 0
+LD (.bsv_xx), HL
+CALL .bsv_mulp
+.bsv_sgn
+LD HL, (.bsv_f)
+LD A, (.bsv_f + 2)
+LD C, A
+LD A, (.bsv_neg)
+OR A
+LD A, C
+RET Z
+AND $7F
+RET Z                   ; 0 には符号を付けない
+OR $80
+RET
+.bsv_mulp               ; (.bsv_f) ×= 10^k (DE = k、-18〜19)
+LD HL, 19
+OR A
+SBC HL, DE              ; 表の何番目か (0〜37)
+LD D, H
+LD E, L
+ADD HL, HL
+ADD HL, DE              ; × 3 バイト
+LD DE, f24pow10_LUT
+ADD HL, DE
+LD E, (HL)
+INC HL
+LD D, (HL)
+INC HL
+LD C, (HL)
+LD HL, (.bsv_f)
+LD A, (.bsv_f + 2)
+CALL f24mul
+LD (.bsv_f), HL
+LD (.bsv_f + 2), A
+RET
+.bsv_isexp              ; A が指数の文字 (E e D d) なら Z
+CP 'E'
+RET Z
+CP 'e'
+RET Z
+CP 'D'
+RET Z
+CP 'd'
+RET
+.bsv_add                ; M = M × 10 + A。有効数字が 9 桁あれば加えずにキャリー (B・HL は壊さない)
+LD C, A
+LD A, (.bsv_nd)
+CP 9
+JP NC, .bsv_drop
+PUSH HL
+PUSH BC
+LD HL, (.bsv_m)
+LD DE, (.bsv_m + 2)
+ADD HL, HL
+EX DE, HL
+ADC HL, HL
+EX DE, HL               ; DE:HL = M × 2
+LD (.bsv_t), HL
+LD (.bsv_t + 2), DE
+ADD HL, HL
+EX DE, HL
+ADC HL, HL
+EX DE, HL               ; × 4
+ADD HL, HL
+EX DE, HL
+ADC HL, HL
+EX DE, HL               ; × 8
+LD BC, (.bsv_t)
+ADD HL, BC
+EX DE, HL
+LD BC, (.bsv_t + 2)
+ADC HL, BC
+EX DE, HL               ; × 10
+POP BC
+PUSH BC
+LD B, 0
+ADD HL, BC              ; + 数字 (C)
+EX DE, HL
+LD BC, 0
+ADC HL, BC
+EX DE, HL
+LD (.bsv_m), HL
+LD (.bsv_m + 2), DE
+LD A, H
+OR L
+OR D
+OR E
+JP Z, .bsv_a0           ; まだ 0 (頭の 0) なら有効数字に数えない
+LD A, (.bsv_nd)
+INC A
+LD (.bsv_nd), A
+.bsv_a0
+POP BC
+POP HL
+OR A
+RET
+.bsv_drop
+SCF
+RET
+.bsv_str DW 0
+.bsv_neg DB 0
+.bsv_nd DB 0
+.bsv_eneg DB 0
+.bsv_m DB 0, 0, 0, 0
+.bsv_t DB 0, 0, 0, 0
+.bsv_f DB 0, 0, 0
+.bsv_x DW 0
+.bsv_e DW 0
+.bsv_xx DW 0
+
+
+; @name BAS_SOUND
+; @resident shared
+; @param_count 2
+; @calls BAS_PSGW,BAS_ERROR
+; HL = PSG のレジスタ (0〜13)、DE = 値 (0〜255) を書く (SOUND)。範囲外はエラー 5。PLAY の状態とは連動しない
+LD A, H
+OR D
+JP NZ, .bsd_err
+LD A, L
+CP 14
+JP NC, .bsd_err
+JP BAS_PSGW
+.bsd_err
+LD HL, 5
+JP BAS_ERROR
+
+
+; @name BAS_BEEPN
+; @resident shared
+; @param_count 1
+; @calls BAS_PSGW,BAS_ERROR
+; HL = 1: チャンネル C で BEEP の音 (音程の値 190・音量 15) を鳴らし始める、0: チャンネル A・B・C の音量を 0 にして
+; 止める (BEEP 1 / BEEP 0)。それ以外はエラー 5
+LD A, H
+OR A
+JP NZ, .bbn_err
+LD A, L
+OR A
+JP Z, .bbn_off
+DEC A
+JP NZ, .bbn_err
+LD A, 7
+LD E, $38
+CALL BAS_PSGW
+LD A, 4
+LD E, 190
+CALL BAS_PSGW
+LD A, 5
+LD E, 0
+CALL BAS_PSGW
+LD A, 10
+LD E, 15
+JP BAS_PSGW
+.bbn_off
+LD E, 0
+LD A, 8
+CALL BAS_PSGW
+LD A, 9
+CALL BAS_PSGW
+LD A, 10
+JP BAS_PSGW
+.bbn_err
+LD HL, 5
+JP BAS_ERROR
+
