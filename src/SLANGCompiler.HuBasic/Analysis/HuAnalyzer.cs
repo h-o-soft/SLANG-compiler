@@ -203,6 +203,14 @@ public sealed class HuAnalyzer
             => l != 0 && Math.Abs(r) > Limit / Math.Abs(l) ? null : l * r;
     }
 
+    /// <summary>数の定数 (整数か浮動小数) 1 つに符号を付けただけの式か</summary>
+    private static bool IsSignedNumConst(HuExpr e) => e switch
+    {
+        HuNum or HuFloat => true,
+        HuUnary { Op: "-" or "+" } u => IsSignedNumConst(u.Operand),
+        _ => false,
+    };
+
     /// <summary>浮動小数の定数 1 つに符号を付けただけの式か</summary>
     private static bool IsSignedFloatConst(HuExpr e) => e switch
     {
@@ -425,8 +433,13 @@ public sealed class HuAnalyzer
             case "INKEY$":
                 return HuType.Str;
             case "RND":
-                // 引数の意味は記録にないので、読んで捨てる
-                if (a.Count > 0) ExpectNum(a[0], intConv: false);
+                // 引数の意味は記録にないので、数の定数だけを受け付けて捨てる (式を書くと評価を省けないため)
+                if (a.Count > 0)
+                {
+                    ExpectNum(a[0], intConv: false);
+                    if (!IsSignedNumConst(a[0]))
+                        _diag.Error("HB0302", "RND の引数は数の定数だけに対応しています", c.Pos);
+                }
                 return HuType.Float;
             case "INT":
                 ExpectNum(a[0], intConv: false);

@@ -292,6 +292,33 @@ public class HuBasicEmitTests
         Assert.Null(ng.Output);
     }
 
+    /// <summary>後ろの式が一時変数の前置きを出しても、前にある入力・乱数などの式が先に評価される</summary>
+    [Fact]
+    public void Float_HoistingPreservesEvaluationOrder()
+    {
+        var sl = Body(Transpile("10 DEFINT A-Z:A=ASC(INKEY$)\\(ASC(INKEY$)*1.0+1.0)").Output!);
+        var lines = sl.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
+        int first = lines.FindIndex(l => l.Contains("BAS_SINKEY()"));
+        // 左の INKEY$ が整数の一時変数に先に入り、右の INKEY$ (浮動小数の一時変数への代入) はその後
+        Assert.StartsWith("H_I1=BAS_SASC(BAS_SINKEY())", lines[first]);
+        Assert.StartsWith("H_F1=BAS_SASC(BAS_SINKEY())", lines[first + 1]);
+        Assert.Contains("V_A=BAS_IDIV(H_I1, ", sl);
+        Assert.Contains("VAR H_I1;", Transpile("10 DEFINT A-Z:A=ASC(INKEY$)\\(ASC(INKEY$)*1.0+1.0)").Output!);
+        // 副作用のない左の式は、そのまま (一時変数を増やさない)
+        Assert.DoesNotContain("H_I1", Body(Transpile("10 DEFINT A-Z:A=X\\(Y*1.5)").Output!));
+    }
+
+    [Theory]
+    [InlineData("10 DEFINT A-Z:PRINT RND(1)", false)]
+    [InlineData("10 DEFINT A-Z:PRINT RND(-1.5)", false)]
+    [InlineData("10 DEFINT A-Z:PRINT RND(X)", true)]      // 式の引数は評価を省けないので未対応
+    [InlineData("10 DEFINT A-Z:PRINT RND(1/0)", true)]
+    public void Float_RndArgumentMustBeConstant(string program, bool rejected)
+    {
+        var r = HuTranspiler.Transpile(program);
+        Assert.Equal(rejected, r.Diagnostics.Items.Any(d => d.Code == "HB0302"));
+    }
+
     /// <summary>整数の -X は整数で計算してから浮動小数にする (X が -32768 のとき値が変わらないように)</summary>
     [Fact]
     public void Float_IntegerNegationIsComputedBeforePromotion()

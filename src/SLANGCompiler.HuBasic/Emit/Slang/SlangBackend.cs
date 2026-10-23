@@ -22,9 +22,11 @@ public sealed class SlangBackend : IHuBackend
     private readonly Dictionary<long, int> _fconstIds = new();
     private int _ftemp;      // いまの文で使った浮動小数の一時変数の数
     private int _maxFtemp;   // 文ごとの最大 (宣言する数)
+    private int _itemp;      // いまの文で使った整数 (と文字列のポインタ) の一時変数の数
+    private int _maxItemp;
 
-    /// <summary>浮動小数の定数の表と一時変数の大きさ (1 つ 3 バイト)</summary>
-    public int ExtraStaticBytes => (_fconsts.Count + _maxFtemp) * 3;
+    /// <summary>浮動小数の定数の表と一時変数 (1 つ 3 バイト)、整数の一時変数 (1 つ 2 バイト) の大きさ</summary>
+    public int ExtraStaticBytes => (_fconsts.Count + _maxFtemp) * 3 + _maxItemp * 2;
 
     public string Emit(HuProgram program, HuFlat flat, HuEmitOptions options)
     {
@@ -34,6 +36,7 @@ public sealed class SlangBackend : IHuBackend
         _fconsts.Clear();
         _fconstIds.Clear();
         _maxFtemp = 0;
+        _maxItemp = 0;
         // 本体を先に作る (浮動小数の定数と一時変数の数は、本体を作り終えるまで分からない)
         foreach (var op in flat.Ops) EmitOp(op, options);
 
@@ -81,6 +84,8 @@ public sealed class SlangBackend : IHuBackend
         foreach (var chunk in vars.Chunk(8))
             _sb.AppendLine($"VAR {string.Join(", ", chunk)};");
         // 浮動小数の一時変数 (SLANG は変数ごとに型を書かないと WORD になる)
+        foreach (var chunk in Enumerable.Range(1, _maxItemp).Select(ITempName).Chunk(8))
+            _sb.AppendLine($"VAR {string.Join(", ", chunk)};");
         var ftemps = Enumerable.Range(1, _maxFtemp).Select(i => "FLOAT " + FTempName(i)).ToList();
         foreach (var chunk in ftemps.Chunk(8))
             _sb.AppendLine($"VAR {string.Join(", ", chunk)};");
@@ -131,6 +136,7 @@ public sealed class SlangBackend : IHuBackend
     private void EmitOp(FlatOp op, HuEmitOptions options)
     {
         _ftemp = 0;
+        _itemp = 0;
         switch (op)
         {
             case FLabel l:
@@ -159,7 +165,7 @@ public sealed class SlangBackend : IHuBackend
                 break;
             case FCall c:
             {
-                var call = $"{c.Function}({string.Join(", ", c.Args.Select(Arg))})";
+                var call = $"{c.Function}({string.Join(", ", Args(c.Args))})";
                 Line(c.Result != null ? $"{HiddenName(c.Result)}={call};" : $"{call};");
                 break;
             }
@@ -170,8 +176,11 @@ public sealed class SlangBackend : IHuBackend
                 break;
             }
             case FPortOut po:
-                Line($"PORT[{Int(po.Port)}]={Int(po.Value)};");
+            {
+                var pv = Seq((po.Port, K.Int), (po.Value, K.Int));
+                Line($"PORT[{pv[0]}]={pv[1]};");
                 break;
+            }
         }
     }
 
@@ -180,6 +189,22 @@ public sealed class SlangBackend : IHuBackend
         var sb = new StringBuilder();
         foreach (var c in s) sb.Append(c >= 0x20 && c < 0x7F ? c : '?');
         return sb.ToString();
+    }
+
+    /// <summary>ランタイム呼び出しの引数を左から順に (式の評価の順を保つ。<see cref="Seq"/>)</summary>
+    private IEnumerable<string> Args(IReadOnlyList<FArg> args)
+    {
+        var items = new List<(HuExpr E, K K)>();
+        var index = new List<int>();
+        for (int i = 0; i < args.Count; i++)
+        {
+            if (args[i] is FExprArg e) { index.Add(items.Count); items.Add((e.Expr, e.Expr.Type == HuType.Str ? K.Str : K.Int)); }
+            else if (args[i] is FFloatArg f) { index.Add(items.Count); items.Add((f.Expr, K.Flt)); }
+            else index.Add(-1);
+        }
+        var vals = Seq(items.ToArray());
+        for (int i = 0; i < args.Count; i++)
+            yield return index[i] >= 0 ? vals[index[i]] : Arg(args[i]);
     }
 
     private string Arg(FArg a) => a switch
@@ -238,7 +263,8 @@ public sealed class SlangBackend : IHuBackend
         }
         if (b.Left.Type == HuType.Str)
         {
-            var cmp = $"BAS_SCMP({Str(b.Left)}, {Str(b.Right)})";
+            var sv = Seq((b.Left, K.Str), (b.Right, K.Str));
+            var cmp = $"BAS_SCMP({sv[0]}, {sv[1]})";
             return b.Op switch
             {
                 "=" => $"({cmp}==0)",
@@ -246,7 +272,8 @@ public sealed class SlangBackend : IHuBackend
                 _ => $"({cmp} {SignedCompare[b.Op]} 0)",
             };
         }
-        return $"(({Int(b.Left)}) {SignedCompare[b.Op]} ({Int(b.Right)}))";
+        var iv = Seq((b.Left, K.Int), (b.Right, K.Int));
+        return $"(({iv[0]}) {SignedCompare[b.Op]} ({iv[1]}))";
     }
 
     /// <summary>整数の式 (値。比較は -1/0 に変換する)</summary>
@@ -271,21 +298,19 @@ public sealed class SlangBackend : IHuBackend
             case HuBinary b:
                 if (SignedCompare.ContainsKey(b.Op))
                     return $"(0-{Compare(b)})";
+                var lr = Seq((b.Left, K.Int), (b.Right, K.Int));
+                var (l, r) = (lr[0], lr[1]);
                 return b.Op switch
                 {
-                    "+" => $"(({Int(b.Left)})+({Int(b.Right)}))",
-                    "-" => $"(({Int(b.Left)})-({Int(b.Right)}))",
-                    "*" => $"(({Int(b.Left)})*({Int(b.Right)}))",
-                    "/" => $"BAS_IDIVR({Int(b.Left)}, {Int(b.Right)})",
-                    "\\" => IsNonZeroConst(b.Right)
-                        ? $"(({Int(b.Left)})./.({Int(b.Right)}))"
-                        : $"BAS_IDIV({Int(b.Left)}, {Int(b.Right)})",
-                    "MOD" => IsNonZeroConst(b.Right)
-                        ? $"(({Int(b.Left)}).MOD.({Int(b.Right)}))"
-                        : $"BAS_IMOD({Int(b.Left)}, {Int(b.Right)})",
-                    "AND" => $"(({Int(b.Left)}) AND ({Int(b.Right)}))",
-                    "OR" => $"(({Int(b.Left)}) OR ({Int(b.Right)}))",
-                    "XOR" => $"(({Int(b.Left)}) XOR ({Int(b.Right)}))",
+                    "+" => $"(({l})+({r}))",
+                    "-" => $"(({l})-({r}))",
+                    "*" => $"(({l})*({r}))",
+                    "/" => $"BAS_IDIVR({l}, {r})",
+                    "\\" => IsNonZeroConst(b.Right) ? $"(({l})./.({r}))" : $"BAS_IDIV({l}, {r})",
+                    "MOD" => IsNonZeroConst(b.Right) ? $"(({l}).MOD.({r}))" : $"BAS_IMOD({l}, {r})",
+                    "AND" => $"(({l}) AND ({r}))",
+                    "OR" => $"(({l}) OR ({r}))",
+                    "XOR" => $"(({l}) XOR ({r}))",
                     _ => throw new InvalidOperationException(b.Op),
                 };
             case HuCall c:
@@ -356,7 +381,7 @@ public sealed class SlangBackend : IHuBackend
             case HuBinary b when b.Type == HuType.Float:
                 return b.Op switch
                 {
-                    "+" or "-" or "*" => $"({Flt(b.Left)}{b.Op}{Flt(b.Right)})",
+                    "+" or "-" or "*" => FltPair(b),
                     "/" => $"BAS_FDIV({FAddr(b.Left)}, {FAddr(b.Right)})",
                     _ => throw new InvalidOperationException(b.Op),
                 };
@@ -370,6 +395,72 @@ public sealed class SlangBackend : IHuBackend
         _pre.Add($"{t}={Int(e)};");
         return t;
     }
+
+    private string FltPair(HuBinary b)
+    {
+        var v = Seq((b.Left, K.Flt), (b.Right, K.Flt));
+        return $"({v[0]}{b.Op}{v[1]})";
+    }
+
+    // ------------------------------------------------------------ 評価の順
+
+    private enum K { Int, Str, Flt }
+
+    public static string ITempName(int i) => "H_I" + i;
+
+    private string NewITemp()
+    {
+        _itemp++;
+        _maxItemp = Math.Max(_maxItemp, _itemp);
+        return ITempName(_itemp);
+    }
+
+    /// <summary>実行するたびに結果が変わる・状態を進める関数 (入力・乱数・DATA の読み出し)</summary>
+    private static readonly HashSet<string> ImpureCalls = new()
+    {
+        "INKEY$", "RND", "STICK", "STRIG", "INP", FlatPseudo.ReadNum, FlatPseudo.ReadStr,
+    };
+
+    /// <summary>式に、実行するたびに結果が変わる関数が含まれるか</summary>
+    private static bool IsImpure(HuExpr e) => e switch
+    {
+        HuCall c => ImpureCalls.Contains(c.Name) || c.Args.Any(IsImpure),
+        HuBinary b => IsImpure(b.Left) || IsImpure(b.Right),
+        HuUnary u => IsImpure(u.Operand),
+        HuIndex ix => IsImpure(ix.Index),
+        _ => false,
+    };
+
+    /// <summary>
+    /// 式の並びを、左から順に評価される形で出す。後ろの式が前置きの代入 (一時変数) を出したときは、それより前にある
+    /// 「実行するたびに結果が変わる」式を一時変数に入れて、その前置きの前に置く (前置きは文の行より前に実行されるため、
+    /// そのままだと後ろの式の一部が先に評価される)。
+    /// </summary>
+    private string[] Seq(params (HuExpr E, K K)[] items)
+    {
+        var outs = new string[items.Length];
+        var done = new bool[items.Length];
+        for (int i = 0; i < items.Length; i++)
+        {
+            int mark = _pre.Count;
+            outs[i] = items[i].K switch { K.Int => Int(items[i].E), K.Str => Str(items[i].E), _ => Flt(items[i].E) };
+            if (_pre.Count == mark) continue;
+            int at = mark;
+            for (int j = 0; j < i; j++)
+            {
+                if (done[j] || !IsImpure(items[j].E)) continue;
+                var t = items[j].K == K.Flt ? NewFTemp() : NewITemp();
+                _pre.Insert(at++, $"{t}={outs[j]};");
+                outs[j] = t;
+                done[j] = true;
+            }
+        }
+        return outs;
+    }
+
+    /// <summary>関数の呼び出しを、引数を左から順に評価する形で出す</summary>
+    private string Call(string function, params (HuExpr E, K K)[] args)
+        => $"{function}({string.Join(", ", Seq(args))})";
 
     /// <summary>浮動小数の値の番地 (定数は表の要素、それ以外は一時変数に入れて、その番地)</summary>
     private string FAddr(HuExpr e)
@@ -419,12 +510,17 @@ public sealed class SlangBackend : IHuBackend
             case HuVar v:
                 return StrVarName(v.Name);
             case HuBinary { Op: "+" } b:
-                return $"BAS_SCAT({Str(b.Left)}, {Str(b.Right)})";
+            {
+                var sv = Seq((b.Left, K.Str), (b.Right, K.Str));
+                return $"BAS_SCAT({sv[0]}, {sv[1]})";
+            }
             case HuCall c:
                 return c.Name switch
                 {
-                    "MID$" => $"BAS_SMID({Str(c.Args[0])}, {Int(c.Args[1])}, {(c.Args.Count > 2 ? Int(c.Args[2]) : "255")})",
-                    "RIGHT$" => $"BAS_SRIGHT({Str(c.Args[0])}, {Int(c.Args[1])})",
+                    "MID$" => c.Args.Count > 2
+                        ? Call("BAS_SMID", (c.Args[0], K.Str), (c.Args[1], K.Int), (c.Args[2], K.Int))
+                        : $"BAS_SMID({string.Join(", ", Seq((c.Args[0], K.Str), (c.Args[1], K.Int)))}, 255)",
+                    "RIGHT$" => Call("BAS_SRIGHT", (c.Args[0], K.Str), (c.Args[1], K.Int)),
                     "CHR$" => $"BAS_SCHR({Int(c.Args[0])})",
                     "HEXCHR$" => $"BAS_SHEX({Str(c.Args[0])})",
                     "CGPAT$" => $"BAS_SCGPAT({Int(c.Args[0])})",
