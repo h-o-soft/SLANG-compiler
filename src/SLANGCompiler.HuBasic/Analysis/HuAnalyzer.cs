@@ -5,7 +5,8 @@ namespace SLANGCompiler.HuBasic.Analysis;
 /// <summary>
 /// 構文木を検査して <see cref="HuProgram"/> を作る。
 /// - 行の並べ替え・重複・飛び先の検査
-/// - 型 (整数 / 文字列 / 浮動小数) の決定と検査 (浮動小数の変数は段階 F2 までエラー)、'/' の型の決定
+/// - 変数の鍵 (名前と型の種類) と型 (整数 / 文字列 / 浮動小数) の決定と検査、'/' の型の決定
+///   (浮動小数の FOR は段階 F2b、浮動小数の READ は段階 F2c までエラー)
 /// - REPEAT/UNTIL・WHILE/WEND の字面の対応、FOR が回らないときの飛び先の走査
 /// - 配列・文字列リテラル・DATA の表、GOSUB の戻り先 ID、静的データの合計
 /// </summary>
@@ -14,14 +15,24 @@ public sealed class HuAnalyzer
     public const int DefaultDataBudget = 24 * 1024;
     public const int MaxArrayBytes = 16 * 1024;
     public const int MaxArrayIndex = MaxArrayBytes / 2 - 1; // 8191
+    public const int MaxFloatArrayIndex = MaxArrayBytes / 3 - 1; // 5460 (1 要素 3 バイト)
     public const int MaxDataBytes = 32767;
     public const int MaxNameLength = 28; // SLANG の名前の上限 32 から接頭辞の分を引く
 
     private readonly HuDiagnosticBag _diag;
     private readonly int _dataBudget;
 
-    private readonly HashSet<char> _intLetters = new();
+    private readonly HuVarKind _defaultKind;
+    /// <summary>DEFxxx で決めた頭文字の型の種類と、その頭文字の最初の DEFxxx の行</summary>
+    private readonly Dictionary<char, HuVarKind> _letterKinds = new();
+    private readonly Dictionary<char, int> _defLines = new();
+    /// <summary>DEFxxx より前の行で使った接尾辞のない変数: 頭文字 → (変数名, 位置) (warning をまとめて出す)</summary>
+    private readonly SortedDictionary<char, (string Name, HuPos Pos)> _earlyUses = new();
+    private readonly HashSet<string> _warnedDouble = new(StringComparer.Ordinal);
+    /// <summary>いま検査している行の番号 (DEFxxx より前の行で使ったかの判定に使う)</summary>
+    private int _curLine;
     private readonly SortedSet<string> _intVars = new(StringComparer.Ordinal);
+    private readonly SortedSet<string> _floatVars = new(StringComparer.Ordinal);
     private readonly SortedSet<string> _strVars = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _arrays = new(StringComparer.Ordinal);
     private readonly List<string> _literals = new();
@@ -32,30 +43,33 @@ public sealed class HuAnalyzer
     private readonly Dictionary<HuStmt, int> _loopIds = new(ReferenceEqualityComparer.Instance);
     private HashSet<int> _lineNumbers = new();
 
-    private HuAnalyzer(HuDiagnosticBag diag, int dataBudget)
+    private HuAnalyzer(HuDiagnosticBag diag, int dataBudget, bool assumeDefint)
     {
         _diag = diag;
         _dataBudget = dataBudget;
+        _defaultKind = assumeDefint ? HuVarKind.Int : HuVarKind.Single;
     }
 
-    public static HuProgram Analyze(HuAstProgram ast, HuDiagnosticBag diag, int dataBudget = DefaultDataBudget)
-        => new HuAnalyzer(diag, dataBudget).Run(ast);
+    /// <param name="assumeDefint">接尾辞も DEFxxx もない頭文字の既定の型を整数にする (--assume-defint)。
+    /// ソースの DEFxxx と接尾辞のほうが優先で、DEFxxx の衝突の検査などには数えない</param>
+    public static HuProgram Analyze(HuAstProgram ast, HuDiagnosticBag diag, int dataBudget = DefaultDataBudget,
+                                    bool assumeDefint = false)
+        => new HuAnalyzer(diag, dataBudget, assumeDefint).Run(ast);
 
     private HuProgram Run(HuAstProgram ast)
     {
         var lines = SortLines(ast.Lines);
         _lineNumbers = lines.Select(l => l.Number).ToHashSet();
 
-        // DEFINT は位置に関係なくプログラム全体に効くものとして先に集める
-        foreach (var s in AllStatements(lines))
-            if (s is HuDefint d)
-                foreach (var (from, to) in d.Ranges)
-                    for (char c = from; c <= to; c++) _intLetters.Add(c);
-
+        CollectDefTypes(lines);
         CollectDims(lines);
         foreach (var line in lines)
+        {
+            _curLine = line.Number;
             foreach (var s in line.Statements)
                 CheckStatement(s);
+        }
+        WarnEarlyUses();
 
         MatchLoops(lines);
         var (dataBytes, dataLines) = BuildData(lines);
@@ -63,7 +77,10 @@ public sealed class HuAnalyzer
         var program = new HuProgram
         {
             Lines = lines,
+            LetterKinds = new Dictionary<char, HuVarKind>(_letterKinds),
+            DefaultKind = _defaultKind,
             IntVars = _intVars.ToList(),
+            FloatVars = _floatVars.ToList(),
             StrVars = _strVars.ToList(),
             Arrays = new Dictionary<string, int>(_arrays),
             Literals = _literals,
@@ -80,7 +97,7 @@ public sealed class HuAnalyzer
         {
             _diag.Error("HB0309",
                 $"静的なデータの合計 {program.StaticDataBytes} バイトが上限 {_dataBudget} バイトを超えています " +
-                $"(整数変数 {_intVars.Count}、配列 {_arrays.Count}、文字列変数 {_strVars.Count}、" +
+                $"(整数変数 {_intVars.Count}、浮動小数の変数 {_floatVars.Count}、配列 {_arrays.Count}、文字列変数 {_strVars.Count}、" +
                 $"文字列リテラル {_literals.Count}、DATA {dataBytes.Length} バイト)",
                 HuPos.None);
         }
@@ -142,17 +159,20 @@ public sealed class HuAnalyzer
 
     private void CollectDims(List<HuLine> lines)
     {
-        foreach (var s in AllStatements(lines))
+        foreach (var line in lines)
+        foreach (var s in Flatten(line.Statements))
         {
             if (s is not HuDim dim) continue;
+            _curLine = line.Number;
             foreach (var (name, boundExpr) in dim.Arrays)
             {
-                if (name.EndsWith('$'))
+                var key = CheckVarName(name, dim.Pos);
+                var kind = HuProgram.KindOfKey(key);
+                if (kind == HuVarKind.Str)
                 {
                     _diag.Error("HB0306", $"文字列の配列 {name} は未対応です", dim.Pos);
                     continue;
                 }
-                CheckVarName(name, dim.Pos);
                 if (ConstExprOnly(boundExpr) == false)
                 {
                     _diag.Error("HB0304", $"DIM {name} の上限は定数で書いてください (変数を含む上限は未対応)", dim.Pos);
@@ -164,14 +184,15 @@ public sealed class HuAnalyzer
                     continue;
                 }
                 var bound = ConstValue(boundExpr);
+                var max = MaxIndexOf(kind);
                 // 上限の添字そのものを直接比べる (掛け算で大きさを計算して比べるとあふれるため)
-                if (bound == null || bound < 0 || bound > MaxArrayIndex)
+                if (bound == null || bound < 0 || bound > max)
                 {
-                    _diag.Error("HB0305", $"DIM {name} の上限が範囲外です (0〜{MaxArrayIndex})", dim.Pos);
+                    _diag.Error("HB0305", $"DIM {name} の上限が範囲外です (0〜{max})", dim.Pos);
                     continue;
                 }
                 var storage = Math.Max((int)bound.Value, 10);
-                _arrays[name] = _arrays.TryGetValue(name, out var prev) ? Math.Max(prev, storage) : storage;
+                _arrays[key] = _arrays.TryGetValue(key, out var prev) ? Math.Max(prev, storage) : storage;
             }
         }
     }
@@ -238,38 +259,100 @@ public sealed class HuAnalyzer
         _ => false,
     };
 
-    private void UseArray(string name, HuPos pos)
+    /// <summary>配列の上限の添字 (配列の大きさの上限 16 KiB を、1 要素の大きさで割ったもの)</summary>
+    private static int MaxIndexOf(HuVarKind kind) => kind == HuVarKind.Int ? MaxArrayIndex : MaxFloatArrayIndex;
+
+    /// <summary>配列の要素を使う。要素の型を返す</summary>
+    private HuType UseArray(string name, HuPos pos)
     {
-        if (name.EndsWith('$'))
+        var key = CheckVarName(name, pos);
+        var kind = HuProgram.KindOfKey(key);
+        if (kind == HuVarKind.Str)
         {
             _diag.Error("HB0306", $"文字列の配列 {name} は未対応です", pos);
-            return;
+            return HuType.Str;
         }
-        CheckVarName(name, pos);
-        if (!_arrays.ContainsKey(name)) _arrays[name] = 10; // DIM なし → 上限 10
+        if (!_arrays.ContainsKey(key)) _arrays[key] = 10; // DIM なし → 上限 10
+        return HuProgram.TypeOfKind(kind);
     }
 
     // ------------------------------------------------------------ 変数と型
 
-    private void CheckVarName(string name, HuPos pos)
+    private static string DefKeyword(HuVarKind kind) => kind switch
+    {
+        HuVarKind.Int => "DEFINT",
+        HuVarKind.Single => "DEFSNG",
+        HuVarKind.Double => "DEFDBL",
+        _ => "DEFSTR",
+    };
+
+    /// <summary>
+    /// DEFxxx は位置に関係なくプログラム全体に効くものとして先に集める (Hu-BASIC は実行した時点から効く)。
+    /// 同じ頭文字に違う DEFxxx があれば、どちらに決めてよいか分からないのでエラー。IF の中の DEFxxx も同じく数える。
+    /// </summary>
+    private void CollectDefTypes(List<HuLine> lines)
+    {
+        foreach (var line in lines)
+        foreach (var s in Flatten(line.Statements))
+        {
+            if (s is not HuDefType d) continue;
+            foreach (var (from, to) in d.Ranges)
+            for (char c = from; c <= to; c++)
+            {
+                if (_letterKinds.TryGetValue(c, out var prev) && prev != d.Kind)
+                {
+                    _diag.Error("HB0410", $"頭文字 {c} に {DefKeyword(prev)} と {DefKeyword(d.Kind)} の両方があります", d.Pos);
+                    continue;
+                }
+                _letterKinds[c] = d.Kind;
+                _defLines.TryAdd(c, line.Number);
+            }
+        }
+    }
+
+    private string Key(string name) => HuProgram.KeyOf(name, _letterKinds, _defaultKind);
+
+    /// <summary>変数名を検査して、変数の鍵を返す</summary>
+    private string CheckVarName(string name, HuPos pos)
     {
         var bare = name.TrimEnd('$', '%', '!', '#');
         if (bare.Length > MaxNameLength)
             _diag.Error("HB0310", $"変数名 {name} が長すぎます ({MaxNameLength} 文字まで)", pos);
-        if (name.EndsWith('!') || name.EndsWith('#'))
-            _diag.Error("HB0403", $"浮動小数の変数 {name} は未対応です (整数と文字列のみ)", pos);
-        else if (!name.EndsWith('$') && !name.EndsWith('%') && !_intLetters.Contains(name[0]))
-            _diag.Error("HB0403",
-                $"変数 {name} は浮動小数になります (DEFINT で整数にするか、% を付けてください)", pos);
+        var key = Key(name);
+        // 接尾辞のない変数を、その頭文字の DEFxxx より前の行で使っている (Hu-BASIC ではそこは既定の型)
+        if (key.Length != name.Length && _defLines.TryGetValue(name[0], out var defLine) && _curLine < defLine)
+            _earlyUses.TryAdd(name[0], (name, pos));
+        if (HuProgram.KindOfKey(key) == HuVarKind.Double && _warnedDouble.Add(key))
+            _diag.Warning("HB0412", $"倍精度の変数 {name} は、単精度と同じ浮動小数 (有効数字 約 5 桁) で扱います", pos);
+        return key;
     }
 
-    private static HuType VarType(string name) => name.EndsWith('$') ? HuType.Str : HuType.Int;
+    /// <summary>DEFxxx より前の行で使った変数の warning を、DEFxxx の行ごとに 1 つにまとめて出す</summary>
+    private void WarnEarlyUses()
+    {
+        foreach (var group in _earlyUses.GroupBy(u => (Line: _defLines[u.Key], Kind: _letterKinds[u.Key])))
+        {
+            var names = group.Select(u => u.Value.Name).ToList();
+            var list = string.Join(", ", names.Take(8)) + (names.Count > 8 ? $" ほか {names.Count - 8} 個" : "");
+            var kw = DefKeyword(group.Key.Kind);
+            _diag.Warning("HB0411",
+                $"{group.Key.Line} 行の {kw} より前の行で、変数 {list} を使っています " +
+                $"(Hu-BASIC ではその行を実行するまで既定の型です。hub2sl はプログラム全体で {kw} の型にします)",
+                group.Select(u => u.Value.Pos).OrderBy(p => p.SourceLine).ThenBy(p => p.Column).First());
+        }
+    }
+
+    private HuType VarType(string name) => HuProgram.TypeOfKind(HuProgram.KindOfKey(Key(name)));
 
     private void UseVar(string name, HuPos pos)
     {
-        CheckVarName(name, pos);
-        if (name.EndsWith('$')) _strVars.Add(name);
-        else _intVars.Add(name);
+        var key = CheckVarName(name, pos);
+        switch (HuProgram.KindOfKey(key))
+        {
+            case HuVarKind.Str: _strVars.Add(key); break;
+            case HuVarKind.Int: _intVars.Add(key); break;
+            default: _floatVars.Add(key); break;
+        }
     }
 
     private void AddLiteral(string text)
@@ -301,9 +384,8 @@ public sealed class HuAnalyzer
                 t = VarType(v.Name);
                 break;
             case HuIndex ix:
-                UseArray(ix.Name, ix.Pos);
+                t = UseArray(ix.Name, ix.Pos);
                 ExpectNum(ix.Index, intConv: true);
-                t = HuType.Int;
                 break;
             case HuUnary u:
             {
@@ -508,8 +590,7 @@ public sealed class HuAnalyzer
                 break;
             case HuFor fr:
                 UseVar(fr.Var, fr.Pos);
-                if (VarType(fr.Var) != HuType.Int)
-                    _diag.Error("HB0404", "FOR の変数は整数にしてください", fr.Pos);
+                CheckForVar(fr.Var, "FOR", fr.Pos);
                 ExpectNum(fr.From, intConv: true);
                 ExpectNum(fr.To, intConv: false);
                 if (fr.Step != null) ExpectNum(fr.Step, intConv: false);
@@ -519,8 +600,7 @@ public sealed class HuAnalyzer
                 foreach (var v in nx.Vars)
                 {
                     UseVar(v, nx.Pos);
-                    if (VarType(v) != HuType.Int)
-                        _diag.Error("HB0404", $"NEXT の変数 {v} は整数にしてください", nx.Pos);
+                    CheckForVar(v, "NEXT", nx.Pos);
                 }
                 break;
             case HuUntil u:
@@ -530,7 +610,9 @@ public sealed class HuAnalyzer
                 ExpectNum(w.Cond, intConv: false);
                 break;
             case HuRead rd:
-                foreach (var t in rd.Targets) CheckExpr(t, false);
+                foreach (var t in rd.Targets)
+                    if (CheckExpr(t, false) == HuType.Float)
+                        _diag.Error("HB0408", "READ の浮動小数の変数は未対応です (段階 F2c で対応)", t.Pos);
                 break;
             case HuRestore rs:
                 if (rs.Line is int line) CheckTarget(line, rs.Pos);
@@ -582,7 +664,7 @@ public sealed class HuAnalyzer
                 ExpectStr(ms.Value);
                 break;
             case HuDim:
-            case HuDefint:
+            case HuDefType:
             case HuData:
             case HuRem:
             case HuRepeat:
@@ -591,6 +673,15 @@ public sealed class HuAnalyzer
             case HuInit:
                 break;
         }
+    }
+
+    private void CheckForVar(string name, string stmt, HuPos pos)
+    {
+        var t = VarType(name);
+        if (t == HuType.Str)
+            _diag.Error("HB0404", $"{stmt} の変数 {name} に文字列の変数は使えません", pos);
+        else if (t == HuType.Float)
+            _diag.Error("HB0405", $"{stmt} の浮動小数の変数 {name} は未対応です (段階 F2b で対応。DEFINT か % で整数にしてください)", pos);
     }
 
     private void CheckCommand(HuCommand cmd)
@@ -687,7 +778,7 @@ public sealed class HuAnalyzer
                     // 同じ変数を名指しする NEXT は深さに関係なく一致 (Hu-BASIC はその NEXT で
                     // 内側の FOR 枠を捨てる)。それ以外は内側のループを閉じたものとして深さを減らし、
                     // 深さ 0 の変数なしの NEXT は一致
-                    if ((named && nx.Vars[k] == fr.Var) || (!named && depth == 0))
+                    if ((named && Key(nx.Vars[k]) == Key(fr.Var)) || (!named && depth == 0))
                     {
                         _forExits[fr] = (nx, k);
                         found = true;
@@ -733,8 +824,9 @@ public sealed class HuAnalyzer
 
     private int ComputeStaticBytes(int dataBytes, int dataLineCount)
     {
-        long total = _intVars.Count * 2L + _strVars.Count * 256L;
-        foreach (var bound in _arrays.Values) total += (bound + 1L) * 2 + 4;
+        long total = _intVars.Count * 2L + _floatVars.Count * 3L + _strVars.Count * 256L;
+        foreach (var (key, bound) in _arrays)
+            total += (bound + 1L) * (HuProgram.KindOfKey(key) == HuVarKind.Int ? 2 : 3) + 4;
         foreach (var lit in _literals) total += lit.Length + 1L;
         total += dataBytes + (dataLineCount + 1L) * 4;
         return (int)Math.Min(total, int.MaxValue);

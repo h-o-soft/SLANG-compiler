@@ -75,6 +75,15 @@ public class HuBasicEmitTests
         80 END
         """;
 
+    /// <summary>段階 F2a の浮動小数の変数と配列をひととおり使う小さなプログラム (自作)</summary>
+    private const string FloatVarProgram = """
+        10 CLS:DEFDBL D:DIM R(20)
+        20 A=1.5:B=A*2-A/4:I%=A:X=I%:R(I%)=A/B:R(2)=R(1)+X:D=A:PRINT A;B;-A;R(1);D;D!
+        30 IF A THEN IF A<B THEN ON A GOTO 40,40
+        40 INPUT C,R(3):C%=C+R(3):WHILE A<4:A=A+1:WEND
+        50 END
+        """;
+
     private const string FullProgram = """
         10 DEFINT A-Z:CLS:INIT:WIDTH 40:CLICK OFF:TEMPO 300
         20 A$="AB":B$=A$+CHR$(65):C$=MID$(A$,1,1)+MID$(A$,2)+RIGHT$(A$,1)+HEXCHR$("41")+CGPAT$(65)+INKEY$
@@ -556,12 +565,54 @@ public class HuBasicEmitTests
     [Fact]
     public void Slang_NamesAreSeparatedAndArraysChecked()
     {
+        // DEFINT の下の A と A% は同じ変数 V_A (Hu-BASIC と同じ。以前は V_A と V_A_I に分けていた)
         var sl = Transpile("10 DEFINT A-Z:A=1:A(2)=A:A%=3:A$=\"Q\"").Output!;
-        Assert.Contains("VAR V_A, V_A_I, H_T", sl);
+        Assert.Contains("VAR V_A, H_T", sl);
+        Assert.Contains("V_A=3;", sl);
         Assert.Contains("ARRAY A_A[10];", sl);
         Assert.Contains("ARRAY BYTE S_A[255];", sl);
         Assert.Contains("A_A[BAS_AIDX(2, &H_DIM_A, &H_UB_A)]=V_A;", sl);
         Assert.Contains("BAS_SSET(S_A, K_0);", sl);
+    }
+
+    [Fact]
+    public void Slang_FloatVariablesAndArrays()
+    {
+        var sl = Transpile("10 A=1.5:B=A*2:DIM C(3):C(1)=A/B:I%=A:C(2)=I%:PRINT A;C(1)").Output!;
+        Assert.Contains("VAR V_I, H_T, H_LINE, H_DIM_F_C, H_UB_F_C;", sl);
+        Assert.Contains("VAR FLOAT F_A, FLOAT F_B;", sl);
+        Assert.Contains("ARRAY FLOAT FA_C[10];", sl);
+        Assert.Contains("F_A=H_FK[0];", sl);
+        Assert.Contains("F_B=(F_A*H_FK[1]);", sl);
+        // 浮動小数の割り算は変数の番地をそのまま渡す。代入先の添字は値より先に調べる (Hu-BASIC と同じ)
+        Assert.Contains("H_I1=BAS_AIDX(1, &H_DIM_F_C, &H_UB_F_C);\n  FA_C[H_I1]=BAS_FDIV(&F_A, &F_B);", sl);
+        Assert.Contains("V_I=BAS_FTOIR(F_A);", sl);
+        // 整数の値を浮動小数にする前置きの代入が出るときも、添字の検査を先に出す
+        Assert.Contains("H_I1=BAS_AIDX(2, &H_DIM_F_C, &H_UB_F_C);\n  H_F1=V_I;\n  FA_C[H_I1]=H_F1;", sl);
+        Assert.Contains("BAS_PFLT(F_A);", sl);
+        Assert.Contains("BAS_PFLT(FA_C[BAS_AIDX(1, &H_DIM_F_C, &H_UB_F_C)]);", sl);
+    }
+
+    [Fact]
+    public void Slang_SingleDoubleIntAndStrWithSameNameAreSeparate()
+    {
+        var sl = Transpile("10 A=1:A!=2:A#=3:A%=4:A$=\"X\":DIM A(2),A#(2),A%(2)").Output!;
+        Assert.Contains("VAR V_A, H_T, H_LINE, H_DIM_F_A, H_UB_F_A, H_DIM_D_A, H_UB_D_A, H_DIM_A;", sl);
+        Assert.Contains("VAR FLOAT F_A, FLOAT D_A;", sl);
+        Assert.Contains("ARRAY FLOAT FA_A[10];", sl);
+        Assert.Contains("ARRAY FLOAT DA_A[10];", sl);
+        Assert.Contains("ARRAY A_A[10];", sl);
+        Assert.Contains("ARRAY BYTE S_A[255];", sl);
+        Assert.Contains("F_A=H_FK[1];", sl);   // A と A! は同じ変数
+    }
+
+    [Fact]
+    public void Slang_IntArrayAssignmentKeepsItsShape()
+    {
+        // 整数だけの代入は、添字の検査を先に出す形にしない (生成するコードを変えない)。INPUT の項目も同じ
+        var sl = Transpile("10 DEFINT A-Z:A(I)=B\\C:INPUT A(J)").Output!;
+        Assert.Contains("A_A[BAS_AIDX(V_I, &H_DIM_A, &H_UB_A)]=BAS_IDIV(V_B, V_C);", sl);
+        Assert.Contains("A_A[BAS_AIDX(V_J, &H_DIM_A, &H_UB_A)]=BAS_FTOIR(BAS_INFN());", sl);
     }
 
     [Fact]
@@ -629,7 +680,12 @@ public class HuBasicEmitTests
     [Fact]
     public void Slang_GeneratedCodeCompilesWithSlangc()
     {
-        var sl = Transpile(Stage1Program).Output!;
+        foreach (var program in new[] { Stage1Program, FloatVarProgram })
+            AssertCompilesWithSlangc(Transpile(program).Output!);
+    }
+
+    private static void AssertCompilesWithSlangc(string sl)
+    {
         var diag = new DiagnosticBag();
         var tokens = new Lexer.Lexer(sl).Tokenize();
         tokens = new Lexer.Preprocessor(diag).Process(tokens, ".");
@@ -651,7 +707,8 @@ public class HuBasicEmitTests
         var path = Path.Combine(RepoRoot(), "runtime", "libx1_basic.asm");
         var functions = RuntimeParser.Parse(File.ReadAllText(path), path).ToDictionary(f => f.Name);
         var sl = Transpile(Stage1Program).Output! + Transpile(FullProgram).Output! + Transpile(FloatProgram).Output!
-                 + Transpile(StringScreenProgram).Output! + Transpile(InputSoundProgram).Output!;
+                 + Transpile(StringScreenProgram).Output! + Transpile(InputSoundProgram).Output!
+                 + Transpile(FloatVarProgram).Output!;
         var called = Regex.Matches(sl, @"\b(BAS_[A-Z0-9]+)\(").Select(m => m.Groups[1].Value).Distinct().ToList();
         Assert.NotEmpty(called);
         foreach (var name in called)
@@ -745,6 +802,13 @@ public class HuBasicEmitTests
             File.WriteAllText(sl5, Transpile(InputSoundProgram).Output!);
             RunSlangbuild(root, dir, sl5, asmPath, Path.Combine(dir, "INP"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "INP"));
+            // 浮動小数の変数と配列 (段階 F2a) も両方で組み立てまで通る
+            var sl6 = Path.Combine(dir, "FVAR.SL");
+            File.WriteAllText(sl6, Transpile(FloatVarProgram).Output!);
+            RunSlangbuild(root, dir, sl6, asmPath, Path.Combine(dir, "FVAR"));
+            AssertBuilt(Path.Combine(dir, "FVAR"));
+            RunSlangbuild(root, dir, sl6, asmPath, Path.Combine(dir, "FVARS"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "FVARS"));
         }
         finally
         {

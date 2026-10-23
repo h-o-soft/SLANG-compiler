@@ -212,7 +212,13 @@ public sealed class HuParser
             case "DIM":
                 return ParseDim(pos);
             case "DEFINT":
-                return ParseDefint(pos);
+                return ParseDefType(HuVarKind.Int, t.Text, pos);
+            case "DEFSNG":
+                return ParseDefType(HuVarKind.Single, t.Text, pos);
+            case "DEFDBL":
+                return ParseDefType(HuVarKind.Double, t.Text, pos);
+            case "DEFSTR":
+                return ParseDefType(HuVarKind.Str, t.Text, pos);
             case "DATA":
             {
                 var data = Next();
@@ -510,21 +516,21 @@ public sealed class HuParser
         return new HuDim(arrays, pos);
     }
 
-    private HuStmt ParseDefint(HuPos pos)
+    private HuStmt ParseDefType(HuVarKind kind, string keyword, HuPos pos)
     {
         var ranges = new List<(char, char)>();
         do
         {
-            var a = ParseLetter();
+            var a = ParseLetter(keyword);
             var b = a;
-            if (AcceptSymbol("-")) b = ParseLetter();
+            if (AcceptSymbol("-")) b = ParseLetter(keyword);
             if (b < a) (a, b) = (b, a);
             ranges.Add((a, b));
         } while (AcceptSymbol(","));
-        return new HuDefint(ranges, pos);
+        return new HuDefType(kind, ranges, pos);
     }
 
-    private char ParseLetter()
+    private char ParseLetter(string keyword)
     {
         var t = Peek;
         if (t.Kind == HuTokenKind.Ident && t.Text.Length == 1 && char.IsAsciiLetterUpper(t.Text[0]))
@@ -532,7 +538,7 @@ public sealed class HuParser
             Next();
             return t.Text[0];
         }
-        Error("HB0209", $"DEFINT には英字 1 文字が必要です ('{t}' があります)");
+        Error("HB0209", $"{keyword} には英字 1 文字が必要です ('{t}' があります)");
         Next();
         return 'A';
     }

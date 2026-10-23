@@ -310,15 +310,23 @@ public class HuBasicFrontendTests
     }
 
     [Theory]
-    [InlineData("10 A=1", "HB0403")]                          // DEFINT なし → 浮動小数
-    [InlineData("10 DEFINT A-Z:A!=1", "HB0403")]
+    [InlineData("10 FOR A=1 TO 2:NEXT", "HB0405")]            // 浮動小数の FOR は段階 F2b から
+    [InlineData("10 DEFINT A-Z:FOR I!=1 TO 2:NEXT", "HB0405")]
+    [InlineData("10 DEFINT A-Z:FOR I=1 TO 2:NEXT I!", "HB0405")]
+    [InlineData("10 READ A:DATA 1", "HB0408")]                 // 浮動小数の READ は段階 F2c から
+    [InlineData("10 DEFINT A-Z:READ X(1),A!:DATA 1,2", "HB0408")]
+    [InlineData("10 DIM A(5461)", "HB0305")]                   // 浮動小数の配列は 1 要素 3 バイト (上限 5460)
+    [InlineData("10 DEFSTR A:DIM A(3)", "HB0306")]             // DEFSTR の頭文字の配列は文字列の配列
+    [InlineData("10 DEFSTR A:A(1)=\"X\"", "HB0306")]
+    [InlineData("10 DEFINT A-Z:DEFSNG X", "HB0410")]           // 同じ頭文字に違う DEFxxx
+    [InlineData("10 DEFSTR S\n20 IF 0 THEN DEFINT R-T", "HB0410")] // IF の中の DEFxxx も数える
+    [InlineData("10 DEFINT A-Z:S=\"X\"", "HB0404")]
     [InlineData("10 DEFINT A-Z:N=5:DIM A(N)", "HB0304")]      // 変数の上限
     [InlineData("10 DEFINT A-Z:DIM A(&H8000*&HFFFF)", "HB0305")] // 定数の計算があふれても範囲外として検出
     [InlineData("10 DEFINT A-Z:DIM A(&HFFFF*&HFFFF*&HFFFF)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A(8192)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A(-1)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A$(3)", "HB0306")]         // 文字列の配列
-    [InlineData("10 DEFINT A-Z:A!=1.5", "HB0403")]            // 浮動小数の変数は段階 F2 から
     [InlineData("10 DEFINT A-Z:PRINT USING \"##.#\";1.5", "HB0407")]
     [InlineData("10 DEFINT A-Z:DIM A(40000)", "HB0305")]       // 32768 以上の 10 進 (浮動小数の定数) も範囲を検査
     [InlineData("10 DEFINT A-Z:DIM A(1.25+1.25)", "HB0313")]   // 浮動小数を含む計算の上限は未対応 (項ごとに丸めると値が違う)
@@ -339,8 +347,8 @@ public class HuBasicFrontendTests
     {
         // 浮動小数の定数 1 つの上限は、f24 に直した値を四捨五入 (2.5 → 3)
         var prog = AnalyzeOk("10 DEFINT A-Z:DIM A(2.5),B(12.4)");
-        Assert.Equal(10, prog.Arrays["A"]);   // 上限が 10 未満なら 10 を確保する
-        Assert.Equal(12, prog.Arrays["B"]);
+        Assert.Equal(10, prog.Arrays["A%"]);   // 上限が 10 未満なら 10 を確保する
+        Assert.Equal(12, prog.Arrays["B%"]);
     }
 
     [Fact]
@@ -439,10 +447,119 @@ public class HuBasicFrontendTests
     public void Analyzer_ScalarAndArrayWithSameNameAreSeparate()
     {
         var prog = AnalyzeOk("10 DEFINT A-Z:A=1:A(2)=3:DIM B(20):B=4");
-        Assert.Contains("A", prog.IntVars);
-        Assert.Contains("B", prog.IntVars);
-        Assert.Equal(10, prog.Arrays["A"]);   // DIM なし → 10
-        Assert.Equal(20, prog.Arrays["B"]);
+        Assert.Contains("A%", prog.IntVars);
+        Assert.Contains("B%", prog.IntVars);
+        Assert.Equal(10, prog.Arrays["A%"]);   // DIM なし → 10
+        Assert.Equal(20, prog.Arrays["B%"]);
+    }
+
+    // ------------------------------------------------------------ 段階 F2a: 変数の型と鍵
+
+    /// <summary>
+    /// 変数の鍵は (名前, 型の種類)。接尾辞のない名前は頭文字の型 (既定は単精度)。Hu-BASIC の実測と同じ:
+    /// DEFINT A の下の A と A% は同じ、既定の B と B! は同じ、C! と C# は別、DEFSTR S の S と S$ は同じ、DEFDBL D の D と D# は同じ
+    /// </summary>
+    [Fact]
+    public void Analyzer_VariableKeysFollowHuBasicRules()
+    {
+        var prog = AnalyzeOk("10 DEFINT A:DEFSTR S:DEFDBL D:A=1:A%=2:B=1:B!=2:C!=1:C#=2:S=\"X\":S$=\"Y\":D=1:D#=2:D!=3");
+        Assert.Equal(new[] { "A%" }, prog.IntVars);
+        Assert.Equal(new[] { "B!", "C!", "C#", "D!", "D#" }, prog.FloatVars);
+        Assert.Equal(new[] { "S$" }, prog.StrVars);
+        Assert.Equal("A%", prog.Key("A"));
+        Assert.Equal("B!", prog.Key("B"));
+        Assert.Equal("D#", prog.Key("D"));
+        Assert.Equal("S$", prog.Key("S"));
+    }
+
+    [Fact]
+    public void Analyzer_ArraysAreKeyedByKind()
+    {
+        var prog = AnalyzeOk("10 DEFINT A:DIM A(3),B(20),C%(5):A%(1)=1:B!(2)=1.5:C(1)=2");
+        Assert.Equal(new[] { "A%", "B!", "C%", "C!" }, prog.Arrays.Keys);
+        Assert.Equal(20, prog.Arrays["B!"]);
+        Assert.Equal(10, prog.Arrays["C!"]);   // C(1) は単精度の配列 C! (DIM C%(5) とは別)
+        AnalyzeOk("10 DIM A(5460)");           // 浮動小数の配列の上限
+    }
+
+    /// <summary>
+    /// --assume-defint は頭文字の既定の型だけを整数にする。ソースの DEFxxx と接尾辞が優先で、DEFxxx の衝突の検査にも、
+    /// 前の行で使ったかの warning にも数えない
+    /// </summary>
+    [Theory]
+    [InlineData("10 A=1", false, "A", "A!")]
+    [InlineData("10 A=1", true, "A", "A%")]
+    [InlineData("10 DEFINT A:A=1", false, "A", "A%")]
+    [InlineData("10 DEFINT A:A=1", true, "A", "A%")]
+    [InlineData("10 DEFSNG A:A=1", false, "A", "A!")]
+    [InlineData("10 DEFSNG A:A=1", true, "A", "A!")]
+    [InlineData("10 A!=1", true, "A!", "A!")]
+    [InlineData("10 A#=1", true, "A#", "A#")]
+    [InlineData("10 A$=\"X\"", true, "A$", "A$")]
+    public void Analyzer_AssumeDefintChangesOnlyTheDefault(string program, bool assumeDefint, string name, string key)
+    {
+        var diag = new HuDiagnosticBag();
+        var prog = HuTranspiler.Analyze(program, diag, assumeDefint: assumeDefint);
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Items.Select(d => d.Code + " " + d.Message)));
+        Assert.Contains(key, prog!.IntVars.Concat(prog.FloatVars).Concat(prog.StrVars));
+        Assert.Equal(key, prog.Key(name));
+    }
+
+    [Fact]
+    public void Analyzer_AssumeDefintIsNotCountedAsDefint()
+    {
+        var diag = new HuDiagnosticBag();
+        var prog = HuTranspiler.Analyze("10 A=1\n20 DEFSNG A:B=2", diag, assumeDefint: true);
+        Assert.False(diag.HasErrors);
+        Assert.Equal("A!", prog!.Key("A"));
+        Assert.Equal("B%", prog.Key("B"));
+        // 10 行の A は DEFSNG より前の行だが、DEFSNG の型と既定 (仮の整数) が違うかは数えず、前の行で使ったことだけを知らせる
+        Assert.Single(diag.Items, d => d.Code == "HB0411");
+    }
+
+    [Fact]
+    public void Analyzer_SameDefTwiceIsAllowed()
+    {
+        var prog = AnalyzeOk("10 DEFINT A:DEFINT A-C:A=1:C=2");
+        Assert.Equal(new[] { "A%", "C%" }, prog.IntVars);
+    }
+
+    /// <summary>DEFxxx より前の行で、その頭文字の接尾辞のない変数を使うと warning (DEFxxx の行ごとに 1 つ)</summary>
+    [Theory]
+    [InlineData("10 A=1:B=2\n20 DEFINT A-B", 1)]
+    [InlineData("10 A=1\n20 DEFINT A\n30 B=\"X\"\n40 DEFSTR B", 2)]
+    [InlineData("10 DEFINT A\n20 A=1", 0)]
+    [InlineData("10 A%=1:A!=2\n20 DEFINT A", 0)]       // 接尾辞付きは関係ない
+    [InlineData("10 A=1:DEFINT A", 0)]                // 同じ行は前の行ではない
+    public void Analyzer_WarnsUseBeforeDef(string program, int warnings)
+    {
+        var (_, diag) = Analyze(program);
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Items.Select(d => d.Code + " " + d.Message)));
+        Assert.Equal(warnings, diag.Items.Count(d => d.Code == "HB0411" && d.Severity == HuSeverity.Warning));
+    }
+
+    [Fact]
+    public void Analyzer_WarnsDoubleOncePerVariable()
+    {
+        var (_, diag) = Analyze("10 DEFDBL A:A=1:A=A+1:B#=2:PRINT B#");
+        Assert.False(diag.HasErrors);
+        Assert.Equal(2, diag.Items.Count(d => d.Code == "HB0412" && d.Severity == HuSeverity.Warning));
+    }
+
+    [Fact]
+    public void Analyzer_ForAndNextMatchByKey()
+    {
+        // DEFINT の下の I と I% は同じ変数なので、NEXT I% は FOR I に対応する
+        var prog = AnalyzeOk("10 DEFINT A-Z:FOR I=1 TO 0:NEXT I%");
+        Assert.Single(prog.ForExits);
+    }
+
+    [Fact]
+    public void Analyzer_StaticBytesCountFloatsAsThreeBytes()
+    {
+        // 浮動小数の変数 3 バイト + 浮動小数の配列 (21 × 3 + 4) + DATA の行の表の終わり 4
+        var prog = AnalyzeOk("10 A=1:DIM B(20)");
+        Assert.Equal(3 + 21 * 3 + 4 + 4, prog.StaticDataBytes);
     }
 
     [Fact]

@@ -7,6 +7,9 @@ namespace SLANGCompiler.HuBasic.Parsing;
 /// <summary>式の型。Float は SLANG の FLOAT (24 ビットの浮動小数) で持つ</summary>
 public enum HuType { Int, Str, Float }
 
+/// <summary>変数の型の種類 (変数を見分ける鍵の一部)。Single と Double はどちらも FLOAT で持つ</summary>
+public enum HuVarKind { Int, Single, Double, Str }
+
 // ---------------------------------------------------------------- 式
 
 public abstract record HuExpr(HuPos Pos)
@@ -57,7 +60,8 @@ public sealed record HuWend(HuPos Pos) : HuStmt(Pos);
 public sealed record HuEnd(HuPos Pos) : HuStmt(Pos);
 public sealed record HuInit(HuPos Pos) : HuStmt(Pos);
 public sealed record HuDim(IReadOnlyList<(string Name, HuExpr Bound)> Arrays, HuPos Pos) : HuStmt(Pos);
-public sealed record HuDefint(IReadOnlyList<(char From, char To)> Ranges, HuPos Pos) : HuStmt(Pos);
+/// <summary>DEFINT / DEFSNG / DEFDBL / DEFSTR (Kind はその型の種類)</summary>
+public sealed record HuDefType(HuVarKind Kind, IReadOnlyList<(char From, char To)> Ranges, HuPos Pos) : HuStmt(Pos);
 public sealed record HuData(IReadOnlyList<string> Items, HuPos Pos) : HuStmt(Pos);
 public sealed record HuRead(IReadOnlyList<HuExpr> Targets, HuPos Pos) : HuStmt(Pos);
 public sealed record HuRestore(int? Line, HuPos Pos) : HuStmt(Pos);

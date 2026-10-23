@@ -12,7 +12,8 @@ public sealed record HuTranspileOptions(
     int WaitArg = 1,
     bool LineComments = false,
     int DataBudget = HuAnalyzer.DefaultDataBudget,
-    string SourceName = "");
+    string SourceName = "",
+    bool AssumeDefint = false);
 
 public sealed record HuTranspileResult(string? Output, HuDiagnosticBag Diagnostics, HuProgram? Program, HuFlat? Flat);
 
@@ -32,12 +33,13 @@ public static class HuTranspiler
     }
 
     /// <summary>前段だけ (解析済みのプログラムまで)。テストと別の後段から使う。</summary>
-    public static HuProgram? Analyze(string text, HuDiagnosticBag diag, int dataBudget = HuAnalyzer.DefaultDataBudget)
+    public static HuProgram? Analyze(string text, HuDiagnosticBag diag, int dataBudget = HuAnalyzer.DefaultDataBudget,
+                                     bool assumeDefint = false)
     {
         var src = HuSource.FromText(text, diag);
         var ast = HuParser.Parse(src, diag);
         if (diag.HasErrors) return null;
-        var prog = HuAnalyzer.Analyze(ast, diag, dataBudget);
+        var prog = HuAnalyzer.Analyze(ast, diag, dataBudget, assumeDefint);
         return diag.HasErrors ? null : prog;
     }
 
@@ -45,7 +47,7 @@ public static class HuTranspiler
     {
         var ast = HuParser.Parse(src, diag);
         if (diag.HasErrors) return new HuTranspileResult(null, diag, null, null);
-        var prog = HuAnalyzer.Analyze(ast, diag, options.DataBudget);
+        var prog = HuAnalyzer.Analyze(ast, diag, options.DataBudget, options.AssumeDefint);
         if (diag.HasErrors) return new HuTranspileResult(null, diag, prog, null);
         var flat = HuLowerer.Lower(prog, new HuLowerOptions(options.Wait, options.WaitArg, options.LineComments));
         IHuBackend backend = new SlangBackend();

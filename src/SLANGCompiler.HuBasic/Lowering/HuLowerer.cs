@@ -12,7 +12,8 @@ public sealed record HuLowerOptions(HuWaitMode Wait = HuWaitMode.None, int WaitA
 /// - GOSUB は制御スタックに戻り先 ID を積んで飛び、RETURN は共通の戻り処理 (H_RET) で分岐する
 /// - FOR / NEXT は制御スタックの FOR 枠で実行時に対応付け、NEXT の折り返しは共通の H_FOR で分岐する
 /// - IF・REPEAT・WHILE はすべてラベルと条件付きの飛び先にする
-/// 隠し変数の名前は抽象名 ("T", "DIM:名前", "UB:名前") で、後段が実際の名前に写す。
+/// 隠し変数の名前は抽象名 ("T", "DIM:変数の鍵", "UB:変数の鍵") で、後段が実際の名前に写す。
+/// 変数・配列の名前は構文木のまま (ソースの綴り) 持ち、後段が <see cref="HuProgram.Key"/> で鍵にする。
 /// </summary>
 public sealed class HuLowerer
 {
@@ -203,9 +204,10 @@ public sealed class HuLowerer
             case HuDim d:
                 foreach (var (name, bound) in d.Arrays)
                 {
-                    if (!_prog.Arrays.ContainsKey(name)) continue;
+                    var key = _prog.Key(name);
+                    if (!_prog.Arrays.ContainsKey(key)) continue;
                     var n = (int)(HuAnalyzer.ConstValue(bound) ?? 0);
-                    Call("BAS_DIM", new FHiddenAddrArg(DimState(name)), new FHiddenAddrArg(UpperBound(name)), I(n));
+                    Call("BAS_DIM", new FHiddenAddrArg(DimState(key)), new FHiddenAddrArg(UpperBound(key)), I(n));
                 }
                 break;
             case HuRead rd:
@@ -263,7 +265,7 @@ public sealed class HuLowerer
                 if (rem.Directive == "VSYNC" && _opt.Wait == HuWaitMode.Frame)
                     Call("BAS_VSYNC", I(rem.DirectiveArg > 0 ? rem.DirectiveArg : _opt.WaitArg));
                 break;
-            case HuDefint:
+            case HuDefType:
             case HuData:
                 break;
         }
