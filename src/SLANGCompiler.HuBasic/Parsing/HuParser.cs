@@ -713,15 +713,14 @@ public sealed class HuParser
             case HuTokenKind.Float:
             {
                 Next();
-                // 接尾辞の ! # を外し、倍精度の指数 D を E に読み替える
-                var text = t.Text.TrimEnd('!', '#').Replace('D', 'E').Replace('d', 'E');
-                if (!double.TryParse(text, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out var fv) || HuF24.Overflows(fv))
+                // ランタイムの INPUT と同じ読み方 (有効 9 桁、f24 へ 1 回だけ四捨五入) で f24 の値にする
+                var fv = HuF24.ParseDecimal(t.Text);
+                if (fv == null || double.IsInfinity(fv.Value))
                 {
                     _diag.Error("HB0103", $"浮動小数として大きすぎる数値 {t.Text} (約 1.8E+19 まで)", pos);
                     fv = 0;
                 }
-                return new HuFloat(fv, pos);
+                return new HuFloat(fv.Value, pos);
             }
             case HuTokenKind.String:
                 Next();

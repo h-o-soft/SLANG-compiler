@@ -390,13 +390,29 @@ public class HuBasicEmitTests
         Assert.Equal(back, SLANGCompiler.HuBasic.HuF24.Quantize(back));          // SLANG が丸め直しても変わらない
     }
 
+    /// <summary>10 進の定数は、INPUT (BAS_SVALF) と同じく有効 9 桁で読み、f24 へ 1 回だけ四捨五入する</summary>
+    [Theory]
+    [InlineData("0.5", 0.5)]
+    [InlineData("0.50000", 0.5)]
+    [InlineData("5E-1", 0.5)]
+    [InlineData("0.4999980927", 0.4999961853027344)]   // 10 桁目は捨てる (INPUT と同じ。0.5 にはならない)
+    [InlineData("52431.5", 52431.5)]
+    [InlineData("524315E-1", 52431.5)]
+    [InlineData("12345678901", 12345671680.0)]            // 整数部の 10 桁目以降も捨てて 10 倍に数える (12345678900 の f24)
+    [InlineData("1D3", 1000.0)]
+    public void Float_DecimalLiteralReadLikeInput(string text, double expected)
+    {
+        Assert.Equal(expected, SLANGCompiler.HuBasic.HuF24.ParseDecimal(text));
+        Assert.Equal(expected, SLANGCompiler.HuBasic.HuF24.Quantize(expected));    // f24 の値そのもの
+    }
+
     [Fact]
     public void Float_ConstantFoldingMatchesRuntimeAtBoundary()
     {
-        // 変換のときに丸める A と、実行時に丸める B が同じ値の f24 を使う (どちらも .5 → 1)
+        // 変換のときに丸める A と、実行時に丸める B が同じ値の f24 を使う (有効 9 桁で読むので .5 にはならず、どちらも 0)
         var sl = Transpile("10 DEFINT A-Z:A=.4999980926513671875:B=.4999980926513671875*1.0").Output!;
-        Assert.Contains("V_A=1;", Body(sl));
-        Assert.Contains("ARRAY FLOAT H_FK[] = { 0.5, 1.0 };", sl);
+        Assert.Contains("V_A=0;", Body(sl));
+        Assert.Contains("ARRAY FLOAT H_FK[] = { 0.499996185302734375, 1.0 };", sl);
     }
 
     [Fact]

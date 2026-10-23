@@ -28,6 +28,68 @@ public static class HuF24
         return sign * (1.0 + q / 65536) * Math.Pow(2, exp);
     }
 
+    /// <summary>
+    /// 10 進の数の綴り (符号なし。数字・小数点・指数 E/D、後ろの ! # は無視) を、ランタイムの BAS_SVALF と同じ読み方で
+    /// f24 の値にする: 有効数字は 9 桁まで (それより下の桁は捨てる。整数部の捨てた桁は 10 倍に数える)、
+    /// その 10 進の値から f24 へ 1 回だけ四捨五入する。定数と INPUT で読んだ値が必ず同じになる。
+    /// 読めなければ null。
+    /// </summary>
+    public static double? ParseDecimal(string text)
+    {
+        var t = text.TrimEnd('!', '#');
+        int i = 0, nd = 0;
+        long x = 0;
+        var m = System.Numerics.BigInteger.Zero;
+        bool any = false;
+        for (; i < t.Length && char.IsAsciiDigit(t[i]); i++)
+        {
+            any = true;
+            if (nd < 9) { m = m * 10 + (t[i] - '0'); if (!m.IsZero) nd++; }
+            else x++;
+        }
+        if (i < t.Length && t[i] == '.')
+        {
+            for (i++; i < t.Length && char.IsAsciiDigit(t[i]); i++)
+            {
+                any = true;
+                if (nd < 9) { m = m * 10 + (t[i] - '0'); x--; if (!m.IsZero) nd++; }
+            }
+        }
+        if (!any) return null;
+        if (i < t.Length && "EeDd".Contains(t[i]))
+        {
+            i++;
+            bool neg = false;
+            if (i < t.Length && (t[i] == '+' || t[i] == '-')) { neg = t[i] == '-'; i++; }
+            long e = 0;
+            for (; i < t.Length && char.IsAsciiDigit(t[i]); i++) e = Math.Min(e * 10 + (t[i] - '0'), 999);
+            x += neg ? -e : e;
+        }
+        if (m.IsZero) return 0;
+        // 値 = m × 10^x を num / den の有理数で
+        var num = x >= 0 ? m * System.Numerics.BigInteger.Pow(10, (int)x) : m;
+        var den = x >= 0 ? System.Numerics.BigInteger.One : System.Numerics.BigInteger.Pow(10, (int)-x);
+        // 2^e <= 値 < 2^(e+1) となる e
+        int exp = (int)(num.GetBitLength() - den.GetBitLength());
+        if (Compare(num, den, exp) < 0) exp--;
+        if (Compare(num, den, exp + 1) >= 0) exp++;
+        // 仮数 = floor((値 / 2^e - 1) × 65536 + 1/2) = floor(値 × 2^(17-e) / 2 + 1/2) の形で整数だけで計算する
+        var scaledNum = num * 2;
+        var scaledDen = den;
+        int sh = 16 - exp;
+        if (sh >= 0) scaledNum <<= sh; else scaledDen <<= -sh;
+        var q = (scaledNum + scaledDen) / (scaledDen * 2);   // floor(値 × 2^(16-e) + 1/2)
+        var mant = q - 65536;
+        if (mant >= 65536) { mant = 0; exp++; }
+        if (exp > 63) return double.PositiveInfinity;
+        if (exp < -62) return 0;
+        return (1.0 + (double)mant / 65536) * Math.Pow(2, exp);
+    }
+
+    /// <summary>num / den と 2^e を比べる</summary>
+    private static int Compare(System.Numerics.BigInteger num, System.Numerics.BigInteger den, int e)
+        => e >= 0 ? num.CompareTo(den << e) : (num << -e).CompareTo(den);
+
     /// <summary>f24 で表せる最大の大きさ (2^63 × (1 + 65535/65536)、約 1.8E+19)</summary>
     public static readonly double MaxFinite = (1.0 + 65535.0 / 65536) * Math.Pow(2, 63);
 
