@@ -2500,8 +2500,10 @@ JP .bpl_pl
 ; @calls BAS_WORK,BAS_PUPARSE,BAS_PULAY,BAS_PFLT,BAS_ERROR
 ; AHL = 浮動小数。PRINT USING の書式で出す (BAS_PUSING の浮動小数版。数値の欄がない書式は値をふつうに出す)。
 ; 数字は f24 の値を正確な 10 進にして、小数部の桁で四捨五入したもの: |x| × 10^d (d は小数部の桁、9 まで。その下は 0) を
-; 64 ビットの整数で正確に計算して丸める (f24 の値 = 頭の 1 を付けた 17 ビットの仮数 × 2^(指数 - 79))。
-; 符号は丸める前の値で決める (-.004 は "-.00")。64 ビットに収まらない値はエラー 36、無限大・NaN はエラー 6
+; 64 ビットの整数で正確に計算して丸める (f24 の値 = 頭の 1 を付けた 17 ビットの仮数 × 2^(指数 - 79))。値が 2^17 以上
+; (指数 - 79 が 0 以上) なら値は整数なので、10^d を掛けずに整数部だけを作る (小数部は BAS_PULAY が 0 で埋める。f24 の
+; 値は 2^64 未満なので必ず収まる)。2^17 未満の値は × 10^9 でも 2^47 未満。符号は丸める前の値で決める (-.004 は "-.00")。
+; 無限大・NaN はエラー 6
 LD (.bpf_m), HL
 LD (.bpf_a), A
 CALL BAS_PUPARSE
@@ -2546,6 +2548,21 @@ LD HL, (.bpf_m)
 LD (.bpf_q), HL
 LD A, 1
 LD (.bpf_q + 2), A  ; q = 仮数 (17 ビット)
+LD A, (.bpf_e)
+CP 79
+JP C, .bpf_frac
+XOR A               ; 2 の指数が 0 以上: 値は整数。小数部の数字は作らない (BAS_PULAY が 0 で埋める)
+LD (.bpf_dd), A
+LD A, (.bpf_e)
+SUB 79
+JP Z, .bpf_digits
+LD C, A             ; 左へ C ビット (47 まで。2^64 未満に収まる)
+.bpf_shl
+CALL .bpf_sl1
+DEC C
+JP NZ, .bpf_shl
+JP .bpf_digits
+.bpf_frac
 LD A, (.bpf_dd)
 OR A
 JP Z, .bpf_scale
@@ -2559,16 +2576,6 @@ JP NZ, .bpf_m10
 .bpf_scale
 LD A, (.bpf_e)
 SUB 79
-JP Z, .bpf_digits
-JP C, .bpf_right
-LD C, A             ; 2 の指数が正: 左へ C ビット (あふれたらエラー 36)
-.bpf_shl
-CALL .bpf_sl1
-JP C, .bpf_big
-DEC C
-JP NZ, .bpf_shl
-JP .bpf_digits
-.bpf_right
 NEG                 ; 2 の指数が負: 右へ A ビット (1〜78)。最後に落ちるビットで四捨五入する
 LD C, A
 DEC C
@@ -2649,9 +2656,6 @@ LD DE, .bpf_fbuf
 JP BAS_PULAY
 .bpf_inf
 LD HL, 6
-JP BAS_ERROR
-.bpf_big
-LD HL, 36
 JP BAS_ERROR
 ; q × 10 (q × 4 + q を 2 倍する)
 .bpf_x10
