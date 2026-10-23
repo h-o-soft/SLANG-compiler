@@ -400,6 +400,8 @@ public class HuBasicFrontendTests
 
     [Theory]
     [InlineData("10 DEFINT A-Z:A$=INKEY$(1)", "HB0302")]   // INKEY$(1)・(2) は別の意味なので未対応
+    [InlineData("10 DEFINT A-Z:SCREEN 0,0,ASC(INPUT$(1))-48", "HB0703")]   // 何もしない命令の引数は定数だけ
+    [InlineData("10 DEFINT A-Z:SCREEN X", "HB0703")]
     [InlineData("10 DEFINT A-Z:A$=INPUT$(\"X\")", "HB0404")]
     public void Analyzer_StageF1cErrors(string program, string code) => AssertError(program, code);
 

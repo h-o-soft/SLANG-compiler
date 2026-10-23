@@ -608,7 +608,13 @@ public sealed class HuAnalyzer
         if (cmd.Name == "SCREEN")
         {
             foreach (var a in cmd.Args)
-                if (a != null) ExpectNum(a, intConv: true);
+            {
+                if (a == null) continue;
+                ExpectNum(a, intConv: true);
+                // 何もしない命令なので、引数は評価を省いてよい数の定数だけを受け付ける
+                if (!IsSignedNumConst(a))
+                    _diag.Error("HB0703", "SCREEN の引数は数の定数だけに対応しています", cmd.Pos);
+            }
             // 0,0 (と省略) は INIT や WIDTH の後と同じ状態なので黙って何もしない。それ以外は見え方が本物と違う
             bool defaultPages = cmd.Args.Take(2).All(a => a == null || a is HuNum { Value: 0 });
             if (!defaultPages || cmd.Args.Count == 0)
