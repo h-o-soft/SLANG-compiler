@@ -4744,7 +4744,7 @@ JP BAS_SVALF
 ; @resident shared
 ; @param_count 1
 ; @result_type float
-; @calls BAS_SVAL,i16tof24,u16tof24,f24mul,f24add,f24div,f24pow10_LUT
+; @calls BAS_SVAL,i16tof24,f24mul,f24div,f24pow10_LUT
 ; HL = 文字列 → AHL = 数として読めた所までの値 (VAL と同じ読み方で、小数点と指数 E・D も読む。読めなければ 0)。
 ; 有効数字は 9 桁まで (それより下の桁は捨てる)。&H・&O・&B は整数の VAL (BAS_SVAL) と同じ
 LD (.bsv_str), HL
@@ -4917,25 +4917,6 @@ INC HL
 LD (.bsv_x), HL
 JP .bsv_tz
 .bsv_tzd
-LD HL, (.bsv_m)
-LD DE, (.bsv_m + 2)
-EX DE, HL
-CALL u16tof24
-LD C, $4F               ; × 65536 (2^16)
-LD DE, 0
-CALL f24mul
-LD (.bsv_f), HL
-LD (.bsv_f + 2), A
-LD HL, (.bsv_m)
-CALL u16tof24
-LD DE, (.bsv_f)
-PUSH AF
-LD A, (.bsv_f + 2)
-LD C, A
-POP AF
-CALL f24add
-LD (.bsv_f), HL
-LD (.bsv_f + 2), A
 LD HL, (.bsv_e)         ; 10 進の指数 X = 桁の補正 ± 指数
 LD A, (.bsv_eneg)
 OR A
@@ -4948,6 +4929,154 @@ SBC HL, DE
 LD DE, (.bsv_x)
 ADD HL, DE
 LD (.bsv_xx), HL
+; ここから f24 にするまでを整数で正確に計算し、丸めは最後の 1 回だけにする (SLANG が定数を f24 に直すのと同じ値):
+; X > 0 なら、M が 32 ビットに収まる間 M を 10 倍する。X < 0 なら D = 10^k (k = -X、9 まで) で割る。
+; 商 Q = M / D に、余りから下のビットを足して 18 ビットにそろえ、最後のビットで四捨五入する
+.bsv_pm
+LD HL, (.bsv_xx)
+BIT 7, H
+JP NZ, .bsv_dset
+LD A, H
+OR L
+JP Z, .bsv_dset
+LD A, (.bsv_m + 3)
+CP $19                  ; M × 10 が 32 ビットに収まるか (M < $19000000 なら収まる)
+JP NC, .bsv_dset
+CALL .bsv_m10
+LD (.bsv_m), HL
+LD (.bsv_m + 2), DE
+LD HL, (.bsv_xx)
+DEC HL
+LD (.bsv_xx), HL
+JP .bsv_pm
+.bsv_dset
+LD HL, (.bsv_xx)        ; k = X が負なら min(-X, 9)、そうでなければ 0
+LD A, 0
+BIT 7, H
+JP Z, .bsv_dk
+EX DE, HL
+LD HL, 0
+OR A
+SBC HL, DE              ; HL = -X
+LD A, H
+OR A
+LD A, 9
+JP NZ, .bsv_dk
+LD A, L
+CP 10
+JP C, .bsv_dk
+LD A, 9
+.bsv_dk
+LD (.bsv_k), A
+LD E, A                 ; X += k
+LD D, 0
+LD HL, (.bsv_xx)
+ADD HL, DE
+LD (.bsv_xx), HL
+LD HL, .bsv_p10         ; D = 10^k (表から)
+ADD HL, DE
+ADD HL, DE
+ADD HL, DE
+ADD HL, DE
+LD DE, .bsv_d
+LD BC, 4
+LDIR
+CALL .bsv_div32         ; Q = M / D、R = M % D
+LD HL, 0
+LD (.bsv_be), HL        ; 2 の指数
+.bsv_nbig               ; Q が 2^18 以上なら右へ送る (落ちるビットは四捨五入に使わない)
+LD A, (.bsv_q + 3)
+OR A
+JP NZ, .bsv_nr
+LD A, (.bsv_q + 2)
+AND $FC
+JP Z, .bsv_nsm
+.bsv_nr
+LD HL, .bsv_q + 3
+SRL (HL)
+DEC HL
+RR (HL)
+DEC HL
+RR (HL)
+DEC HL
+RR (HL)
+LD HL, (.bsv_be)
+INC HL
+LD (.bsv_be), HL
+JP .bsv_nbig
+.bsv_nsm                ; Q が 2^17 未満なら、余りから商の次のビットを足しながら左へ送る
+LD A, (.bsv_q + 2)
+AND $02
+JP NZ, .bsv_nok
+LD HL, .bsv_r
+SLA (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+LD HL, .bsv_q
+SLA (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+CALL .bsv_rsub          ; R >= D なら R -= D して Q の最下位を 1 に
+LD HL, (.bsv_be)
+DEC HL
+LD (.bsv_be), HL
+JP .bsv_nsm
+.bsv_nok                ; Q = 18 ビット。仮数 = Q >> 1 の下位 16 ビット、Q の最下位が 1 なら切り上げ
+LD A, (.bsv_q)
+AND 1
+LD C, A
+LD HL, .bsv_q + 2
+SRL (HL)
+DEC HL
+RR (HL)
+DEC HL
+RR (HL)
+LD HL, (.bsv_be)
+LD DE, 63 + 17
+ADD HL, DE
+EX DE, HL               ; DE = 指数 (偏り込み)
+LD HL, (.bsv_q)
+LD A, C
+OR A
+JP Z, .bsv_nr0
+INC HL
+LD A, H
+OR L
+JP NZ, .bsv_nr0
+INC DE                  ; 仮数が繰り上がった
+.bsv_nr0
+BIT 7, D
+JP NZ, .bsv_under
+LD A, D
+OR A
+JP NZ, .bsv_over
+LD A, E
+OR A
+JP Z, .bsv_under
+CP 127
+JP NC, .bsv_over
+LD (.bsv_f), HL
+LD (.bsv_f + 2), A
+JP .bsv_sc
+.bsv_over
+LD HL, 0
+LD (.bsv_f), HL
+LD A, $7F
+LD (.bsv_f + 2), A
+JP .bsv_sc
+.bsv_under
+LD HL, 0
+LD (.bsv_f), HL
+XOR A
+LD (.bsv_f + 2), A
 .bsv_sc                 ; 10^X を、表 (1e19〜1e-18) の値を掛けて合わせる
 LD HL, (.bsv_xx)
 LD A, H
@@ -5071,6 +5200,82 @@ INC (HL)
 .bsv_dvn
 DJNZ .bsv_dv
 RET
+.bsv_div32              ; Q = M / D、R = M % D (32 ビット)
+LD HL, (.bsv_m)
+LD (.bsv_q), HL
+LD HL, (.bsv_m + 2)
+LD (.bsv_q + 2), HL
+LD HL, 0
+LD (.bsv_r), HL
+LD (.bsv_r + 2), HL
+LD B, 32
+.bsv_dl
+LD HL, .bsv_q           ; Q:R を左へ (Q の最上位ビットが R の最下位へ)
+SLA (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+LD HL, .bsv_r
+RL (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+INC HL
+RL (HL)
+PUSH BC
+CALL .bsv_rsub
+POP BC
+DJNZ .bsv_dl
+RET
+.bsv_rsub               ; R >= D なら R -= D、Q の最下位を 1 に
+LD HL, (.bsv_r)
+LD DE, (.bsv_d)
+OR A
+SBC HL, DE
+PUSH HL
+LD HL, (.bsv_r + 2)
+LD DE, (.bsv_d + 2)
+SBC HL, DE
+JP C, .bsv_rno
+LD (.bsv_r + 2), HL
+POP HL
+LD (.bsv_r), HL
+LD HL, .bsv_q
+INC (HL)
+RET
+.bsv_rno
+POP HL
+RET
+.bsv_m10                ; DE:HL = M × 10 (M は変えない。.bsv_t を使う)
+LD HL, (.bsv_m)
+LD DE, (.bsv_m + 2)
+ADD HL, HL
+EX DE, HL
+ADC HL, HL
+EX DE, HL               ; × 2
+LD (.bsv_t), HL
+LD (.bsv_t + 2), DE
+ADD HL, HL
+EX DE, HL
+ADC HL, HL
+EX DE, HL               ; × 4
+ADD HL, HL
+EX DE, HL
+ADC HL, HL
+EX DE, HL               ; × 8
+PUSH BC
+LD BC, (.bsv_t)
+ADD HL, BC
+EX DE, HL
+LD BC, (.bsv_t + 2)
+ADC HL, BC
+EX DE, HL               ; × 10
+POP BC
+RET
 .bsv_isexp              ; A が指数の文字 (E e D d) なら Z
 CP 'E'
 RET Z
@@ -5087,28 +5292,7 @@ CP 9
 JP NC, .bsv_drop
 PUSH HL
 PUSH BC
-LD HL, (.bsv_m)
-LD DE, (.bsv_m + 2)
-ADD HL, HL
-EX DE, HL
-ADC HL, HL
-EX DE, HL               ; DE:HL = M × 2
-LD (.bsv_t), HL
-LD (.bsv_t + 2), DE
-ADD HL, HL
-EX DE, HL
-ADC HL, HL
-EX DE, HL               ; × 4
-ADD HL, HL
-EX DE, HL
-ADC HL, HL
-EX DE, HL               ; × 8
-LD BC, (.bsv_t)
-ADD HL, BC
-EX DE, HL
-LD BC, (.bsv_t + 2)
-ADC HL, BC
-EX DE, HL               ; × 10
+CALL .bsv_m10           ; DE:HL = M × 10
 POP BC
 PUSH BC
 LD B, 0
@@ -5145,6 +5329,22 @@ RET
 .bsv_x DW 0
 .bsv_e DW 0
 .bsv_xx DW 0
+.bsv_k DB 0
+.bsv_be DW 0
+.bsv_d DB 0, 0, 0, 0
+.bsv_q DB 0, 0, 0, 0
+.bsv_r DB 0, 0, 0, 0
+.bsv_p10                ; 10^0〜10^9 (32 ビット)
+DB $01, $00, $00, $00
+DB $0A, $00, $00, $00
+DB $64, $00, $00, $00
+DB $E8, $03, $00, $00
+DB $10, $27, $00, $00
+DB $A0, $86, $01, $00
+DB $40, $42, $0F, $00
+DB $80, $96, $98, $00
+DB $00, $E1, $F5, $05
+DB $00, $CA, $9A, $3B
 
 
 ; @name BAS_SOUND
