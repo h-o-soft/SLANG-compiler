@@ -209,7 +209,7 @@ public class HuBasicEmitTests
         Assert.Contains("BAS_SMID(S_A, 1, 2)", sl);                       // LEFT$ は MID$(s, 1, n)
         Assert.Contains("BAS_SSTR(3, K_", sl);
         Assert.Contains("BAS_SSTR(2, BAS_SCHR(65))", sl);                // 文字コードは 1 文字にしてから繰り返す
-        Assert.Contains("BAS_SCAT(BAS_SCAT(BAS_SCHR(29), BAS_SCHR(29)), BAS_SCHR(65))", sl);
+        Assert.Matches(@"H_I1=BAS_SALLOC\(3\);\s+BAS_SPUTC\(H_I1, 1, 29\);\s+BAS_SPUTC\(H_I1, 2, 29\);\s+BAS_SPUTC\(H_I1, 3, 65\);", sl);
         Assert.Contains("BAS_SCHARA(0, 0)", sl);
         Assert.Matches(@"BAS_TLINE\(1, 1, 5, 5, K_\d+, 2\);", sl);      // BF は 2、B は 1、線は 0
         Assert.Matches(@"BAS_TLINE\(1, 1, 5, 5, K_\d+, 1\);", sl);
@@ -242,6 +242,30 @@ public class HuBasicEmitTests
         Assert.Contains("BAS_KEYIN", fs["BAS_SINPUT"].Dependencies);
         Assert.DoesNotContain("BAS_SINKEY", fs["BAS_INPUT"].Dependencies);
         Assert.DoesNotContain("BAS_TALLOC", fs["BAS_KEYIN"].Dependencies);
+    }
+
+    /// <summary>MID$ の文の書き込みは前から写す (自分自身を重ねて代入したとき、Hu-BASIC と同じく書いた文字をまた読む)</summary>
+    [Fact]
+    public void Runtime_MidSetCopiesForwardLikeHuBasic()
+    {
+        var path = Path.Combine(RepoRoot(), "runtime", "libx1_basic.asm");
+        var f = RuntimeParser.Parse(File.ReadAllText(path), path).Single(x => x.Name == "BAS_SMIDSET");
+        var code = f.Code.Split('\n').Select(l => l.Split(';')[0].Trim()).Where(l => l.Length > 0).ToList();
+        Assert.Contains("LDIR", code);
+        Assert.DoesNotContain("LDDR", code);
+    }
+
+    /// <summary>引数の多い CHR$ も、結果の長さ分だけを確保する (42 個でも、1 行に書ける最大の 110 個でも一時領域があふれない)</summary>
+    [Theory]
+    [InlineData(42)]
+    [InlineData(110)]
+    public void Slang_ManyArgumentChrAllocatesOnce(int n)
+    {
+        var args = string.Join(",", Enumerable.Repeat("9", n));
+        var sl = Body(Transpile($"10 DEFINT A-Z:A$=CHR$({args})").Output!);
+        Assert.Contains($"BAS_SALLOC({n})", sl);
+        Assert.DoesNotContain("BAS_SCAT", sl);
+        Assert.Equal(n, Regex.Matches(sl, @"BAS_SPUTC\(").Count);
     }
 
     [Fact]

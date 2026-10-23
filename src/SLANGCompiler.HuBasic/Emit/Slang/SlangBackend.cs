@@ -482,11 +482,20 @@ public sealed class SlangBackend : IHuBackend
         return outs;
     }
 
-    /// <summary>CHR$(a, b, …): それぞれの文字をつなげる (引数は左から順に評価する)</summary>
+    /// <summary>
+    /// CHR$(a, b, …): 結果の長さの文字列を先に 1 つ確保して、1 文字ずつ書く (連結を重ねると途中の文字列が一時領域に
+    /// 残ってあふれるため)。確保と書き込みは前置きの代入として出し、引数は左から順に評価する
+    /// </summary>
     private string ChrOfCodes(HuCall c)
     {
-        var v = Seq(c.Args.Select(x => (x, K.Int)).ToArray());
-        return v.Skip(1).Aggregate($"BAS_SCHR({v[0]})", (acc, x) => $"BAS_SCAT({acc}, BAS_SCHR({x}))");
+        var t = NewITemp();
+        _pre.Add($"{t}=BAS_SALLOC({c.Args.Count});");
+        for (int i = 0; i < c.Args.Count; i++)
+        {
+            var v = Int(c.Args[i]);
+            _pre.Add($"BAS_SPUTC({t}, {i + 1}, {v});");
+        }
+        return t;
     }
 
     /// <summary>STRING$(n, 文字コード): その文字を 1 文字にしてから繰り返す</summary>

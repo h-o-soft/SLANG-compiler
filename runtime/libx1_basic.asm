@@ -4446,9 +4446,11 @@ LD A, (.bms_p)
 LD E, A
 LD D, 0
 ADD HL, DE              ; HL = p 文字目
-EX DE, HL
+EX DE, HL               ; DE = 書き込み先
 LD HL, (.bms_s)
-INC HL
+INC HL                  ; HL = 写す元
+; いつも前から写す。元と先が同じ変数で重なるとき (MID$(A$,2)=A$) は、書いた文字をまた読むことになるが、
+; Hu-BASIC も同じ (実測: A$="ABCDEF":MID$(A$,2)=A$ は AAAAAA)
 LDIR
 RET
 .bms_err
@@ -5125,6 +5127,31 @@ CALL BAS_PSGW
 LD A, 10
 JP BAS_PSGW
 .bbn_err
+LD HL, 5
+JP BAS_ERROR
+
+
+; @name BAS_SALLOC
+; @resident shared
+; @param_count 1
+; @calls BAS_TALLOC
+; HL = 長さ (0〜255) → その長さの一時文字列 (中身は後から BAS_SPUTC で書く。CHR$(a, b, …) 用)
+LD A, L
+JP BAS_TALLOC
+
+
+; @name BAS_SPUTC
+; @resident shared
+; @param_count 3
+; @calls BAS_ERROR
+; HL = 文字列、DE = 位置 (1 始まり)、BC = 文字コード (0〜255、それ以外はエラー 5) → その位置に書く
+LD A, B
+OR A
+JP NZ, .bpc_err
+ADD HL, DE
+LD (HL), C
+RET
+.bpc_err
 LD HL, 5
 JP BAS_ERROR
 
