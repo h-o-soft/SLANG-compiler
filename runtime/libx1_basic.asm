@@ -5340,7 +5340,8 @@ JP BAS_SVALF
 ; @calls BAS_SVAL,i16tof24,f24mul,f24div,f24pow10_LUT
 ; HL = 文字列 → AHL = 数として読めた所までの値 (VAL と同じ読み方で、小数点と指数 E・D も読む。読めなければ 0)。
 ; 有効数字は 9 桁まで (それより下の桁は捨てる)。&H・&O・&B は整数の VAL (BAS_SVAL) と同じ。
-; 10 進の数の中の空白は読み飛ばす (Hu-BASIC の実測: "1 2" は 12、" - 1" は -1、"1. 5" は 1.5、"1 E2" は 100)
+; 10 進の数の中の空白は、指数の E・D より前なら読み飛ばす (Hu-BASIC の実測: "1 2" は 12、" - 1" は -1、"1. 5" は 1.5、
+; "1 E2" は 100)。指数の中の空白は読み飛ばさず、そこで止める ("1E 2" は 1、"1E -2" は 1、"1E2 3" は 100)
 LD (.bsv_str), HL
 LD B, (HL)              ; B = 残りの文字数
 INC HL
@@ -5440,17 +5441,10 @@ JP .bsv_frac
 .bsv_exp                ; 指数: [+-]数字
 INC HL
 DEC B
-.bsv_esg
 LD A, B
 OR A
 JP Z, .bsv_conv
 LD A, (HL)
-CP ' '
-JP NZ, .bsv_esg1
-INC HL
-DEC B
-JP .bsv_esg
-.bsv_esg1
 CP '+'
 JP Z, .bsv_e0
 CP '-'
@@ -5465,8 +5459,6 @@ LD A, B
 OR A
 JP Z, .bsv_conv
 LD A, (HL)
-CP ' '
-JP Z, .bsv_e3
 SUB '0'
 JP C, .bsv_conv
 CP 10
@@ -5490,7 +5482,6 @@ LD HL, 999              ; 大きすぎる指数は 999 で止める
 .bsv_e2
 LD (.bsv_e), HL
 POP HL
-.bsv_e3
 INC HL
 DEC B
 JP .bsv_e1
