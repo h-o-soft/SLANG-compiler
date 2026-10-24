@@ -782,8 +782,8 @@ public class HuBasicEmitTests
         Assert.All(File.ReadAllLines(Path.Combine(dir, "MANIFEST.txt")).Where(l => l.Trim().Length > 0 && !l.StartsWith('#')),
             l => Assert.True(l.Split('\t').Length >= 2 && l.Split('\t')[1].Trim().Length > 0, $"出どころがない: {l}"));
         // 変換した SLANG (*.SL) は .gitignore で除外しているので、一覧の対象にしない
-        var files = Directory.GetFiles(dir).Select(Path.GetFileName)
-            .Where(n => n is not ("README.md" or "MANIFEST.txt") && !n!.EndsWith(".SL", StringComparison.OrdinalIgnoreCase))
+        var files = Directory.GetFiles(dir).Select(f => Path.GetFileName(f))
+            .Where(n => n is not ("README.md" or "MANIFEST.txt") && !n.EndsWith(".SL", StringComparison.OrdinalIgnoreCase))
             .OrderBy(x => x, StringComparer.Ordinal).ToList();
         Assert.Equal(listed, files);
     }
