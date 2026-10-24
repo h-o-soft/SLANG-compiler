@@ -62,6 +62,8 @@ public sealed record HuOnJump(HuExpr Selector, string Kind, IReadOnlyList<int> L
 {
     public IReadOnlyList<string?>? Labels { get; init; }
 }
+/// <summary>POKE 番地, 値, … / POKE@ ポート, 値, … (Io が真)。値は続く番地・ポートに 1 バイトずつ書く</summary>
+public sealed record HuPoke(HuExpr Addr, IReadOnlyList<HuExpr> Values, bool Io, HuPos Pos) : HuStmt(Pos);
 /// <summary>LABEL "名前" (名前への GOTO・GOSUB・ON の飛び先。この文の直後に飛ぶ)</summary>
 public sealed record HuLabel(string Name, HuPos Pos) : HuStmt(Pos);
 public sealed record HuIf(HuExpr Cond, IReadOnlyList<HuStmt> Then, IReadOnlyList<HuStmt>? Else, HuPos Pos) : HuStmt(Pos);

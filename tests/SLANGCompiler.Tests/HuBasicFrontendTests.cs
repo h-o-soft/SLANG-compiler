@@ -400,7 +400,7 @@ public class HuBasicFrontendTests
 
     [Theory]
     [InlineData("10 A=1E99", "HB0103")]   // f24 で表せない大きさ
-    [InlineData("10 CALL 100", "HB0301")]
+    [InlineData("10 CIRCLE(100,100),50", "HB0301")]   // CALL は段階 G5b で対応した
     [InlineData("10 X$=OCT$(1)", "HB0302")]
     [InlineData("10 DIM A(2,3)", "HB0303")]
     [InlineData("10 LINE(0,0)-(1,1),\"A\",X", "HB0203")]   // B と BF のほかは書けない
@@ -1018,4 +1018,40 @@ public class HuBasicFrontendTests
     [InlineData("10 ON A RESTORE \"D\"", "HB0301")]
     [InlineData("10 LABELX=5", "HB0301")]                         // LABEL は予約語 (本物も Syntax error)
     public void Analyzer_LabelErrors(string program, string code) => AssertError(program, code);
+
+    // ------------------------------------------------------------ 段階 G5b
+
+    /// <summary>段階 G5b: POKE@・PEEK@ は @ までで 1 つの予約語</summary>
+    [Theory]
+    [InlineData("POKE@&H3000,65", "POKE@ n:12288 , n:65")]
+    [InlineData("A=PEEK@(1)+PEEK(2)", "id:A = PEEK@ ( n:1 ) + PEEK ( n:2 )")]
+    [InlineData("TIME=0", "TIME = n:0")]
+    public void Lexer_PokePeekAt(string body, string expected)
+        => Assert.Equal(expected, Kinds(Lex(body)));
+
+    [Fact]
+    public void Analyzer_PokePeekCallTime()
+    {
+        var prog = AnalyzeOk("10 POKE &HF000,1,2,3:POKE@&H3000,65:A=PEEK(&HF000)+PEEK@(1):CALL &HD000:TIME=0:T=TIME");
+        var stmts = HuAnalyzer.AllStatements(prog.Lines).ToList();
+        var pokes = stmts.OfType<HuPoke>().ToList();
+        Assert.Equal(3, pokes[0].Values.Count);
+        Assert.False(pokes[0].Io);
+        Assert.True(pokes[1].Io);
+        Assert.Contains(stmts, s => s is HuCommand { Name: "CALL" });
+        Assert.Contains(stmts, s => s is HuCommand { Name: "TIME" });
+        var t = (HuAssign)stmts.Last();
+        Assert.Equal(HuType.Float, t.Value.Type);
+    }
+
+    [Theory]
+    [InlineData("10 CALL &HD000,1", "HB0202")]      // 引数は取らない (本物も Syntax error)
+    [InlineData("10 POKE 1", "HB0203")]
+    [InlineData("10 POKE A$,1", "HB0404")]
+    [InlineData("10 POKE 1,A$", "HB0404")]
+    [InlineData("10 A=PEEK(A$)", "HB0404")]
+    [InlineData("10 TIME=A$", "HB0404")]
+    [InlineData("10 A$=TIME", "HB0404")]
+    [InlineData("10 TIME 5", "HB0203")]
+    public void Analyzer_PokePeekCallTimeErrors(string program, string code) => AssertError(program, code);
 }

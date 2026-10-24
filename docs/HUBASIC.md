@@ -76,6 +76,7 @@ LINE (x1,y1)-(x2,y2),PSET|PRESET[,色][,B|BF]   (グラフィック画面の線�
 PAINT (x,y),色[,境界色 (7 つまで)]
 MID$(変数,位置[,長さ])=文字列  INPUT ["案内";|,] 変数,…  SWAP a,b
 OUT ポート,値  INIT  CLICK ON/OFF  REPEAT ON/OFF  PALET [c,p]  PRW [n]
+POKE 番地,値[,値…]  POKE@ ポート,値[,値…]  CALL 番地  TIME=秒
 PLAY "MML"  PLAY n  TEMPO n  BEEP [0|1]  SOUND レジスタ,値  PAUSE n  RANDOMIZE [n]
 KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出ます)
 ```
@@ -84,6 +85,11 @@ KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出�
   `PRINT "A" PRINT "B"` のように、文がまだ続きを読む所では error です (Hu-BASIC も Syntax error)。
 - `GOTO "名前"` などは、`LABEL "名前"` の文の直後に飛びます (行の途中でも)。名前は大文字小文字と空白まで同じものだけが合います。
   同じ名前の `LABEL` が 2 つあれば前の方 (warning HB0505)。名前は文字列の定数だけ書けます。
+- `CALL` は番地のマシン語を呼びます (RET で戻る。IX・IY は保存します)。マシン語は `POKE` で置いてください。変換したプログラムは
+  $1000 から置かれ、変数などの作業領域がその後ろに続きます。マシン語や `POKE` で使う番地がそれと重ならないようにしてください
+  (`CLEAR 番地` はありません。組み立てた `.bin` の大きさと、リストの `__WORKEND__` で終わりの番地が分かります)。
+- `POKE@`・`PEEK@` は I/O 空間 (テキスト VRAM `&H3000`〜・属性 `&H2000`〜 など) の読み書きです。値は 0〜255 (外なら Illegal function call)。
+- `TIME` はサブ CPU の時計で数える秒です (`CALL` でマシン語を動かしている間も進みます)。
 - `PRINT USING` は数値の書式だけ (`# . + - **` と `,` の区切り)。`PRINT#` は `#0` だけ。
 - `INPUT` は 1 行の入力 (BS で 1 文字消す、RETURN で終わり)。数が読めなくても聞き直さず 0 (Hu-BASIC と同じ)。
 - `PRINT` の文字列の中のカーソルの制御コード (`CHR$(28)`〜`CHR$(31)`) でカーソルが動きます。
@@ -98,7 +104,7 @@ KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出�
 ASC  CHR$(a[,b,…])  MID$(s,n[,m])  LEFT$  RIGHT$  STRING$(n,s または 文字コード)  VAL  STR$  HEXCHR$  CGPAT$
 CHARACTER$(x,y)  INKEY$  INKEY$(0)  INPUT$(n)  INP  STICK  STRIG  RND  INT
 ABS  SGN  SQR  SIN  COS  TAN  ATN  LOG  EXP  FIX  CINT  FRAC  CSNG  CDBL  PAI  RAD
-LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)
+LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート)  TIME
 ```
 
 - 数学の関数は FLOAT の精度で、Hu-BASIC とふつう 4〜5 桁合います。大きな引数の `SIN`・`COS`、0 に近い引数の `SIN`、1 に近い引数の `LOG` は合う桁が少なくなります。
@@ -106,7 +112,8 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)
 
 ## まだないもの (変換のときの error)
 
-- 命令: `CIRCLE`・`PSET`・`POLY` などほかのグラフィックの命令、`LINE -(x,y)`・`STEP`、`DEF FN`、`ON ERROR`、`CALL`・`USR`、`ERASE`、
+- 命令: `CIRCLE`・`PSET`・`POLY` などほかのグラフィックの命令、`LINE -(x,y)`・`STEP`、`DEF FN`、`ON ERROR`、`USR`、`ERASE`、
+  `CLEAR`・`LOADM`・`RUN "ファイル"`、`TIME$`、
   ファイル・ディスク・テープの命令 (error HB0301)
 - 関数: `OCT$`・`BIN$` など (error HB0302)
 - 2 次元以上の配列 (error HB0303)、`MID$` の文の配列の要素
@@ -135,6 +142,9 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)
   - ループで行の頭に戻った直後の実行時エラーで、表示される行番号が 1 つ前の行のままのことがある (表示だけ)。
   - `SWAP` の型の違いは変換のときの error HB0404 (Hu-BASIC は実行したときの Type mismatch)。
   - `PALET`・`PRW`・`KEY`・`SCRN$` の引数で、絶対値が 32767 を超える値は、範囲を調べる前に回り込むか Overflow になる。
+  - `TIME=` に 65535 を超える値を書くと Overflow (Hu-BASIC は 86399 まで書け、86400 以上は 1 日で回る)。負の値は回り込んだ大きな値になる
+    (Hu-BASIC は Illegal function call)。
+  - `POKE` の値の途中でエラーになったとき、その前の値は書いた後です (Hu-BASIC の順は確かめていない)。
 - 画面
   - グラフィックの `LINE`: 画面からはみ出す、箱でない線は Illegal function call で止まります (Hu-BASIC は画面の中の点だけ描く。
     箱と `BF` は画面の中の部分だけ描きます)。座標の差が約 32000 を超える箱は、Hu-BASIC は何も描かず、こちらは画面にかかる部分を描く。

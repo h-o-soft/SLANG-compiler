@@ -91,6 +91,7 @@ public sealed class SlangBackend : IHuBackend
     {
         if (hidden == HuLowerer.Temp) return "H_T";
         if (hidden == HuLowerer.CurrentLine) return "H_LINE";
+        if (hidden == HuLowerer.PokeAddr) return "H_PK";
         if (hidden.StartsWith("DIM:")) return "H_DIM_" + ArrayTag(hidden[4..]);
         if (hidden.StartsWith("UB:")) return "H_UB_" + ArrayTag(hidden[3..]);
         return "H_" + hidden;
@@ -211,6 +212,13 @@ public sealed class SlangBackend : IHuBackend
             {
                 var pv = Seq((po.Port, K.Int), (po.Value, K.Int));
                 Line($"PORT[{pv[0]}]={pv[1]};");
+                break;
+            }
+            case FPoke pk:
+            {
+                // 値は BAS_BYTE で 0〜255 を調べる (外ならエラー 5)
+                var target = $"{(pk.Io ? "PORT" : "MEM")}[{HiddenName(HuLowerer.PokeAddr)}{(pk.Offset > 0 ? "+" + pk.Offset : "")}]";
+                Line($"{target}=BAS_BYTE({Seq((pk.Value, K.Int))[0]});");
                 break;
             }
             case FSwap sw:
@@ -414,7 +422,8 @@ public sealed class SlangBackend : IHuBackend
             case HuCall c:
                 return c.Name switch
                 {
-                    "INP" => $"PORT[{Int(c.Args[0])}]",
+                    "INP" or "PEEK@" => $"PORT[{Int(c.Args[0])}]",
+                    "PEEK" => $"MEM[{Int(c.Args[0])}]",
                     "ASC" => $"BAS_SASC({Str(c.Args[0])})",
                     "STICK" => $"BAS_STICK({Int(c.Args[0])})",
                     "STRIG" => $"BAS_STRIG({Int(c.Args[0])})",
@@ -532,6 +541,16 @@ public sealed class SlangBackend : IHuBackend
                 };
             case HuCall { Name: "RND" }:
                 return "FRAND()";
+            case HuCall { Name: "TIME" }:
+            {
+                // TIME ÷ 4 と TIME mod 4 を続けて読む (どちらも 32767 以下なので、符号付きの整数 → FLOAT の変換で正しい)。
+                // 2 つの代入を一度に前置きに足すので、間に別の TIME の BAS_TIMEH が入らない
+                var hi = NewFTemp();
+                var lo = NewFTemp();
+                _pre.Add($"{hi}=BAS_TIMEH();");
+                _pre.Add($"{lo}=BAS_TIMEL();");
+                return $"({hi}*{FConst(4)}+{lo})";
+            }
             case HuCall { Name: FlatPseudo.InputNum }:
                 return "BAS_INFN()";
             case HuCall { Name: FlatPseudo.ReadNum }:

@@ -25,7 +25,7 @@ public sealed class HuParser
         ["TAN"] = (1, 1), ["ATN"] = (1, 1), ["LOG"] = (1, 1), ["EXP"] = (1, 1), ["FIX"] = (1, 1),
         ["CINT"] = (1, 1), ["FRAC"] = (1, 1), ["CSNG"] = (1, 1), ["CDBL"] = (1, 1), ["PAI"] = (1, 1),
         ["RAD"] = (1, 1), ["LEN"] = (1, 1), ["INSTR"] = (2, 3), ["HEX$"] = (1, 1), ["SPACE$"] = (1, 1),
-        ["SCRN$"] = (3, 3),
+        ["SCRN$"] = (3, 3), ["PEEK"] = (1, 1), ["PEEK@"] = (1, 1),
     };
 
 
@@ -277,6 +277,25 @@ public sealed class HuParser
             case "RESTORE":
                 if (RejectLabelTarget("RESTORE")) return null;
                 return new HuRestore(AtLineNumber ? ParseLineNumber() : null, pos);
+            case "POKE":
+            case "POKE@":
+            {
+                var addr = ParseExpr();
+                ExpectSymbol(",");
+                var values = new List<HuExpr>();
+                do
+                {
+                    values.Add(ParseExpr());
+                } while (AcceptSymbol(","));
+                return new HuPoke(addr, values, t.Text == "POKE@", pos);
+            }
+            case "CALL":
+                // CALL 番地 (引数は取らない。本物も Syntax error)
+                return new HuCommand("CALL", new HuExpr?[] { ParseExpr() }, pos);
+            case "TIME":
+                // TIME = 秒 (式の TIME は関数)
+                ExpectSymbol("=");
+                return new HuCommand("TIME", new HuExpr?[] { ParseExpr() }, pos);
             case "OUT":
             {
                 var port = ParseExpr();
@@ -1007,6 +1026,8 @@ public sealed class HuParser
         }
         if (t.Text == "RND" && !Peek.IsSymbol("("))
             return new HuCall("RND", Array.Empty<HuExpr>(), pos);
+        if (t.Text == "TIME")
+            return new HuCall("TIME", Array.Empty<HuExpr>(), pos);
         if (!Functions.TryGetValue(t.Text, out var arity))
         {
             _diag.Error("HB0302", $"未対応の関数または予約語 {t.Text}", pos);

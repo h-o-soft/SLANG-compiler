@@ -7263,3 +7263,191 @@ RET
 LD HL, 5
 JP BAS_ERROR
 
+
+
+; @name BAS_BYTE
+; @resident shared
+; @param_count 1
+; @calls BAS_ERROR
+; HL = POKE・POKE@ の値。0〜255 ならそのまま返す。それ以外はエラー 5 (Hu-BASIC と同じ Illegal function call)
+LD A, H
+OR A
+RET Z
+LD HL, 5
+JP BAS_ERROR
+
+
+; @name BAS_CALL
+; @resident shared
+; @param_count 1
+; HL = 番地。IX・IY を保存して、その番地を CALL する (CALL 文。マシン語は RET で戻る)。割り込みの状態は変えない
+PUSH IX
+PUSH IY
+LD DE, .bcl_ret
+PUSH DE
+JP (HL)
+.bcl_ret
+POP IY
+POP IX
+RET
+
+
+; @name BAS_TSECS
+; @resident shared
+; @param_count 0
+; サブ CPU の時刻 (コマンド $EF: 時・分・秒の BCD 3 バイト) を読み、その日の秒 (0〜86399) を A:HL (A が上位 8 ビット) に返す。
+; やりとりはキーの読み取り (sGETKY) と同じ手順 (8255 の port B の bit 6 で書ける、bit 5 で読めるのを待つ)
+LD BC, $1A01
+.tsc_w1
+IN A, (C)
+AND $40
+JP NZ, .tsc_w1
+LD BC, $1900
+LD A, $EF
+OUT (C), A
+LD BC, $1A01
+.tsc_w2
+IN A, (C)
+AND $40
+JP NZ, .tsc_w2
+CALL .tsc_rd        ; 時
+AND $3F
+CALL .tsc_bin
+LD (.tsc_h), A
+CALL .tsc_rd        ; 分
+AND $7F
+CALL .tsc_bin
+LD (.tsc_m), A
+CALL .tsc_rd        ; 秒
+AND $7F
+CALL .tsc_bin
+LD (.tsc_s), A
+; A:HL = 時 × 3600 + 分 × 60 + 秒
+XOR A
+LD H, A
+LD L, A
+LD DE, 3600
+LD A, (.tsc_h)
+LD B, A
+XOR A
+INC B
+JP .tsc_h2
+.tsc_h1
+ADD HL, DE
+ADC A, 0
+.tsc_h2
+DJNZ .tsc_h1
+LD C, A
+LD DE, 60
+LD A, (.tsc_m)
+LD B, A
+INC B
+JP .tsc_m2
+.tsc_m1
+ADD HL, DE
+JP NC, .tsc_m2
+INC C               ; 16 ビットの繰り上がり
+.tsc_m2
+DJNZ .tsc_m1
+LD A, (.tsc_s)
+LD E, A
+LD D, 0
+ADD HL, DE
+LD A, C
+ADC A, 0
+RET
+; 8255 の port B の bit 5 で読めるのを待って、サブ CPU から 1 バイト読む
+.tsc_rd
+LD BC, $1A01
+.tsc_r1
+IN A, (C)
+AND $20
+JP NZ, .tsc_r1
+LD BC, $1900
+IN A, (C)
+RET
+; A (BCD) → 2 進
+.tsc_bin
+LD E, A
+AND $F0
+RRCA
+LD D, A             ; 上の桁 × 8
+RRCA
+RRCA                ; 上の桁 × 2
+ADD A, D
+LD D, A             ; 上の桁 × 10
+LD A, E
+AND $0F
+ADD A, D
+RET
+.tsc_h
+DB 0
+.tsc_m
+DB 0
+.tsc_s
+DB 0
+
+
+; @name BAS_TIMEH
+; @resident shared
+; @param_count 0
+; @calls BAS_TSECS
+; @works BAS_TBASE:3,BAS_TNOW:3
+; TIME の読み出し (前半)。TIME = (その日の秒 − 基準) mod 86400 を BAS_TNOW (3 バイト) に入れ、TIME ÷ 4 (0〜21599) を返す。
+; 下位 2 ビットは BAS_TIMEL で読む (どちらの戻り値も 32767 以下なので、符号付きの整数 → FLOAT の変換で正しい値になる)
+CALL BAS_TSECS
+LD DE, (BAS_TBASE)
+OR A
+SBC HL, DE
+LD B, A
+LD A, (BAS_TBASE+2)
+LD E, A
+LD A, B
+SBC A, E
+JP NC, .bth_pos
+LD DE, $5180        ; 負なら 86400 ($015180) を足す
+ADD HL, DE
+ADC A, $01
+.bth_pos
+LD (BAS_TNOW), HL
+LD (BAS_TNOW+2), A
+SRL A
+RR H
+RR L
+SRL A
+RR H
+RR L
+RET
+
+
+; @name BAS_TIMEL
+; @resident shared
+; @param_count 0
+; @calls BAS_TIMEH
+; TIME の読み出し (後半): 直前の BAS_TIMEH で作った TIME の下位 2 ビット (0〜3)
+LD A, (BAS_TNOW)
+AND 3
+LD L, A
+LD H, 0
+RET
+
+
+; @name BAS_TIMESET
+; @resident shared
+; @param_count 1
+; @calls BAS_TSECS,BAS_TIMEH
+; TIME = n (HL = n、0〜65535 の符号なし)。基準 = (その日の秒 − n) mod 86400 にする
+PUSH HL
+CALL BAS_TSECS
+POP DE
+OR A
+SBC HL, DE
+SBC A, 0
+JP NC, .bts_pos
+LD DE, $5180
+ADD HL, DE
+ADC A, $01
+.bts_pos
+LD (BAS_TBASE), HL
+LD (BAS_TBASE+2), A
+RET

@@ -136,6 +136,15 @@ public class HuBasicEmitTests
         40 PAINT(1,1),ASC(MID$("AB",C,1))-64,C:END
         """;
 
+    /// <summary>段階 G5 の命令 (区切りなし・LABEL・POKE・PEEK・POKE@・PEEK@・CALL・TIME・はみ出す線) をひととおり使う小さなプログラム (自作)</summary>
+    private const string G5Program = """
+        10 DEFINT C:C=3:X=1.5:WIDTH 40 INIT:CLS 4
+        20 GOTO "S":LABEL"B":POKE &HF010,1,C,X:POKE@&H3000+C,65,66
+        30 A=PEEK(&HF010)+PEEK@(&H3000):CALL &HF020:TIME=X:TIME=60000:T=TIME+TIME:C=TIME
+        40 ON C GOSUB "B",50:END
+        50 LABEL"S":LINE(-10,-10)-(400,300),PSET,7:LINE(0-X,5)-(10,5),PRESET:RETURN
+        """;
+
     private const string FullProgram = """
         10 DEFINT A-Z:CLS:INIT:WIDTH 40:CLICK OFF:TEMPO 300
         20 A$="AB":B$=A$+CHR$(65):C$=MID$(A$,1,1)+MID$(A$,2)+RIGHT$(A$,1)+HEXCHR$("41")+CGPAT$(65)+INKEY$
@@ -254,6 +263,7 @@ public class HuBasicEmitTests
     [InlineData(G2Program)]
     [InlineData(G3Program)]
     [InlineData(G4Program)]
+    [InlineData(G5Program)]
     public void Lowering_StatementExprsCoversEveryExpressionField(string program)
     {
         // 構文木の文の型のうち式を持つものは、すべて StatementExprs で式を返す
@@ -1034,7 +1044,7 @@ public class HuBasicEmitTests
         var functions = RuntimeParser.Parse(File.ReadAllText(path), path).ToDictionary(f => f.Name);
         var sl = Transpile(Stage1Program).Output! + Transpile(FullProgram).Output! + Transpile(FloatProgram).Output!
                  + Transpile(StringScreenProgram).Output! + Transpile(InputSoundProgram).Output!
-                 + Transpile(FloatVarProgram).Output!;
+                 + Transpile(FloatVarProgram).Output! + Transpile(G5Program).Output!;
         var called = Regex.Matches(sl, @"\b(BAS_[A-Z0-9]+)\(").Select(m => m.Groups[1].Value).Distinct().ToList();
         Assert.NotEmpty(called);
         foreach (var name in called)
@@ -1050,6 +1060,12 @@ public class HuBasicEmitTests
         Assert.True(functions["BAS_GLINE"].CalleeCleanup, "6 引数の BAS_GLINE は callee cleanup");
         // BAS_PAINT は引数の数が文ごとに 4〜11 で変わる (最後の数を見て自分で取り除く)。待ち行列は自分の作業領域に置く
         Assert.True(functions["BAS_PAINT"].CalleeCleanup, "可変個の引数の BAS_PAINT は callee cleanup");
+        // 段階 G5b: 引数の数と、TIME の 3 つの関数が同じ作業領域を使うこと
+        foreach (var (name, n) in new[] { ("BAS_BYTE", 1), ("BAS_CALL", 1), ("BAS_TIMESET", 1), ("BAS_TIMEH", 0), ("BAS_TIMEL", 0) })
+            Assert.Equal(n, functions[name].ParamCount);
+        Assert.Contains(("BAS_TBASE", 3), functions["BAS_TIMEH"].Works!);
+        Assert.Contains("BAS_TIMEH", functions["BAS_TIMEL"].Dependencies);
+        Assert.Contains("BAS_TIMEH", functions["BAS_TIMESET"].Dependencies);
         Assert.Contains("PAINT1", functions["BAS_PAINT"].Dependencies);
         Assert.Contains(("BAS_PNTBUF", 1056), functions["BAS_PAINT"].Works!);
         Assert.True(functions["BAS_SMIDSET"].CalleeCleanup, "4 引数の BAS_SMIDSET は callee cleanup");
@@ -1216,6 +1232,13 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "G4"));
             RunSlangbuild(root, dir, sl12, asmPath, Path.Combine(dir, "G4S"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "G4S"));
+            // 段階 G5 の命令 (POKE・PEEK・CALL・TIME と LABEL) も両方で組み立てまで通る
+            var sl13 = Path.Combine(dir, "G5.SL");
+            File.WriteAllText(sl13, Transpile(G5Program).Output!);
+            RunSlangbuild(root, dir, sl13, asmPath, Path.Combine(dir, "G5"));
+            AssertBuilt(Path.Combine(dir, "G5"));
+            RunSlangbuild(root, dir, sl13, asmPath, Path.Combine(dir, "G5S"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "G5S"));
         }
         finally
         {
@@ -1287,5 +1310,29 @@ public class HuBasicEmitTests
         Assert.Contains("LB1:\n  H_LINE=30;", sl.Replace("\r\n", "\n"));
         Assert.Contains("1: GOTO LB0; 2: GOTO L20;", sl);
         Assert.DoesNotContain("GOTO LB1;", sl);
+    }
+
+    /// <summary>
+    /// 段階 G5b: POKE・POKE@ は番地を H_PK に 1 回だけ入れて、値ごとに MEM[]・PORT[] に BAS_BYTE (0〜255 の検査) で書く。
+    /// PEEK・PEEK@ は MEM[]・PORT[]。CALL は BAS_CALL。TIME= は小数を切り捨てて BAS_TIMESET。式の TIME は
+    /// BAS_TIMEH・BAS_TIMEL を続けて読んで ×4 + で組み立てる (TIME が 2 つあっても組は混ざらない)
+    /// </summary>
+    [Fact]
+    public void Slang_StageG5bCalls()
+    {
+        var sl = Body(Transpile(G5Program).Output!).Replace("\r\n", "\n");
+        foreach (var expected in new[]
+        {
+            "H_PK=$F010;\n  MEM[H_PK]=BAS_BYTE(1);\n  MEM[H_PK+1]=BAS_BYTE(V_C);\n  MEM[H_PK+2]=BAS_BYTE(BAS_FTOIR(F_X));",
+            "H_PK=((12288)+(V_C));\n  PORT[H_PK]=BAS_BYTE(65);\n  PORT[H_PK+1]=BAS_BYTE(66);",
+            "((MEM[$F010])+(PORT[12288]))", "BAS_CALL($F020);", "BAS_TIMESET(BAS_FTOIR(BAS_FFLOOR(F_X)));",
+            "H_F1=BAS_TIMEH();\n  H_F2=BAS_TIMEL();\n  H_F5=(H_F1*H_FK[2]+H_F2);\n  H_F3=BAS_TIMEH();\n  H_F4=BAS_TIMEL();\n  F_T=(H_F5+(H_F3*H_FK[2]+H_F4));",
+            "V_C=BAS_FTOIR((H_F1*H_FK[2]+H_F2));",
+        })
+            Assert.Contains(expected, sl);
+        Assert.Contains("VAR ", Transpile(G5Program).Output!.Split("MAIN()")[0]);
+        Assert.Contains("H_PK", Transpile(G5Program).Output!.Split("MAIN()")[0]);
+        // POKE のないプログラムは H_PK を宣言しない (今までの出力を変えない)
+        Assert.DoesNotContain("H_PK", Transpile(Stage1Program).Output!);
     }
 }

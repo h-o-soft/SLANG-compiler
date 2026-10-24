@@ -73,6 +73,12 @@ public sealed class HuLexer
                 if (kw != null)
                 {
                     _pos += kw.Length;
+                    // POKE@・PEEK@ (I/O 空間) は @ までを 1 つの予約語にする
+                    if (kw is "POKE" or "PEEK" && _pos < _text.Length && _text[_pos] == '@')
+                    {
+                        _pos++;
+                        kw += "@";
+                    }
                     tokens.Add(new HuToken(HuTokenKind.Keyword, kw, 0, Col(start)));
                     if (kw == "REM")
                     {

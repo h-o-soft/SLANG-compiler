@@ -22,6 +22,8 @@ public sealed class HuLowerer
     public const string Temp = "T";
     /// <summary>実行中の行番号 (実行時エラーの「in 行番号」の表示に使う)</summary>
     public const string CurrentLine = "LINE";
+    /// <summary>POKE・POKE@ の番地 (ポート)。式は 1 回だけ評価して、値ごとに + 何番目 で書く</summary>
+    public const string PokeAddr = "PK";
     public static string DimState(string array) => "DIM:" + array;
     public static string UpperBound(string array) => "UB:" + array;
 
@@ -109,6 +111,7 @@ public sealed class HuLowerer
         Call("BAS_END");
 
         var hidden = new List<string> { Temp, CurrentLine };
+        if (HuAnalyzer.AllStatements(_prog.Lines).Any(s => s is HuPoke)) hidden.Add(PokeAddr);
         foreach (var name in _prog.Arrays.Keys)
         {
             hidden.Add(DimState(name));
@@ -259,6 +262,10 @@ public sealed class HuLowerer
                 break;
             case HuOut o:
                 Emit(new FPortOut(o.Port, o.Value));
+                break;
+            case HuPoke pk:
+                Emit(new FAssignHidden(PokeAddr, pk.Addr));
+                for (int k = 0; k < pk.Values.Count; k++) Emit(new FPoke(k, pk.Values[k], pk.Io));
                 break;
             case HuSwap sw:
                 Emit(new FSwap(sw.A, sw.B));
@@ -449,6 +456,14 @@ public sealed class HuLowerer
                 else Call("BAS_PALET", E(Arg(0)!), E(Arg(1)!));
                 break;
             case "PRW": Call("BAS_PRW", ArgOr(0, 0)); break;
+            case "CALL": Call("BAS_CALL", E(Arg(0)!)); break;
+            case "TIME":
+            {
+                // TIME = 秒。小数は切り捨て (本物と同じ。負でなければ INT と同じ)
+                var v = Arg(0)!;
+                Call("BAS_TIMESET", E(v.Type == HuType.Float ? new HuCall("INT", new[] { v }, v.Pos) { Type = HuType.Float } : v));
+                break;
+            }
             case "RANDOMIZE":
                 // 式は評価して捨てる (BAS_RANDOMIZE は引数を見ない)
                 Emit(Arg(0) is HuExpr r
@@ -496,6 +511,10 @@ public sealed class HuLowerer
             case HuDim d: foreach (var (_, b) in d.Arrays) yield return b; break;
             case HuRead r: foreach (var t in r.Targets) yield return t; break;
             case HuOut o: yield return o.Port; yield return o.Value; break;
+            case HuPoke pk:
+                yield return pk.Addr;
+                foreach (var v in pk.Values) yield return v;
+                break;
             case HuSwap sw: yield return sw.A; yield return sw.B; break;
             case HuPrint p:
                 if (p.Using != null) yield return p.Using;

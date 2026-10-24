@@ -532,8 +532,12 @@ public sealed class HuAnalyzer
             case "INP":
             case "STICK":
             case "STRIG":
+            case "PEEK":
+            case "PEEK@":
                 ExpectNum(a[0], intConv: true);
                 return HuType.Int;
+            case "TIME":
+                return HuType.Float;
             case "ASC":
                 ExpectStr(a[0]);
                 return HuType.Int;
@@ -756,6 +760,10 @@ public sealed class HuAnalyzer
                     _diag.Error("HB0301", "PAINT のタイルパターンは未対応です", pt.Color.Pos);
                 foreach (var b in pt.Borders) ExpectNum(b, true);
                 break;
+            case HuPoke pk:
+                ExpectNum(pk.Addr, true);
+                foreach (var v in pk.Values) ExpectNum(v, true);
+                break;
             case HuDefChr dc:
                 ExpectNum(dc.Code, true);
                 ExpectStr(dc.Pattern);
@@ -809,6 +817,12 @@ public sealed class HuAnalyzer
         {
             // 本物は範囲を調べない (40000 もエラーにならない)
             if (cmd.Args.Count > 0) ExpectNum(cmd.Args[0]!, intConv: false);
+            return;
+        }
+        if (cmd.Name == "TIME")
+        {
+            // 小数は切り捨てる (展開で INT をかける) ので、整数にする位置ではない
+            ExpectNum(cmd.Args[0]!, intConv: false);
             return;
         }
         if (cmd.Name == "KBUF")
