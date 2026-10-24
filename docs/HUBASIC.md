@@ -67,6 +67,7 @@ prog.bas:2:4: error HB0301 (BASIC 20): 未対応の命令 CIRCLE
 
 ```
 REM (')  LET  GOTO  GOSUB  RETURN [行]  ON 式 GOTO/GOSUB/RESTORE  IF … THEN … ELSE …
+LABEL "名前"  GOTO "名前"  GOSUB "名前"  ON 式 GOTO/GOSUB 行か "名前",…
 FOR … TO … STEP / NEXT [変数,…]  REPEAT / UNTIL  WHILE / WEND  END
 DIM  DEFINT/DEFSNG/DEFDBL/DEFSTR  DATA  READ  RESTORE [行]
 PRINT (; , SPC() TAB() USING)  PRINT#0  LOCATE x,y  CLS [n]  COLOR [前景][,背景]  WIDTH 40/80
@@ -75,10 +76,21 @@ LINE (x1,y1)-(x2,y2),PSET|PRESET[,色][,B|BF]   (グラフィック画面の線�
 PAINT (x,y),色[,境界色 (7 つまで)]
 MID$(変数,位置[,長さ])=文字列  INPUT ["案内";|,] 変数,…  SWAP a,b
 OUT ポート,値  INIT  CLICK ON/OFF  REPEAT ON/OFF  PALET [c,p]  PRW [n]
+POKE 番地,値[,値…]  POKE@ ポート,値[,値…]  CALL 番地  TIME=秒
 PLAY "MML"  PLAY n  TEMPO n  BEEP [0|1]  SOUND レジスタ,値  PAUSE n  RANDOMIZE [n]
 KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出ます)
 ```
 
+- 文の区切りの `:` は、Hu-BASIC と同じく、文が終わった所なら省けます (`COLOR 4 LOCATE 0,2 PRINT "A"`、`A=1 B=2`)。
+  `PRINT "A" PRINT "B"` のように、文がまだ続きを読む所では error です (Hu-BASIC も Syntax error)。
+- `GOTO "名前"` などは、`LABEL "名前"` の文の直後に飛びます (行の途中でも)。名前は大文字小文字と空白まで同じものだけが合います。
+  同じ名前の `LABEL` が 2 つあれば前の方 (warning HB0505)。名前は文字列の定数だけ書けます。
+- `CALL` は番地のマシン語を呼びます (RET で戻る。IX・IY は保存します)。マシン語は `POKE` で置いてください。変換したプログラムは
+  $1000 から置かれ、変数などの作業領域がその後ろに続きます。マシン語や `POKE` で使う番地がそれと重ならないようにしてください
+  (`CLEAR 番地` はありません。組み立てた `.bin` の大きさと、リストの `__WORKEND__` で終わりの番地が分かります)。
+- `POKE@`・`PEEK@` は I/O 空間 (テキスト VRAM `&H3000`〜・属性 `&H2000`〜 など) の読み書きです。値は 0〜255 (外なら Illegal function call。`POKE` も同じ。
+  Hu-BASIC と同じく、値は先に 16 ビットに回り込むので、`-65535` は 1 として書かれます)。
+- `TIME` はサブ CPU の時計で数える秒です (`CALL` でマシン語を動かしている間も進みます)。
 - `PRINT USING` は数値の書式だけ (`# . + - **` と `,` の区切り)。`PRINT#` は `#0` だけ。
 - `INPUT` は 1 行の入力 (BS で 1 文字消す、RETURN で終わり)。数が読めなくても聞き直さず 0 (Hu-BASIC と同じ)。
 - `PRINT` の文字列の中のカーソルの制御コード (`CHR$(28)`〜`CHR$(31)`) でカーソルが動きます。
@@ -93,19 +105,21 @@ KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出�
 ASC  CHR$(a[,b,…])  MID$(s,n[,m])  LEFT$  RIGHT$  STRING$(n,s または 文字コード)  VAL  STR$  HEXCHR$  CGPAT$
 CHARACTER$(x,y)  INKEY$  INKEY$(0)  INPUT$(n)  INP  STICK  STRIG  RND  INT
 ABS  SGN  SQR  SIN  COS  TAN  ATN  LOG  EXP  FIX  CINT  FRAC  CSNG  CDBL  PAI  RAD
-LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)
+LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート)  TIME
 ```
 
 - 数学の関数は FLOAT の精度で、Hu-BASIC とふつう 4〜5 桁合います。大きな引数の `SIN`・`COS`、0 に近い引数の `SIN`、1 に近い引数の `LOG` は合う桁が少なくなります。
-- `PAI`・`RAD`・`SCRN$`・`PRW` は Hu-BASIC と同じく予約語です (`RADIUS`・`PAIR` のような変数名は使えません)。
+- `PAI`・`RAD`・`SCRN$`・`PRW`・`LABEL` は Hu-BASIC と同じく予約語です (`RADIUS`・`PAIR`・`LABELX` のような変数名は使えません)。
 
 ## まだないもの (変換のときの error)
 
-- 命令: `CIRCLE`・`PSET`・`POLY` などほかのグラフィックの命令、`LINE -(x,y)`・`STEP`、`DEF FN`、`ON ERROR`、`CALL`・`USR`、`ERASE`、
+- 命令: `CIRCLE`・`PSET`・`POLY` などほかのグラフィックの命令、`LINE -(x,y)`・`STEP`、`DEF FN`、`ON ERROR`、`USR`、`ERASE`、
+  `CLEAR`・`LOADM`・`RUN "ファイル"`、`TIME$`、
   ファイル・ディスク・テープの命令 (error HB0301)
 - 関数: `OCT$`・`BIN$` など (error HB0302)
 - 2 次元以上の配列 (error HB0303)、`MID$` の文の配列の要素
 - `PAINT` の色の省略、タイルパターン (`PAINT`・`BF` の文字列)
+- 名前の飛び先の式 (`GOTO A$`)、`RESTORE "名前"`・`RETURN "名前"`
 
 ## Hu-BASIC との違い (分かっているもの)
 
@@ -129,10 +143,16 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)
   - ループで行の頭に戻った直後の実行時エラーで、表示される行番号が 1 つ前の行のままのことがある (表示だけ)。
   - `SWAP` の型の違いは変換のときの error HB0404 (Hu-BASIC は実行したときの Type mismatch)。
   - `PALET`・`PRW`・`KEY`・`SCRN$` の引数で、絶対値が 32767 を超える値は、範囲を調べる前に回り込むか Overflow になる。
+  - `TIME=` に 65535 を超える値を書くと Overflow (Hu-BASIC は 86399 まで書け、86400 以上は 1 日で回る)。負の値は回り込んだ大きな値になる
+    (Hu-BASIC は Illegal function call)。
+  - `POKE` の値の途中でエラーになったとき、その前の値は書いた後です (Hu-BASIC の順は確かめていない)。
 - 画面
-  - グラフィックの `LINE`: 画面からはみ出す、箱でない線は Illegal function call で止まります (Hu-BASIC は画面の中の点だけ描く。
-    箱と `BF` は画面の中の部分だけ描きます)。座標の差が約 32000 を超える箱は、Hu-BASIC は何も描かず、こちらは画面にかかる部分を描く。
-  - `PRESET` の箱でない線は色 0 で描きます (Hu-BASIC は色のビットを落とす。色の付いた点の上でだけ違う)。
+  - グラフィックの `LINE`: 画面からはみ出す線は、Hu-BASIC と同じく画面の中の点だけを描きます (点の位置も同じ)。ただし 1 点ずつ描くので
+    遅く、座標の差がとても大きい線 (数万) は数秒かかります。座標の差が約 32000 を超える箱は、Hu-BASIC は何も描かず、こちらは画面にかかる部分を描く。
+  - 画面の中に収まる線で、1 つ目の端の方が下にある線 (`LINE(100,105)-(300,5)` など) は、ちょうど半分の所の点が Hu-BASIC と 1 つ上下にずれる
+    ことがあります (はみ出す線はずれません)。
+  - 画面の中に収まる `PRESET` の箱でない線は色 0 で描きます (Hu-BASIC は色のビットを落とす。色の付いた点の上でだけ違う)。
+    はみ出す `PRESET` の線と、箱・`BF` は Hu-BASIC と同じく色のビットを落とします。
   - 細かい模様などで `PAINT` の待ち行列があふれると Out of memory で止まります (Hu-BASIC も同じ模様で Out of memory。止まるまでに塗った範囲は違う)。
   - テキストの `LINE …,BF` で画面の外の大きな座標を書いたとき、Hu-BASIC より速く終わる (結果は同じ)。
   - `SCRN$` で画面の最後 (右下) の先を読むと、いつも空白。
@@ -146,7 +166,7 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)
 
 合わせてあるもの (比べて確かめたもの): 実行時エラーの表示 (「<メッセージ> in <行番号>」と「Ok」)、`PLAY` の音程・長さ・テンポ、`BEEP`、
 文字の装飾と色、右端での折り返しとスクロール、`PRINT USING` の書式、テキストの `LINE` の点の置き方、グラフィックの `LINE` の点の置き方
-(画面の中の線と箱、`BF`)、`PAINT` の塗り方。
+(画面の中の線と箱、`BF`、はみ出す線)、`PAINT` の塗り方。
 
 ## 変換のときに出るもの (番号の分類)
 
@@ -156,11 +176,12 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)
 | error HB02xx | 構文 (文として読めない、`:` や `)` が足りない、行番号がない など) |
 | error HB03xx | 未対応 (命令 HB0301、関数 HB0302、2 次元配列 HB0303 など)。HB0312 はメモリに収まらない |
 | error HB04xx | 型 (整数と文字列の取り違え HB0404、同じ頭文字に違う DEFxxx HB0410 など) |
-| error HB05xx | 行番号 (飛び先の行がない HB0503、同じ行番号が 2 回 HB0502) |
+| error HB05xx | 行番号 (飛び先の行がない HB0503、同じ行番号が 2 回 HB0502、飛び先の名前の `LABEL` がない HB0504) |
 | error HB06xx | ループの対応 (FOR に NEXT がない、WEND に WHILE がない など) |
 | warning HB0109 | `%` を付けた 32768〜65535 の数 (16 ビットの整数として扱う) |
 | warning HB0110 | UTF-8 として読めないので X1 の文字コードとして読んだ |
 | warning HB0411 | DEFxxx より前の行で、その頭文字の変数を使っている |
 | warning HB0412 | 倍精度の変数 (単精度と同じ浮動小数で扱う) |
 | warning HB0501 | 行番号が昇順でない (並べ替えて続ける) |
+| warning HB0505 | 同じ名前の `LABEL` が 2 つ以上ある (前の方に飛ぶ) |
 | warning HB0701・HB0702・HB0704 | `KBUF`・`SCREEN`・`KEY` (何もしない) |

@@ -3311,8 +3311,9 @@ JP .btl_fl
 ; @stack_cleanup callee
 ; スタック引数 (x1, y1, x2, y2, 色, 形)。形: bit 0 = 箱 (B)、bit 1 = PRESET、bit 2 = 色なし (今の前景色)、bit 3 = 塗りつぶし (BF。bit 0 も立つ)。
 ; 色が 0〜7 の外ならエラー 5。箱と BF は、画面にかかる部分を VRAM に直接塗る (.bgl_rect。箱は 4 辺を幅 1 の長方形にする)。
-; PSET は色で上書き、PRESET は本物と同じく色のビットを落とす。箱でない線は libx1_grp の LINE (X1GLINE) に描かせ、PRESET なら
-; 色 0 で描く (割り切り)。座標が 1 つでも画面の外ならエラー 5 (割り切り)
+; PSET は色で上書き、PRESET は本物と同じく色のビットを落とす。箱でない線は、4 つの座標がすべて画面の中なら libx1_grp の LINE
+; (X1GLINE) に描かせ、PRESET なら色 0 で描く (割り切り)。1 つでも画面の外なら .bgl_clip で、libx1_grp の LINE と同じ手順で
+; 端から端まで点を求め、画面の中の点だけを描く (本物と同じ。PRESET は色のビットを落とす)
 POP HL
 LD (.bgl_ret), HL
 POP HL
@@ -3363,27 +3364,28 @@ CALL X1GLINE.SET640
 LD A, (.bgl_mode)
 RRCA
 JP C, .bgl_box
-; 線: PRESET なら色 0。4 つの座標がすべて画面の中のときだけ描く
-RRCA
-JP NC, .bgl_lin
-XOR A
-LD (.bgl_col), A
-.bgl_lin
+; 線: 4 つの座標がすべて画面の中なら libx1_grp の LINE (PRESET なら色 0)。1 つでも外なら .bgl_clip (元の色のまま)
 LD BC, (.bgl_xmax)
 LD HL, (.bgl_x1)
 CALL .bgl_in
-JP C, .bgl_err
+JP C, .bgl_clip
 LD HL, (.bgl_x2)
 CALL .bgl_in
-JP C, .bgl_err
+JP C, .bgl_clip
 LD BC, 199
 LD HL, (.bgl_y1)
 CALL .bgl_in
-JP C, .bgl_err
+JP C, .bgl_clip
 LD HL, (.bgl_y2)
 CALL .bgl_in
-JP C, .bgl_err
+JP C, .bgl_clip
 LD (.bgl_t), HL
+LD A, (.bgl_mode)
+AND 2
+JP Z, .bgl_lin
+XOR A
+LD (.bgl_col), A
+.bgl_lin
 LD HL, (.bgl_x2)
 LD B, H
 LD C, L
@@ -3468,6 +3470,201 @@ LD L, A
 LD H, 0
 PUSH HL
 CALL LINE
+RET
+; はみ出す線: 本物の Hu-BASIC と同じ手順で端から端まで点を求め、画面の中の点だけを .bgl_rect (1 × 1) で描く (本物で 39 本を
+; 測って点まで一致を確かめた手順)。書いた順の 1 つ目の端から始める。XX = |x2 - x1|、YY = |y2 - y1|、長い方を major・
+; 短い方を minor として、増分 = minor × 65536 ÷ major (同じなら 65535、両方 0 なら 0)。小数は 32768 (y が減る向きの線は
+; 32768 + 128) から始め、点ごとに増分を足して、繰り上がったら短い方の軸を 1 進める。点は major + 1 個 (65536 個まで)。
+; y は一方の向きにしか動かないので、画面から離れる向きに出たら打ち切る。
+; .bgl_rect はレジスタを壊すので、線の状態はすべてメモリに置く
+.bgl_clip
+LD HL, (.bgl_y2)
+LD DE, (.bgl_y1)
+CALL .bcl_lt
+LD A, 1
+JP NC, .bcl_yd
+LD A, $FF           ; 上へ
+EX DE, HL
+.bcl_yd
+LD (.bcl_sy), A
+OR A
+SBC HL, DE
+LD (.bcl_yy), HL    ; YY (0〜65535)
+LD HL, (.bgl_x2)
+LD DE, (.bgl_x1)
+CALL .bcl_lt
+LD A, 1
+JP NC, .bcl_xr
+LD A, $FF           ; 左へ
+EX DE, HL
+.bcl_xr
+LD (.bcl_sx), A
+OR A
+SBC HL, DE
+LD (.bcl_xx), HL    ; XX (0〜65535)
+LD HL, (.bcl_yy)
+LD DE, (.bcl_xx)
+OR A
+SBC HL, DE
+JP NC, .bcl_tate
+LD HL, (.bcl_yy)    ; 横長 (YY < XX)
+LD (.bcl_mn), HL
+LD HL, (.bcl_xx)
+LD (.bcl_mj), HL
+XOR A
+JP .bcl_kind
+.bcl_tate
+LD HL, (.bcl_xx)    ; 縦長 (YY >= XX)
+LD (.bcl_mn), HL
+LD HL, (.bcl_yy)
+LD (.bcl_mj), HL
+LD A, 1
+.bcl_kind
+LD (.bcl_k), A
+; 増分 DE = minor × 65536 ÷ major
+LD HL, (.bcl_mn)
+LD BC, (.bcl_mj)
+LD DE, 0
+LD A, B
+OR C
+JP Z, .bcl_dset     ; 両方 0 (1 点)
+LD A, H
+CP B
+JP NZ, .bcl_div
+LD A, L
+CP C
+JP NZ, .bcl_div
+LD DE, $FFFF        ; minor = major
+JP .bcl_dset
+.bcl_div
+LD A, 16
+.bdv_lp
+SLA E
+RL D
+ADD HL, HL
+JP C, .bdv_sub      ; 17 ビット目が立った: 必ず引ける
+SBC HL, BC          ; (キャリーは 0)
+JP NC, .bdv_one
+ADD HL, BC
+JP .bdv_nx
+.bdv_sub
+OR A
+SBC HL, BC
+.bdv_one
+INC E
+.bdv_nx
+DEC A
+JP NZ, .bdv_lp
+.bcl_dset
+LD (.bcl_de), DE
+LD HL, (.bgl_x1)
+LD (.bcl_x), HL
+LD HL, (.bgl_y1)
+LD (.bcl_y), HL
+LD HL, $8000
+LD A, (.bcl_sy)
+CP 1
+JP Z, .bcl_fset
+LD L, $80           ; y が減る向き: 32768 + 128 (本物の実測)
+.bcl_fset
+LD (.bcl_f), HL
+LD HL, (.bcl_mj)
+LD (.bcl_n), HL
+.bcl_lp
+LD HL, (.bcl_y)
+BIT 7, H
+JP NZ, .bcl_above   ; 上にはみ出している
+LD DE, 200
+OR A
+SBC HL, DE
+JP C, .bcl_xin
+LD A, (.bcl_sy)     ; 下にはみ出している: 下へ進む線ならこの先も下なので打ち切る
+CP 1
+RET Z
+JP .bcl_skip
+.bcl_above
+LD A, (.bcl_sy)     ; 上へ進む線ならこの先も上なので打ち切る
+CP 1
+RET NZ
+JP .bcl_skip
+.bcl_xin
+LD HL, (.bcl_x)
+LD BC, (.bgl_xmax)
+CALL .bgl_in
+JP C, .bcl_skip
+LD (.bgl_rx1), HL
+LD (.bgl_rx2), HL
+LD HL, (.bcl_y)
+LD (.bgl_ry1), HL
+LD (.bgl_ry2), HL
+CALL .bgl_rect
+.bcl_skip
+LD HL, (.bcl_n)
+LD A, H
+OR L
+RET Z
+DEC HL
+LD (.bcl_n), HL
+LD HL, (.bcl_f)
+LD DE, (.bcl_de)
+ADD HL, DE
+LD (.bcl_f), HL
+LD A, 0
+ADC A, 0
+LD B, A             ; 短い方の軸を進めるか
+LD A, (.bcl_k)
+OR A
+JP NZ, .bcl_tst
+CALL .bcl_xstep     ; 横長: x を進め、繰り上がりで y
+LD A, B
+OR A
+JP Z, .bcl_lp
+CALL .bcl_ystep
+JP .bcl_lp
+.bcl_tst
+CALL .bcl_ystep     ; 縦長: y を進め、繰り上がりで x
+LD A, B
+OR A
+JP Z, .bcl_lp
+CALL .bcl_xstep
+JP .bcl_lp
+.bcl_xstep
+LD HL, (.bcl_x)
+LD A, (.bcl_sx)
+CP 1
+JP NZ, .bxs_dec
+INC HL
+JP .bxs_put
+.bxs_dec
+DEC HL
+.bxs_put
+LD (.bcl_x), HL
+RET
+.bcl_ystep
+LD HL, (.bcl_y)
+LD A, (.bcl_sy)
+CP 1
+JP NZ, .bys_dec
+INC HL
+JP .bys_put
+.bys_dec
+DEC HL
+.bys_put
+LD (.bcl_y), HL
+RET
+; HL < DE (符号付き) ならキャリー。HL・DE は変えない
+.bcl_lt
+LD A, H
+XOR D
+JP P, .blt_same
+LD A, H             ; 符号が違う: HL が負なら小さい
+RLA
+RET
+.blt_same
+PUSH HL
+OR A
+SBC HL, DE
+POP HL
 RET
 ; HL が 0〜BC (符号付き) の外ならキャリー
 .bgl_in
@@ -3684,6 +3881,18 @@ RR L
 SRL H
 RR L
 RET
+.bcl_yy DW 0
+.bcl_xx DW 0
+.bcl_mn DW 0
+.bcl_mj DW 0
+.bcl_de DW 0
+.bcl_x DW 0
+.bcl_y DW 0
+.bcl_f DW 0
+.bcl_n DW 0
+.bcl_sx DB 0
+.bcl_sy DB 0
+.bcl_k DB 0
 .bgl_ret DW 0
 .bgl_mode DB 0
 .bgl_c DW 0
@@ -7263,3 +7472,191 @@ RET
 LD HL, 5
 JP BAS_ERROR
 
+
+
+; @name BAS_BYTE
+; @resident shared
+; @param_count 1
+; @calls BAS_ERROR
+; HL = POKE・POKE@ の値。0〜255 ならそのまま返す。それ以外はエラー 5 (Hu-BASIC と同じ Illegal function call)
+LD A, H
+OR A
+RET Z
+LD HL, 5
+JP BAS_ERROR
+
+
+; @name BAS_CALL
+; @resident shared
+; @param_count 1
+; HL = 番地。IX・IY を保存して、その番地を CALL する (CALL 文。マシン語は RET で戻る)。割り込みの状態は変えない
+PUSH IX
+PUSH IY
+LD DE, .bcl_ret
+PUSH DE
+JP (HL)
+.bcl_ret
+POP IY
+POP IX
+RET
+
+
+; @name BAS_TSECS
+; @resident shared
+; @param_count 0
+; サブ CPU の時刻 (コマンド $EF: 時・分・秒の BCD 3 バイト) を読み、その日の秒 (0〜86399) を A:HL (A が上位 8 ビット) に返す。
+; やりとりはキーの読み取り (sGETKY) と同じ手順 (8255 の port B の bit 6 で書ける、bit 5 で読めるのを待つ)
+LD BC, $1A01
+.tsc_w1
+IN A, (C)
+AND $40
+JP NZ, .tsc_w1
+LD BC, $1900
+LD A, $EF
+OUT (C), A
+LD BC, $1A01
+.tsc_w2
+IN A, (C)
+AND $40
+JP NZ, .tsc_w2
+CALL .tsc_rd        ; 時
+AND $3F
+CALL .tsc_bin
+LD (.tsc_h), A
+CALL .tsc_rd        ; 分
+AND $7F
+CALL .tsc_bin
+LD (.tsc_m), A
+CALL .tsc_rd        ; 秒
+AND $7F
+CALL .tsc_bin
+LD (.tsc_s), A
+; A:HL = 時 × 3600 + 分 × 60 + 秒
+XOR A
+LD H, A
+LD L, A
+LD DE, 3600
+LD A, (.tsc_h)
+LD B, A
+XOR A
+INC B
+JP .tsc_h2
+.tsc_h1
+ADD HL, DE
+ADC A, 0
+.tsc_h2
+DJNZ .tsc_h1
+LD C, A
+LD DE, 60
+LD A, (.tsc_m)
+LD B, A
+INC B
+JP .tsc_m2
+.tsc_m1
+ADD HL, DE
+JP NC, .tsc_m2
+INC C               ; 16 ビットの繰り上がり
+.tsc_m2
+DJNZ .tsc_m1
+LD A, (.tsc_s)
+LD E, A
+LD D, 0
+ADD HL, DE
+LD A, C
+ADC A, 0
+RET
+; 8255 の port B の bit 5 で読めるのを待って、サブ CPU から 1 バイト読む
+.tsc_rd
+LD BC, $1A01
+.tsc_r1
+IN A, (C)
+AND $20
+JP NZ, .tsc_r1
+LD BC, $1900
+IN A, (C)
+RET
+; A (BCD) → 2 進
+.tsc_bin
+LD E, A
+AND $F0
+RRCA
+LD D, A             ; 上の桁 × 8
+RRCA
+RRCA                ; 上の桁 × 2
+ADD A, D
+LD D, A             ; 上の桁 × 10
+LD A, E
+AND $0F
+ADD A, D
+RET
+.tsc_h
+DB 0
+.tsc_m
+DB 0
+.tsc_s
+DB 0
+
+
+; @name BAS_TIMEH
+; @resident shared
+; @param_count 0
+; @calls BAS_TSECS
+; @works BAS_TBASE:3,BAS_TNOW:3
+; TIME の読み出し (前半)。TIME = (その日の秒 − 基準) mod 86400 を BAS_TNOW (3 バイト) に入れ、TIME ÷ 4 (0〜21599) を返す。
+; 下位 2 ビットは BAS_TIMEL で読む (どちらの戻り値も 32767 以下なので、符号付きの整数 → FLOAT の変換で正しい値になる)
+CALL BAS_TSECS
+LD DE, (BAS_TBASE)
+OR A
+SBC HL, DE
+LD B, A
+LD A, (BAS_TBASE+2)
+LD E, A
+LD A, B
+SBC A, E
+JP NC, .bth_pos
+LD DE, $5180        ; 負なら 86400 ($015180) を足す
+ADD HL, DE
+ADC A, $01
+.bth_pos
+LD (BAS_TNOW), HL
+LD (BAS_TNOW+2), A
+SRL A
+RR H
+RR L
+SRL A
+RR H
+RR L
+RET
+
+
+; @name BAS_TIMEL
+; @resident shared
+; @param_count 0
+; @calls BAS_TIMEH
+; TIME の読み出し (後半): 直前の BAS_TIMEH で作った TIME の下位 2 ビット (0〜3)
+LD A, (BAS_TNOW)
+AND 3
+LD L, A
+LD H, 0
+RET
+
+
+; @name BAS_TIMESET
+; @resident shared
+; @param_count 1
+; @calls BAS_TSECS,BAS_TIMEH
+; TIME = n (HL = n、0〜65535 の符号なし)。基準 = (その日の秒 − n) mod 86400 にする
+PUSH HL
+CALL BAS_TSECS
+POP DE
+OR A
+SBC HL, DE
+SBC A, 0
+JP NC, .bts_pos
+LD DE, $5180
+ADD HL, DE
+ADC A, $01
+.bts_pos
+LD (BAS_TBASE), HL
+LD (BAS_TBASE+2), A
+RET

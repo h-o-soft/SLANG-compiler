@@ -25,7 +25,7 @@ public sealed class HuParser
         ["TAN"] = (1, 1), ["ATN"] = (1, 1), ["LOG"] = (1, 1), ["EXP"] = (1, 1), ["FIX"] = (1, 1),
         ["CINT"] = (1, 1), ["FRAC"] = (1, 1), ["CSNG"] = (1, 1), ["CDBL"] = (1, 1), ["PAI"] = (1, 1),
         ["RAD"] = (1, 1), ["LEN"] = (1, 1), ["INSTR"] = (2, 3), ["HEX$"] = (1, 1), ["SPACE$"] = (1, 1),
-        ["SCRN$"] = (3, 3),
+        ["SCRN$"] = (3, 3), ["PEEK"] = (1, 1), ["PEEK@"] = (1, 1),
     };
 
 
@@ -137,7 +137,8 @@ public sealed class HuParser
             if (stmt is HuIf || stmt is HuRem) break;
             if (Peek.Is(HuTokenKind.End)) break;
             if (stopAtElse && Peek.IsKeyword("ELSE")) break;
-            if (!AcceptSymbol(":"))
+            // 本物は文が終わった所で ':' がなくても次の文を読む (A=1 B=2、COLOR 4 LOCATE 0,2 など)
+            if (!AcceptSymbol(":") && !StartsStatement(Peek))
             {
                 Error("HB0202", $"文の区切り ':' が必要です ('{Peek}' があります)");
                 SkipToStatementEnd();
@@ -147,6 +148,20 @@ public sealed class HuParser
         }
         return list;
     }
+
+    /// <summary>文の予約語でない予約語 (演算子・文の中の語と、式にしか出ない関数の名前)</summary>
+    private static readonly HashSet<string> NonStatementKeywords = new(StringComparer.Ordinal)
+    {
+        "THEN", "TO", "STEP", "ELSE", "AND", "OR", "XOR", "NOT", "MOD", "EQV", "IMP", "USING", "SPC", "TAB", "OFF", "FN",
+        "INKEY$", "RND", "PEEK", "ERL", "ERR", "CSRLIN", "FRE", "POS", "LPOS", "EOF", "LOC", "LOF", "DSKF", "FPOS",
+        "VARPTR", "CVI", "CVS", "CVD", "MKI$", "MKS$", "MKD$", "OCT$", "BIN$", "ATTR$", "USR", "POINT",
+    };
+
+    /// <summary>区切りの ':' なしで次の文の始まりになれる字句か (名前・コメント・文の予約語)</summary>
+    private static bool StartsStatement(HuToken t)
+        => t.Kind is HuTokenKind.Ident or HuTokenKind.Comment
+           || (t.Kind == HuTokenKind.Keyword && !NonStatementKeywords.Contains(t.Text)
+               && !(Functions.ContainsKey(t.Text) && t.Text != "MID$"));
 
     private void SkipToStatementEnd()
     {
@@ -180,11 +195,35 @@ public sealed class HuParser
             case "LET":
                 return ParseAssignment(pos);
             case "GOTO":
-                return new HuGoto(ParseLineNumber(), pos);
+            {
+                var (line, label) = ParseJumpTarget();
+                return new HuGoto(line, pos) { Label = label };
+            }
             case "GOSUB":
-                return new HuGosub(ParseLineNumber(), pos);
+            {
+                var (line, label) = ParseJumpTarget();
+                return new HuGosub(line, pos) { Label = label };
+            }
             case "RETURN":
+                if (RejectLabelTarget("RETURN")) return null;
                 return new HuReturn(AtLineNumber ? ParseLineNumber() : null, pos);
+            case "LABEL":
+            {
+                if (!Peek.Is(HuTokenKind.String))
+                {
+                    _diag.Error("HB0301", "LABEL の名前は文字列の定数だけに対応しています", pos);
+                    SkipToStatementEnd();
+                    return null;
+                }
+                var name = Next().Text;
+                if (Peek.Kind == HuTokenKind.Symbol && !Peek.IsSymbol(":"))
+                {
+                    _diag.Error("HB0301", "LABEL の名前は文字列の定数だけに対応しています", pos);
+                    SkipToStatementEnd();
+                    return null;
+                }
+                return new HuLabel(name, pos);
+            }
             case "ON":
                 return ParseOn(pos);
             case "IF":
@@ -243,7 +282,27 @@ public sealed class HuParser
                 return new HuRead(targets, pos);
             }
             case "RESTORE":
+                if (RejectLabelTarget("RESTORE")) return null;
                 return new HuRestore(AtLineNumber ? ParseLineNumber() : null, pos);
+            case "POKE":
+            case "POKE@":
+            {
+                var addr = ParseExpr();
+                ExpectSymbol(",");
+                var values = new List<HuExpr>();
+                do
+                {
+                    values.Add(ParseExpr());
+                } while (AcceptSymbol(","));
+                return new HuPoke(addr, values, t.Text == "POKE@", pos);
+            }
+            case "CALL":
+                // CALL 番地 (引数は取らない。本物も Syntax error)
+                return new HuCommand("CALL", new HuExpr?[] { ParseExpr() }, pos);
+            case "TIME":
+                // TIME = 秒 (式の TIME は関数)
+                ExpectSymbol("=");
+                return new HuCommand("TIME", new HuExpr?[] { ParseExpr() }, pos);
             case "OUT":
             {
                 var port = ParseExpr();
@@ -374,6 +433,40 @@ public sealed class HuParser
         }
     }
 
+    /// <summary>
+    /// GOTO・GOSUB・ON の飛び先: 行番号か、名前 (文字列の定数)。名前の式 (GOTO A$、GOTO "A"+"B") は、変換のときに飛び先を
+    /// 決められないので未対応 (本物は書ける)
+    /// </summary>
+    private (int Line, string? Label) ParseJumpTarget()
+    {
+        if (Peek.Is(HuTokenKind.String))
+        {
+            var name = Next().Text;
+            if (Peek.Kind == HuTokenKind.Symbol && !Peek.IsSymbol(":") && !Peek.IsSymbol(","))
+            {
+                Error("HB0301", "名前の飛び先は文字列の定数だけに対応しています");
+                SkipToStatementEnd();
+            }
+            return (0, name);
+        }
+        if (Peek.Is(HuTokenKind.Ident) || Peek.IsSymbol("(") || (Peek.Is(HuTokenKind.Keyword) && Functions.ContainsKey(Peek.Text)))
+        {
+            Error("HB0301", "名前の飛び先は文字列の定数だけに対応しています");
+            SkipToStatementEnd();
+            return (0, null);
+        }
+        return (ParseLineNumber(), null);
+    }
+
+    /// <summary>RESTORE "名前"・RETURN "名前" は未対応 (HB0301 を出して文を読み飛ばす)</summary>
+    private bool RejectLabelTarget(string keyword)
+    {
+        if (!Peek.Is(HuTokenKind.String)) return false;
+        Error("HB0301", $"{keyword} の名前の飛び先は未対応です");
+        SkipToStatementEnd();
+        return true;
+    }
+
     /// <summary>INPUT ["案内" ; または ,] 変数, …</summary>
     private HuStmt ParseInput(HuPos pos)
     {
@@ -488,11 +581,21 @@ public sealed class HuParser
             return new HuRem(null, 0, pos);
         }
         var lines = new List<int>();
+        var labels = new List<string?>();
         do
         {
-            lines.Add(ParseLineNumber());
+            // 名前の飛び先 (GOTO・GOSUB だけ。RESTORE の名前は未対応)
+            if (Peek.Is(HuTokenKind.String) && kind == "RESTORE")
+            {
+                Error("HB0301", "ON … RESTORE の名前の飛び先は未対応です");
+                SkipToStatementEnd();
+                return new HuRem(null, 0, pos);
+            }
+            var (line, label) = ParseJumpTarget();
+            labels.Add(label);
+            lines.Add(line);
         } while (AcceptSymbol(","));
-        return new HuOnJump(sel, kind, lines, pos);
+        return labels.Any(l => l != null) ? new HuOnJump(sel, kind, lines, pos) { Labels = labels } : new HuOnJump(sel, kind, lines, pos);
     }
 
     private HuStmt ParseIf(HuPos pos)
@@ -930,6 +1033,8 @@ public sealed class HuParser
         }
         if (t.Text == "RND" && !Peek.IsSymbol("("))
             return new HuCall("RND", Array.Empty<HuExpr>(), pos);
+        if (t.Text == "TIME")
+            return new HuCall("TIME", Array.Empty<HuExpr>(), pos);
         if (!Functions.TryGetValue(t.Text, out var arity))
         {
             _diag.Error("HB0302", $"未対応の関数または予約語 {t.Text}", pos);

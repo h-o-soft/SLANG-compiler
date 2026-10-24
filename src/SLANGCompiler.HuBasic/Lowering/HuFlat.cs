@@ -36,6 +36,9 @@ public sealed record FDispatch(string Hidden, IReadOnlyList<(int Value, string L
 /// <summary>I/O ポートへの 1 バイトの書き込み</summary>
 public sealed record FPortOut(HuExpr Port, HuExpr Value) : FlatOp;
 
+/// <summary>POKE・POKE@ の 1 バイト: 隠し変数 PK の番地 (ポート) + Offset に Value を書く (Io が真なら I/O 空間)</summary>
+public sealed record FPoke(int Offset, HuExpr Value, bool Io) : FlatOp;
+
 /// <summary>SWAP a, b (A・B は HuVar / HuIndex。添字は A・B の順に調べる)</summary>
 public sealed record FSwap(HuExpr A, HuExpr B) : FlatOp;
 

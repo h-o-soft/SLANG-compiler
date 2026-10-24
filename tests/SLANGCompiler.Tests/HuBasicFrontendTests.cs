@@ -400,7 +400,7 @@ public class HuBasicFrontendTests
 
     [Theory]
     [InlineData("10 A=1E99", "HB0103")]   // f24 で表せない大きさ
-    [InlineData("10 CALL 100", "HB0301")]
+    [InlineData("10 CIRCLE(100,100),50", "HB0301")]   // CALL は段階 G5b で対応した
     [InlineData("10 X$=OCT$(1)", "HB0302")]
     [InlineData("10 DIM A(2,3)", "HB0303")]
     [InlineData("10 LINE(0,0)-(1,1),\"A\",X", "HB0203")]   // B と BF のほかは書けない
@@ -959,4 +959,102 @@ public class HuBasicFrontendTests
         AssertError("10 A$=SCRN$(\"A\",0,1)", "HB0404");
         AssertError("10 PALET \"A\",1", "HB0404");
     }
+
+    // ------------------------------------------------------------ 段階 G5a
+
+    /// <summary>段階 G5a: 文が終わった所で ':' がなくても次の文を読む (本物と同じ。warning も出さない)</summary>
+    [Theory]
+    [InlineData("10 A=1 B=2:PRINT A;B")]
+    [InlineData("10 COLOR 6 LOCATE 0,5 PRINT \"X\"")]
+    [InlineData("10 LOCATE 1,7PRINT\"X\"")]
+    [InlineData("10 COLOR4LOCATE0,2")]
+    [InlineData("10 FOR I=1 TO 2 PRINT I:NEXT")]
+    [InlineData("10 GOTO 10 PRINT \"X\"")]
+    [InlineData("10 WIDTH 80 INIT:CLICK OFF")]
+    [InlineData("10 A=1 'comment")]
+    [InlineData("10 IF A THEN B=1 C=2 ELSE D=3 E=4")]
+    [InlineData("10 A$=\"X\" MID$(A$,1)=\"Y\"")]
+    public void Parser_StatementsWithoutColon(string program)
+    {
+        var (_, diag) = Analyze(program);
+        Assert.Empty(diag.Items);
+    }
+
+    /// <summary>文がまだ引数を読みにいく所 (PRINT の項目・CLS の省略できる引数) と、文の始まりになれない字句では止まる</summary>
+    [Theory]
+    [InlineData("10 PRINT \"A\" PRINT \"B\"", "HB0302")]
+    [InlineData("10 CLS PRINT", "HB0302")]
+    [InlineData("10 A=1 THEN", "HB0202")]
+    [InlineData("10 A=1 2", "HB0202")]
+    [InlineData("10 A=1 \"X\"", "HB0202")]
+    [InlineData("10 A=1 RND", "HB0202")]
+    public void Parser_StatementsWithoutColonStillFail(string program, string code) => AssertError(program, code);
+
+    /// <summary>段階 G5a: LABEL と名前への GOTO・GOSUB・ON (行番号と混ぜてよい)。同じ名前は前の方で、後ろに warning</summary>
+    [Fact]
+    public void Analyzer_Labels()
+    {
+        var prog = AnalyzeOk("10 GOTO \"B\":ON A GOSUB \"S\",30:ON B GOTO 30,\"B\"\n20 PRINT 1:LABEL\"B\":IF A THEN LABEL \"S\":RETURN\n30 RETURN");
+        Assert.Equal(2, prog.LabelIds.Count);
+        Assert.Equal(0, prog.LabelTargets["B"]);
+        Assert.Equal(1, prog.LabelTargets["S"]);
+        var (dup, diag) = Analyze("10 LABEL\"D\":LABEL\"D\"\n20 GOTO \"D\"");
+        Assert.False(diag.HasErrors);
+        Assert.Contains(diag.Items, d => d.Code == "HB0505" && d.Severity == HuSeverity.Warning);
+        Assert.Equal(0, dup!.LabelTargets["D"]);
+        Assert.Equal(2, dup.LabelIds.Count);
+    }
+
+    [Theory]
+    [InlineData("10 GOTO \"b\"\n20 LABEL\"B\"", "HB0504")]      // 大文字小文字を区別する (本物と同じ)
+    [InlineData("10 GOTO \"B \"\n20 LABEL\"B\"", "HB0504")]     // 空白も区別する
+    [InlineData("10 GOSUB \"X\"", "HB0504")]
+    [InlineData("10 ON A GOTO 10,\"X\"", "HB0504")]
+    [InlineData("10 GOTO A$", "HB0301")]                          // 名前の式は未対応 (本物は書ける)
+    [InlineData("10 GOTO \"A\"+\"B\"", "HB0301")]
+    [InlineData("10 LABEL A$", "HB0301")]
+    [InlineData("10 LABEL \"A\"+\"B\"", "HB0301")]
+    [InlineData("10 GOTO CHR$(65)", "HB0301")]
+    [InlineData("10 ON A GOSUB 10,LEFT$(\"AB\",1)", "HB0301")]
+    [InlineData("10 RESTORE \"D\"", "HB0301")]
+    [InlineData("10 RETURN \"D\"", "HB0301")]
+    [InlineData("10 ON A RESTORE \"D\"", "HB0301")]
+    [InlineData("10 LABELX=5", "HB0301")]                         // LABEL は予約語 (本物も Syntax error)
+    public void Analyzer_LabelErrors(string program, string code) => AssertError(program, code);
+
+    // ------------------------------------------------------------ 段階 G5b
+
+    /// <summary>段階 G5b: POKE@・PEEK@ は @ までで 1 つの予約語</summary>
+    [Theory]
+    [InlineData("POKE@&H3000,65", "POKE@ n:12288 , n:65")]
+    [InlineData("A=PEEK@(1)+PEEK(2)", "id:A = PEEK@ ( n:1 ) + PEEK ( n:2 )")]
+    [InlineData("TIME=0", "TIME = n:0")]
+    public void Lexer_PokePeekAt(string body, string expected)
+        => Assert.Equal(expected, Kinds(Lex(body)));
+
+    [Fact]
+    public void Analyzer_PokePeekCallTime()
+    {
+        var prog = AnalyzeOk("10 POKE &HF000,1,2,3:POKE@&H3000,65:A=PEEK(&HF000)+PEEK@(1):CALL &HD000:TIME=0:T=TIME");
+        var stmts = HuAnalyzer.AllStatements(prog.Lines).ToList();
+        var pokes = stmts.OfType<HuPoke>().ToList();
+        Assert.Equal(3, pokes[0].Values.Count);
+        Assert.False(pokes[0].Io);
+        Assert.True(pokes[1].Io);
+        Assert.Contains(stmts, s => s is HuCommand { Name: "CALL" });
+        Assert.Contains(stmts, s => s is HuCommand { Name: "TIME" });
+        var t = (HuAssign)stmts.Last();
+        Assert.Equal(HuType.Float, t.Value.Type);
+    }
+
+    [Theory]
+    [InlineData("10 CALL &HD000,1", "HB0202")]      // 引数は取らない (本物も Syntax error)
+    [InlineData("10 POKE 1", "HB0203")]
+    [InlineData("10 POKE A$,1", "HB0404")]
+    [InlineData("10 POKE 1,A$", "HB0404")]
+    [InlineData("10 A=PEEK(A$)", "HB0404")]
+    [InlineData("10 TIME=A$", "HB0404")]
+    [InlineData("10 A$=TIME", "HB0404")]
+    [InlineData("10 TIME 5", "HB0203")]
+    public void Analyzer_PokePeekCallTimeErrors(string program, string code) => AssertError(program, code);
 }

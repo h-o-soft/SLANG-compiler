@@ -15,7 +15,7 @@ public static class HuKeywords
         "DEFSNG", "DEFSTR", "DELETE", "DEVF", "DIM", "DSKF", "EDIT", "ELSE", "END", "EOF", "EQV",
         "ERASE", "ERL", "ERR", "ERROR", "EXP", "FIELD", "FILES", "FIX", "FN", "FOR", "FPOS", "FRAC",
         "FRE", "GET", "GOSUB", "GOTO", "HEX$", "HEXCHR$", "IF", "IMP", "INIT", "INKEY$", "INP",
-        "INPUT", "INPUT$", "INSTR", "INT", "KBUF", "KEY", "KILL", "LEFT$", "LEN", "LET", "LINE", "LIST",
+        "INPUT", "INPUT$", "INSTR", "INT", "KBUF", "KEY", "KILL", "LABEL", "LEFT$", "LEN", "LET", "LINE", "LIST",
         "LLIST", "LOAD", "LOC", "LOCATE", "LOF", "LOG", "LPOS", "LPRINT", "LSET", "MERGE", "MID$",
         "MKD$", "MKI$", "MKS$", "MOD", "MON", "MUSIC", "NAME", "NEW", "NEXT", "NOT", "OCT$", "OFF",
         "ON", "OPEN", "OPTION", "OR", "OUT", "PAI", "PAINT", "PALET", "PAUSE", "PEEK", "PLAY", "POINT",

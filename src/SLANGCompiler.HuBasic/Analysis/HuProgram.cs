@@ -51,6 +51,12 @@ public sealed class HuProgram
     /// <summary>GOSUB (と ON … GOSUB) の戻り先 ID (0 から)</summary>
     public required IReadOnlyDictionary<HuStmt, int> GosubIds { get; init; }
 
+    /// <summary>LABEL の文 → 番号 (ラベルの名前に使う。同じ名前の後ろの方も番号を持つ)</summary>
+    public IReadOnlyDictionary<HuLabel, int> LabelIds { get; init; } = new Dictionary<HuLabel, int>();
+
+    /// <summary>LABEL の名前 → 飛び先の番号 (同じ名前は前の方)</summary>
+    public IReadOnlyDictionary<string, int> LabelTargets { get; init; } = new Dictionary<string, int>();
+
     /// <summary>REPEAT↔UNTIL、WHILE↔WEND の対応 (両方向)</summary>
     public required IReadOnlyDictionary<HuStmt, HuStmt> LoopPairs { get; init; }
 
