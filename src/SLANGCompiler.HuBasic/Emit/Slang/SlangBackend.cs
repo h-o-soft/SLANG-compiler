@@ -8,7 +8,7 @@ namespace SLANGCompiler.HuBasic.Emit.Slang;
 /// <summary>
 /// SLANG のソースを出す後段。
 /// 名前 (変数の鍵ごと): 整数変数 V_名前、単精度 F_名前、倍精度 D_名前、文字列変数 S_名前、整数配列 A_名前、
-/// 浮動小数の配列 FA_名前・DA_名前、隠し変数 H_…、文字列リテラル K_番号、行ラベル L行番号。
+/// 浮動小数の配列 FA_名前・DA_名前、文字列の配列 SA_名前 (1 要素 256 バイト)、隠し変数 H_…、文字列リテラル K_番号、行ラベル L行番号。
 /// 浮動小数の定数の表 H_FK[]、浮動小数の一時変数 H_F番号。
 /// 全体を MAIN() 1 関数にし、すべての二項演算を括弧で囲んで優先順位を固定する。
 /// 浮動小数: SLANG は小数部のない FLOAT の定数どうしを整数として畳み込むので、定数はすべて表 H_FK[] から読む。
@@ -72,17 +72,19 @@ public sealed class SlangBackend : IHuBackend
     {
         HuVarKind.Int => "A_",
         HuVarKind.Single => "FA_",
-        _ => "DA_",
+        HuVarKind.Double => "DA_",
+        _ => "SA_",
     };
 
     public static string LiteralName(int id) => "K_" + id;
 
-    /// <summary>配列の隠し変数の名前の後ろ (整数の配列は名前だけ、浮動小数は F_・D_ を付けて見分ける)</summary>
+    /// <summary>配列の隠し変数の名前の後ろ (整数の配列は名前だけ、浮動小数は F_・D_、文字列は S_ を付けて見分ける)</summary>
     private static string ArrayTag(string key) => HuProgram.KindOfKey(key) switch
     {
         HuVarKind.Int => key[..^1],
         HuVarKind.Single => "F_" + key[..^1],
-        _ => "D_" + key[..^1],
+        HuVarKind.Double => "D_" + key[..^1],
+        _ => "S_" + key[..^1],
     };
 
     public static string HiddenName(string hidden)
@@ -116,9 +118,13 @@ public sealed class SlangBackend : IHuBackend
         if (_fconsts.Count > 0)
             _sb.AppendLine($"ARRAY FLOAT H_FK[] = {{ {string.Join(", ", _fconsts.Select(FloatLiteral))} }};");
         foreach (var (key, bound) in _prog.Arrays)
-            _sb.AppendLine(HuProgram.KindOfKey(key) == HuVarKind.Int
-                ? $"ARRAY {ArrayName(key)}[{bound}];"
-                : $"ARRAY FLOAT {ArrayName(key)}[{bound}];");
+            _sb.AppendLine(HuProgram.KindOfKey(key) switch
+            {
+                HuVarKind.Int => $"ARRAY {ArrayName(key)}[{bound}];",
+                // 文字列の配列: 文字列の変数と同じ 256 バイトのバッファを上限 + 1 個並べる
+                HuVarKind.Str => $"ARRAY BYTE {ArrayName(key)}[{(bound + 1) * 256 - 1}];",
+                _ => $"ARRAY FLOAT {ArrayName(key)}[{bound}];",
+            });
         foreach (var s in _prog.StrVars)
             _sb.AppendLine($"ARRAY BYTE {VarName(s)}[255];");
         for (int i = 0; i < _prog.Literals.Count; i++)
@@ -281,7 +287,7 @@ public sealed class SlangBackend : IHuBackend
             {
                 var t = NewITemp();
                 _pre.Add($"{t}={ArrayIndex(ix)};");
-                return $"&{ArrayName(_prog.Key(ix.Name))}[{t}]";
+                return ix.Type == HuType.Str ? StrElement(ix, t) : $"&{ArrayName(_prog.Key(ix.Name))}[{t}]";
             }
             default:
                 throw new InvalidOperationException("SWAP " + e);
@@ -289,6 +295,9 @@ public sealed class SlangBackend : IHuBackend
     }
 
     private string ArrayElement(HuIndex ix) => $"{ArrayName(_prog.Key(ix.Name))}[{ArrayIndex(ix)}]";
+
+    /// <summary>文字列の配列の要素のバッファの番地 (index は添字の式。1 要素 256 バイト)</summary>
+    private string StrElement(HuIndex ix, string index) => $"({ArrayName(_prog.Key(ix.Name))}+({index}<<8))";
 
     /// <summary>配列の添字 (BAS_AIDX が範囲を調べて、初めて使う配列なら DIM なしの上限 10 で確保したことにする)</summary>
     private string ArrayIndex(HuIndex ix)
@@ -688,6 +697,8 @@ public sealed class SlangBackend : IHuBackend
                 return LiteralName(_prog.LiteralId(s.Text));
             case HuVar v:
                 return Var(v);
+            case HuIndex ix:
+                return StrElement(ix, ArrayIndex(ix));
             case HuBinary { Op: "+" } b:
             {
                 var sv = Seq((b.Left, K.Str), (b.Right, K.Str));

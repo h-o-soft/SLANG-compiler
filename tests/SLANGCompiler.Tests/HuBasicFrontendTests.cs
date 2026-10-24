@@ -511,8 +511,6 @@ public class HuBasicFrontendTests
 
     [Theory]
     [InlineData("10 DIM A(5461)", "HB0305")]                   // 浮動小数の配列は 1 要素 3 バイト (上限 5460)
-    [InlineData("10 DEFSTR A:DIM A(3)", "HB0306")]             // DEFSTR の頭文字の配列は文字列の配列
-    [InlineData("10 DEFSTR A:A(1)=\"X\"", "HB0306")]
     [InlineData("10 DEFINT A-Z:DEFSNG X", "HB0410")]           // 同じ頭文字に違う DEFxxx
     [InlineData("10 DEFSTR S\n20 IF 0 THEN DEFINT R-T", "HB0410")] // IF の中の DEFxxx も数える
     [InlineData("10 DEFINT A-Z:S=\"X\"", "HB0404")]
@@ -521,7 +519,7 @@ public class HuBasicFrontendTests
     [InlineData("10 DEFINT A-Z:DIM A(&HFFFF*&HFFFF*&HFFFF)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A(8192)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A(-1)", "HB0305")]
-    [InlineData("10 DEFINT A-Z:DIM A$(3)", "HB0306")]         // 文字列の配列
+    [InlineData("10 DIM A$(64)", "HB0305")]                    // 文字列の配列は 1 要素 256 バイト (上限 63。段階 G2)
     [InlineData("10 DEFINT A-Z:DIM A(40000)", "HB0305")]       // 32768 以上の 10 進 (浮動小数の定数) も範囲を検査
     [InlineData("10 DEFINT A-Z:DIM A(1.25+1.25)", "HB0313")]   // 浮動小数を含む計算の上限は未対応 (項ごとに丸めると値が違う)
     [InlineData("10 DEFINT A-Z:DIM A(+(1.25+1.25))", "HB0313")] // 符号で包んでも同じ
@@ -823,9 +821,37 @@ public class HuBasicFrontendTests
     [InlineData("10 DEFINT A-Z:SWAP A,B%")]       // DEFINT の下の A と B% は同じ整数
     public void Analyzer_SwapSameKindIsAccepted(string program) => AnalyzeOk(program);
 
+    /// <summary>段階 G2: 文字列の配列の要素も SWAP できる。数の変数・配列との組み合わせは型が違う</summary>
+    [Theory]
+    [InlineData("10 SWAP A$(0),A$(1)", false)]
+    [InlineData("10 SWAP A$,A$(1)", false)]
+    [InlineData("10 DIM B$(3):SWAP A$(I),B$(I+1)", false)]
+    [InlineData("10 SWAP A$(0),B(0)", true)]
+    [InlineData("10 SWAP A$(0),B%", true)]
+    public void Analyzer_SwapOfStringArrayElement(string program, bool mismatch)
+    {
+        if (mismatch) AssertError(program, "HB0404");
+        else AnalyzeOk(program);
+    }
+
+    /// <summary>
+    /// 段階 G2: 文字列の配列 (DIM あり・なし、DEFSTR の頭文字)。A$ と A$(…)、A$(…) と A(…) は別のもの。
+    /// 記憶域は 1 要素 256 バイトで、静的なデータに (上限 + 1) × 256 + 4 バイトとして数える
+    /// </summary>
     [Fact]
-    public void Analyzer_SwapOfStringArrayElementIsStillUnsupported()
-        => AssertError("10 SWAP A$(0),A$(1)", "HB0306");
+    public void Analyzer_StringArrays()
+    {
+        var prog = AnalyzeOk("10 A$=\"S\":A$(0)=\"E\":A(0)=5:DIM B$(20),C(3):B$(20)=A$(0)+B$(1)");
+        Assert.Equal(10, prog.Arrays["A$"]);
+        Assert.Equal(20, prog.Arrays["B$"]);
+        Assert.Equal(10, prog.Arrays["A!"]);
+        Assert.Equal(63, AnalyzeOk("10 DIM D$(63)").Arrays["D$"]);
+        Assert.Contains("A$", prog.StrVars);
+        var bytes = AnalyzeOk("10 A$(1)=\"X\"").StaticDataBytes - AnalyzeOk("10 PRINT \"X\"").StaticDataBytes;
+        Assert.Equal(11 * 256 + 4, bytes);
+        prog = AnalyzeOk("10 DEFSTR A:DIM A(3):A(1)=\"X\":READ A(2):INPUT A(3)");
+        Assert.Equal(10, prog.Arrays["A$"]);
+    }
 
     /// <summary>段階 G1: PLAY は文字列なら MML、数ならテンポ。KEY は 2 つ目が文字列で、warning HB0704 を出す</summary>
     [Fact]

@@ -16,6 +16,7 @@ public sealed class HuAnalyzer
     public const int MaxArrayBytes = 16 * 1024;
     public const int MaxArrayIndex = MaxArrayBytes / 2 - 1; // 8191
     public const int MaxFloatArrayIndex = MaxArrayBytes / 3 - 1; // 5460 (1 要素 3 バイト)
+    public const int MaxStrArrayIndex = MaxArrayBytes / 256 - 1; // 63 (1 要素 256 バイト)
     public const int MaxDataBytes = 32767;
     public const int MaxNameLength = 28; // SLANG の名前の上限 32 から接頭辞の分を引く
 
@@ -168,11 +169,6 @@ public sealed class HuAnalyzer
             {
                 var key = CheckVarName(name, dim.Pos);
                 var kind = HuProgram.KindOfKey(key);
-                if (kind == HuVarKind.Str)
-                {
-                    _diag.Error("HB0306", $"文字列の配列 {name} は未対応です", dim.Pos);
-                    continue;
-                }
                 if (ConstExprOnly(boundExpr) == false)
                 {
                     _diag.Error("HB0304", $"DIM {name} の上限は定数で書いてください (変数を含む上限は未対応)", dim.Pos);
@@ -260,18 +256,18 @@ public sealed class HuAnalyzer
     };
 
     /// <summary>配列の上限の添字 (配列の大きさの上限 16 KiB を、1 要素の大きさで割ったもの)</summary>
-    private static int MaxIndexOf(HuVarKind kind) => kind == HuVarKind.Int ? MaxArrayIndex : MaxFloatArrayIndex;
+    private static int MaxIndexOf(HuVarKind kind) => kind switch
+    {
+        HuVarKind.Int => MaxArrayIndex,
+        HuVarKind.Str => MaxStrArrayIndex,
+        _ => MaxFloatArrayIndex,
+    };
 
     /// <summary>配列の要素を使う。要素の型を返す</summary>
     private HuType UseArray(string name, HuPos pos)
     {
         var key = CheckVarName(name, pos);
         var kind = HuProgram.KindOfKey(key);
-        if (kind == HuVarKind.Str)
-        {
-            _diag.Error("HB0306", $"文字列の配列 {name} は未対応です", pos);
-            return HuType.Str;
-        }
         if (!_arrays.ContainsKey(key)) _arrays[key] = 10; // DIM なし → 上限 10
         return HuProgram.TypeOfKind(kind);
     }
@@ -902,11 +898,19 @@ public sealed class HuAnalyzer
         return (bytes.ToArray(), dataLines);
     }
 
+    /// <summary>配列の 1 要素の大きさ (文字列の配列の要素は、文字列の変数と同じ 256 バイトのバッファ)</summary>
+    private static int ElementBytes(HuVarKind kind) => kind switch
+    {
+        HuVarKind.Int => 2,
+        HuVarKind.Str => 256,
+        _ => 3,
+    };
+
     private int ComputeStaticBytes(int dataBytes, int dataLineCount)
     {
         long total = _intVars.Count * 2L + _floatVars.Count * 3L + _strVars.Count * 256L;
         foreach (var (key, bound) in _arrays)
-            total += (bound + 1L) * (HuProgram.KindOfKey(key) == HuVarKind.Int ? 2 : 3) + 4;
+            total += (bound + 1L) * ElementBytes(HuProgram.KindOfKey(key)) + 4;
         foreach (var lit in _literals) total += lit.Length + 1L;
         total += dataBytes + (dataLineCount + 1L) * 4;
         return (int)Math.Min(total, int.MaxValue);

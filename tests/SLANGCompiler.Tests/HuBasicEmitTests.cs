@@ -111,6 +111,15 @@ public class HuBasicEmitTests
         60 REPEAT:I=I+1:UNTIL I>5:END
         """;
 
+    /// <summary>段階 G2 の文字列の配列をひととおり使う小さなプログラム (自作。DIM あり・なし、代入・式・READ・INPUT・SWAP)</summary>
+    private const string G2Program = """
+        10 DEFINT I:I=2:A$="S":DIM P$(1),N$(20)
+        20 P$(0)="ABCD":P$(1)="pqrs":P$(I-1)=P$(I-1)+A$
+        30 PRINT P$(0);LEN(P$(1));P$(0)<P$(1):SWAP P$(0),P$(1):SWAP A$,P$(1)
+        40 READ N$(I):INPUT N$(20):IF N$(I)="X" THEN PRINT RIGHT$(N$(20),1)
+        50 Q$(10)="Q":DATA X
+        """;
+
     private const string FullProgram = """
         10 DEFINT A-Z:CLS:INIT:WIDTH 40:CLICK OFF:TEMPO 300
         20 A$="AB":B$=A$+CHR$(65):C$=MID$(A$,1,1)+MID$(A$,2)+RIGHT$(A$,1)+HEXCHR$("41")+CGPAT$(65)+INKEY$
@@ -201,6 +210,9 @@ public class HuBasicEmitTests
     [InlineData("10 READ A%(VAL(CHR$(49))):RESTORE:GOTO 10\n20 DATA 1")]
     [InlineData("10 SWAP A%(LEN(CHR$(49))),B%(1):GOTO 10")]       // SWAP の左の添字 (段階 G1)
     [InlineData("10 SWAP A%(1),B%(LEN(CHR$(49))):GOTO 10")]       // SWAP の右の添字
+    [InlineData("10 A$(LEN(CHR$(49)))=\"X\":GOTO 10")]            // 文字列の配列の代入先の添字 (段階 G2)
+    [InlineData("10 SWAP A$(LEN(CHR$(49))),A$(1):GOTO 10")]       // 文字列の配列の要素の SWAP
+    [InlineData("10 IF A$(LEN(CHR$(49)))=\"\" THEN 10")]          // 式の中の要素の添字
     public void Lowering_EveryAllocatingStatementResetsTemps(string program)
     {
         var r = Transpile(program);
@@ -221,6 +233,7 @@ public class HuBasicEmitTests
     [Theory]
     [InlineData(HuBasicEmitTests_FullProgramForExprs)]
     [InlineData(G1Program)]
+    [InlineData(G2Program)]
     public void Lowering_StatementExprsCoversEveryExpressionField(string program)
     {
         // 構文木の文の型のうち式を持つものは、すべて StatementExprs で式を返す
@@ -639,6 +652,30 @@ public class HuBasicEmitTests
         Assert.Single(Regex.Matches(sl, @"^QL\d+:", RegexOptions.Multiline));
     }
 
+    /// <summary>
+    /// 段階 G2: 文字列の配列は 1 要素 256 バイトの SA_名前、隠し変数は H_DIM_S_名前・H_UB_S_名前。要素は
+    /// (SA_名前+(添字<<8)) の番地で、文字列の変数と同じ呼び出しに渡す。SWAP は添字を A・B の順に一時変数へ入れる
+    /// </summary>
+    [Fact]
+    public void Slang_StageG2Calls()
+    {
+        var sl = Transpile(G2Program).Output!.Replace("\r\n", "\n");
+        foreach (var expected in new[]
+        {
+            "ARRAY BYTE SA_P[2815];", "ARRAY BYTE SA_N[5375];", "ARRAY BYTE SA_Q[2815];", "ARRAY BYTE S_A[255];",
+            "H_DIM_S_P=0;\n  H_UB_S_P=10;", "H_UB_S_N=20;", "BAS_DIM(&H_DIM_S_P, &H_UB_S_P, 1);",
+            "BAS_SSET((SA_P+(BAS_AIDX(0, &H_DIM_S_P, &H_UB_S_P)<<8)), K_",
+            "BAS_SSET((SA_P+(BAS_AIDX(((V_I)-(1)), &H_DIM_S_P, &H_UB_S_P)<<8)), BAS_SCAT((SA_P+(BAS_AIDX(((V_I)-(1)), &H_DIM_S_P, &H_UB_S_P)<<8)), S_A));",
+            "BAS_PNUM(BAS_SLEN((SA_P+(BAS_AIDX(1, &H_DIM_S_P, &H_UB_S_P)<<8))));",
+            "H_I1=BAS_AIDX(0, &H_DIM_S_P, &H_UB_S_P);\n  H_I2=BAS_AIDX(1, &H_DIM_S_P, &H_UB_S_P);\n  BAS_SWAP((SA_P+(H_I1<<8)), (SA_P+(H_I2<<8)), 0);",
+            "H_I1=BAS_AIDX(1, &H_DIM_S_P, &H_UB_S_P);\n  BAS_SWAP(S_A, (SA_P+(H_I1<<8)), 0);",
+            "BAS_SSET((SA_N+(BAS_AIDX(V_I, &H_DIM_S_N, &H_UB_S_N)<<8)), BAS_READS());",
+            "BAS_SSET((SA_N+(BAS_AIDX(20, &H_DIM_S_N, &H_UB_S_N)<<8)), BAS_INFS());",
+            "BAS_SSET((SA_Q+(BAS_AIDX(10, &H_DIM_S_Q, &H_UB_S_Q)<<8)), K_",
+        })
+            Assert.Contains(expected, sl);
+    }
+
     /// <summary>ランタイムの関数の名前は重ならない (同じ名前は後のもので上書きされる。TAB を BAS_PTAB にすると PLAY の音程の表を壊す)</summary>
     [Fact]
     public void Runtime_FunctionNamesAreUnique()
@@ -1041,6 +1078,13 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "G1"));
             RunSlangbuild(root, dir, sl9, asmPath, Path.Combine(dir, "G1S"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "G1S"));
+            // 段階 G2 の文字列の配列 (要素の番地・SWAP) も両方で組み立てまで通る
+            var sl10 = Path.Combine(dir, "G2.SL");
+            File.WriteAllText(sl10, Transpile(G2Program).Output!);
+            RunSlangbuild(root, dir, sl10, asmPath, Path.Combine(dir, "G2"));
+            AssertBuilt(Path.Combine(dir, "G2"));
+            RunSlangbuild(root, dir, sl10, asmPath, Path.Combine(dir, "G2S"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "G2S"));
         }
         finally
         {
