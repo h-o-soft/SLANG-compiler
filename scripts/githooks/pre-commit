@@ -40,6 +40,12 @@ fi
 #  " や \ を含むもの) は、検査をすり抜けないように止める
 SAMPLES=examples/hubasic
 GIT="git -c core.quotePath=false"
+# 除外の判定は stage した .gitignore で行う (作業ツリーの .gitignore だけを変えて抜けられないように)。
+# stage した .gitignore を一時ディレクトリに出し、そこを作業ツリーとして check-ignore する
+IGN_TREE=$(mktemp -d)
+trap 'rm -rf "$IGN_TREE"' EXIT
+$GIT ls-files --cached -- .gitignore '*/.gitignore' | git checkout-index --prefix="$IGN_TREE/" --stdin
+GIT_DIR_ABS=$(git rev-parse --absolute-git-dir)
 BAD=$($GIT diff --cached --name-status -M -C | awk -F '\t' '
     $1 ~ /^[RC]/ { print "N\t" $3; next }
     $1 ~ /^A/    { print "N\t" $2; next }
@@ -48,7 +54,8 @@ BAD=$($GIT diff --cached --name-status -M -C | awk -F '\t' '
         \"*) echo "  $p (特別な文字を含むパスは commit できません)"; continue ;;
     esac
     [ "$st" = "N" ] || continue
-    if git check-ignore -q --no-index -- "$p"; then
+    if git -C "$IGN_TREE" --git-dir="$GIT_DIR_ABS" --work-tree="$IGN_TREE" -c core.excludesFile=/dev/null \
+            check-ignore -q --no-index -- "$p"; then
         echo "  $p (.gitignore で除外しているファイル)"; continue
     fi
     ext=$(printf '%s' "${p##*.}" | tr '[:upper:]' '[:lower:]')
