@@ -1013,6 +1013,9 @@ public class HuBasicFrontendTests
     [InlineData("10 GOTO A$", "HB0301")]                          // 名前の式は未対応 (本物は書ける)
     [InlineData("10 GOTO \"A\"+\"B\"", "HB0301")]
     [InlineData("10 LABEL A$", "HB0301")]
+    [InlineData("10 LABEL \"A\"+\"B\"", "HB0301")]
+    [InlineData("10 GOTO CHR$(65)", "HB0301")]
+    [InlineData("10 ON A GOSUB 10,LEFT$(\"AB\",1)", "HB0301")]
     [InlineData("10 RESTORE \"D\"", "HB0301")]
     [InlineData("10 RETURN \"D\"", "HB0301")]
     [InlineData("10 ON A RESTORE \"D\"", "HB0301")]

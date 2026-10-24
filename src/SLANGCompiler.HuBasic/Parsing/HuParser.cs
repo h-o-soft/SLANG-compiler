@@ -215,7 +215,14 @@ public sealed class HuParser
                     SkipToStatementEnd();
                     return null;
                 }
-                return new HuLabel(Next().Text, pos);
+                var name = Next().Text;
+                if (Peek.Kind == HuTokenKind.Symbol && !Peek.IsSymbol(":"))
+                {
+                    _diag.Error("HB0301", "LABEL の名前は文字列の定数だけに対応しています", pos);
+                    SkipToStatementEnd();
+                    return null;
+                }
+                return new HuLabel(name, pos);
             }
             case "ON":
                 return ParseOn(pos);
@@ -442,7 +449,7 @@ public sealed class HuParser
             }
             return (0, name);
         }
-        if (Peek.Is(HuTokenKind.Ident) || Peek.IsSymbol("("))
+        if (Peek.Is(HuTokenKind.Ident) || Peek.IsSymbol("(") || (Peek.Is(HuTokenKind.Keyword) && Functions.ContainsKey(Peek.Text)))
         {
             Error("HB0301", "名前の飛び先は文字列の定数だけに対応しています");
             SkipToStatementEnd();
