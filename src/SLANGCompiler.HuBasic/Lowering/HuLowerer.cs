@@ -57,6 +57,11 @@ public sealed class HuLowerer
         => new HuLowerer(prog, opt ?? new HuLowerOptions()).Run();
 
     public static string LineLabel(int line) => "L" + line;
+    /// <summary>LABEL の文の直後のラベル</summary>
+    public static string NameLabel(int id) => "LB" + id;
+
+    /// <summary>飛び先 (名前なら LABEL の文の直後、行番号ならその行の頭) のラベル</summary>
+    private string Target(int line, string? label) => label != null ? NameLabel(_prog.LabelTargets[label]) : LineLabel(line);
     public static string ReturnPoint(int id) => "R" + id;
     public static string ForTop(int id) => "QFT" + id;
     public static string ForExit(int id) => "QFX" + id;
@@ -127,13 +132,13 @@ public sealed class HuLowerer
                 else Emit(new FAssign(a.Target, a.Value));
                 break;
             case HuGoto g:
-                Emit(new FGoto(LineLabel(g.Line)));
+                Emit(new FGoto(Target(g.Line, g.Label)));
                 break;
             case HuGosub g:
             {
                 var id = _prog.GosubIds[g];
                 Call("BAS_GPUSH", I(id));
-                Emit(new FGoto(LineLabel(g.Line)));
+                Emit(new FGoto(Target(g.Line, g.Label)));
                 Emit(new FLabel(ReturnPoint(id)));
                 RestoreCurrentLine(g.Pos);
                 break;
@@ -287,6 +292,11 @@ public sealed class HuLowerer
                 if (rem.Directive == "VSYNC" && _opt.Wait == HuWaitMode.Frame)
                     Call("BAS_VSYNC", I(rem.DirectiveArg > 0 ? rem.DirectiveArg : _opt.WaitArg));
                 break;
+            case HuLabel lb:
+                // 名前への飛び先。行の途中に飛んでも実行時エラーの行番号が合うように、実行中の行番号を入れ直す
+                Emit(new FLabel(NameLabel(_prog.LabelIds[lb])));
+                Emit(new FAssignHidden(CurrentLine, new HuNum(_curLine, lb.Pos)));
+                break;
             case HuDefType:
             case HuData:
                 break;
@@ -302,7 +312,7 @@ public sealed class HuLowerer
         switch (on.Kind)
         {
             case "GOTO":
-                Emit(new FDispatch(Temp, on.Lines.Select((l, i) => (i + 1, LineLabel(l))).ToList()));
+                Emit(new FDispatch(Temp, OnTargets(on)));
                 break;
             case "GOSUB":
             {
@@ -311,7 +321,7 @@ public sealed class HuLowerer
                 Emit(new FIfHidden(Temp, "<", 1, ret));
                 Emit(new FIfHidden(Temp, ">", on.Lines.Count, ret));
                 Call("BAS_GPUSH", I(id));
-                Emit(new FDispatch(Temp, on.Lines.Select((l, i) => (i + 1, LineLabel(l))).ToList()));
+                Emit(new FDispatch(Temp, OnTargets(on)));
                 Emit(new FLabel(ret));
                 RestoreCurrentLine(on.Pos);
                 break;
@@ -333,6 +343,10 @@ public sealed class HuLowerer
             }
         }
     }
+
+    /// <summary>ON の飛び先: (選ぶ値 1 から, ラベル)</summary>
+    private List<(int, string)> OnTargets(HuOnJump on)
+        => on.Lines.Select((l, i) => (i + 1, Target(l, on.Labels?[i]))).ToList();
 
     private void LowerIf(HuIf f)
     {

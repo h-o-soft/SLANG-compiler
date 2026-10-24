@@ -46,10 +46,24 @@ public sealed record HuCall(string Name, IReadOnlyList<HuExpr> Args, HuPos Pos) 
 public abstract record HuStmt(HuPos Pos);
 
 public sealed record HuAssign(HuExpr Target, HuExpr Value, HuPos Pos) : HuStmt(Pos);   // Target は HuVar / HuIndex
-public sealed record HuGoto(int Line, HuPos Pos) : HuStmt(Pos);
-public sealed record HuGosub(int Line, HuPos Pos) : HuStmt(Pos);
+/// <summary>GOTO 行番号 / GOTO "名前" (Label が名前のとき。Line は 0)</summary>
+public sealed record HuGoto(int Line, HuPos Pos) : HuStmt(Pos)
+{
+    public string? Label { get; init; }
+}
+/// <summary>GOSUB 行番号 / GOSUB "名前" (Label が名前のとき。Line は 0)</summary>
+public sealed record HuGosub(int Line, HuPos Pos) : HuStmt(Pos)
+{
+    public string? Label { get; init; }
+}
 public sealed record HuReturn(int? Line, HuPos Pos) : HuStmt(Pos);
-public sealed record HuOnJump(HuExpr Selector, string Kind, IReadOnlyList<int> Lines, HuPos Pos) : HuStmt(Pos); // Kind: GOTO/GOSUB/RESTORE
+/// <summary>ON 式 GOTO/GOSUB/RESTORE。Labels は飛び先ごとの名前 (行番号の飛び先は null。名前の飛び先の Lines は 0)</summary>
+public sealed record HuOnJump(HuExpr Selector, string Kind, IReadOnlyList<int> Lines, HuPos Pos) : HuStmt(Pos) // Kind: GOTO/GOSUB/RESTORE
+{
+    public IReadOnlyList<string?>? Labels { get; init; }
+}
+/// <summary>LABEL "名前" (名前への GOTO・GOSUB・ON の飛び先。この文の直後に飛ぶ)</summary>
+public sealed record HuLabel(string Name, HuPos Pos) : HuStmt(Pos);
 public sealed record HuIf(HuExpr Cond, IReadOnlyList<HuStmt> Then, IReadOnlyList<HuStmt>? Else, HuPos Pos) : HuStmt(Pos);
 public sealed record HuFor(string Var, HuExpr From, HuExpr To, HuExpr? Step, HuPos Pos) : HuStmt(Pos);
 public sealed record HuNext(IReadOnlyList<string> Vars, HuPos Pos) : HuStmt(Pos);    // 空 = 変数の指定なし

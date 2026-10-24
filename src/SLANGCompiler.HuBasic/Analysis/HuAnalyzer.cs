@@ -43,6 +43,9 @@ public sealed class HuAnalyzer
     private readonly Dictionary<HuStmt, HuStmt> _loopPairs = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<HuStmt, int> _loopIds = new(ReferenceEqualityComparer.Instance);
     private HashSet<int> _lineNumbers = new();
+    /// <summary>LABEL の名前 → 番号 (同じ名前は前の方)、LABEL の文 → 番号</summary>
+    private readonly Dictionary<string, int> _labelTargets = new(StringComparer.Ordinal);
+    private readonly Dictionary<HuLabel, int> _labelIds = new(ReferenceEqualityComparer.Instance);
 
     private HuAnalyzer(HuDiagnosticBag diag, int dataBudget, bool assumeDefint)
     {
@@ -61,6 +64,7 @@ public sealed class HuAnalyzer
     {
         var lines = SortLines(ast.Lines);
         _lineNumbers = lines.Select(l => l.Number).ToHashSet();
+        CollectLabels(lines);
 
         CollectDefTypes(lines);
         CollectDims(lines);
@@ -90,6 +94,8 @@ public sealed class HuAnalyzer
             ForIds = _forIds,
             ForExits = _forExits,
             GosubIds = _gosubIds,
+            LabelIds = _labelIds,
+            LabelTargets = _labelTargets,
             LoopPairs = _loopPairs,
             LoopIds = _loopIds,
             StaticDataBytes = ComputeStaticBytes(dataBytes.Length, dataLines.Count),
@@ -154,6 +160,29 @@ public sealed class HuAnalyzer
     {
         if (!_lineNumbers.Contains(line))
             _diag.Error("HB0503", $"飛び先の行 {line} がありません", pos);
+    }
+
+    /// <summary>飛び先が名前ならその LABEL があるか、行番号ならその行があるか</summary>
+    private void CheckTarget(int line, string? label, HuPos pos)
+    {
+        if (label == null) CheckTarget(line, pos);
+        else if (!_labelTargets.ContainsKey(label))
+            _diag.Error("HB0504", $"飛び先の名前 \"{label}\" の LABEL がありません", pos);
+    }
+
+    /// <summary>LABEL の表を作る (プログラム順。同じ名前は本物と同じく前の方を使い、後ろの方に warning)</summary>
+    private void CollectLabels(List<HuLine> lines)
+    {
+        foreach (var s in AllStatements(lines))
+        {
+            if (s is not HuLabel lb) continue;
+            var id = _labelIds.Count;
+            _labelIds[lb] = id;
+            if (_labelTargets.ContainsKey(lb.Name))
+                _diag.Warning("HB0505", $"LABEL \"{lb.Name}\" が 2 つ以上あります。前の方に飛びます", lb.Pos);
+            else
+                _labelTargets[lb.Name] = id;
+        }
     }
 
     // ------------------------------------------------------------ DIM と配列
@@ -627,10 +656,10 @@ public sealed class HuAnalyzer
                 break;
             }
             case HuGoto g:
-                CheckTarget(g.Line, g.Pos);
+                CheckTarget(g.Line, g.Label, g.Pos);
                 break;
             case HuGosub g:
-                CheckTarget(g.Line, g.Pos);
+                CheckTarget(g.Line, g.Label, g.Pos);
                 _gosubIds[g] = _gosubCount++;
                 break;
             case HuReturn r:
@@ -638,7 +667,7 @@ public sealed class HuAnalyzer
                 break;
             case HuOnJump on:
                 ExpectNum(on.Selector, intConv: false);
-                foreach (var l in on.Lines) CheckTarget(l, on.Pos);
+                for (int i = 0; i < on.Lines.Count; i++) CheckTarget(on.Lines[i], on.Labels?[i], on.Pos);
                 if (on.Kind == "GOSUB") _gosubIds[on] = _gosubCount++;
                 break;
             case HuIf f:

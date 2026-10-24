@@ -1273,4 +1273,19 @@ public class HuBasicEmitTests
         Assert.Contains("$84,$03", table.Replace(" ", ""));   // 900 = $0384 (下位・上位の順)
         Assert.Contains("$FF,$FF", table.Replace(" ", ""));
     }
+
+    /// <summary>
+    /// 段階 G5a: 名前への飛び先は LABEL の文の直後のラベル LB番号 で、そこで実行中の行番号を入れ直す
+    /// (行の途中に飛んでも実行時エラーの行番号が合う)。同じ名前の後ろの方もラベルは出すが、飛び先は前の方
+    /// </summary>
+    [Fact]
+    public void Slang_StageG5aLabels()
+    {
+        var sl = Body(Transpile("10 DEFINT A-Z:GOTO \"B\"\n20 PRINT 1:LABEL\"B\":ON A GOSUB \"B\",20\n30 LABEL\"B\":GOSUB \"B\"").Output!);
+        Assert.Contains("GOTO LB0;", sl);
+        Assert.Contains("LB0:\n  H_LINE=20;", sl.Replace("\r\n", "\n"));
+        Assert.Contains("LB1:\n  H_LINE=30;", sl.Replace("\r\n", "\n"));
+        Assert.Contains("1: GOTO LB0; 2: GOTO L20;", sl);
+        Assert.DoesNotContain("GOTO LB1;", sl);
+    }
 }

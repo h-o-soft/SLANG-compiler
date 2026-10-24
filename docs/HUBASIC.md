@@ -67,6 +67,7 @@ prog.bas:2:4: error HB0301 (BASIC 20): 未対応の命令 CIRCLE
 
 ```
 REM (')  LET  GOTO  GOSUB  RETURN [行]  ON 式 GOTO/GOSUB/RESTORE  IF … THEN … ELSE …
+LABEL "名前"  GOTO "名前"  GOSUB "名前"  ON 式 GOTO/GOSUB 行か "名前",…
 FOR … TO … STEP / NEXT [変数,…]  REPEAT / UNTIL  WHILE / WEND  END
 DIM  DEFINT/DEFSNG/DEFDBL/DEFSTR  DATA  READ  RESTORE [行]
 PRINT (; , SPC() TAB() USING)  PRINT#0  LOCATE x,y  CLS [n]  COLOR [前景][,背景]  WIDTH 40/80
@@ -79,6 +80,10 @@ PLAY "MML"  PLAY n  TEMPO n  BEEP [0|1]  SOUND レジスタ,値  PAUSE n  RANDOM
 KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出ます)
 ```
 
+- 文の区切りの `:` は、Hu-BASIC と同じく、文が終わった所なら省けます (`COLOR 4 LOCATE 0,2 PRINT "A"`、`A=1 B=2`)。
+  `PRINT "A" PRINT "B"` のように、文がまだ続きを読む所では error です (Hu-BASIC も Syntax error)。
+- `GOTO "名前"` などは、`LABEL "名前"` の文の直後に飛びます (行の途中でも)。名前は大文字小文字と空白まで同じものだけが合います。
+  同じ名前の `LABEL` が 2 つあれば前の方 (warning HB0505)。名前は文字列の定数だけ書けます。
 - `PRINT USING` は数値の書式だけ (`# . + - **` と `,` の区切り)。`PRINT#` は `#0` だけ。
 - `INPUT` は 1 行の入力 (BS で 1 文字消す、RETURN で終わり)。数が読めなくても聞き直さず 0 (Hu-BASIC と同じ)。
 - `PRINT` の文字列の中のカーソルの制御コード (`CHR$(28)`〜`CHR$(31)`) でカーソルが動きます。
@@ -97,7 +102,7 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)
 ```
 
 - 数学の関数は FLOAT の精度で、Hu-BASIC とふつう 4〜5 桁合います。大きな引数の `SIN`・`COS`、0 に近い引数の `SIN`、1 に近い引数の `LOG` は合う桁が少なくなります。
-- `PAI`・`RAD`・`SCRN$`・`PRW` は Hu-BASIC と同じく予約語です (`RADIUS`・`PAIR` のような変数名は使えません)。
+- `PAI`・`RAD`・`SCRN$`・`PRW`・`LABEL` は Hu-BASIC と同じく予約語です (`RADIUS`・`PAIR`・`LABELX` のような変数名は使えません)。
 
 ## まだないもの (変換のときの error)
 
@@ -106,6 +111,7 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)
 - 関数: `OCT$`・`BIN$` など (error HB0302)
 - 2 次元以上の配列 (error HB0303)、`MID$` の文の配列の要素
 - `PAINT` の色の省略、タイルパターン (`PAINT`・`BF` の文字列)
+- 名前の飛び先の式 (`GOTO A$`)、`RESTORE "名前"`・`RETURN "名前"`
 
 ## Hu-BASIC との違い (分かっているもの)
 
@@ -156,11 +162,12 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)
 | error HB02xx | 構文 (文として読めない、`:` や `)` が足りない、行番号がない など) |
 | error HB03xx | 未対応 (命令 HB0301、関数 HB0302、2 次元配列 HB0303 など)。HB0312 はメモリに収まらない |
 | error HB04xx | 型 (整数と文字列の取り違え HB0404、同じ頭文字に違う DEFxxx HB0410 など) |
-| error HB05xx | 行番号 (飛び先の行がない HB0503、同じ行番号が 2 回 HB0502) |
+| error HB05xx | 行番号 (飛び先の行がない HB0503、同じ行番号が 2 回 HB0502、飛び先の名前の `LABEL` がない HB0504) |
 | error HB06xx | ループの対応 (FOR に NEXT がない、WEND に WHILE がない など) |
 | warning HB0109 | `%` を付けた 32768〜65535 の数 (16 ビットの整数として扱う) |
 | warning HB0110 | UTF-8 として読めないので X1 の文字コードとして読んだ |
 | warning HB0411 | DEFxxx より前の行で、その頭文字の変数を使っている |
 | warning HB0412 | 倍精度の変数 (単精度と同じ浮動小数で扱う) |
 | warning HB0501 | 行番号が昇順でない (並べ替えて続ける) |
+| warning HB0505 | 同じ名前の `LABEL` が 2 つ以上ある (前の方に飛ぶ) |
 | warning HB0701・HB0702・HB0704 | `KBUF`・`SCREEN`・`KEY` (何もしない) |
