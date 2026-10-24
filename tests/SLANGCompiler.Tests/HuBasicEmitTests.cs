@@ -1332,6 +1332,12 @@ public class HuBasicEmitTests
             Assert.Contains(expected, sl);
         Assert.Contains("VAR ", Transpile(G5Program).Output!.Split("MAIN()")[0]);
         Assert.Contains("H_PK", Transpile(G5Program).Output!.Split("MAIN()")[0]);
+        // 値は整数にしてから (±65535 は 16 ビットに回り込む) 0〜255 を調べる。本物も同じ (実測: POKE a,-65535 は 1、-65281 は 255 を書き、
+        // -65280 と 65535 は Illegal function call。POKE@ も同じ)
+        var neg = Body(Transpile("10 POKE &HF000,-65535:POKE@&H3000,-65471:X=-65535:POKE 0,X").Output!);
+        Assert.Contains("MEM[H_PK]=BAS_BYTE(1);", neg);
+        Assert.Contains("PORT[H_PK]=BAS_BYTE(65);", neg);
+        Assert.Contains("MEM[H_PK]=BAS_BYTE(BAS_FTOIR(F_X));", neg);
         // POKE のないプログラムは H_PK を宣言しない (今までの出力を変えない)
         Assert.DoesNotContain("H_PK", Transpile(Stage1Program).Output!);
     }
