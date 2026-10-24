@@ -30,3 +30,51 @@ To unstage everything and start over:
 EOF
     exit 1
 fi
+
+# リポジトリに入れないファイルが混ざらないための検査 (Hu-BASIC の変換を同梱したときに足した)
+#  1. .gitignore で除外しているファイルを新しく足す・改名で持ち込むのを止める (git add -f の保険)
+#  2. 拡張子 bas・asc・d88・2d (大文字小文字を問わない) のファイルを足す・改名するのは examples/hubasic/ の中だけ
+#     (既存の追跡済みファイルの変更と、削除は止めない)
+#  3. examples/hubasic/ の中のファイル (README.md・MANIFEST.txt を除く) と、stage した MANIFEST.txt の名前の一覧が一致すること
+#  パスは core.quotePath=false で引用符なしに読む (日本語の名前もそのまま)。それでも引用符で囲まれるパス (タブ・改行・
+#  " や \ を含むもの) は、検査をすり抜けないように止める
+SAMPLES=examples/hubasic
+GIT="git -c core.quotePath=false"
+BAD=$($GIT diff --cached --name-status -M -C | awk -F '\t' '
+    $1 ~ /^[RC]/ { print "N\t" $3; next }
+    $1 ~ /^A/    { print "N\t" $2; next }
+    $1 ~ /^M/    { print "M\t" $2 }' | while IFS="$(printf '\t')" read -r st p; do
+    case "$p" in
+        \"*) echo "  $p (特別な文字を含むパスは commit できません)"; continue ;;
+    esac
+    [ "$st" = "N" ] || continue
+    if git check-ignore -q --no-index -- "$p"; then
+        echo "  $p (.gitignore で除外しているファイル)"; continue
+    fi
+    ext=$(printf '%s' "${p##*.}" | tr '[:upper:]' '[:lower:]')
+    case "$ext" in
+        bas|asc|d88|2d)
+            case "$p" in
+                "$SAMPLES"/*) ;;
+                *) echo "  $p (BASIC・ディスクイメージを足せるのは $SAMPLES/ の中だけ)" ;;
+            esac ;;
+    esac
+done)
+if $GIT diff --cached --name-only --no-renames | grep -q "^\"\{0,1\}$SAMPLES/"; then
+    FILES=$($GIT ls-files --cached -- "$SAMPLES" | sed "s|^$SAMPLES/||" | grep -v -x -e README.md -e MANIFEST.txt | sort)
+    LISTED=$(git show ":$SAMPLES/MANIFEST.txt" 2>/dev/null | grep -v '^#' | grep -v '^[[:space:]]*$' | cut -f1 | sort)
+    if [ "$FILES" != "$LISTED" ]; then
+        BAD="$BAD
+  $SAMPLES/ のファイルと MANIFEST.txt の一覧が一致しません
+    ファイル: $(echo $FILES)
+    一覧:     $(echo $LISTED)"
+    fi
+fi
+if [ -n "$BAD" ]; then
+    echo "ERROR: pre-commit hook: リポジトリに入れないファイルが混ざっているかもしれません:" >&2
+    echo "$BAD" >&2
+    echo "" >&2
+    echo ".gitignore で除外しているファイルは commit しません。サンプルの BASIC は $SAMPLES/ に置き、" >&2
+    echo "$SAMPLES/MANIFEST.txt に名前と出どころを書いてください (このリポジトリのために新しく書いたものだけ)。" >&2
+    exit 1
+fi

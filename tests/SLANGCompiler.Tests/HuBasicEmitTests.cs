@@ -753,6 +753,41 @@ public class HuBasicEmitTests
         Assert.Contains("BAS_STMP();", sl[..sl.IndexOf(paint, StringComparison.Ordinal)]);
     }
 
+    /// <summary>同梱のサンプル (examples/hubasic) は、どれも error なしで変換できる</summary>
+    [Fact]
+    public void Examples_HubasicSamplesTranspile()
+    {
+        var dir = Path.Combine(RepoRoot(), "examples", "hubasic");
+        var samples = Directory.GetFiles(dir, "*.BAS");
+        Assert.NotEmpty(samples);
+        foreach (var f in samples)
+        {
+            var r = HuTranspiler.Transpile(File.ReadAllText(f));
+            Assert.False(r.Diagnostics.HasErrors, Path.GetFileName(f) + ": " +
+                string.Join("; ", r.Diagnostics.Items.Select(d => d.Code + " " + d.Message)));
+        }
+    }
+
+    /// <summary>
+    /// examples/hubasic のファイル (README.md・MANIFEST.txt を除く) は、MANIFEST.txt の一覧とちょうど一致する
+    /// (このリポジトリのために書いたものだけを置く約束。pre-commit も同じことを調べる)
+    /// </summary>
+    [Fact]
+    public void Examples_HubasicManifestListsEveryFile()
+    {
+        var dir = Path.Combine(RepoRoot(), "examples", "hubasic");
+        var listed = File.ReadAllLines(Path.Combine(dir, "MANIFEST.txt"))
+            .Where(l => l.Trim().Length > 0 && !l.StartsWith('#'))
+            .Select(l => l.Split('\t')[0]).OrderBy(x => x, StringComparer.Ordinal).ToList();
+        Assert.All(File.ReadAllLines(Path.Combine(dir, "MANIFEST.txt")).Where(l => l.Trim().Length > 0 && !l.StartsWith('#')),
+            l => Assert.True(l.Split('\t').Length >= 2 && l.Split('\t')[1].Trim().Length > 0, $"出どころがない: {l}"));
+        // 変換した SLANG (*.SL) は .gitignore で除外しているので、一覧の対象にしない
+        var files = Directory.GetFiles(dir).Select(Path.GetFileName)
+            .Where(n => n is not ("README.md" or "MANIFEST.txt") && !n!.EndsWith(".SL", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x, StringComparer.Ordinal).ToList();
+        Assert.Equal(listed, files);
+    }
+
     /// <summary>ランタイムの関数の名前は重ならない (同じ名前は後のもので上書きされる。TAB を BAS_PTAB にすると PLAY の音程の表を壊す)</summary>
     [Fact]
     public void Runtime_FunctionNamesAreUnique()

@@ -5,7 +5,7 @@ namespace SLANGCompiler.HuBasic.CLI;
 
 class Program
 {
-    const string Version = "0.27.0";
+    const string Version = "0.1.0-alpha";
 
     /// <summary>x1native / x1native_slfs のプログラムの配置先と、割り込み用に予約された領域の先頭</summary>
     const int LoadAddress = 0x1000;
