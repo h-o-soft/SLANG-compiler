@@ -18,4 +18,5 @@ public interface IHuBackend
     int ExtraStaticBytes { get; }
 }
 
-public sealed record HuEmitOptions(string SourceName = "", bool LineComments = false);
+/// <param name="DiskMainName">頭のコメントに書く `// disk-main-name:` の名前 (slangbuild が IPL の起動名にする)。空なら書かない</param>
+public sealed record HuEmitOptions(string SourceName = "", bool LineComments = false, string DiskMainName = "");

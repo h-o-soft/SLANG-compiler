@@ -166,6 +166,37 @@ slangbuild --emit disk -E x1native_slfs examples/X1NATIVE_SLFS/SLFSDEMO.SL -o SL
   --slfs-add examples/X1NATIVE_SLFS/assets/
 ```
 
+### IPL の起動名 (`main_name`)
+
+env の `disk.main_name` は、boot sector の FileName (+01 の 13 byte、 下の「boot sector」) に入る名前 = IPL が起動するプログラムの名前です。
+slangbuild では次の順で決まります (上ほど優先):
+
+1. `--disk-main-name <name>` (= `--emit disk` + `disk.tool: slfs-pack` の env だけ。 それ以外の tool で付けると error)
+2. 入力 SL の頭のコメント (= 1 行目から続く `//` 行) の `// disk-main-name: <name>` (複数あれば最初の行。 前後の空白は除く)。
+   hubasic2sl は BASIC のファイル名をここに書きます ([HUBASIC.md](HUBASIC.md))
+3. env の `disk.main_name`
+4. 未指定なら `SLFSMAIN`
+
+```sh
+slangbuild --emit disk -E x1native_slfs GAME.SL -o GAME --disk-main-name "MY GAME"
+```
+
+名前は ASCII printable (0x20-0x7E) の 1〜13 文字。 外れたら (= 空・14 文字以上・ASCII 以外) slangbuild は error で止まります (`--tape-name` と同じく、 黙って切らない)。
+大文字小文字は書いたまま入ります。 2 のコメントは slfs-pack の disk を作るときだけ読み、 `--emit bin` / `--emit tape` / 他の tool の disk では使いません。
+
+standalone の `slfs-pack pack --main-name <name>` も同じ欄を決めます (既定 `SLFSMAIN`)。 ただし slfs-pack は名前を調べず、
+14 文字以上は切り、 ASCII 以外は `?` にします。
+
+env の他の値 (`volume` など) もまとめて変えたいときは、 env を写して使えます。 写した env は `<dir>/env/<別の名前>.env` に置き、
+`-L <dir> -E <別の名前>` で指定します (CWD の `runtime/env/` が `-L` より先に探されるので、 元の `x1native_slfs` とは違う名前にする):
+
+```sh
+mkdir -p mygame/env && sed 's/"SLFSMAIN"/"MYGAME"/' runtime/env/x1native_slfs.env > mygame/env/mygame.env
+slangbuild --emit disk -L mygame -E mygame GAME.SL -o GAME
+```
+
+写した env は、 元の `x1native_slfs.env` の `libraries` が変わったら合わせて直す必要があります (上の「注意」と同じ)。
+
 ### standalone CLI
 
 ```sh
@@ -184,6 +215,7 @@ slfs-pack pack -o output.d88 --main main.bin \
   --add NAME:path/to/file \
   --add path/to/dir/ \
   --main-load 0x1000 --main-exec 0x1000 \
+  --main-name "MYGAME" \
   --volume "MYGAME"
 ```
 

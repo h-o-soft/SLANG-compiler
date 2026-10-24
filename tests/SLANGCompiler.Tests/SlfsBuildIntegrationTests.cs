@@ -19,6 +19,10 @@ public class SlfsBuildIntegrationTests
     }
 
     private static (int Code, string Stdout, string Stderr) RunSlangbuild(string args)
+        => RunSlangbuild(args.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>引数を 1 つずつ渡す (= 空の引数・空白入りの引数も渡せる)</summary>
+    private static (int Code, string Stdout, string Stderr) RunSlangbuild(params string[] args)
     {
         var repo = RepoRoot();
         var psi = new ProcessStartInfo("dotnet")
@@ -34,7 +38,7 @@ public class SlfsBuildIntegrationTests
         psi.ArgumentList.Add(Path.Combine(repo, "src", "SLANGCompiler.Build"));
         psi.ArgumentList.Add("--no-build");
         psi.ArgumentList.Add("--");
-        foreach (var a in args.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var a in args)
             psi.ArgumentList.Add(a);
 
         using var proc = Process.Start(psi)!;
@@ -97,6 +101,107 @@ public class SlfsBuildIntegrationTests
             foreach (var ext in new[] { ".d88", ".bin", ".sym", ".ASM", ".LST", ".inc" })
                 if (File.Exists(output + ext)) File.Delete(output + ext);
         }
+    }
+
+    /// <summary>SL を書いて slangbuild を通す。 (exit code, stderr, d88 の中身 or null)</summary>
+    private static (int Code, string Stderr, byte[]? D88) BuildSl(string sl, params string[] args)
+    {
+        var output = Path.Combine(Path.GetTempPath(), $"SLFSNAME_{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllText(output + ".SL", sl);
+            var (rc, _, stderr) = RunSlangbuild(new[] { output + ".SL", "-o", output }.Concat(args).ToArray());
+            return (rc, stderr, File.Exists(output + ".d88") ? File.ReadAllBytes(output + ".d88") : null);
+        }
+        finally
+        {
+            foreach (var ext in new[] { ".SL", ".d88", ".bin", ".sym", ".ASM", ".LST", ".tap" })
+                if (File.Exists(output + ext)) File.Delete(output + ext);
+        }
+    }
+
+    private static string BootName(byte[] d88)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"SLFSBOOT_{Guid.NewGuid():N}.d88");
+        try
+        {
+            File.WriteAllBytes(path, d88);
+            return Encoding.ASCII.GetString(D88Reader.FromFile(path).ReadSector(0, 0, 1), 1, 13);
+        }
+        finally { File.Delete(path); }
+    }
+
+    private const string EmptyMain = "MAIN() BEGIN END;\n";
+
+    /// <summary>IPL の起動名 (= boot sector +01 の 13 char) を、引数 > SL の頭のコメント > env の順で決める</summary>
+    [Theory]
+    [InlineData("", null, "SLFSMAIN")]
+    [InlineData("// disk-main-name: HINTED\n", null, "HINTED")]
+    [InlineData("// disk-main-name: HINTED\n", "My Game", "My Game")]
+    [InlineData("// disk-main-name: \u30b2\u30fc\u30e0\n", "OK", "OK")]                     // 有効な引数は不正なソースの名前を上書きできる
+    [InlineData("", "ABCDEFGHIJKLM", "ABCDEFGHIJKLM")]                                // 13 文字ちょうど
+    [InlineData("// a\r\n// disk-main-name:  First \r\n// disk-main-name: Second\r\n", null, "First")]  // 最初の行・前後の空白は除く
+    [InlineData("\ufeff// disk-main-name: BOM\r\n", null, "BOM")]                       // BOM + CRLF
+    [InlineData("// x\n\n// disk-main-name: LATE\n", null, "SLFSMAIN")]              // 頭のコメントの並びの外は読まない
+    [InlineData("// x\n  // disk-main-name: LATE\n", null, "SLFSMAIN")]
+    public void SlfsMainName_GoesToBootHeader(string head, string? cliName, string expected)
+    {
+        var args = new List<string> { "-E", "x1native_slfs", "--emit", "disk" };
+        if (cliName != null) args.AddRange(new[] { "--disk-main-name", cliName });
+        var (rc, stderr, d88) = BuildSl(head + EmptyMain, args.ToArray());
+        Assert.True(rc == 0, $"slangbuild failed exit={rc}\nstderr:\n{stderr}");
+        Assert.Equal(expected.PadRight(13), BootName(d88!));
+    }
+
+    [Theory]
+    [InlineData("", new[] { "-E", "x1native_slfs", "--emit", "disk", "--disk-main-name", "ABCDEFGHIJKLMN" }, "invalid")]  // 14 文字
+    [InlineData("", new[] { "-E", "x1native_slfs", "--emit", "disk", "--disk-main-name", "" }, "invalid")]                // 空
+    [InlineData("// disk-main-name: \u30b2\u30fc\u30e0\n", new[] { "-E", "x1native_slfs", "--emit", "disk" }, "invalid")]  // ASCII 以外
+    [InlineData("// disk-main-name:\n", new[] { "-E", "x1native_slfs", "--emit", "disk" }, "invalid")]                 // 名前なし
+    [InlineData("", new[] { "-E", "x1native_slfs", "--disk-main-name", "A" }, "--disk-main-name requires --emit disk")]
+    [InlineData("", new[] { "-E", "x1", "--emit", "disk", "--disk-main-name", "A" }, "--disk-main-name requires disk.tool: slfs-pack")]
+    public void SlfsMainName_Rejected(string head, string[] args, string message)
+    {
+        var (rc, stderr, d88) = BuildSl(head + EmptyMain, args);
+        Assert.NotEqual(0, rc);
+        Assert.Contains(message, stderr);
+        Assert.Null(d88);
+    }
+
+    /// <summary>名前を変えても、boot sector +01〜+0D の 13 byte 以外の D88 は同じ</summary>
+    [Fact]
+    public void SlfsMainName_ChangesOnlyBootName()
+    {
+        var (rc1, err1, a) = BuildSl(EmptyMain, "-E", "x1native_slfs", "--emit", "disk");
+        var (rc2, err2, b) = BuildSl(EmptyMain, "-E", "x1native_slfs", "--emit", "disk", "--disk-main-name", "ANOTHERNAME12");
+        Assert.True(rc1 == 0 && rc2 == 0, err1 + err2);
+        Assert.Equal(a!.Length, b!.Length);
+        var diff = Enumerable.Range(0, a.Length).Where(i => a[i] != b[i]).ToList();
+        Assert.NotEmpty(diff);
+        Assert.True(diff.Max() - diff.Min() < 13, $"differs at {diff.Min()}..{diff.Max()}");
+        Assert.Equal("ANOTHERNAME12", Encoding.ASCII.GetString(b, diff.Min(), 13));
+    }
+
+    /// <summary>不正なソースの名前は、slfs-pack の disk 以外 (bin・tape) では読まない</summary>
+    [Theory]
+    [InlineData("x1native_slfs", "bin")]
+    [InlineData("x1native", "tape")]
+    public void SlfsMainName_SourceHintIgnoredOutsideSlfsDisk(string env, string emit)
+    {
+        var (rc, stderr, _) = BuildSl("// disk-main-name: \u30b2\u30fc\u30e0\n" + EmptyMain, "-E", env, "--emit", emit);
+        Assert.True(rc == 0, $"slangbuild failed exit={rc}\nstderr:\n{stderr}");
+    }
+
+    /// <summary>hubasic2sl の出力 (Game.bas → PROG.SL) を別の出力名で組み立てても、起動名は BASIC のファイル名</summary>
+    [Fact]
+    public void SlfsMainName_FromHubasicSourceName()
+    {
+        var r = SLANGCompiler.HuBasic.HuTranspiler.Transpile("10 END",
+            new SLANGCompiler.HuBasic.HuTranspileOptions(SourceName: "Game.bas"));
+        Assert.NotNull(r.Output);
+        var (rc, stderr, d88) = BuildSl(r.Output!, "-E", "x1native_slfs", "--emit", "disk");
+        Assert.True(rc == 0, $"slangbuild failed exit={rc}\nstderr:\n{stderr}");
+        Assert.Equal("Game".PadRight(13), BootName(d88!));
     }
 
     [Fact]

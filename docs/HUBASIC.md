@@ -16,6 +16,8 @@ slangbuild --emit disk -E x1native_slfs PROG.SL -o PROG   # PROG.d88 (ディス�
 hubasic2sl --check-bin PROG.bin --lst PROG.LST     # メモリ ($1000〜$FFDF) に収まるかを確かめる
 ```
 
+- `x1native_slfs` のディスクイメージでは、BASIC のファイル名 (拡張子なし。13 文字まで、ASCII だけ) が IPL の起動名になります
+  (変換した SLANG の頭の `// disk-main-name:` の行。slangbuild の `--disk-main-name <name>` で変えられます。[SLFS.md](SLFS.md))。
 - テープにするときは `slangbuild --emit tape -E x1native PROG.SL -o PROG` (`.tap`。`.wav` も作れます。[X1.md](X1.md) を参照)。
 - サンプル: [examples/hubasic/](../examples/hubasic/)
 
@@ -180,6 +182,7 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート
 | error HB06xx | ループの対応 (FOR に NEXT がない、WEND に WHILE がない など) |
 | warning HB0109 | `%` を付けた 32768〜65535 の数 (16 ビットの整数として扱う) |
 | warning HB0110 | UTF-8 として読めないので X1 の文字コードとして読んだ |
+| warning HB0112 | ファイル名が 13 文字を超えるので IPL の起動名を切った、または ASCII 以外の字があるので起動名にしない (env の名前、なければ `SLFSMAIN`) |
 | warning HB0411 | DEFxxx より前の行で、その頭文字の変数を使っている |
 | warning HB0412 | 倍精度の変数 (単精度と同じ浮動小数で扱う) |
 | warning HB0501 | 行番号が昇順でない (並べ替えて続ける) |

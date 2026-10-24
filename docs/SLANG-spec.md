@@ -867,6 +867,7 @@ slangbuild <input.SL> [options]
   --emit <bin|disk>    Output mode (default: bin)
   --disk-image <path>  Output disk image path (--emit disk 時、default: <prefix>.d88)
   --disk-template <p>  Override env's disk.template (--emit disk 時のみ)
+  --disk-main-name <s> Override env's disk.main_name = IPL の起動名 (--emit disk + tool=slfs-pack 時のみ、docs/SLFS.md)
 
 # ツール path (省略時は ToolResolver で自動解決)
   --slangc <path>      slangc executable path

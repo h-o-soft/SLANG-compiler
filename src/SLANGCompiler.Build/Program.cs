@@ -100,6 +100,9 @@ internal class Program
                 case "--slfs-add" when i + 1 < args.Length:
                     opts.SlfsAddSpecs.Add(args[++i]);
                     break;
+                case "--disk-main-name" when i + 1 < args.Length:
+                    opts.DiskMainName = args[++i];
+                    break;
                 case "--tape-add" when i + 1 < args.Length:
                     opts.TapeAddSpecs.Add(args[++i]);
                     break;
@@ -148,6 +151,12 @@ internal class Program
         {
             Console.Error.WriteLine(
                 "slangbuild: --disk-template requires --emit disk");
+            return 1;
+        }
+        if (opts.EmitMode != "disk" && opts.DiskMainName != null)
+        {
+            Console.Error.WriteLine(
+                "slangbuild: --disk-main-name requires --emit disk");
             return 1;
         }
         // Phase B: --tape-* / --wav は --emit tape 必須 (= 既存 --disk-image と同規律)
@@ -240,6 +249,8 @@ internal class Program
         Console.Error.WriteLine("  --tape-add <f[@load[:exec]]> Append raw binary as a tape stage (--emit tape only, repeatable;");
         Console.Error.WriteLine("                  load/exec optional = MTREAD reads to caller-specified addr)");
         Console.Error.WriteLine("  --slfs-add <name:path | dir> Add SLFS asset (--emit disk + tool=slfs-pack only, repeatable)");
+        Console.Error.WriteLine("  --disk-main-name <s> Override env's disk.main_name = IPL boot name (--emit disk + tool=slfs-pack only;");
+        Console.Error.WriteLine("                  ASCII printable 1..13 char)");
         Console.Error.WriteLine("  --keep-asm      Keep intermediate ASM / sym files");
         Console.Error.WriteLine("  --verbose       Show subprocess (slangc / AILZ80ASM) output");
         Console.Error.WriteLine("  -h, --help      Show this help");
