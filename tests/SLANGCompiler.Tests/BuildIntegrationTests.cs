@@ -196,6 +196,19 @@ public class BuildIntegrationTests : IDisposable
         return stdout.Split('\n').Any(line => line.StartsWith(entryName + "\t"));
     }
 
+    [SkippableFact]
+    public void LibFloat_LogAndAtan_AssembleForX1Native()
+    {
+        // libfloat の FLOG・FATAN (f24bg・f24geomean を通る) を使うプログラムが組み立てられる。
+        // f24bg の 1 行 2 命令 (アセンブラが読めない) と、f24geomean の @calls (FSQRT がリンクされない) の回帰
+        Skip.IfNot(File.Exists(_ailz80AsmPath), "AILZ80ASM がない");
+        var slPath = Path.Combine(_tempDir, "flog.SL");
+        File.WriteAllText(slPath, "FLOAT A;\nFLOAT B;\nMAIN()\nBEGIN\n  A=2.0;\n  B=FLOG(A)+FATAN(A);\nEND;\n");
+        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "x1native");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        Assert.True(File.Exists(Path.Combine(_tempDir, "flog.bin")), $"bin not produced. stderr: {stderr}");
+    }
+
     [Fact]
     public void SingleStage_NoOverlay_ProducesMainBin()
     {
