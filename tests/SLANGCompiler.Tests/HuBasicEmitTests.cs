@@ -308,6 +308,22 @@ public class HuBasicEmitTests
         Assert.DoesNotContain("LDDR", code);
     }
 
+    /// <summary>MML の O・V の後に数字がなければ、エラーにせずオクターブ・音量をそのままにする (Hu-BASIC の実測: "v5cvc" は 2 つとも音量 5)</summary>
+    [Fact]
+    public void Runtime_MmlOctaveAndVolumeWithoutDigitKeepValue()
+    {
+        var path = Path.Combine(RepoRoot(), "runtime", "libx1_basic.asm");
+        var f = RuntimeParser.Parse(File.ReadAllText(path), path).Single(x => x.Name == "BAS_PLNOTE");
+        var code = f.Code.Split('\n').Select(l => l.Split(';')[0].Trim()).Where(l => l.Length > 0).ToList();
+        foreach (var label in new[] { ".bpn_oct", ".bpn_vol" })
+        {
+            int i = code.IndexOf(label);
+            Assert.True(i >= 0, label);
+            Assert.Equal("CALL .bpn_digit", code[i + 1]);
+            Assert.Equal("JP C, .bpn_parse", code[i + 2]);
+        }
+    }
+
     /// <summary>INPUT の数の読み取り (BAS_SVALF) は、符号の前でも後でも &H・&O・&B を整数の VAL に任せる (-&H10 は -16)</summary>
     [Fact]
     public void Runtime_SvalfDelegatesSignedRadix()

@@ -3985,7 +3985,7 @@ LD (.bpn_delta), A
 JP .bpn_parse
 .bpn_oct
 CALL .bpn_digit
-JP C, .bpn_err
+JP C, .bpn_parse    ; 数字がなければオクターブはそのまま (Hu-BASIC の実測)
 OR A
 JP Z, .bpn_err
 CP 9
@@ -3995,7 +3995,7 @@ LD (HL), A
 JP .bpn_parse
 .bpn_vol
 CALL .bpn_digit
-JP C, .bpn_err
+JP C, .bpn_parse    ; 数字がなければ音量はそのまま (Hu-BASIC の実測)
 LD C, A
 CALL .bpn_peekdigit ; 2 桁目
 JP C, .bpn_v1
