@@ -51,7 +51,8 @@ public static class HuTranspiler
         if (diag.HasErrors) return new HuTranspileResult(null, diag, prog, null);
         var flat = HuLowerer.Lower(prog, new HuLowerOptions(options.Wait, options.WaitArg, options.LineComments));
         IHuBackend backend = new SlangBackend();
-        var output = backend.Emit(prog, flat, new HuEmitOptions(options.SourceName, options.LineComments));
+        var output = backend.Emit(prog, flat,
+            new HuEmitOptions(options.SourceName, options.LineComments, DiskMainName(options.SourceName, diag)));
         // 後段が足した静的な領域 (浮動小数の定数の表と一時変数) も、静的なデータの上限に数える
         long total = (long)prog.StaticDataBytes + backend.ExtraStaticBytes;
         if (total > options.DataBudget)
@@ -62,5 +63,30 @@ public static class HuTranspiler
             return new HuTranspileResult(null, diag, prog, flat);
         }
         return new HuTranspileResult(output, diag, prog, flat);
+    }
+
+    /// <summary>
+    /// ディスクイメージ (x1native_slfs) の IPL の起動名にする名前: 入力のファイル名から拡張子と前後の空白を除いたもの (大文字小文字はそのまま)。
+    /// slangbuild の決まり (ASCII の 0x20〜0x7E、1〜13 文字) に合わせ、13 文字を超えたら切り、ASCII 以外の字があれば使わない
+    /// (どちらも warning HB0112)。使わないときは空 (slangbuild は env の名前、なければ SLFSMAIN を使う)。
+    /// </summary>
+    internal static string DiskMainName(string sourceName, HuDiagnosticBag diag)
+    {
+        var name = Path.GetFileNameWithoutExtension(sourceName).Trim();
+        if (name.Length == 0) return "";
+        if (name.Any(ch => ch < 0x20 || ch > 0x7E))
+        {
+            diag.Warning("HB0112", $"ファイル名 \"{name}\" に ASCII 以外の字があるので、ディスクイメージの IPL の起動名にしません " +
+                                   "(env の名前、なければ SLFSMAIN。slangbuild の --disk-main-name で指定できます)", HuPos.None);
+            return "";
+        }
+        if (name.Length > 13)
+        {
+            var cut = name[..13].TrimEnd();
+            diag.Warning("HB0112", $"ファイル名 \"{name}\" は 13 文字を超えるので、ディスクイメージの IPL の起動名は \"{cut}\" にします " +
+                                   "(slangbuild の --disk-main-name で変えられます)", HuPos.None);
+            name = cut;
+        }
+        return name;
     }
 }

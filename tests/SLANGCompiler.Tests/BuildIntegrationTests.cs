@@ -637,6 +637,20 @@ MYSUB() BEGIN END;
     }
 
     [Fact]
+    public void EmitDisk_NdcEnv_IgnoresDiskMainNameHint()
+    {
+        // SL の頭の `// disk-main-name:` は slfs-pack の disk だけで読む。 ndc の disk は env の main_name のまま
+        // (= 不正な名前でも error にならない)
+        var slPath = Path.Combine(_tempDir, "hint.SL");
+        File.WriteAllText(slPath, "// disk-main-name: \u30b2\u30fc\u30e0\nMAIN() BEGIN END;\n");
+        var diskOut = Path.Combine(_tempDir, "hint.d88");
+        var (code, _, stderr) = RunSlangbuild(slPath,
+            "-E", "lsx", "--ndc", NdcPath(), "--emit", "disk", "--disk-image", diskOut);
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+        Assert.True(D88ContainsEntry(diskOut, "PROG.COM"));
+    }
+
+    [Fact]
     public void EmitDisk_DiskTemplateOverride_RequiresEmitDisk()
     {
         // --disk-template 単独 (= --emit disk なし) → error

@@ -77,6 +77,9 @@ public class Driver
         /// disk.tool == "slfs-pack" 時の asset list (= SLFS dir entry)。
         /// 各要素: (name, path)。 dir 指定なら BuildDisk 側で展開。</summary>
         public List<string> SlfsAddSpecs { get; } = new();
+        /// <summary>`--disk-main-name &lt;name&gt;`。env の disk.main_name (= SLFS の IPL 起動名) を
+        /// CLI override。 disk.tool == "slfs-pack" 時のみ。</summary>
+        public string? DiskMainName { get; set; }
     }
 
     private readonly Options _opts;
@@ -165,6 +168,37 @@ public class Driver
             Console.Error.WriteLine(
                 $"slangbuild: --emit disk requires `disk:` section in env: {envPath}");
             return 1;
+        }
+
+        // SLFS の IPL 起動名: 引数 > 入力 SL 頭の `// disk-main-name:` > env > 既定。
+        // 不正な名前は compile 前に reject (= silent truncate しない)
+        string? slfsMainName = null;
+        if (_opts.EmitMode == "disk")
+        {
+            if (envConfig.Disk!.Tool != "slfs-pack")
+            {
+                if (_opts.DiskMainName != null)
+                {
+                    Console.Error.WriteLine(
+                        $"slangbuild: --disk-main-name requires disk.tool: slfs-pack (got: {envConfig.Disk.Tool})");
+                    return 1;
+                }
+            }
+            else
+            {
+                var (name, source) = SlfsMainName.Resolve(
+                    _opts.DiskMainName, SlfsMainName.ReadSourceHint(_opts.InputPath), envConfig.Disk.MainName);
+                if (!SlfsMainName.IsValid(name))
+                {
+                    Console.Error.WriteLine(
+                        $"slangbuild: disk main name '{name}' ({source}) invalid "
+                        + "(ASCII printable 0x20-0x7E, 1..13 char)");
+                    return 1;
+                }
+                if (_opts.Verbose)
+                    Console.Error.WriteLine($"slangbuild: disk main name: {name} ({source})");
+                slfsMainName = name;
+            }
         }
 
         // --emit tape は raw bin output env 限定 (= Phase B)。
@@ -438,7 +472,7 @@ public class Driver
                 // overlay は env.OverlayName で rename 済なら renamedOverlayBins、
                 // 未指定なら overlayBinExt 拡張子の既定 path
                 int diskRc = BuildDiskImage(envConfig, envPath, mainBin,
-                                            renamedOverlayBins, outputBase);
+                                            renamedOverlayBins, outputBase, slfsMainName);
                 if (diskRc != 0) return diskRc;
             }
 
@@ -1036,7 +1070,8 @@ public class Driver
     /// Phase 1 は format=d88 / tool=ndc のみサポート。
     /// </summary>
     private int BuildDiskImage(EnvironmentConfig envConfig, string envPath,
-                               string mainBin, IList<string> overlayBins, string outputBase)
+                               string mainBin, IList<string> overlayBins, string outputBase,
+                               string? slfsMainName)
     {
         if (_opts.Verbose)
             Console.Error.WriteLine($"slangbuild: disk: env loaded from {envPath}");
@@ -1119,7 +1154,7 @@ public class Driver
             Console.Error.WriteLine($"slangbuild: disk template override: {templateOverride}");
 
         var builder = new DiskImageBuilder(envConfig.Disk, ndc, hudisk, udostool, mzd88,
-                                           _opts.Verbose, templateOverride, _opts.SlfsAddSpecs);
+                                           _opts.Verbose, templateOverride, _opts.SlfsAddSpecs, slfsMainName);
         return builder.Build(mainBin, overlayBins, diskOut);
     }
 

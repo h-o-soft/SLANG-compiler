@@ -31,6 +31,7 @@ public class DiskImageBuilder
     private readonly string? _templateOverride;
     private readonly bool _verbose;
     private readonly IList<string> _slfsAddSpecs;
+    private readonly string? _slfsMainName;
 
     // udostool は flag を大文字で受ける仕様 (= -IPL/-SUB/-SYS)。
     // Ordinal 比較で大文字固定、エラー文に "uppercase only" を明記して原因把握を助ける。
@@ -46,6 +47,7 @@ public class DiskImageBuilder
     /// <param name="mzd88">tool == "mzd88" 時の ResolvedTool (= native binary、MonoRun 不要)。それ以外は null 可</param>
     /// <param name="verbose">subprocess の I/O を stderr に流す</param>
     /// <param name="templateOverride">--disk-template による env.Disk.Template の上書き</param>
+    /// <param name="slfsMainName">tool == "slfs-pack" 時の main file 名 (= <see cref="SlfsMainName"/> で決定済み)。null なら env 値</param>
     public DiskImageBuilder(DiskConfig disk,
                             ResolvedTool? ndc = null,
                             ResolvedTool? hudisk = null,
@@ -53,7 +55,8 @@ public class DiskImageBuilder
                             ResolvedTool? mzd88 = null,
                             bool verbose = false,
                             string? templateOverride = null,
-                            IList<string>? slfsAddSpecs = null)
+                            IList<string>? slfsAddSpecs = null,
+                            string? slfsMainName = null)
     {
         _disk = disk;
         _ndc = ndc;
@@ -63,6 +66,7 @@ public class DiskImageBuilder
         _verbose = verbose;
         _templateOverride = templateOverride;
         _slfsAddSpecs = slfsAddSpecs ?? new List<string>();
+        _slfsMainName = slfsMainName;
     }
 
     /// <summary>
@@ -541,7 +545,7 @@ public class DiskImageBuilder
     // template / staging dir 不要、 main + asset list を library に渡して
     // D88 image を直接出力。
     //
-    // env.disk.main_load / main_exec / main_name / volume を反映、 asset 指定は
+    // env.disk.main_load / main_exec / volume と、 決定済みの main file 名 (= 引数 / SL の頭 / env) を反映、 asset 指定は
     // CLI --slfs-add 経由 (= _slfsAddSpecs)。
     private int BuildSlfsPack(string mainBinPath, string outputDiskPath)
     {
@@ -561,7 +565,7 @@ public class DiskImageBuilder
                 MainBinary = mainBinary,
                 MainLoadAddress = (ushort)(_disk.MainLoad ?? 0x1000),
                 MainExecuteAddress = (ushort)(_disk.MainExec ?? _disk.MainLoad ?? 0x1000),
-                MainFileName = string.IsNullOrEmpty(_disk.MainName) ? "SLFSMAIN" : _disk.MainName,
+                MainFileName = _slfsMainName ?? SlfsMainName.Resolve(null, null, _disk.MainName).Name,
                 VolumeName = string.IsNullOrEmpty(_disk.Volume) ? "GAMEDISK" : _disk.Volume,
                 Assets = assets,
             };

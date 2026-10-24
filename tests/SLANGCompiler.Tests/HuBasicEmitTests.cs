@@ -1317,6 +1317,28 @@ public class HuBasicEmitTests
     /// PEEK・PEEK@ は MEM[]・PORT[]。CALL は BAS_CALL。TIME= は小数を切り捨てて BAS_TIMESET。式の TIME は
     /// BAS_TIMEH・BAS_TIMEL を続けて読んで ×4 + で組み立てる (TIME が 2 つあっても組は混ざらない)
     /// </summary>
+    /// <summary>入力のファイル名 (拡張子なし) が、頭のコメントの `// disk-main-name:` になる (slangbuild が IPL の起動名にする)</summary>
+    [Theory]
+    [InlineData("GAME.bas", "GAME", false)]
+    [InlineData("mygame.BAS", "mygame", false)]                    // 大文字小文字はそのまま
+    [InlineData("LongFileNameGame1.bas", "LongFileNameG", true)]  // 13 文字に切る
+    [InlineData("ABCDEFGHIJKL MN.bas", "ABCDEFGHIJKL", true)]     // 切った後ろの空白は除く
+    [InlineData("\u30b2\u30fc\u30e0.bas", "", true)]                 // ASCII 以外の字があれば使わない
+    [InlineData("ABCDEFGHIJKLM\u3042.bas", "", true)]               // 13 文字より後ろの字も調べる
+    [InlineData(".bas", "", false)]
+    [InlineData("   .bas", "", false)]
+    [InlineData("", "", false)]
+    public void Slang_DiskMainName(string sourceName, string expected, bool warns)
+    {
+        var r = Transpile("10 END", new HuTranspileOptions(SourceName: sourceName));
+        var head = r.Output!.Replace("\r\n", "\n").Split("\n\n")[0];
+        if (expected.Length > 0)
+            Assert.EndsWith($"\n// disk-main-name: {expected}", head);
+        else
+            Assert.DoesNotContain("disk-main-name", head);
+        Assert.Equal(warns, r.Diagnostics.Items.Any(d => d.Code == "HB0112" && d.Severity == HuSeverity.Warning));
+    }
+
     [Fact]
     public void Slang_StageG5bCalls()
     {
