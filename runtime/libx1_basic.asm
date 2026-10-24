@@ -2,7 +2,7 @@
 ; SLANG x1native runtime — X1 BASIC 系ライブラリ (BAS_ 接頭辞)
 ;
 ; Hu-BASIC と同じように振る舞う画面・文字列・DATA・制御スタック等の処理。
-; hub2sl (Hu-BASIC → SLANG トランスパイラ) の出力が使うが、手書きの SLANG
+; hubasic2sl (Hu-BASIC → SLANG トランスパイラ) の出力が使うが、手書きの SLANG
 ; からも呼べる汎用ライブラリ。x1native / x1native_slfs の env から選択リンクされる。
 ;
 ; 呼び出し規約: SLANG の MACHINE 規約 (引数 1-3 個は HL/DE/BC、4 個以上はスタックで
@@ -163,7 +163,7 @@ JP .be_halt
 ; @resident shared
 ; @param_count 1
 ; @calls BAS_WORK
-; HL = 実行中の行番号を持つ変数のアドレス (hub2sl の出力が各行の頭で行番号を書く)
+; HL = 実行中の行番号を持つ変数のアドレス (hubasic2sl の出力が各行の頭で行番号を書く)
 LD (BAS_LNPTR), HL
 RET
 

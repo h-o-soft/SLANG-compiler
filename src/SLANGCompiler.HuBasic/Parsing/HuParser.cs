@@ -677,7 +677,7 @@ public sealed class HuParser
 
     /// <summary>
     /// PSET の直後が箱の印か。本物は B で始まる名前をすべて箱の印として読む (実測: B+1・B(0)・BF+1・BX は Syntax error、
-    /// (B) は色)。hub2sl も同じく読み、B 以外は ParseBoxMark で error にする
+    /// (B) は色)。hubasic2sl も同じく読み、B 以外は ParseBoxMark で error にする
     /// </summary>
     private bool IsBoxMark() => Peek.Kind == HuTokenKind.Ident && Peek.Text.StartsWith('B');
 

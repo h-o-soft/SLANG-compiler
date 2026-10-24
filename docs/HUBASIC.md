@@ -8,12 +8,12 @@ SLANG compiler の `x1native` / `x1native_slfs` 環境で X1 の機械語のプ�
 
 ## 使い方
 
-変換ツールの実行ファイルは `hub2sl` です。BASIC を SLANG に変換し、`slangbuild` で組み立てます。
+変換ツールの実行ファイルは `hubasic2sl` です。BASIC を SLANG に変換し、`slangbuild` で組み立てます。
 
 ```sh
-hub2sl PROG.BAS -o PROG.SL --wait line:480        # 変換 (--wait は下を参照)
+hubasic2sl PROG.BAS -o PROG.SL --wait line:480    # 変換 (--wait は下を参照)
 slangbuild --emit disk -E x1native_slfs PROG.SL -o PROG   # PROG.d88 (ディスクイメージ) を作る
-hub2sl --check-bin PROG.bin --lst PROG.LST         # メモリ ($1000〜$FFDF) に収まるかを確かめる
+hubasic2sl --check-bin PROG.bin --lst PROG.LST     # メモリ ($1000〜$FFDF) に収まるかを確かめる
 ```
 
 - テープにするときは `slangbuild --emit tape -E x1native PROG.SL -o PROG` (`.tap`。`.wav` も作れます。[X1.md](X1.md) を参照)。

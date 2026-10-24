@@ -20,7 +20,7 @@ class Program
         }
         if (args.Contains("--version"))
         {
-            Console.WriteLine($"hub2sl {Version}");
+            Console.WriteLine($"hubasic2sl {Version}");
             return 0;
         }
 
@@ -118,11 +118,11 @@ class Program
         if (end > ReservedStart)
         {
             Console.Error.WriteLine(
-                $"hub2sl: error HB0312: プログラムの終わり ${end:X4} (bin ${binEnd:X4}、作業領域 ${workEnd:X4}) が " +
+                $"hubasic2sl: error HB0312: プログラムの終わり ${end:X4} (bin ${binEnd:X4}、作業領域 ${workEnd:X4}) が " +
                 $"予約領域 ${ReservedStart:X4} を越えています ({end - ReservedStart} バイト超過)");
             return 1;
         }
-        Console.WriteLine($"hub2sl: ${LoadAddress:X4}-${end - 1:X4} に収まります " +
+        Console.WriteLine($"hubasic2sl: ${LoadAddress:X4}-${end - 1:X4} に収まります " +
                           $"(bin ${binEnd:X4}、作業領域 ${workEnd:X4}、残り {ReservedStart - end} バイト)");
         return 0;
     }
@@ -141,16 +141,16 @@ class Program
 
     static int Fail(string message)
     {
-        Console.Error.WriteLine($"hub2sl: {message}");
+        Console.Error.WriteLine($"hubasic2sl: {message}");
         return 2;
     }
 
     static void PrintUsage()
     {
-        Console.Error.WriteLine($"hub2sl {Version} - Hu-BASIC to SLANG transpiler");
+        Console.Error.WriteLine($"hubasic2sl {Version} - Hu-BASIC to SLANG transpiler");
         Console.Error.WriteLine();
-        Console.Error.WriteLine("Usage: hub2sl INPUT.BAS [-o OUT.SL] [options]");
-        Console.Error.WriteLine("       hub2sl --check-bin PROG.bin [--lst PROG.LST]");
+        Console.Error.WriteLine("Usage: hubasic2sl INPUT.BAS [-o OUT.SL] [options]");
+        Console.Error.WriteLine("       hubasic2sl --check-bin PROG.bin [--lst PROG.LST]");
         Console.Error.WriteLine();
         Console.Error.WriteLine("Options:");
         Console.Error.WriteLine("  -o <path>                出力する SLANG のファイル (既定: 入力の拡張子を .SL に)");

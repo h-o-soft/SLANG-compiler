@@ -8,7 +8,7 @@ using Xunit;
 namespace SLANGCompiler.Tests;
 
 /// <summary>
-/// hub2sl の前段 (字句・構文・解析) のテスト。SLANG の出力は見ない。
+/// hubasic2sl の前段 (字句・構文・解析) のテスト。SLANG の出力は見ない。
 /// </summary>
 public class HuBasicFrontendTests
 {
@@ -189,7 +189,7 @@ public class HuBasicFrontendTests
 
     private static string TempFile(byte[] bytes)
     {
-        var path = Path.Combine(Path.GetTempPath(), $"hub2sl_{Guid.NewGuid():N}.bas");
+        var path = Path.Combine(Path.GetTempPath(), $"hubasic2sl_{Guid.NewGuid():N}.bas");
         File.WriteAllBytes(path, bytes);
         return path;
     }

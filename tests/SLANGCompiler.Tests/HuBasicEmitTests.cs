@@ -9,7 +9,7 @@ using SkippableFactAttribute = Xunit.SkippableFactAttribute;
 namespace SLANGCompiler.Tests;
 
 /// <summary>
-/// hub2sl の共通の展開と SLANG 生成、生成コードの slangc 通過、ランタイムの契約のテスト。
+/// hubasic2sl の共通の展開と SLANG 生成、生成コードの slangc 通過、ランタイムの契約のテスト。
 /// </summary>
 public class HuBasicEmitTests
 {
@@ -1111,7 +1111,7 @@ public class HuBasicEmitTests
         int load = code.IndexOf("LD HL, (BAS_DLTAB)");
         Assert.True(load >= 0 && load < 3, "BAS_RESTORE は最初に行の表があるかを見る");
         Assert.Equal("JP Z, .brs_end", code[load + 3]);
-        // hub2sl は DATA がなければ BAS_DATAINIT を呼ばないが、RESTORE は受け付ける
+        // hubasic2sl は DATA がなければ BAS_DATAINIT を呼ばないが、RESTORE は受け付ける
         var sl = Transpile("10 RESTORE 10:READ A%:END").Output!;
         Assert.DoesNotContain("BAS_DATAINIT", sl);
         Assert.Contains("BAS_RESTORE(10);", sl);
@@ -1126,14 +1126,14 @@ public class HuBasicEmitTests
         Assert.Contains(config.Libraries, l => Path.GetFileName(l).StartsWith("libx1_basic"));
     }
 
-    /// <summary>hub2sl の出力を slangbuild で AILZ80ASM まで通し、BAS_ 関数がリンクされた bin ができる</summary>
+    /// <summary>hubasic2sl の出力を slangbuild で AILZ80ASM まで通し、BAS_ 関数がリンクされた bin ができる</summary>
     [SkippableFact]
     public void Build_TranspiledProgramAssemblesForX1Native()
     {
         var root = RepoRoot();
         var asmPath = Path.Combine(root, "tools", OperatingSystem.IsWindows() ? "AILZ80ASM.exe" : "AILZ80ASM");
         Skip.IfNot(File.Exists(asmPath), "AILZ80ASM がない (make setup-tools で取得)");
-        var dir = Path.Combine(Path.GetTempPath(), $"hub2sl_{Guid.NewGuid():N}");
+        var dir = Path.Combine(Path.GetTempPath(), $"hubasic2sl_{Guid.NewGuid():N}");
         Directory.CreateDirectory(dir);
         try
         {

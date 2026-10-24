@@ -333,7 +333,7 @@ public sealed class HuAnalyzer
             var kw = DefKeyword(group.Key.Kind);
             _diag.Warning("HB0411",
                 $"{group.Key.Line} 行の {kw} より前の行で、変数 {list} を使っています " +
-                $"(Hu-BASIC ではその行を実行するまで既定の型です。hub2sl はプログラム全体で {kw} の型にします)",
+                $"(Hu-BASIC ではその行を実行するまで既定の型です。hubasic2sl はプログラム全体で {kw} の型にします)",
                 group.Select(u => u.Value.Pos).OrderBy(p => p.SourceLine).ThenBy(p => p.Column).First());
         }
     }
