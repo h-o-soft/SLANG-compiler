@@ -666,7 +666,11 @@ public sealed class HuParser
         return new HuLineGraphic(x1, y1, x2, y2, color, preset, box, pos);
     }
 
-    private bool IsBoxMark() => Peek.Kind == HuTokenKind.Ident && Peek.Text is "B" or "BF";
+    /// <summary>
+    /// PSET の直後が箱の印か。本物は B で始まる名前をすべて箱の印として読む (実測: B+1・B(0)・BF+1・BX は Syntax error、
+    /// (B) は色)。hub2sl も同じく読み、B 以外は ParseBoxMark で error にする
+    /// </summary>
+    private bool IsBoxMark() => Peek.Kind == HuTokenKind.Ident && Peek.Text.StartsWith('B');
 
     /// <summary>グラフィックの LINE の最後の B を読む (BF は未対応の error)</summary>
     private bool ParseBoxMark()
@@ -678,6 +682,13 @@ public sealed class HuParser
             Next();
             Error("HB0301", "グラフィックの LINE の BF は未対応です");
             return true;
+        }
+        if (t.Kind == HuTokenKind.Ident && t.Text.StartsWith('B'))
+        {
+            Next();
+            Error("HB0203", $"グラフィックの LINE の {t.Text} は B (箱) として読まれます (本物も Syntax error)。" +
+                            "色の式にするなら ({t.Text}) のように括弧で囲んでください");
+            return false;
         }
         Error("HB0203", "グラフィックの LINE の最後の引数は B です");
         return false;

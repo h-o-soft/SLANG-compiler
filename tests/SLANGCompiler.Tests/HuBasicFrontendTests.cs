@@ -840,6 +840,15 @@ public class HuBasicFrontendTests
         Assert.True(g[4] is { Box: false, Color: HuVar { Name: "C%" } });
         Assert.True(g[5] is { Box: true, Color: HuNum { Value: 7 } });
         Assert.Single(all.OfType<HuLineText>());
+        // 括弧で囲んだ B で始まる式は色、文の後ろの : や ELSE の前の B は箱の印
+        prog = AnalyzeOk("10 LINE(0,0)-(1,1),PSET,(B+1):LINE(0,0)-(1,1),PSET,(B),B:LINE(0,0)-(1,1),PSET,B:PRINT\n" +
+                         "20 IF 1 THEN LINE(0,0)-(1,1),PSET,B ELSE PRINT");
+        g = SLANGCompiler.HuBasic.Analysis.HuAnalyzer.AllStatements(prog.Lines).OfType<HuLineGraphic>().ToList();
+        Assert.Equal(4, g.Count);
+        Assert.True(g[0] is { Box: false, Color: HuBinary { Op: "+" } });
+        Assert.True(g[1] is { Box: true, Color: HuVar { Name: "B" } });
+        Assert.True(g[2] is { Box: true, Color: null });
+        Assert.True(g[3] is { Box: true, Color: null });
     }
 
     [Theory]
@@ -848,6 +857,13 @@ public class HuBasicFrontendTests
     [InlineData("10 LINE(0,0)-(1,1),PSET,7,BF", "HB0301")]
     [InlineData("10 LINE(0,0)-(1,1),PSET,7,X", "HB0203")]      // 箱の印の位置は B だけ
     [InlineData("10 LINE(0,0)-(1,1),PSET,,X", "HB0203")]
+    // 本物は PSET の後の B で始まる名前をすべて箱の印として読み、B 以外は Syntax error (実測。R1-F1 の確かめ)
+    [InlineData("10 LINE(0,0)-(1,1),PSET,BX", "HB0203")]
+    [InlineData("10 LINE(0,0)-(1,1),PSET,B(0)", "HB0202")]
+    [InlineData("10 LINE(0,0)-(1,1),PSET,B+1", "HB0202")]
+    [InlineData("10 LINE(0,0)-(1,1),PSET,B+5,B", "HB0202")]
+    [InlineData("10 LINE(0,0)-(1,1),PSET,BF+1", "HB0301")]
+    [InlineData("10 LINE(0,0)-(1,1),PSET,7,BX", "HB0203")]
     [InlineData("10 LINE(0,0)-(1,1),PSET,\"A\"", "HB0404")]    // 色は数
     [InlineData("10 LINE(A$,0)-(1,1),PSET", "HB0404")]         // 座標は数
     public void Parser_GraphicLineErrors(string program, string code) => AssertError(program, code);
