@@ -687,7 +687,7 @@ public sealed class HuParser
         {
             Next();
             Error("HB0203", $"グラフィックの LINE の {t.Text} は B (箱) として読まれます (本物も Syntax error)。" +
-                            "色の式にするなら ({t.Text}) のように括弧で囲んでください");
+                            $"色の式にするなら ({t.Text}) のように括弧で囲んでください");
             return false;
         }
         Error("HB0203", "グラフィックの LINE の最後の引数は B です");

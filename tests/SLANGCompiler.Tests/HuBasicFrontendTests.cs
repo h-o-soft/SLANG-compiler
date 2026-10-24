@@ -868,6 +868,14 @@ public class HuBasicFrontendTests
     [InlineData("10 LINE(A$,0)-(1,1),PSET", "HB0404")]         // 座標は数
     public void Parser_GraphicLineErrors(string program, string code) => AssertError(program, code);
 
+    /// <summary>B で始まる名前の error は、その名前を括弧で囲んだ形を案内する</summary>
+    [Fact]
+    public void Parser_GraphicLineBNameSuggestsParentheses()
+    {
+        var (_, diag) = Analyze("10 LINE(0,0)-(1,1),PSET,BX");
+        Assert.Contains(diag.Items, d => d.Code == "HB0203" && d.Message.Contains("(BX)"));
+    }
+
     /// <summary>段階 G2: 文字列の配列の要素も SWAP できる。数の変数・配列との組み合わせは型が違う</summary>
     [Theory]
     [InlineData("10 SWAP A$(0),A$(1)", false)]
