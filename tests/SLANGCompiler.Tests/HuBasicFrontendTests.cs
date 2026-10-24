@@ -821,6 +821,37 @@ public class HuBasicFrontendTests
     [InlineData("10 DEFINT A-Z:SWAP A,B%")]       // DEFINT の下の A と B% は同じ整数
     public void Analyzer_SwapSameKindIsAccepted(string program) => AnalyzeOk(program);
 
+    /// <summary>
+    /// 段階 G3: グラフィックの LINE の形。PSET の直後の ,B は箱の印 (色なし)、色の位置の変数は色の式。
+    /// テキスト版の LINE (文字の式) は今までどおり
+    /// </summary>
+    [Fact]
+    public void Parser_GraphicLineForms()
+    {
+        var prog = AnalyzeOk("10 LINE(0,0)-(1,1),PSET:LINE(0,0)-(1,1),PRESET,7:LINE(0,0)-(1,1),PSET,B:LINE(0,0)-(1,1),PSET,,B\n" +
+                             "20 LINE(0,0)-(1,1),PSET,C%:LINE(X,Y)-(1.5,2),PSET,7,B:LINE(0,0)-(1,1),\"*\",B");
+        var all = SLANGCompiler.HuBasic.Analysis.HuAnalyzer.AllStatements(prog.Lines).ToList();
+        var g = all.OfType<HuLineGraphic>().ToList();
+        Assert.Equal(6, g.Count);
+        Assert.True(g[0] is { Preset: false, Box: false, Color: null });
+        Assert.True(g[1] is { Preset: true, Box: false, Color: HuNum { Value: 7 } });
+        Assert.True(g[2] is { Box: true, Color: null });
+        Assert.True(g[3] is { Box: true, Color: null });
+        Assert.True(g[4] is { Box: false, Color: HuVar { Name: "C%" } });
+        Assert.True(g[5] is { Box: true, Color: HuNum { Value: 7 } });
+        Assert.Single(all.OfType<HuLineText>());
+    }
+
+    [Theory]
+    [InlineData("10 LINE(0,0)-(1,1),PSET,BF", "HB0301")]       // グラフィックの BF は未対応
+    [InlineData("10 LINE(0,0)-(1,1),PSET,,BF", "HB0301")]
+    [InlineData("10 LINE(0,0)-(1,1),PSET,7,BF", "HB0301")]
+    [InlineData("10 LINE(0,0)-(1,1),PSET,7,X", "HB0203")]      // 箱の印の位置は B だけ
+    [InlineData("10 LINE(0,0)-(1,1),PSET,,X", "HB0203")]
+    [InlineData("10 LINE(0,0)-(1,1),PSET,\"A\"", "HB0404")]    // 色は数
+    [InlineData("10 LINE(A$,0)-(1,1),PSET", "HB0404")]         // 座標は数
+    public void Parser_GraphicLineErrors(string program, string code) => AssertError(program, code);
+
     /// <summary>段階 G2: 文字列の配列の要素も SWAP できる。数の変数・配列との組み合わせは型が違う</summary>
     [Theory]
     [InlineData("10 SWAP A$(0),A$(1)", false)]

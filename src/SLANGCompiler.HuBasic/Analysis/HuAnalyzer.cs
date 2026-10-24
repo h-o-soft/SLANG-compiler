@@ -712,6 +712,13 @@ public sealed class HuAnalyzer
                 ExpectNum(lt.Y2, true);
                 ExpectStr(lt.Char);
                 break;
+            case HuLineGraphic lg:
+                ExpectNum(lg.X1, true);
+                ExpectNum(lg.Y1, true);
+                ExpectNum(lg.X2, true);
+                ExpectNum(lg.Y2, true);
+                if (lg.Color != null) ExpectNum(lg.Color, true);
+                break;
             case HuDefChr dc:
                 ExpectNum(dc.Code, true);
                 ExpectStr(dc.Pattern);

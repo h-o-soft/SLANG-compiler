@@ -3303,6 +3303,218 @@ JP .btl_fl
 .btl_smin DW 0
 
 
+; ============================================================ グラフィックの LINE
+
+; @name BAS_GLINE
+; @resident shared
+; @calls BAS_WORK,BAS_ERROR,LINE
+; @stack_cleanup callee
+; スタック引数 (x1, y1, x2, y2, 色, 形)。形: bit 0 = 箱 (B)、bit 1 = PRESET (色 0 で描く)、bit 2 = 色なし (今の前景色)。
+; 線は libx1_grp の LINE (X1GLINE) に描かせる。色が 0〜7 の外ならエラー 5。箱は 4 辺を水平・垂直の線にして、画面の外の部分を
+; 切り取って描く (本物と同じく画面の中の点だけ)。箱でない線は、座標が 1 つでも画面の外ならエラー 5 (割り切り)
+POP HL
+LD (.bgl_ret), HL
+POP HL
+LD A, L
+LD (.bgl_mode), A
+POP HL
+LD (.bgl_c), HL
+POP HL
+LD (.bgl_y2), HL
+POP HL
+LD (.bgl_x2), HL
+POP HL
+LD (.bgl_y1), HL
+POP HL
+LD (.bgl_x1), HL
+LD HL, (.bgl_ret)
+PUSH HL
+; 色
+LD A, (.bgl_mode)
+BIT 2, A
+JP Z, .bgl_chk
+LD A, (BAS_ATTR)
+AND 7
+JP .bgl_cset
+.bgl_chk
+LD HL, (.bgl_c)
+LD A, H
+OR A
+JP NZ, .bgl_err
+LD A, L
+CP 8
+JP NC, .bgl_err
+.bgl_cset
+LD C, A
+LD A, (.bgl_mode)
+BIT 1, A
+JP Z, .bgl_cput
+LD C, 0
+.bgl_cput
+LD A, C
+LD (.bgl_col), A
+; 画面の幅 (WIDTH を変えた後でも合うように毎回切り替える)
+LD A, (BAS_WID)
+CP 80
+JP Z, .bgl_w80
+LD HL, 319
+LD (.bgl_xmax), HL
+CALL X1GLINE.SET320
+JP .bgl_wok
+.bgl_w80
+LD HL, 639
+LD (.bgl_xmax), HL
+CALL X1GLINE.SET640
+.bgl_wok
+LD A, (.bgl_mode)
+RRCA
+JP C, .bgl_box
+; 線: 4 つの座標がすべて画面の中のときだけ描く
+LD BC, (.bgl_xmax)
+LD HL, (.bgl_x1)
+CALL .bgl_in
+JP C, .bgl_err
+LD HL, (.bgl_x2)
+CALL .bgl_in
+JP C, .bgl_err
+LD BC, 199
+LD HL, (.bgl_y1)
+CALL .bgl_in
+JP C, .bgl_err
+LD HL, (.bgl_y2)
+CALL .bgl_in
+JP C, .bgl_err
+LD (.bgl_t), HL
+LD HL, (.bgl_x2)
+LD B, H
+LD C, L
+LD HL, (.bgl_x1)
+LD DE, (.bgl_y1)
+JP .bgl_draw
+.bgl_err
+LD HL, 5
+JP BAS_ERROR
+; 箱: 上・下の辺、左・右の辺
+.bgl_box
+LD HL, (.bgl_y1)
+CALL .bgl_hl
+LD HL, (.bgl_y2)
+CALL .bgl_hl
+LD HL, (.bgl_x1)
+CALL .bgl_vl
+LD HL, (.bgl_x2)
+JP .bgl_vl
+; 水平の辺 (HL = y、x1〜x2)。画面の外なら描かない
+.bgl_hl
+LD (.bgl_t), HL
+LD BC, 199
+CALL .bgl_in
+RET C
+LD HL, (.bgl_x1)
+LD DE, (.bgl_x2)
+LD BC, (.bgl_xmax)
+CALL .bgl_span
+RET C
+LD HL, (.bgl_hi)
+LD B, H
+LD C, L
+LD HL, (.bgl_lo)
+LD DE, (.bgl_t)
+JP .bgl_draw
+; 垂直の辺 (HL = x、y1〜y2)
+.bgl_vl
+LD (.bgl_vx), HL
+LD BC, (.bgl_xmax)
+CALL .bgl_in
+RET C
+LD HL, (.bgl_y1)
+LD DE, (.bgl_y2)
+LD BC, 199
+CALL .bgl_span
+RET C
+LD HL, (.bgl_hi)
+LD (.bgl_t), HL
+LD HL, (.bgl_vx)
+LD B, H
+LD C, L
+LD HL, (.bgl_vx)
+LD DE, (.bgl_lo)
+JP .bgl_draw
+; HL = x1, DE = y1, BC = x2, (.bgl_t) = y2 の線を、色 (.bgl_col) で libx1_grp の LINE に描かせる
+.bgl_draw
+PUSH HL
+PUSH DE
+PUSH BC
+LD HL, (.bgl_t)
+PUSH HL
+LD A, (.bgl_col)
+LD L, A
+LD H, 0
+PUSH HL
+CALL LINE
+RET
+; HL が 0〜BC (符号付き) の外ならキャリー
+.bgl_in
+BIT 7, H
+SCF
+RET NZ
+LD A, C
+SUB L
+LD A, B
+SBC A, H
+RET
+; HL = a, DE = b, BC = 上限 → 小さい方〜大きい方を 0〜上限に収めて .bgl_lo・.bgl_hi に (かからなければキャリー)
+.bgl_span
+LD A, H
+XOR D
+JP P, .bsp_same
+LD A, H             ; 符号が違う: 負の方が小さい
+RLA
+JP C, .bsp_ord
+EX DE, HL
+JP .bsp_ord
+.bsp_same
+PUSH HL
+OR A
+SBC HL, DE
+POP HL
+JP C, .bsp_ord
+EX DE, HL
+.bsp_ord            ; HL = 小さい方, DE = 大きい方
+BIT 7, D
+SCF
+RET NZ              ; 大きい方が負
+BIT 7, H
+JP Z, .bsp_lo
+LD HL, 0
+.bsp_lo
+LD (.bgl_lo), HL
+CALL .bgl_in        ; 小さい方が上限を超える
+RET C
+EX DE, HL
+CALL .bgl_in
+JP NC, .bsp_hi
+LD H, B
+LD L, C
+.bsp_hi
+LD (.bgl_hi), HL
+OR A
+RET
+.bgl_ret DW 0
+.bgl_mode DB 0
+.bgl_c DW 0
+.bgl_col DB 0
+.bgl_x1 DW 0
+.bgl_y1 DW 0
+.bgl_x2 DW 0
+.bgl_y2 DW 0
+.bgl_xmax DW 0
+.bgl_t DW 0
+.bgl_vx DW 0
+.bgl_lo DW 0
+.bgl_hi DW 0
+
+
 ; ============================================================ PCG
 
 ; @name BAS_DEFCHR

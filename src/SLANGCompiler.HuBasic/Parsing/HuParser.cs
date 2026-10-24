@@ -631,6 +631,8 @@ public sealed class HuParser
         var y2 = ParseExpr();
         ExpectSymbol(")");
         ExpectSymbol(",");
+        if (Peek.IsKeyword("PSET") || Peek.IsKeyword("PRESET"))
+            return ParseLineGraphic(x1, y1, x2, y2, pos);
         var ch = ParseExpr();
         bool box = false, fill = false;
         if (AcceptSymbol(","))
@@ -641,6 +643,44 @@ public sealed class HuParser
             else Error("HB0203", "LINE の最後の引数は B か BF です");
         }
         return new HuLineText(x1, y1, x2, y2, ch, box, pos) { Fill = fill };
+    }
+
+    /// <summary>
+    /// グラフィックの LINE の PSET|PRESET から後: なし、,色 、,色,B 、,B 、,,B。PSET の直後の ,B は (本物と同じく)
+    /// 色の変数ではなく箱の印として読む。BF (塗りつぶした箱) は未対応
+    /// </summary>
+    private HuStmt ParseLineGraphic(HuExpr x1, HuExpr y1, HuExpr x2, HuExpr y2, HuPos pos)
+    {
+        bool preset = Next().Text == "PRESET";
+        HuExpr? color = null;
+        bool box = false;
+        if (AcceptSymbol(","))
+        {
+            if (!IsBoxMark())
+            {
+                if (!Peek.IsSymbol(",")) color = ParseExpr();
+                if (AcceptSymbol(",")) box = ParseBoxMark();
+            }
+            else box = ParseBoxMark();
+        }
+        return new HuLineGraphic(x1, y1, x2, y2, color, preset, box, pos);
+    }
+
+    private bool IsBoxMark() => Peek.Kind == HuTokenKind.Ident && Peek.Text is "B" or "BF";
+
+    /// <summary>グラフィックの LINE の最後の B を読む (BF は未対応の error)</summary>
+    private bool ParseBoxMark()
+    {
+        var t = Peek;
+        if (t.Kind == HuTokenKind.Ident && t.Text == "B") { Next(); return true; }
+        if (t.Kind == HuTokenKind.Ident && t.Text == "BF")
+        {
+            Next();
+            Error("HB0301", "グラフィックの LINE の BF は未対応です");
+            return true;
+        }
+        Error("HB0203", "グラフィックの LINE の最後の引数は B です");
+        return false;
     }
 
     // ------------------------------------------------------------ 式

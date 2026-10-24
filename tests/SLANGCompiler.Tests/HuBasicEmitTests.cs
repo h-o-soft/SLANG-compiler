@@ -120,6 +120,14 @@ public class HuBasicEmitTests
         50 Q$(10)="Q":DATA X
         """;
 
+    /// <summary>段階 G3 のグラフィックの LINE をひととおり使う小さなプログラム (自作。テキスト版の LINE と一緒に使う)</summary>
+    private const string G3Program = """
+        10 DEFINT C:C=3:X=1.5:WIDTH 40:CLS 4
+        20 LINE(143,0)-(176,8),PSET,7,B:LINE(0,0)-(10,10),PSET:LINE(X,1)-(5,C),PRESET
+        30 LINE(1,2)-(3,4),PSET,B:LINE(1,2)-(3,4),PSET,,B:LINE(1,2)-(3,4),PSET,C,B:LINE(1,2)-(3,4),PRESET,5,B
+        40 LINE(0,0)-(5,5),"*",B:END
+        """;
+
     private const string FullProgram = """
         10 DEFINT A-Z:CLS:INIT:WIDTH 40:CLICK OFF:TEMPO 300
         20 A$="AB":B$=A$+CHR$(65):C$=MID$(A$,1,1)+MID$(A$,2)+RIGHT$(A$,1)+HEXCHR$("41")+CGPAT$(65)+INKEY$
@@ -213,6 +221,8 @@ public class HuBasicEmitTests
     [InlineData("10 A$(LEN(CHR$(49)))=\"X\":GOTO 10")]            // 文字列の配列の代入先の添字 (段階 G2)
     [InlineData("10 SWAP A$(LEN(CHR$(49))),A$(1):GOTO 10")]       // 文字列の配列の要素の SWAP
     [InlineData("10 IF A$(LEN(CHR$(49)))=\"\" THEN 10")]          // 式の中の要素の添字
+    [InlineData("10 LINE(LEN(CHR$(49)),0)-(1,1),PSET:GOTO 10")]   // グラフィックの LINE の座標 (段階 G3)
+    [InlineData("10 LINE(0,0)-(1,1),PSET,LEN(CHR$(49)),B:GOTO 10")] // グラフィックの LINE の色
     public void Lowering_EveryAllocatingStatementResetsTemps(string program)
     {
         var r = Transpile(program);
@@ -234,6 +244,7 @@ public class HuBasicEmitTests
     [InlineData(HuBasicEmitTests_FullProgramForExprs)]
     [InlineData(G1Program)]
     [InlineData(G2Program)]
+    [InlineData(G3Program)]
     public void Lowering_StatementExprsCoversEveryExpressionField(string program)
     {
         // 構文木の文の型のうち式を持つものは、すべて StatementExprs で式を返す
@@ -692,6 +703,24 @@ public class HuBasicEmitTests
             Assert.Contains(expected, sl);
     }
 
+    /// <summary>
+    /// 段階 G3: グラフィックの LINE は BAS_GLINE(x1, y1, x2, y2, 色, 形)。形は bit 0 = 箱、bit 1 = PRESET、bit 2 = 色なし
+    /// (色なしの色の引数は 0)。テキスト版の LINE は今までどおり BAS_TLINE
+    /// </summary>
+    [Fact]
+    public void Slang_StageG3Calls()
+    {
+        var sl = Body(Transpile(G3Program).Output!);
+        foreach (var expected in new[]
+        {
+            "BAS_GLINE(143, 0, 176, 8, 7, 1);", "BAS_GLINE(0, 0, 10, 10, 0, 4);", "BAS_GLINE(BAS_FTOIR(F_X), 1, 5, V_C, 0, 6);",
+            "BAS_GLINE(1, 2, 3, 4, 0, 5);", "BAS_GLINE(1, 2, 3, 4, V_C, 1);", "BAS_GLINE(1, 2, 3, 4, 5, 3);",
+            "BAS_TLINE(0, 0, 5, 5, K_",
+        })
+            Assert.Contains(expected, sl);
+        Assert.Equal(2, Regex.Matches(sl, @"BAS_GLINE\(1, 2, 3, 4, 0, 5\);").Count); // ,B と ,,B は同じ
+    }
+
     /// <summary>ランタイムの関数の名前は重ならない (同じ名前は後のもので上書きされる。TAB を BAS_PTAB にすると PLAY の音程の表を壊す)</summary>
     [Fact]
     public void Runtime_FunctionNamesAreUnique()
@@ -951,6 +980,7 @@ public class HuBasicEmitTests
         Assert.True(functions["BAS_FORPUSH"].CalleeCleanup, "4 引数の BAS_FORPUSH は callee cleanup");
         Assert.True(functions["BAS_FFORPUSH"].CalleeCleanup, "4 引数の BAS_FFORPUSH は callee cleanup");
         Assert.True(functions["BAS_TLINE"].CalleeCleanup, "6 引数の BAS_TLINE は callee cleanup");
+        Assert.True(functions["BAS_GLINE"].CalleeCleanup, "6 引数の BAS_GLINE は callee cleanup");
         Assert.True(functions["BAS_SMIDSET"].CalleeCleanup, "4 引数の BAS_SMIDSET は callee cleanup");
         // ランタイム内部の @calls もすべて、このファイルか x1native の env のライブラリにある
         var root = RepoRoot();
@@ -1101,6 +1131,13 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "G2"));
             RunSlangbuild(root, dir, sl10, asmPath, Path.Combine(dir, "G2S"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "G2S"));
+            // 段階 G3 のグラフィックの LINE (libx1_grp の LINE を呼ぶ) も両方で組み立てまで通る
+            var sl11 = Path.Combine(dir, "G3.SL");
+            File.WriteAllText(sl11, Transpile(G3Program).Output!);
+            RunSlangbuild(root, dir, sl11, asmPath, Path.Combine(dir, "G3"));
+            AssertBuilt(Path.Combine(dir, "G3"));
+            RunSlangbuild(root, dir, sl11, asmPath, Path.Combine(dir, "G3S"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "G3S"));
         }
         finally
         {
