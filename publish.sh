@@ -4,6 +4,7 @@
 CSPROJ=src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj
 CSPROJ_BUILD=src/SLANGCompiler.Build/SLANGCompiler.Build.csproj
 CSPROJ_SLFS=src/SLANGCompiler.SlfsPack/SLANGCompiler.SlfsPack.csproj
+CSPROJ_HUBASIC=src/SLANGCompiler.HuBasic/SLANGCompiler.HuBasic.csproj
 TFM=net8.0
 
 createRelease() {
@@ -12,6 +13,7 @@ createRelease() {
   mv slangc* bin
   mv slangbuild* bin
   mv slfs-pack* bin
+  mv hubasic2sl* bin
   cp -r ../../include .
   cp -r ../../runtime .
   # examples: SLANGソースのみ（ビルド成果物除外）
@@ -52,6 +54,15 @@ createRelease() {
       cp ../../examples/zxn/*.$ext examples/zxn/ 2>/dev/null
     done
     cp ../../examples/zxn/Makefile examples/zxn/ 2>/dev/null
+  fi
+
+  # examples/hubasic は Hu-BASIC の変換のサンプル。BASIC と README・MANIFEST.txt だけを写す
+  # (変換した *.SL などは含めない。置いてよいファイルは MANIFEST.txt の一覧)
+  if [ -d "../../examples/hubasic" ]; then
+    mkdir -p examples/hubasic
+    cp ../../examples/hubasic/*.BAS         examples/hubasic/ 2>/dev/null
+    cp ../../examples/hubasic/README.md     examples/hubasic/ 2>/dev/null
+    cp ../../examples/hubasic/MANIFEST.txt  examples/hubasic/ 2>/dev/null
   fi
 
   # examples/X1_ARKOS は Arkos Tracker driver sample (AKG / AKM)。 SL + Makefile +
@@ -188,6 +199,7 @@ for RID in osx-x64 osx-arm64 win-x64 linux-x64; do
   dotnet publish $CSPROJ       -c Release -r $RID --self-contained true /p:PublishSingleFile=true
   dotnet publish $CSPROJ_BUILD -c Release -r $RID --self-contained true /p:PublishSingleFile=true
   dotnet publish $CSPROJ_SLFS  -c Release -r $RID --self-contained true /p:PublishSingleFile=true
+  dotnet publish $CSPROJ_HUBASIC -c Release -r $RID --self-contained true /p:PublishSingleFile=true
 done
 
 mkdir -p publish-new/osx-x64
@@ -209,6 +221,11 @@ cp src/SLANGCompiler.SlfsPack/bin/Release/$TFM/osx-x64/publish/slfs-pack       p
 cp src/SLANGCompiler.SlfsPack/bin/Release/$TFM/osx-arm64/publish/slfs-pack     publish-new/osx-arm64
 cp src/SLANGCompiler.SlfsPack/bin/Release/$TFM/win-x64/publish/slfs-pack.exe   publish-new/win-x64
 cp src/SLANGCompiler.SlfsPack/bin/Release/$TFM/linux-x64/publish/slfs-pack     publish-new/linux-x64
+
+cp src/SLANGCompiler.HuBasic/bin/Release/$TFM/osx-x64/publish/hubasic2sl       publish-new/osx-x64
+cp src/SLANGCompiler.HuBasic/bin/Release/$TFM/osx-arm64/publish/hubasic2sl     publish-new/osx-arm64
+cp src/SLANGCompiler.HuBasic/bin/Release/$TFM/win-x64/publish/hubasic2sl.exe   publish-new/win-x64
+cp src/SLANGCompiler.HuBasic/bin/Release/$TFM/linux-x64/publish/hubasic2sl     publish-new/linux-x64
 
 createRelease osx-x64 sh $VERSION
 createRelease osx-arm64 sh $VERSION

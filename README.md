@@ -32,6 +32,8 @@ slangbuild -E c64 -I include examples/c64/SPRITE.SL -o SPRITE
 
 環境別の詳細: [docs/X1.md](docs/X1.md) (x1native / SLFS) / [docs/SLFS.md](docs/SLFS.md) (SLFS) / [docs/C64.md](docs/C64.md) (Commodore 64)。
 
+X1 の Hu-BASIC のテキストを SLANG に変換するツール (アルファ版) も同梱しています: [docs/HUBASIC.md](docs/HUBASIC.md)。
+
 ## slangc 単体 (= compile のみ、 link しない)
 
 ```

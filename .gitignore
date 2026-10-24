@@ -151,3 +151,10 @@ images/templates/SOSPROG.D88
 # misc
 include/.source.txt
 src/src.sln
+
+# Hu-BASIC の変換のサンプル: 変換した SLANG は置かない (examples/hubasic/README.md)
+examples/hubasic/*.SL
+examples/hubasic/*.sl
+
+# 作業の仕組みのファイル (共有しない)
+.secretary-system/
