@@ -268,9 +268,13 @@ public sealed class HuLowerer
                 Call("BAS_TLINE", E(lt.X1), E(lt.Y1), E(lt.X2), E(lt.Y2), E(lt.Char), I(lt.Fill ? 2 : lt.Box ? 1 : 0));
                 break;
             case HuLineGraphic lg:
-                // 形: bit 0 = 箱、bit 1 = PRESET、bit 2 = 色なし (色の引数は 0 を渡す)
+                // 形: bit 0 = 箱、bit 1 = PRESET、bit 2 = 色なし (色の引数は 0 を渡す)、bit 3 = 塗りつぶし (BF。bit 0 も立てる)
                 Call("BAS_GLINE", E(lg.X1), E(lg.Y1), E(lg.X2), E(lg.Y2), lg.Color != null ? E(lg.Color) : I(0),
-                    I((lg.Box ? 1 : 0) | (lg.Preset ? 2 : 0) | (lg.Color == null ? 4 : 0)));
+                    I((lg.Box ? 1 : 0) | (lg.Preset ? 2 : 0) | (lg.Color == null ? 4 : 0) | (lg.Fill ? 8 : 0)));
+                break;
+            case HuPaint pt:
+                // BAS_PAINT(x, y, 色, 境界色 1, …, 境界色 n, n)。引数の数は文ごとに変わる (最後の n を見て BAS_PAINT が取り除く)
+                Call("BAS_PAINT", new[] { E(pt.X), E(pt.Y), E(pt.Color) }.Concat(pt.Borders.Select(E)).Append(I(pt.Borders.Count)).ToArray());
                 break;
             case HuDefChr dc:
                 Call("BAS_DEFCHR", E(dc.Code), E(dc.Pattern));
@@ -494,6 +498,10 @@ public sealed class HuLowerer
             case HuLineGraphic lg:
                 yield return lg.X1; yield return lg.Y1; yield return lg.X2; yield return lg.Y2;
                 if (lg.Color != null) yield return lg.Color;
+                break;
+            case HuPaint pt:
+                yield return pt.X; yield return pt.Y; yield return pt.Color;
+                foreach (var b in pt.Borders) yield return b;
                 break;
             case HuDefChr dc: yield return dc.Code; yield return dc.Pattern; break;
             case HuInput inp: foreach (var t in inp.Targets) yield return t; break;

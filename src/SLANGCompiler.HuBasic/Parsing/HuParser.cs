@@ -345,6 +345,8 @@ public sealed class HuParser
             }
             case "LINE":
                 return ParseLine(pos);
+            case "PAINT":
+                return ParsePaint(pos);
             case "MID$":
             {
                 // MID$(変数, 位置[, 長さ]) = 文字列
@@ -646,25 +648,32 @@ public sealed class HuParser
     }
 
     /// <summary>
-    /// グラフィックの LINE の PSET|PRESET から後: なし、,色 、,色,B 、,B 、,,B。PSET の直後の ,B は (本物と同じく)
-    /// 色の変数ではなく箱の印として読む。BF (塗りつぶした箱) は未対応
+    /// グラフィックの LINE の PSET|PRESET から後: なし、,色 、,色,B|BF 、,B|BF 、,,B|BF。PSET の直後の ,B は (本物と同じく)
+    /// 色の変数ではなく箱の印として読む。BF の後のタイルパターンは未対応
     /// </summary>
     private HuStmt ParseLineGraphic(HuExpr x1, HuExpr y1, HuExpr x2, HuExpr y2, HuPos pos)
     {
         bool preset = Next().Text == "PRESET";
         HuExpr? color = null;
-        bool box = false;
+        var mark = BoxMark.None;
         if (AcceptSymbol(","))
         {
             if (!IsBoxMark())
             {
                 if (!Peek.IsSymbol(",")) color = ParseExpr();
-                if (AcceptSymbol(",")) box = ParseBoxMark();
+                if (AcceptSymbol(",")) mark = ParseBoxMark();
             }
-            else box = ParseBoxMark();
+            else mark = ParseBoxMark();
         }
-        return new HuLineGraphic(x1, y1, x2, y2, color, preset, box, pos);
+        if (mark == BoxMark.Fill && Peek.IsSymbol(","))
+        {
+            Error("HB0301", "グラフィックの LINE のタイルパターンは未対応です");
+            SkipToStatementEnd();
+        }
+        return new HuLineGraphic(x1, y1, x2, y2, color, preset, mark != BoxMark.None, pos) { Fill = mark == BoxMark.Fill };
     }
+
+    private enum BoxMark { None, Box, Fill }
 
     /// <summary>
     /// PSET の直後が箱の印か。本物は B で始まる名前をすべて箱の印として読む (実測: B+1・B(0)・BF+1・BX は Syntax error、
@@ -672,27 +681,56 @@ public sealed class HuParser
     /// </summary>
     private bool IsBoxMark() => Peek.Kind == HuTokenKind.Ident && Peek.Text.StartsWith('B');
 
-    /// <summary>グラフィックの LINE の最後の B を読む (BF は未対応の error)</summary>
-    private bool ParseBoxMark()
+    /// <summary>グラフィックの LINE の最後の B・BF を読む</summary>
+    private BoxMark ParseBoxMark()
     {
         var t = Peek;
-        if (t.Kind == HuTokenKind.Ident && t.Text == "B") { Next(); return true; }
-        if (t.Kind == HuTokenKind.Ident && t.Text == "BF")
-        {
-            Next();
-            Error("HB0301", "グラフィックの LINE の BF は未対応です");
-            return true;
-        }
+        if (t.Kind == HuTokenKind.Ident && t.Text == "B") { Next(); return BoxMark.Box; }
+        if (t.Kind == HuTokenKind.Ident && t.Text == "BF") { Next(); return BoxMark.Fill; }
         if (t.Kind == HuTokenKind.Ident && t.Text.StartsWith('B'))
         {
             Next();
             Error("HB0203", $"グラフィックの LINE の {t.Text} は B (箱) として読まれます (本物も Syntax error)。" +
                             $"色の式にするなら ({t.Text}) のように括弧で囲んでください");
-            return false;
+            return BoxMark.None;
         }
-        Error("HB0203", "グラフィックの LINE の最後の引数は B です");
-        return false;
+        Error("HB0203", "グラフィックの LINE の最後の引数は B か BF です");
+        return BoxMark.None;
     }
+
+    /// <summary>
+    /// PAINT (x,y),色[,境界色 1[,…[,境界色 7]]]。色の省略 (本物は前のグラフィックの命令の色) は未対応。
+    /// 境界色は本物と同じく 7 つまで (8 つは Syntax error)
+    /// </summary>
+    private HuStmt? ParsePaint(HuPos pos)
+    {
+        ExpectSymbol("(");
+        var x = ParseExpr();
+        ExpectSymbol(",");
+        var y = ParseExpr();
+        ExpectSymbol(")");
+        if (!AcceptSymbol(","))
+        {
+            Error("HB0301", "PAINT の色の省略は未対応です");
+            SkipToStatementEnd();
+            return null;
+        }
+        var color = ParseExpr();
+        var borders = new List<HuExpr>();
+        while (AcceptSymbol(","))
+        {
+            if (borders.Count == MaxPaintBorders)
+            {
+                Error("HB0203", $"PAINT の境界色は {MaxPaintBorders} つまでです");
+                SkipToStatementEnd();
+                break;
+            }
+            borders.Add(ParseExpr());
+        }
+        return new HuPaint(x, y, color, borders, pos);
+    }
+
+    private const int MaxPaintBorders = 7;
 
     // ------------------------------------------------------------ 式
 

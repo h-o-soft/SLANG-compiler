@@ -719,6 +719,14 @@ public sealed class HuAnalyzer
                 ExpectNum(lg.Y2, true);
                 if (lg.Color != null) ExpectNum(lg.Color, true);
                 break;
+            case HuPaint pt:
+                ExpectNum(pt.X, true);
+                ExpectNum(pt.Y, true);
+                // 色の位置の文字列は本物ではタイルパターン
+                if (CheckExpr(pt.Color, true) == HuType.Str)
+                    _diag.Error("HB0301", "PAINT のタイルパターンは未対応です", pt.Color.Pos);
+                foreach (var b in pt.Borders) ExpectNum(b, true);
+                break;
             case HuDefChr dc:
                 ExpectNum(dc.Code, true);
                 ExpectStr(dc.Pattern);

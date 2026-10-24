@@ -3309,9 +3309,10 @@ JP .btl_fl
 ; @resident shared
 ; @calls BAS_WORK,BAS_ERROR,LINE
 ; @stack_cleanup callee
-; スタック引数 (x1, y1, x2, y2, 色, 形)。形: bit 0 = 箱 (B)、bit 1 = PRESET (色 0 で描く)、bit 2 = 色なし (今の前景色)。
-; 線は libx1_grp の LINE (X1GLINE) に描かせる。色が 0〜7 の外ならエラー 5。箱は 4 辺を水平・垂直の線にして、画面の外の部分を
-; 切り取って描く (本物と同じく画面の中の点だけ)。箱でない線は、座標が 1 つでも画面の外ならエラー 5 (割り切り)
+; スタック引数 (x1, y1, x2, y2, 色, 形)。形: bit 0 = 箱 (B)、bit 1 = PRESET、bit 2 = 色なし (今の前景色)、bit 3 = 塗りつぶし (BF。bit 0 も立つ)。
+; 色が 0〜7 の外ならエラー 5。箱と BF は、画面にかかる部分を VRAM に直接塗る (.bgl_rect。箱は 4 辺を幅 1 の長方形にする)。
+; PSET は色で上書き、PRESET は本物と同じく色のビットを落とす。箱でない線は libx1_grp の LINE (X1GLINE) に描かせ、PRESET なら
+; 色 0 で描く (割り切り)。座標が 1 つでも画面の外ならエラー 5 (割り切り)
 POP HL
 LD (.bgl_ret), HL
 POP HL
@@ -3335,7 +3336,7 @@ BIT 2, A
 JP Z, .bgl_chk
 LD A, (BAS_ATTR)
 AND 7
-JP .bgl_cset
+JP .bgl_cput
 .bgl_chk
 LD HL, (.bgl_c)
 LD A, H
@@ -3344,14 +3345,7 @@ JP NZ, .bgl_err
 LD A, L
 CP 8
 JP NC, .bgl_err
-.bgl_cset
-LD C, A
-LD A, (.bgl_mode)
-BIT 1, A
-JP Z, .bgl_cput
-LD C, 0
 .bgl_cput
-LD A, C
 LD (.bgl_col), A
 ; 画面の幅 (WIDTH を変えた後でも合うように毎回切り替える)
 LD A, (BAS_WID)
@@ -3369,7 +3363,12 @@ CALL X1GLINE.SET640
 LD A, (.bgl_mode)
 RRCA
 JP C, .bgl_box
-; 線: 4 つの座標がすべて画面の中のときだけ描く
+; 線: PRESET なら色 0。4 つの座標がすべて画面の中のときだけ描く
+RRCA
+JP NC, .bgl_lin
+XOR A
+LD (.bgl_col), A
+.bgl_lin
 LD BC, (.bgl_xmax)
 LD HL, (.bgl_x1)
 CALL .bgl_in
@@ -3394,52 +3393,69 @@ JP .bgl_draw
 .bgl_err
 LD HL, 5
 JP BAS_ERROR
-; 箱: 上・下の辺、左・右の辺
+; 箱と BF: x・y の範囲を画面に収める (どちらかがかからなければ何も描かない)
 .bgl_box
-LD HL, (.bgl_y1)
-CALL .bgl_hl
-LD HL, (.bgl_y2)
-CALL .bgl_hl
-LD HL, (.bgl_x1)
-CALL .bgl_vl
-LD HL, (.bgl_x2)
-JP .bgl_vl
-; 水平の辺 (HL = y、x1〜x2)。画面の外なら描かない
-.bgl_hl
-LD (.bgl_t), HL
-LD BC, 199
-CALL .bgl_in
-RET C
 LD HL, (.bgl_x1)
 LD DE, (.bgl_x2)
 LD BC, (.bgl_xmax)
 CALL .bgl_span
 RET C
-LD HL, (.bgl_hi)
-LD B, H
-LD C, L
 LD HL, (.bgl_lo)
-LD DE, (.bgl_t)
-JP .bgl_draw
-; 垂直の辺 (HL = x、y1〜y2)
-.bgl_vl
-LD (.bgl_vx), HL
-LD BC, (.bgl_xmax)
-CALL .bgl_in
-RET C
+LD (.bgl_lx), HL
+LD HL, (.bgl_hi)
+LD (.bgl_hx), HL
 LD HL, (.bgl_y1)
 LD DE, (.bgl_y2)
 LD BC, 199
 CALL .bgl_span
 RET C
+LD HL, (.bgl_lo)
+LD (.bgl_ly), HL
 LD HL, (.bgl_hi)
-LD (.bgl_t), HL
-LD HL, (.bgl_vx)
-LD B, H
-LD C, L
-LD HL, (.bgl_vx)
-LD DE, (.bgl_lo)
-JP .bgl_draw
+LD (.bgl_hy), HL
+LD A, (.bgl_mode)
+AND 8
+JP Z, .bgl_edges
+LD HL, (.bgl_lx)
+LD (.bgl_rx1), HL
+LD HL, (.bgl_hx)
+LD (.bgl_rx2), HL
+LD HL, (.bgl_ly)
+LD (.bgl_ry1), HL
+LD HL, (.bgl_hy)
+LD (.bgl_ry2), HL
+JP .bgl_rect
+; 箱: 上・下の辺 (y が画面の中なら x の範囲の 1 行)、左・右の辺 (x が画面の中なら y の範囲の 1 列)
+.bgl_edges
+LD HL, (.bgl_lx)
+LD (.bgl_rx1), HL
+LD HL, (.bgl_hx)
+LD (.bgl_rx2), HL
+LD HL, (.bgl_y1)
+CALL .bgl_hedge
+LD HL, (.bgl_y2)
+CALL .bgl_hedge
+LD HL, (.bgl_ly)
+LD (.bgl_ry1), HL
+LD HL, (.bgl_hy)
+LD (.bgl_ry2), HL
+LD HL, (.bgl_x1)
+CALL .bgl_vedge
+LD HL, (.bgl_x2)
+.bgl_vedge
+LD BC, (.bgl_xmax)
+CALL .bgl_in
+RET C
+LD (.bgl_rx1), HL
+LD (.bgl_rx2), HL
+JP .bgl_rect
+.bgl_hedge
+LD BC, 199
+CALL .bgl_in
+RET C
+LD (.bgl_ry1), HL
+LD (.bgl_ry2), HL
+JP .bgl_rect
 ; HL = x1, DE = y1, BC = x2, (.bgl_t) = y2 の線を、色 (.bgl_col) で libx1_grp の LINE に描かせる
 .bgl_draw
 PUSH HL
@@ -3500,6 +3516,174 @@ LD L, C
 LD (.bgl_hi), HL
 OR A
 RET
+; 長方形を塗る: x .bgl_rx1〜.bgl_rx2、y .bgl_ry1〜.bgl_ry2 (画面の中に収めたもの。小さい方が先)。
+; 番地 = (y mod 8) * $800 + (y / 8) * 幅 + x / 8、面は青 $4000・赤 $8000・緑 $C000 (色の bit 0・1・2)、バイトの上位ビットが左の点
+.bgl_rect
+LD HL, (.bgl_rx1)   ; 左端: バイトの位置と、$FF を x mod 8 だけ右へずらしたマスク
+LD A, L
+AND 7
+LD B, A
+LD A, $FF
+CALL .brc_shr
+LD (.brc_lm), A
+CALL .brc_div8
+LD A, L
+LD (.brc_lb), A
+LD HL, (.bgl_rx2)   ; 右端: $FF を 7 - x mod 8 だけ左へずらしたマスクと、左端からのバイト数
+LD A, L
+AND 7
+XOR 7
+LD B, A
+LD A, $FF
+CALL .brc_shl
+LD (.brc_rm), A
+CALL .brc_div8
+LD A, (.brc_lb)
+LD B, A
+LD A, L
+SUB B
+LD (.brc_n), A
+LD A, (BAS_WID)     ; 1 行のバイト数
+CP 80
+LD A, 80
+JP Z, .brc_wset
+LD A, 40
+.brc_wset
+LD (.brc_w), A
+LD A, (.bgl_ry1)
+LD (.brc_y), A
+.brc_row
+LD A, (.brc_y)
+LD C, A
+AND 7
+ADD A, A
+ADD A, A
+ADD A, A
+LD H, A
+LD A, (.brc_lb)
+LD L, A
+LD A, C
+RRCA
+RRCA
+RRCA
+AND $1F
+LD B, A
+LD A, (.brc_w)
+LD E, A
+LD D, 0
+INC B
+JP .brc_m1
+.brc_m0
+ADD HL, DE
+.brc_m1
+DJNZ .brc_m0
+LD (.brc_adr), HL
+LD A, (.bgl_col)
+LD (.brc_cb), A
+LD A, $40
+; 面ごと: D = 1 なら点を立てる、0 なら落とす。PSET はビットが 1 の面に立て 0 の面で落とす。PRESET はビットが 1 の面だけ落とす
+.brc_plane
+LD (.brc_p), A
+LD A, (.brc_cb)
+RRCA
+LD (.brc_cb), A
+LD D, 1
+JP C, .brc_bit1
+DEC D
+LD A, (.bgl_mode)
+AND 2
+JP NZ, .brc_pnext
+JP .brc_go
+.brc_bit1
+LD A, (.bgl_mode)
+AND 2
+JP Z, .brc_go
+DEC D
+.brc_go
+LD HL, (.brc_adr)
+LD A, (.brc_p)
+ADD A, H
+LD B, A
+LD C, L
+CALL .brc_line
+.brc_pnext
+LD A, (.brc_p)
+ADD A, $40
+JP NZ, .brc_plane
+LD A, (.bgl_ry2)    ; 次の行
+LD B, A
+LD A, (.brc_y)
+CP B
+RET Z
+INC A
+LD (.brc_y), A
+JP .brc_row
+; 1 面の 1 行: BC = 左端の番地、D = 1 なら立てる・0 なら落とす
+.brc_line
+LD A, (.brc_n)
+OR A
+JP NZ, .brc_ln
+LD A, (.brc_lm)
+LD HL, .brc_rm
+AND (HL)
+JP .brc_put
+.brc_ln
+LD L, A
+LD A, (.brc_lm)
+CALL .brc_put
+.brc_lmid
+DEC L
+JP Z, .brc_llast
+LD A, $FF
+CALL .brc_put
+JP .brc_lmid
+.brc_llast
+LD A, (.brc_rm)
+; A = マスク。BC のバイトのマスクの所を立てる (D = 1) か落とす (D = 0)。BC を 1 進める
+.brc_put
+LD E, A
+IN A, (C)
+DEC D
+INC D
+JP Z, .brc_res
+OR E
+OUT (C), A
+INC BC
+RET
+.brc_res
+LD H, A
+LD A, E
+CPL
+AND H
+OUT (C), A
+INC BC
+RET
+; A を B ビット右へ・左へ (B は 0〜7)
+.brc_shr
+INC B
+JR .brc_sr1
+.brc_sr0
+SRL A
+.brc_sr1
+DJNZ .brc_sr0
+RET
+.brc_shl
+INC B
+JR .brc_sl1
+.brc_sl0
+ADD A, A
+.brc_sl1
+DJNZ .brc_sl0
+RET
+; HL を 8 で割る
+.brc_div8
+SRL H
+RR L
+SRL H
+RR L
+SRL H
+RR L
+RET
 .bgl_ret DW 0
 .bgl_mode DB 0
 .bgl_c DW 0
@@ -3510,9 +3694,162 @@ RET
 .bgl_y2 DW 0
 .bgl_xmax DW 0
 .bgl_t DW 0
-.bgl_vx DW 0
 .bgl_lo DW 0
 .bgl_hi DW 0
+.bgl_lx DW 0
+.bgl_hx DW 0
+.bgl_ly DW 0
+.bgl_hy DW 0
+.bgl_rx1 DW 0
+.bgl_rx2 DW 0
+.bgl_ry1 DW 0
+.bgl_ry2 DW 0
+.brc_lm DB 0
+.brc_rm DB 0
+.brc_lb DB 0
+.brc_n DB 0
+.brc_w DB 0
+.brc_y DB 0
+.brc_adr DW 0
+.brc_cb DB 0
+.brc_p DB 0
+
+
+; ============================================================ PAINT
+
+; @name BAS_PAINT
+; @resident shared
+; @calls BAS_WORK,BAS_ERROR,PAINT1
+; @stack_cleanup callee
+; @works BAS_PNTBUF:1056
+; スタック引数 (x, y, 色, 境界色 1, …, 境界色 n, n)。n は 0〜7 (引数の数が呼び出しごとに違うので、n を見て取り除く)。
+; 色が 0〜7 の外、境界色が 0〜255 の外はエラー 5。8〜255 の境界色はどの点とも合わないので捨てる。塗り始めの点が画面の外なら
+; 何もしない (本物の実測)。塗りは libx1_grp (X1PAINT) に任せ、待ち行列は BAS_PNTBUF に置く (1056 バイト。libx1_grp が VRAM の
+; 使っていない所と入れ替える大きさのうち大きい方)。待ち行列があふれたらエラー 7
+POP HL
+LD (.bpt_ret), HL
+POP HL
+LD B, L
+XOR A
+LD (.bpt_bad), A
+LD C, A             ; 境界色の印 (bit k = 色 k)
+INC B
+JP .bpt_b1
+.bpt_b0
+POP HL
+LD A, H
+OR A
+JP Z, .bpt_b2
+LD A, 1             ; 0〜255 の外 (引数を取り除いてからエラーにする)
+LD (.bpt_bad), A
+JP .bpt_b1
+.bpt_b2
+LD A, L
+CP 8
+JP NC, .bpt_b1
+LD E, A
+LD A, 1
+INC E
+JP .bpt_s1
+.bpt_s0
+ADD A, A
+.bpt_s1
+DEC E
+JP NZ, .bpt_s0
+OR C
+LD C, A
+.bpt_b1
+DJNZ .bpt_b0
+POP HL
+LD (.bpt_c), HL
+POP HL
+LD (.bpt_y), HL
+POP HL
+LD (.bpt_x), HL
+LD HL, (.bpt_ret)
+PUSH HL
+; 検査
+LD HL, (.bpt_c)
+LD A, H
+OR A
+JP NZ, .bpt_err
+LD A, L
+CP 8
+JP NC, .bpt_err
+LD A, (.bpt_bad)
+OR A
+JP NZ, .bpt_err
+; 塗り始めが画面の外なら何もしない
+LD HL, (.bpt_x)
+BIT 7, H
+RET NZ
+LD DE, 320
+LD A, (BAS_WID)
+CP 80
+JP NZ, .bpt_w40
+LD DE, 640
+.bpt_w40
+OR A
+SBC HL, DE
+RET NC
+LD HL, (.bpt_y)
+LD A, H
+OR A
+RET NZ
+LD A, L
+CP 200
+RET NC
+; libx1_grp の塗りのパラメータ: DW x, DW y, DB 色, DB 境界色… (数 = 1 + 境界色の数)
+LD HL, (.bpt_x)
+LD (.bpt_prm), HL
+LD HL, (.bpt_y)
+LD (.bpt_prm+2), HL
+LD A, (.bpt_c)
+LD (.bpt_prm+4), A
+LD HL, .bpt_prm+5
+LD DE, 1            ; E = 数、D = 色の番号
+LD B, 8
+.bpt_l0
+SRL C
+JP NC, .bpt_l1
+LD (HL), D
+INC HL
+INC E
+.bpt_l1
+INC D
+DJNZ .bpt_l0
+LD A, E
+LD (.bpt_n), A
+LD HL, BAS_PNTBUF
+LD (X1PAINT.BUFADR), HL
+LD (.bpt_sp), SP
+CALL .bpt_go
+RET
+; PAINT2 と同じ入り方 (3 つ積んで、DE = パラメータ、A = 数で GPAINT_TOP へ。ふつうに終われば 3 つ取り出して戻ってくる)。
+; 待ち行列があふれると、libx1_grp は 3 段の戻り先を捨てた後、積んだ 3 つの一番上を戻り先にする。そこを .bpt_over にしておく
+.bpt_go
+PUSH BC
+PUSH DE
+LD HL, .bpt_over
+PUSH HL
+LD DE, .bpt_prm
+LD A, (.bpt_n)
+JP X1PAINT.GPAINT_TOP
+.bpt_over
+LD SP, (.bpt_sp)
+LD HL, 7
+JP BAS_ERROR
+.bpt_err
+LD HL, 5
+JP BAS_ERROR
+.bpt_ret DW 0
+.bpt_bad DB 0
+.bpt_c DW 0
+.bpt_x DW 0
+.bpt_y DW 0
+.bpt_n DB 0
+.bpt_sp DW 0
+.bpt_prm DS 13
 
 
 ; ============================================================ PCG

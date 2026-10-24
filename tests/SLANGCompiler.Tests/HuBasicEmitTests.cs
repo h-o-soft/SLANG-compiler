@@ -128,6 +128,14 @@ public class HuBasicEmitTests
         40 LINE(0,0)-(5,5),"*",B:END
         """;
 
+    /// <summary>段階 G4 のグラフィックの BF と PAINT をひととおり使う小さなプログラム (自作)</summary>
+    private const string G4Program = """
+        10 DEFINT C:C=3:X=1.5:WIDTH 40:CLS 4
+        20 LINE(10,10)-(50,30),PSET,3,BF:LINE(0,0)-(5,5),PSET,BF:LINE(1,2)-(3,4),PRESET,C,BF:LINE(1,2)-(3,4),PSET,,BF
+        30 LINE(10,10)-(100,60),PSET,4,B:PAINT(50,30),2,4:PAINT(X,C+1),5:PAINT(0,0),1,1,2,3,4,5,6,7
+        40 PAINT(1,1),ASC(MID$("AB",C,1))-64,C:END
+        """;
+
     private const string FullProgram = """
         10 DEFINT A-Z:CLS:INIT:WIDTH 40:CLICK OFF:TEMPO 300
         20 A$="AB":B$=A$+CHR$(65):C$=MID$(A$,1,1)+MID$(A$,2)+RIGHT$(A$,1)+HEXCHR$("41")+CGPAT$(65)+INKEY$
@@ -245,6 +253,7 @@ public class HuBasicEmitTests
     [InlineData(G1Program)]
     [InlineData(G2Program)]
     [InlineData(G3Program)]
+    [InlineData(G4Program)]
     public void Lowering_StatementExprsCoversEveryExpressionField(string program)
     {
         // 構文木の文の型のうち式を持つものは、すべて StatementExprs で式を返す
@@ -721,6 +730,29 @@ public class HuBasicEmitTests
         Assert.Equal(2, Regex.Matches(sl, @"BAS_GLINE\(1, 2, 3, 4, 0, 5\);").Count); // ,B と ,,B は同じ
     }
 
+    /// <summary>
+    /// 段階 G4: BF は BAS_GLINE の形の bit 3 (bit 0 も立てる)。PAINT は BAS_PAINT(x, y, 色, 境界色…, 境界色の数)。
+    /// 引数の数は文ごとに変わる
+    /// </summary>
+    [Fact]
+    public void Slang_StageG4Calls()
+    {
+        var sl = Body(Transpile(G4Program).Output!);
+        foreach (var expected in new[]
+        {
+            "BAS_GLINE(10, 10, 50, 30, 3, 9);", "BAS_GLINE(0, 0, 5, 5, 0, 13);", "BAS_GLINE(1, 2, 3, 4, V_C, 11);",
+            "BAS_GLINE(1, 2, 3, 4, 0, 13);", "BAS_GLINE(10, 10, 100, 60, 4, 1);",
+            "BAS_PAINT(50, 30, 2, 4, 1);", "BAS_PAINT(BAS_FTOIR(F_X), ((V_C)+(1)), 5, 0);",
+            "BAS_PAINT(0, 0, 1, 1, 2, 3, 4, 5, 6, 7, 7);",
+        })
+            Assert.Contains(expected, sl);
+        // 色の式の一時文字列は文の頭で解放する
+        var paint = sl.Split('\n').First(l => l.Contains("BAS_PAINT(1, 1,"));
+        Assert.Contains("BAS_SASC(", paint);
+        Assert.EndsWith(", V_C, 1);", paint.Trim());
+        Assert.Contains("BAS_STMP();", sl[..sl.IndexOf(paint, StringComparison.Ordinal)]);
+    }
+
     /// <summary>ランタイムの関数の名前は重ならない (同じ名前は後のもので上書きされる。TAB を BAS_PTAB にすると PLAY の音程の表を壊す)</summary>
     [Fact]
     public void Runtime_FunctionNamesAreUnique()
@@ -981,6 +1013,10 @@ public class HuBasicEmitTests
         Assert.True(functions["BAS_FFORPUSH"].CalleeCleanup, "4 引数の BAS_FFORPUSH は callee cleanup");
         Assert.True(functions["BAS_TLINE"].CalleeCleanup, "6 引数の BAS_TLINE は callee cleanup");
         Assert.True(functions["BAS_GLINE"].CalleeCleanup, "6 引数の BAS_GLINE は callee cleanup");
+        // BAS_PAINT は引数の数が文ごとに 4〜11 で変わる (最後の数を見て自分で取り除く)。待ち行列は自分の作業領域に置く
+        Assert.True(functions["BAS_PAINT"].CalleeCleanup, "可変個の引数の BAS_PAINT は callee cleanup");
+        Assert.Contains("PAINT1", functions["BAS_PAINT"].Dependencies);
+        Assert.Contains(("BAS_PNTBUF", 1056), functions["BAS_PAINT"].Works!);
         Assert.True(functions["BAS_SMIDSET"].CalleeCleanup, "4 引数の BAS_SMIDSET は callee cleanup");
         // ランタイム内部の @calls もすべて、このファイルか x1native の env のライブラリにある
         var root = RepoRoot();
@@ -1138,6 +1174,13 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "G3"));
             RunSlangbuild(root, dir, sl11, asmPath, Path.Combine(dir, "G3S"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "G3S"));
+            // 段階 G4 の BF と PAINT (libx1_grp の塗りを呼ぶ) も両方で組み立てまで通る
+            var sl12 = Path.Combine(dir, "G4.SL");
+            File.WriteAllText(sl12, Transpile(G4Program).Output!);
+            RunSlangbuild(root, dir, sl12, asmPath, Path.Combine(dir, "G4"));
+            AssertBuilt(Path.Combine(dir, "G4"));
+            RunSlangbuild(root, dir, sl12, asmPath, Path.Combine(dir, "G4S"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "G4S"));
         }
         finally
         {

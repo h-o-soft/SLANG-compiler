@@ -852,21 +852,58 @@ public class HuBasicFrontendTests
     }
 
     [Theory]
-    [InlineData("10 LINE(0,0)-(1,1),PSET,BF", "HB0301")]       // グラフィックの BF は未対応
-    [InlineData("10 LINE(0,0)-(1,1),PSET,,BF", "HB0301")]
-    [InlineData("10 LINE(0,0)-(1,1),PSET,7,BF", "HB0301")]
-    [InlineData("10 LINE(0,0)-(1,1),PSET,7,X", "HB0203")]      // 箱の印の位置は B だけ
+    [InlineData("10 LINE(0,0)-(1,1),PSET,7,X", "HB0203")]      // 箱の印の位置は B・BF だけ
     [InlineData("10 LINE(0,0)-(1,1),PSET,,X", "HB0203")]
     // 本物は PSET の後の B で始まる名前をすべて箱の印として読み、B 以外は Syntax error (実測。R1-F1 の確かめ)
     [InlineData("10 LINE(0,0)-(1,1),PSET,BX", "HB0203")]
     [InlineData("10 LINE(0,0)-(1,1),PSET,B(0)", "HB0202")]
     [InlineData("10 LINE(0,0)-(1,1),PSET,B+1", "HB0202")]
     [InlineData("10 LINE(0,0)-(1,1),PSET,B+5,B", "HB0202")]
-    [InlineData("10 LINE(0,0)-(1,1),PSET,BF+1", "HB0301")]
+    [InlineData("10 LINE(0,0)-(1,1),PSET,BF+1", "HB0202")]
+    [InlineData("10 LINE(0,0)-(1,1),PSET,7,BF,\"AA\"", "HB0301")] // タイルパターンは未対応
     [InlineData("10 LINE(0,0)-(1,1),PSET,7,BX", "HB0203")]
     [InlineData("10 LINE(0,0)-(1,1),PSET,\"A\"", "HB0404")]    // 色は数
     [InlineData("10 LINE(A$,0)-(1,1),PSET", "HB0404")]         // 座標は数
     public void Parser_GraphicLineErrors(string program, string code) => AssertError(program, code);
+
+    /// <summary>段階 G4: グラフィックの LINE の BF (塗りつぶした箱)。箱の印の位置ならどこでも、Box と Fill が真</summary>
+    [Fact]
+    public void Parser_GraphicLineFillForms()
+    {
+        var prog = AnalyzeOk("10 LINE(0,0)-(1,1),PSET,BF:LINE(0,0)-(1,1),PSET,7,BF:LINE(0,0)-(1,1),PSET,,BF:LINE(0,0)-(1,1),PRESET,BF\n" +
+                             "20 LINE(0,0)-(1,1),PSET,7,B:LINE(0,0)-(1,1),\"*\",BF");
+        var all = SLANGCompiler.HuBasic.Analysis.HuAnalyzer.AllStatements(prog.Lines).ToList();
+        var g = all.OfType<HuLineGraphic>().ToList();
+        Assert.Equal(5, g.Count);
+        Assert.True(g[0] is { Box: true, Fill: true, Color: null });
+        Assert.True(g[1] is { Box: true, Fill: true, Color: HuNum { Value: 7 } });
+        Assert.True(g[2] is { Box: true, Fill: true, Color: null });
+        Assert.True(g[3] is { Box: true, Fill: true, Preset: true });
+        Assert.True(g[4] is { Box: true, Fill: false });
+        Assert.True(all.OfType<HuLineText>().Single() is { Fill: true });
+    }
+
+    /// <summary>段階 G4: PAINT (x,y),色[,境界色…]。境界色は 0〜7 個</summary>
+    [Fact]
+    public void Parser_PaintForms()
+    {
+        var prog = AnalyzeOk("10 PAINT(50,30),2:PAINT(X,Y+1),C%,4:PAINT(0,0),1.5,1,2,3,4,5,6,7");
+        var p = SLANGCompiler.HuBasic.Analysis.HuAnalyzer.AllStatements(prog.Lines).OfType<HuPaint>().ToList();
+        Assert.Equal(3, p.Count);
+        Assert.True(p[0] is { X: HuNum { Value: 50 }, Y: HuNum { Value: 30 }, Color: HuNum { Value: 2 }, Borders.Count: 0 });
+        Assert.True(p[1] is { Color: HuVar { Name: "C%" }, Borders: [HuNum { Value: 4 }] });
+        Assert.Equal(7, p[2].Borders.Count);
+    }
+
+    [Theory]
+    [InlineData("10 PAINT(1,2)", "HB0301")]                     // 色の省略は未対応 (本物は前のグラフィックの命令の色)
+    [InlineData("10 PAINT(1,2),,3", "HB0211")]                  // 式が必要 (本物も Syntax error)
+    [InlineData("10 PAINT(1,2),1,2,3,4,5,6,7,0,1", "HB0203")]   // 境界色は 7 つまで (本物も 8 つは Syntax error)
+    [InlineData("10 PAINT(1,2),\"AA\"", "HB0301")]              // タイルパターンは未対応
+    [InlineData("10 PAINT(A$,2),1", "HB0404")]
+    [InlineData("10 PAINT(1,2),1,A$", "HB0404")]
+    [InlineData("10 PAINT STEP(1,2),1", "HB0203")]
+    public void Parser_PaintErrors(string program, string code) => AssertError(program, code);
 
     /// <summary>B で始まる名前の error は、その名前を括弧で囲んだ形を案内する</summary>
     [Fact]

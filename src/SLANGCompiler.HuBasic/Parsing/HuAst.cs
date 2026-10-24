@@ -88,11 +88,17 @@ public sealed record HuLineText(HuExpr X1, HuExpr Y1, HuExpr X2, HuExpr Y2, HuEx
 }
 
 /// <summary>
-/// グラフィックの LINE (x1,y1)-(x2,y2),PSET|PRESET[,色][,B]。Color は書かなければ null (今の前景色)。
-/// Preset は PRESET (色 0 で描く)、Box は B (外周だけの箱)
+/// グラフィックの LINE (x1,y1)-(x2,y2),PSET|PRESET[,色][,B|BF]。Color は書かなければ null (今の前景色)。
+/// Preset は PRESET (色のビットを落とす)、Box は B (外周だけの箱)、Fill は BF (塗りつぶした箱。Box も真)
 /// </summary>
 public sealed record HuLineGraphic(HuExpr X1, HuExpr Y1, HuExpr X2, HuExpr Y2, HuExpr? Color, bool Preset, bool Box, HuPos Pos)
-    : HuStmt(Pos);
+    : HuStmt(Pos)
+{
+    public bool Fill { get; init; }
+}
+
+/// <summary>PAINT (x,y),色[,境界色…] (境界色は 0〜7 個。なければ塗る色だけが境界)</summary>
+public sealed record HuPaint(HuExpr X, HuExpr Y, HuExpr Color, IReadOnlyList<HuExpr> Borders, HuPos Pos) : HuStmt(Pos);
 
 /// <summary>INPUT ["案内" ; または ,] 変数, … (Question は案内の後に「? 」を出すか。案内なしなら出す)</summary>
 public sealed record HuInput(string? Prompt, bool Question, IReadOnlyList<HuExpr> Targets, HuPos Pos) : HuStmt(Pos);
