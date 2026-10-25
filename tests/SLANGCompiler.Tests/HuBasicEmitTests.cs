@@ -875,6 +875,67 @@ public class HuBasicEmitTests
         Assert.Contains("BAS_VSYNCS(", b);
     }
 
+    /// <summary>行の頭・GOSUB と ON GOSUB の戻り先・LABEL の所で行番号を書くプログラム</summary>
+    private const string LineNumberProgram = """
+        10 DEFINT A-Z:GOSUB 100:ON A GOSUB 100,110:'#VSYNC 2
+        20 GOTO "S"
+        30 LABEL "S":END
+        100 A=A+1:RETURN
+        110 RETURN
+        """;
+
+    /// <summary>--no-line-numbers: 実行中の行番号を書かず (隠し変数・BAS_LNINIT もなし)、ラベルとほかのオプションの出力は残る</summary>
+    [Theory]
+    [InlineData(HuWaitMode.None, false)]
+    [InlineData(HuWaitMode.Line, false)]
+    [InlineData(HuWaitMode.Frame, true)]
+    public void Lowering_NoLineNumbers(HuWaitMode wait, bool lineComments)
+    {
+        var opt = new HuTranspileOptions(Wait: wait, WaitArg: 7, LineComments: lineComments);
+        var with = Transpile(LineNumberProgram, opt);
+        var r = Transpile(LineNumberProgram, opt with { LineNumbers = false });
+        var flat = r.Flat!;
+        Assert.DoesNotContain(flat.Ops, o => o is FAssignHidden { Hidden: HuLowerer.CurrentLine });
+        Assert.DoesNotContain(flat.Ops.OfType<FCall>(), c => c.Function == "BAS_LNINIT");
+        Assert.DoesNotContain(HuLowerer.CurrentLine, flat.HiddenVars);
+        Assert.DoesNotContain("H_LINE", r.Output!);
+        Assert.DoesNotContain("BAS_LNINIT", r.Output!);
+        // 既定では、行の頭 5 つ・GOSUB の戻り先・ON GOSUB の戻り先・LABEL の 8 か所で書く
+        Assert.Equal(8, with.Flat!.Ops.Count(o => o is FAssignHidden { Hidden: HuLowerer.CurrentLine }));
+        // 消えるのは行番号の分 (書く行・BAS_LNINIT・隠し変数の宣言) だけで、ほかは同じ
+        var expected = Regex.Replace(with.Output!.Replace("\r\n", "\n"), @"^\s*(H_LINE=\d+|BAS_LNINIT\(&H_LINE\));\n", "",
+            RegexOptions.Multiline).Replace("H_T, H_LINE", "H_T");
+        Assert.Equal(expected, r.Output!.Replace("\r\n", "\n"));
+        foreach (var label in new[] { "L10:", "L100:", "L110:", "LB0:", "R0:", "R1:" })
+            Assert.Contains(label, r.Output!);
+        Assert.Equal(wait == HuWaitMode.Line, r.Output!.Contains("BAS_WLINE(7);"));
+        Assert.Equal(wait == HuWaitMode.Frame, r.Output!.Contains("BAS_VSYNC(2);"));
+        Assert.Equal(lineComments, r.Output!.Contains("// BAS 30: 30 LABEL"));
+    }
+
+    /// <summary>CLI の --no-line-numbers がオプションに渡る</summary>
+    [Fact]
+    public void Cli_NoLineNumbers()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"hubasic2sl_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var bas = Path.Combine(dir, "T.bas");
+            File.WriteAllText(bas, "10 PRINT 1\n20 GOTO 10\n");
+            var main = typeof(SLANGCompiler.HuBasic.CLI.Program).GetMethod("Main",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+            Assert.Equal(0, main.Invoke(null, new object[] { new[] { bas, "-o", Path.Combine(dir, "A.SL") } }));
+            Assert.Equal(0, main.Invoke(null, new object[] { new[] { bas, "-o", Path.Combine(dir, "B.SL"), "--no-line-numbers" } }));
+            Assert.Contains("H_LINE=10;", File.ReadAllText(Path.Combine(dir, "A.SL")));
+            Assert.DoesNotContain("H_LINE", File.ReadAllText(Path.Combine(dir, "B.SL")));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
     // ------------------------------------------------------------ SLANG 生成
 
     [Fact]
@@ -1283,6 +1344,13 @@ public class HuBasicEmitTests
             File.WriteAllText(sl14, Transpile("10 A=2:VSYNC:VSYNC A:GOTO 10").Output!);
             RunSlangbuild(root, dir, sl14, asmPath, Path.Combine(dir, "VSS"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "VSS"));
+            // 行番号を書かない出力 (--no-line-numbers) も両方で組み立てまで通る
+            var sl15 = Path.Combine(dir, "NL.SL");
+            File.WriteAllText(sl15, Transpile(LineNumberProgram, new HuTranspileOptions(LineNumbers: false)).Output!);
+            RunSlangbuild(root, dir, sl15, asmPath, Path.Combine(dir, "NL"));
+            AssertBuilt(Path.Combine(dir, "NL"));
+            RunSlangbuild(root, dir, sl15, asmPath, Path.Combine(dir, "NLS"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "NLS"));
         }
         finally
         {

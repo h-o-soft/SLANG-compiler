@@ -5,7 +5,8 @@ namespace SLANGCompiler.HuBasic.Lowering;
 
 public enum HuWaitMode { None, Line, Frame }
 
-public sealed record HuLowerOptions(HuWaitMode Wait = HuWaitMode.None, int WaitArg = 1, bool LineMarks = false);
+// LineNumbers = false なら実行中の行番号 (CurrentLine) を書かない (--no-line-numbers。実行時エラーに行番号が出ない)
+public sealed record HuLowerOptions(HuWaitMode Wait = HuWaitMode.None, int WaitArg = 1, bool LineMarks = false, bool LineNumbers = true);
 
 /// <summary>
 /// <see cref="HuProgram"/> を、ラベルと飛び先とランタイム呼び出しの列に展開する。
@@ -78,7 +79,7 @@ public sealed class HuLowerer
     private HuFlat Run()
     {
         Call("BAS_INIT");
-        Call("BAS_LNINIT", new FHiddenAddrArg(CurrentLine));
+        if (_opt.LineNumbers) Call("BAS_LNINIT", new FHiddenAddrArg(CurrentLine));
         if (_prog.DataBytes.Length > 0) Call("BAS_DATAINIT", new FDataTableArg(false), new FDataTableArg(true));
         foreach (var name in _prog.Arrays.Keys)
         {
@@ -90,7 +91,7 @@ public sealed class HuLowerer
         {
             _curLine = line.Number;
             Emit(new FLabel(LineLabel(line.Number)));
-            Emit(new FAssignHidden(CurrentLine, new HuNum(line.Number, line.Pos)));
+            SetCurrentLine(line.Number, line.Pos);
             if (_opt.LineMarks) Emit(new FLineMark(line.Number, line.SourceText));
             if (_opt.Wait == HuWaitMode.Line) Call("BAS_WLINE", I(_opt.WaitArg));
             LowerStatements(line.Statements);
@@ -110,7 +111,8 @@ public sealed class HuLowerer
         if (fors.Count > 0) Emit(new FDispatch(Temp, fors));
         Call("BAS_END");
 
-        var hidden = new List<string> { Temp, CurrentLine };
+        var hidden = new List<string> { Temp };
+        if (_opt.LineNumbers) hidden.Add(CurrentLine);
         if (HuAnalyzer.AllStatements(_prog.Lines).Any(s => s is HuPoke)) hidden.Add(PokeAddr);
         foreach (var name in _prog.Arrays.Keys)
         {
@@ -302,7 +304,7 @@ public sealed class HuLowerer
             case HuLabel lb:
                 // 名前への飛び先。行の途中に飛んでも実行時エラーの行番号が合うように、実行中の行番号を入れ直す
                 Emit(new FLabel(NameLabel(_prog.LabelIds[lb])));
-                Emit(new FAssignHidden(CurrentLine, new HuNum(_curLine, lb.Pos)));
+                SetCurrentLine(_curLine, lb.Pos);
                 break;
             case HuDefType:
             case HuData:
@@ -376,8 +378,13 @@ public sealed class HuLowerer
     }
 
     /// <summary>GOSUB から戻った所で、実行中の行番号を呼び出した行に戻す (実行時エラーの「in 行番号」のため)</summary>
-    private void RestoreCurrentLine(HuPos pos)
-        => Emit(new FAssignHidden(CurrentLine, new HuNum(_curLine, pos)));
+    private void RestoreCurrentLine(HuPos pos) => SetCurrentLine(_curLine, pos);
+
+    /// <summary>実行中の行番号を書く (--no-line-numbers なら書かない)</summary>
+    private void SetCurrentLine(int line, HuPos pos)
+    {
+        if (_opt.LineNumbers) Emit(new FAssignHidden(CurrentLine, new HuNum(line, pos)));
+    }
 
     private void LowerPrint(HuPrint p)
     {

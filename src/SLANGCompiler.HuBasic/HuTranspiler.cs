@@ -13,7 +13,8 @@ public sealed record HuTranspileOptions(
     bool LineComments = false,
     int DataBudget = HuAnalyzer.DefaultDataBudget,
     string SourceName = "",
-    bool AssumeDefint = false);
+    bool AssumeDefint = false,
+    bool LineNumbers = true);
 
 public sealed record HuTranspileResult(string? Output, HuDiagnosticBag Diagnostics, HuProgram? Program, HuFlat? Flat);
 
@@ -49,7 +50,7 @@ public static class HuTranspiler
         if (diag.HasErrors) return new HuTranspileResult(null, diag, null, null);
         var prog = HuAnalyzer.Analyze(ast, diag, options.DataBudget, options.AssumeDefint);
         if (diag.HasErrors) return new HuTranspileResult(null, diag, prog, null);
-        var flat = HuLowerer.Lower(prog, new HuLowerOptions(options.Wait, options.WaitArg, options.LineComments));
+        var flat = HuLowerer.Lower(prog, new HuLowerOptions(options.Wait, options.WaitArg, options.LineComments, options.LineNumbers));
         IHuBackend backend = new SlangBackend();
         var output = backend.Emit(prog, flat,
             new HuEmitOptions(options.SourceName, options.LineComments, DiskMainName(options.SourceName, diag)));
