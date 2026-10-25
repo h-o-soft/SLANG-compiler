@@ -94,7 +94,7 @@ public sealed record HuPrintSpc(HuExpr Count, bool Tab = false) : HuPrintItem;
 public sealed record HuPrint(int? Channel, HuExpr? Using, IReadOnlyList<HuPrintItem> Items, HuPos Pos) : HuStmt(Pos);
 
 /// <summary>引数を取る画面・音などの命令 (LOCATE, COLOR, CLS, WIDTH, CFLASH, CSIZE, CGEN,
-/// PLAY, TEMPO, BEEP, CLICK, PAUSE, KEY, REPEAT (ON/OFF), PALET, PRW)。省略された引数は null。</summary>
+/// PLAY, TEMPO, BEEP, CLICK, PAUSE, KEY, REPEAT (ON/OFF), PALET, PRW, VSYNC)。省略された引数は null。</summary>
 public sealed record HuCommand(string Name, IReadOnlyList<HuExpr?> Args, HuPos Pos) : HuStmt(Pos);
 
 /// <summary>テキスト版 LINE (x1,y1)-(x2,y2),"c"[,B|BF]。Fill は BF (箱の中も塗る)</summary>
