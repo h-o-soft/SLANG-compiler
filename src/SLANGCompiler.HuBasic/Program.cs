@@ -66,6 +66,9 @@ class Program
                 case "--assume-defint":
                     opt = opt with { AssumeDefint = true };
                     break;
+                case "--no-line-numbers":
+                    opt = opt with { LineNumbers = false };
+                    break;
                 case "--data-budget":
                     if (!int.TryParse(NextArg(), out var budget) || budget <= 0)
                         return Fail("--data-budget にはバイト数を指定してください");
@@ -162,6 +165,7 @@ class Program
         Console.Error.WriteLine("                           x1 (X1 でアスキーセーブしたファイル。1 バイト = X1 の 1 文字)");
         Console.Error.WriteLine("  --emit-line-comments     元の行をコメントで出す");
         Console.Error.WriteLine("  --assume-defint          接尾辞も DEFxxx もない変数を整数にする (Hu-BASIC の既定は単精度の浮動小数)");
+        Console.Error.WriteLine("  --no-line-numbers        各行の頭で実行中の行番号を書かない (小さく速くなる。実行時エラーに行番号が出ない)");
         Console.Error.WriteLine("  --data-budget <bytes>    静的データの上限 (既定 24576)");
         Console.Error.WriteLine("  --check-bin <bin>        組み立て後の大きさを検査する (bin と、LST の __WORKEND__)");
         Console.Error.WriteLine("  --lst <lst>              --check-bin で読む LST (既定: bin と同じ名前の .LST)");
