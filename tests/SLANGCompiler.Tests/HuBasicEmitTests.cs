@@ -836,6 +836,45 @@ public class HuBasicEmitTests
         Assert.DoesNotContain(none.Ops.OfType<FCall>(), c => c.Function == "BAS_VSYNC");
     }
 
+    /// <summary>
+    /// VSYNC 文 (Hu-BASIC にない命令) は --wait によらず BAS_VSYNCS。引数なしは 1、数は今の規則で整数にする。
+    /// '#VSYNC のコメントは今までどおり frame のときだけ BAS_VSYNC、BAS_WLINE は line のときだけ
+    /// </summary>
+    [Theory]
+    [InlineData(HuWaitMode.None)]
+    [InlineData(HuWaitMode.Line)]
+    [InlineData(HuWaitMode.Frame)]
+    public void Slang_VsyncStatement(HuWaitMode wait)
+    {
+        var r = Transpile("10 VSYNC:VSYNC 2:A%=3:VSYNC A%*2:VSYNC 0:VSYNC -1:VSYNC .5:VSYNC 1.5:X=2.5:VSYNC X:'#VSYNC 5",
+            new HuTranspileOptions(Wait: wait, WaitArg: 7));
+        var sl = Body(r.Output!);
+        foreach (var expected in new[]
+        {
+            "BAS_VSYNCS(1);\n  BAS_VSYNCS(2);", "BAS_VSYNCS(((V_A)*(2)));", "BAS_VSYNCS(0);", "BAS_VSYNCS((0-(1)));",
+            "BAS_VSYNCS(1);\n  BAS_VSYNCS(2);\n  F_X=", "BAS_VSYNCS(BAS_FTOIR(F_X));",
+        })
+            Assert.Contains(expected, sl.Replace("\r\n", "\n"));
+        Assert.Equal(wait == HuWaitMode.Frame, sl.Contains("BAS_VSYNC(5);"));
+        Assert.Equal(wait == HuWaitMode.Line, sl.Contains("BAS_WLINE(7);"));
+        // 32768 は -32768 (待たない)、-65535 は回り込んで 1、-65536 は実行時の整数化 (Overflow) に任せる
+        var edge = Body(Transpile("10 VSYNC 32768:VSYNC -65535:VSYNC -65536").Output!).Replace("\r\n", "\n");
+        Assert.Contains("BAS_VSYNCS((0-32768));\n  BAS_VSYNCS(1);\n  BAS_VSYNCS(BAS_FTOIR(", edge);
+        // 引数なしの '#VSYNC は今までどおり 1 (frame:N の N は使わない)
+        var noArg = Body(Transpile("10 '#VSYNC", new HuTranspileOptions(Wait: HuWaitMode.Frame, WaitArg: 5)).Output!);
+        Assert.Contains("BAS_VSYNC(1);", noArg);
+    }
+
+    /// <summary>VSYNC は名前の頭でだけ予約語 (AVSYNC は今までどおり名前、VSYNCX=1 は VSYNC 文)</summary>
+    [Fact]
+    public void Slang_VsyncKeywordOnlyAtNameStart()
+    {
+        var a = Body(Transpile("10 AVSYNC=1").Output!);
+        Assert.DoesNotContain("BAS_VSYNCS", a);
+        var b = Body(Transpile("10 VSYNCX=1").Output!);
+        Assert.Contains("BAS_VSYNCS(", b);
+    }
+
     // ------------------------------------------------------------ SLANG 生成
 
     [Fact]
@@ -1239,6 +1278,11 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "G5"));
             RunSlangbuild(root, dir, sl13, asmPath, Path.Combine(dir, "G5S"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "G5S"));
+            // VSYNC 文 (BAS_VSYNC) も組み立てまで通る
+            var sl14 = Path.Combine(dir, "VS.SL");
+            File.WriteAllText(sl14, Transpile("10 A=2:VSYNC:VSYNC A:GOTO 10").Output!);
+            RunSlangbuild(root, dir, sl14, asmPath, Path.Combine(dir, "VSS"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "VSS"));
         }
         finally
         {

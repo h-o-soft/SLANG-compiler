@@ -330,6 +330,7 @@ public sealed class HuParser
             case "CSIZE":
             case "CGEN":    // 引数なしは CGEN 0
             case "PRW":     // 引数なしは PRW 0
+            case "VSYNC":   // Hu-BASIC にない命令。引数なしは VSYNC 1
                 return new HuCommand(t.Text, new[] { AtStatementEnd ? null : ParseExpr() }, pos);
             case "WIDTH":
             case "TEMPO":

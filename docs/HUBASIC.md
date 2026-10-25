@@ -34,7 +34,7 @@ hubasic2sl --check-bin PROG.bin --lst PROG.LST     # メモリ ($1000〜$FFDF) �
 |---|---|
 | `-o <path>` | 出力する SLANG のファイル (既定: 入力の拡張子を `.SL` にしたもの) |
 | `--env <name>` | `x1native` (既定) / `x1native_slfs` |
-| `--wait <mode>` | `none` (既定。待たない)、`line:N` (各行の頭で約 0.1ms × N 待つ。N=450〜500 で Hu-BASIC に近い速さの目安。ループが 1 行の中で回る場合は効かない)、`frame:N` (`'#VSYNC` と書いた所で N フレーム待つ) |
+| `--wait <mode>` | `none` (既定。待たない)、`line:N` (各行の頭で約 0.1ms × N 待つ。N=450〜500 で Hu-BASIC に近い速さの目安。ループが 1 行の中で回る場合は効かない)、`frame` (`'#VSYNC n` と書いた所で n フレーム待つ。n がなければ 1。`frame:N` とも書けるが N は使わない) |
 | `--input-encoding <enc>` | `auto` (既定) / `utf8` / `sjis` / `x1` |
 | `--emit-line-comments` | 元の BASIC の行をコメントで出す |
 | `--assume-defint` | 接尾辞も DEFxxx もない変数を整数にする (Hu-BASIC の既定は浮動小数。整数のほうがずっと速い) |
@@ -80,6 +80,7 @@ MID$(変数,位置[,長さ])=文字列  INPUT ["案内";|,] 変数,…  SWAP a,b
 OUT ポート,値  INIT  CLICK ON/OFF  REPEAT ON/OFF  PALET [c,p]  PRW [n]
 POKE 番地,値[,値…]  POKE@ ポート,値[,値…]  CALL 番地  TIME=秒
 PLAY "MML"  PLAY n  TEMPO n  BEEP [0|1]  SOUND レジスタ,値  PAUSE n  RANDOMIZE [n]
+VSYNC [n]   (Hu-BASIC にない命令。下の説明)
 KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出ます)
 ```
 
@@ -98,6 +99,12 @@ KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出�
 - `PRINT` の文字列の中のカーソルの制御コード (`CHR$(28)`〜`CHR$(31)`) でカーソルが動きます。
 - グラフィックの `LINE` は、SLANG の X1 のグラフィックのライブラリ (`libx1_grp`) の線を使います (使うと約 2KB 増えます)。箱と `BF` は直接塗ります。
   `PRESET` は Hu-BASIC と同じく、指定の色のビットを落とします (箱と `BF`)。
+- `VSYNC [n]` は Hu-BASIC にない、hubasic2sl だけの命令です。垂直帰線の始まりを n 回待ちます (1 秒に約 60 回。n がなければ 1)。
+  ゲームを `--wait none` (ウェイトなし) で変換し、メインのループに `VSYNC 1` などを書いて速さをそろえる使い方を考えています
+  (ループの中身が 1 フレームより短ければ、1 周が n フレームになる。長ければその分遅くなる)。`--wait` によらず効きます。
+  n は数の引数と同じく整数にし、0 以下なら待ちません。`VSYNC` を書いたプログラムは本物の Hu-BASIC では動きません
+  (本物でも動かしたいときは、コメントの `'#VSYNC n` と `--wait frame` を使ってください)。
+  `VSYNC` が予約語なので、`VSYNC` で始まる名前は使えません (`VSYNCX=1` は `VSYNC` の文として読まれます)。
 - `PAINT` は `libx1_grp` の塗りを使います (使うと約 1.3KB と作業領域 1KB が増えます)。境界色を書かなければ塗る色だけが境界。
   塗り始めが画面の外なら何もしません。Hu-BASIC よりずっと速く塗ります。
 
