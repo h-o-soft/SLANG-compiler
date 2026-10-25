@@ -2,7 +2,7 @@ namespace SLANGCompiler.HuBasic.Lexing;
 
 /// <summary>
 /// Hu-BASIC の予約語表。MVP で対応しない語も含める (変数名の誤認を防ぐため。
-/// 未対応の語は構文解析でエラーにする)。
+/// 未対応の語は構文解析でエラーにする)。VSYNC は Hu-BASIC にない hubasic2sl の命令。
 /// </summary>
 public static class HuKeywords
 {
@@ -23,7 +23,7 @@ public static class HuKeywords
         "RENUM", "REPEAT", "RESTORE", "RESUME", "RETURN", "RIGHT$", "RND", "RSET", "RUN", "SAVE",
         "SCREEN", "SCRN$", "SET", "SGN", "SIN", "SOUND", "SPACE$", "SPC", "SQR", "STEP", "STICK", "STOP",
         "STR$", "STRIG", "STRING$", "SUB", "SWAP", "TAB", "TAN", "TEMPO", "THEN", "TIME", "TIME$",
-        "TO", "TRACE", "UNTIL", "USING", "USR", "VAL", "VARPTR", "VDIM", "WAIT", "WEND", "WHILE",
+        "TO", "TRACE", "UNTIL", "USING", "USR", "VAL", "VARPTR", "VDIM", "VSYNC", "WAIT", "WEND", "WHILE",
         "WIDTH", "WINDOW", "XOR",
     };
 

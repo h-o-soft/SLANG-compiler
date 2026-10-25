@@ -456,6 +456,7 @@ public sealed class HuLowerer
                 break; // 何もしない (解析で warning を出している)
             case "CLICK": Call("BAS_CLICK", E(Arg(0)!)); break;
             case "PAUSE": Call("BAS_PAUSE", E(Arg(0)!)); break;
+            case "VSYNC": Call("BAS_VSYNCS", ArgOr(0, 1)); break;   // 垂直帰線を n 回待つ (--wait によらない)
             case "KEY": Call("BAS_KEY", E(Arg(0)!), E(Arg(1)!)); break;   // 番号の範囲だけを調べる
             case "REPEAT": Call("BAS_KREPEAT", E(Arg(0)!)); break;        // REPEAT ON (1) / OFF (0)
             case "PALET":

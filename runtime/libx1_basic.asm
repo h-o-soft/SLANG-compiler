@@ -1384,6 +1384,16 @@ RET
 JP BAS_WAITF
 
 
+; @name BAS_VSYNCS
+; @resident shared
+; @param_count 1
+; @calls BAS_WAITF
+; VSYNC 文 (Hu-BASIC にない命令): HL フレーム待つ。0 と負は待たない
+BIT 7, H
+RET NZ
+JP BAS_WAITF
+
+
 ; @name BAS_WLINE
 ; @resident shared
 ; @param_count 1
