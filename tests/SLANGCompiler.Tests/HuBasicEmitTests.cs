@@ -738,6 +738,79 @@ public class HuBasicEmitTests
     }
 
     /// <summary>
+    /// --string-len N: 文字列の変数と配列の要素は N+1 バイト (2 の累乗ならシフト、そうでなければ掛け算で要素の番地)。
+    /// 代入・READ・INPUT は長さを調べる BAS_SSETL(先, 元, N)。SWAP と MID$ の文は今のまま
+    /// </summary>
+    [Theory]
+    [InlineData(63, "<<6")]
+    [InlineData(100, "*101")]
+    [InlineData(1, "<<1")]
+    [InlineData(254, "*255")]
+    public void Slang_StringLen(int n, string offset)
+    {
+        var sl = Transpile(G2Program + "\n60 MID$(A$,1)=\"Z\"", new HuTranspileOptions(StringLen: n)).Output!.Replace("\r\n", "\n");
+        int s = n + 1;
+        foreach (var expected in new[]
+        {
+            $"ARRAY BYTE SA_P[{2 * s - 1}];", $"ARRAY BYTE SA_N[{21 * s - 1}];", $"ARRAY BYTE SA_Q[{11 * s - 1}];", $"ARRAY BYTE S_A[{n}];",
+            $"BAS_SSETL((SA_P+(BAS_AIDX(0, &H_DIM_S_P, &H_UB_S_P){offset})), K_",
+            $"BAS_SSETL((SA_N+(BAS_AIDX(V_I, &H_DIM_S_N, &H_UB_S_N){offset})), BAS_READS(), {n});",
+            $"BAS_SSETL((SA_N+(BAS_AIDX(20, &H_DIM_S_N, &H_UB_S_N){offset})), BAS_INFS(), {n});",
+            $"BAS_SWAP((SA_P+(H_I1{offset})), (SA_P+(H_I2{offset})), 0);",
+            "BAS_SMIDSET(S_A, ",
+        })
+            Assert.Contains(expected, sl);
+        Assert.DoesNotContain("BAS_SSET(", sl);
+    }
+
+    /// <summary>--string-len 255 (上限そのもの) は既定と 1 文字も同じ</summary>
+    [Fact]
+    public void Slang_StringLen255IsDefault()
+    {
+        Assert.Equal(Transpile(G2Program).Output, Transpile(G2Program, new HuTranspileOptions(StringLen: 255)).Output);
+    }
+
+    /// <summary>--string-len で文字列の配列の上限の添字 (16384 / (N+1) - 1) と、静的なデータの見積り (N+1 バイトで数える) が変わる</summary>
+    [Fact]
+    public void Analyzer_StringLenBoundsAndStaticBytes()
+    {
+        var opt = new HuTranspileOptions(StringLen: 63);
+        Assert.NotNull(Transpile("10 DIM X$(255)", opt).Output);
+        var r = HuTranspiler.Transpile("10 DIM X$(256)", opt);
+        Assert.Null(r.Output);
+        Assert.Contains(r.Diagnostics.Items, d => d.Code == "HB0305");
+        Assert.Null(HuTranspiler.Transpile("10 DIM X$(64)").Output);   // 既定は 63 まで
+        long Bytes(string p, HuTranspileOptions o) => Transpile(p, o).Program!.StaticDataBytes;
+        Assert.Equal(11 * 64 + 4 + 64, Bytes("10 A$(1)=B$", opt) - Bytes("10 PRINT 1", opt));
+        Assert.Equal(11 * 256 + 4 + 256, Bytes("10 A$(1)=B$", new()) - Bytes("10 PRINT 1", new()));
+    }
+
+    /// <summary>CLI の --string-len は 1〜255 の整数だけ (それ以外は終了コード 2)</summary>
+    [Fact]
+    public void Cli_StringLen()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"hubasic2sl_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var bas = Path.Combine(dir, "T.bas");
+            File.WriteAllText(bas, "10 A$=\"X\"\n");
+            var main = typeof(SLANGCompiler.HuBasic.CLI.Program).GetMethod("Main",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+            int Run(params string[] a) => (int)main.Invoke(null, new object[] { a })!;
+            Assert.Equal(0, Run(bas, "-o", Path.Combine(dir, "A.SL"), "--string-len", "31"));
+            Assert.Contains("ARRAY BYTE S_A[31];", File.ReadAllText(Path.Combine(dir, "A.SL")));
+            foreach (var bad in new[] { "0", "-1", "256", "X", "99999999999" })
+                Assert.Equal(2, Run(bas, "-o", Path.Combine(dir, "B.SL"), "--string-len", bad));
+            Assert.Equal(2, Run(bas, "-o", Path.Combine(dir, "B.SL"), "--string-len"));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    /// <summary>
     /// 段階 G3: グラフィックの LINE は BAS_GLINE(x1, y1, x2, y2, 色, 形)。形は bit 0 = 箱、bit 1 = PRESET、bit 2 = 色なし
     /// (色なしの色の引数は 0)。テキスト版の LINE は今までどおり BAS_TLINE
     /// </summary>
@@ -1366,6 +1439,15 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "NL"));
             RunSlangbuild(root, dir, sl15, asmPath, Path.Combine(dir, "NLS"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "NLS"));
+            // --string-len の出力 (シフトの 63 と掛け算の 100) も組み立てまで通る
+            var sl16 = Path.Combine(dir, "SL.SL");
+            File.WriteAllText(sl16, Transpile(G2Program, new HuTranspileOptions(StringLen: 63)).Output!);
+            RunSlangbuild(root, dir, sl16, asmPath, Path.Combine(dir, "SL"));
+            AssertBuilt(Path.Combine(dir, "SL"));
+            var sl17 = Path.Combine(dir, "SM.SL");
+            File.WriteAllText(sl17, Transpile(G2Program, new HuTranspileOptions(StringLen: 100)).Output!);
+            RunSlangbuild(root, dir, sl17, asmPath, Path.Combine(dir, "SMS"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "SMS"));
         }
         finally
         {

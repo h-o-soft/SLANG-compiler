@@ -123,12 +123,12 @@ public sealed class SlangBackend : IHuBackend
             _sb.AppendLine(HuProgram.KindOfKey(key) switch
             {
                 HuVarKind.Int => $"ARRAY {ArrayName(key)}[{bound}];",
-                // 文字列の配列: 文字列の変数と同じ 256 バイトのバッファを上限 + 1 個並べる
-                HuVarKind.Str => $"ARRAY BYTE {ArrayName(key)}[{(bound + 1) * 256 - 1}];",
+                // 文字列の配列: 文字列の変数と同じ 長さの上限 + 1 バイトのバッファを上限 + 1 個並べる
+                HuVarKind.Str => $"ARRAY BYTE {ArrayName(key)}[{(bound + 1) * (_prog.StringLen + 1) - 1}];",
                 _ => $"ARRAY FLOAT {ArrayName(key)}[{bound}];",
             });
         foreach (var s in _prog.StrVars)
-            _sb.AppendLine($"ARRAY BYTE {VarName(s)}[255];");
+            _sb.AppendLine($"ARRAY BYTE {VarName(s)}[{_prog.StringLen}];");
         for (int i = 0; i < _prog.Literals.Count; i++)
         {
             var text = _prog.Literals[i];
@@ -306,7 +306,13 @@ public sealed class SlangBackend : IHuBackend
     private string ArrayElement(HuIndex ix) => $"{ArrayName(_prog.Key(ix.Name))}[{ArrayIndex(ix)}]";
 
     /// <summary>文字列の配列の要素のバッファの番地 (index は添字の式。1 要素 256 バイト)</summary>
-    private string StrElement(HuIndex ix, string index) => $"({ArrayName(_prog.Key(ix.Name))}+({index}<<8))";
+    private string StrElement(HuIndex ix, string index)
+    {
+        // 1 要素は 長さの上限 + 1 バイト (既定 256 は <<8)。2 の累乗ならシフト、そうでなければ掛け算
+        int size = _prog.StringLen + 1;
+        var offset = (size & (size - 1)) == 0 ? $"{index}<<{System.Numerics.BitOperations.Log2((uint)size)}" : $"{index}*{size}";
+        return $"({ArrayName(_prog.Key(ix.Name))}+({offset}))";
+    }
 
     /// <summary>配列の添字 (BAS_AIDX が範囲を調べて、初めて使う配列なら DIM なしの上限 10 で確保したことにする)</summary>
     private string ArrayIndex(HuIndex ix)

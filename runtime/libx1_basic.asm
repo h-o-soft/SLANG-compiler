@@ -1474,7 +1474,7 @@ JP BAS_ERROR
 ; @name BAS_SSET
 ; @resident shared
 ; @param_count 2
-; HL = 代入先の変数のバッファ (256 バイト), DE = 文字列 → 長さ+1 バイトを写す
+; HL = 代入先の変数のバッファ (256 バイト。--string-len N なら N+1 バイト), DE = 文字列 → 長さ+1 バイトを写す
 EX DE, HL           ; HL = 元, DE = 先
 LD A, (HL)
 LD C, A
@@ -1482,6 +1482,21 @@ LD B, 0
 INC BC
 LDIR
 RET
+
+
+; @name BAS_SSETL
+; @resident shared
+; @param_count 3
+; @calls BAS_SSET,BAS_ERROR
+; HL = 代入先の変数のバッファ (N+1 バイト), DE = 文字列, BC = 長さの上限 N (--string-len、0〜254)
+; → 長さが N を超えたらエラー 15 (String too long)、でなければ BAS_SSET と同じく写す
+LD A, C
+EX DE, HL
+CP (HL)             ; N - 長さ
+EX DE, HL
+JP NC, BAS_SSET
+LD HL, 15
+JP BAS_ERROR
 
 
 ; @name BAS_SCAT

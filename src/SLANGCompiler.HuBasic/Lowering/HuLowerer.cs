@@ -76,6 +76,13 @@ public sealed class HuLowerer
     private static FArg E(HuExpr e) => new FExprArg(e);
     private static FArg I(int v) => new FIntArg(v);
 
+    /// <summary>文字列の変数・配列の要素へ写す。--string-len で上限を短くしたときは、長さを調べる BAS_SSETL (超えたらエラー 15)</summary>
+    private void SetStr(FArg target, FArg value)
+    {
+        if (_prog.StringLen < HuAnalyzer.MaxStringLen) Call("BAS_SSETL", target, value, I(_prog.StringLen));
+        else Call("BAS_SSET", target, value);
+    }
+
     private HuFlat Run()
     {
         Call("BAS_INIT");
@@ -133,7 +140,7 @@ public sealed class HuLowerer
         switch (s)
         {
             case HuAssign a:
-                if (a.Target.Type == HuType.Str) Call("BAS_SSET", E(a.Target), E(a.Value));
+                if (a.Target.Type == HuType.Str) SetStr(E(a.Target), E(a.Value));
                 else Emit(new FAssign(a.Target, a.Value));
                 break;
             case HuGoto g:
@@ -234,7 +241,7 @@ public sealed class HuLowerer
                 {
                     if (t.Type == HuType.Str)
                     {
-                        Call("BAS_SSET", E(t), E(new HuCall(FlatPseudo.ReadStr, Array.Empty<HuExpr>(), rd.Pos) { Type = HuType.Str }));
+                        SetStr(E(t), E(new HuCall(FlatPseudo.ReadStr, Array.Empty<HuExpr>(), rd.Pos) { Type = HuType.Str }));
                         Call("BAS_STMP");
                     }
                     else
@@ -256,7 +263,7 @@ public sealed class HuLowerer
                 foreach (var t in inp.Targets)
                 {
                     if (t.Type == HuType.Str)
-                        Call("BAS_SSET", E(t), E(new HuCall(FlatPseudo.InputStr, Array.Empty<HuExpr>(), inp.Pos) { Type = HuType.Str }));
+                        SetStr(E(t), E(new HuCall(FlatPseudo.InputStr, Array.Empty<HuExpr>(), inp.Pos) { Type = HuType.Str }));
                     else
                         Emit(new FAssign(t, new HuCall(FlatPseudo.InputNum, Array.Empty<HuExpr>(), inp.Pos) { Type = HuType.Float }));
                     Call("BAS_STMP");
