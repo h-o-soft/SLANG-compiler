@@ -708,8 +708,8 @@ public class HuBasicEmitTests
         var sl = Transpile(G2Program).Output!.Replace("\r\n", "\n");
         foreach (var expected in new[]
         {
-            "ARRAY BYTE SA_P[2815];", "ARRAY BYTE SA_N[5375];", "ARRAY BYTE SA_Q[2815];", "ARRAY BYTE S_A[255];",
-            "H_DIM_S_P=0;\n  H_UB_S_P=10;", "H_UB_S_N=20;", "BAS_DIM(&H_DIM_S_P, &H_UB_S_P, 1);",
+            "ARRAY BYTE SA_P[511];", "ARRAY BYTE SA_N[5375];", "ARRAY BYTE SA_Q[2815];", "ARRAY BYTE S_A[255];",
+            "H_DIM_S_P=0;\n  H_UB_S_P=1;", "H_UB_S_N=20;", "BAS_DIM(&H_DIM_S_P, &H_UB_S_P, 1);",
             "BAS_SSET((SA_P+(BAS_AIDX(0, &H_DIM_S_P, &H_UB_S_P)<<8)), K_",
             "BAS_SSET((SA_P+(BAS_AIDX(((V_I)-(1)), &H_DIM_S_P, &H_UB_S_P)<<8)), BAS_SCAT((SA_P+(BAS_AIDX(((V_I)-(1)), &H_DIM_S_P, &H_UB_S_P)<<8)), S_A));",
             "BAS_PNUM(BAS_SLEN((SA_P+(BAS_AIDX(1, &H_DIM_S_P, &H_UB_S_P)<<8))));",
@@ -718,6 +718,21 @@ public class HuBasicEmitTests
             "BAS_SSET((SA_N+(BAS_AIDX(V_I, &H_DIM_S_N, &H_UB_S_N)<<8)), BAS_READS());",
             "BAS_SSET((SA_N+(BAS_AIDX(20, &H_DIM_S_N, &H_UB_S_N)<<8)), BAS_INFS());",
             "BAS_SSET((SA_Q+(BAS_AIDX(10, &H_DIM_S_Q, &H_UB_S_Q)<<8)), K_",
+        })
+            Assert.Contains(expected, sl);
+    }
+
+    /// <summary>配列の置き場は DIM の上限の分だけ (10 未満でも。DIM が複数なら最大)。初めの H_UB も同じ値、DIM なしは 10</summary>
+    [Fact]
+    public void Slang_ArrayStorageFollowsDim()
+    {
+        var sl = Transpile("10 DEFINT A:DIM P$(0),A(3):IF A(0) THEN DIM S$(1) ELSE DIM S$(5)\n20 Q$(1)=P$(0):A(2)=1").Output!
+            .Replace("\r\n", "\n");
+        foreach (var expected in new[]
+        {
+            "ARRAY BYTE SA_P[255];", "ARRAY A_A[3];", "ARRAY BYTE SA_S[1535];", "ARRAY BYTE SA_Q[2815];",
+            "H_UB_S_P=0;", "H_UB_A=3;", "H_UB_S_S=5;", "H_UB_S_Q=10;",
+            "BAS_DIM(&H_DIM_S_S, &H_UB_S_S, 1);", "BAS_DIM(&H_DIM_S_S, &H_UB_S_S, 5);",
         })
             Assert.Contains(expected, sl);
     }
@@ -957,7 +972,7 @@ public class HuBasicEmitTests
         var sl = Transpile("10 A=1.5:B=A*2:DIM C(3):C(1)=A/B:I%=A:C(2)=I%:PRINT A;C(1)").Output!;
         Assert.Contains("VAR V_I, H_T, H_LINE, H_DIM_F_C, H_UB_F_C;", sl);
         Assert.Contains("VAR FLOAT F_A, FLOAT F_B;", sl);
-        Assert.Contains("ARRAY FLOAT FA_C[10];", sl);
+        Assert.Contains("ARRAY FLOAT FA_C[3];", sl);
         Assert.Contains("F_A=H_FK[0];", sl);
         Assert.Contains("F_B=(F_A*H_FK[1]);", sl);
         // 浮動小数の割り算は変数の番地をそのまま渡す。代入先の添字は値より先に調べる (Hu-BASIC と同じ)
@@ -1035,9 +1050,9 @@ public class HuBasicEmitTests
         var sl = Transpile("10 A=1:A!=2:A#=3:A%=4:A$=\"X\":DIM A(2),A#(2),A%(2)").Output!;
         Assert.Contains("VAR V_A, H_T, H_LINE, H_DIM_F_A, H_UB_F_A, H_DIM_D_A, H_UB_D_A, H_DIM_A;", sl);
         Assert.Contains("VAR FLOAT F_A, FLOAT D_A;", sl);
-        Assert.Contains("ARRAY FLOAT FA_A[10];", sl);
-        Assert.Contains("ARRAY FLOAT DA_A[10];", sl);
-        Assert.Contains("ARRAY A_A[10];", sl);
+        Assert.Contains("ARRAY FLOAT FA_A[2];", sl);
+        Assert.Contains("ARRAY FLOAT DA_A[2];", sl);
+        Assert.Contains("ARRAY A_A[2];", sl);
         Assert.Contains("ARRAY BYTE S_A[255];", sl);
         Assert.Contains("F_A=H_FK[1];", sl);   // A と A! は同じ変数
     }

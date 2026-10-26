@@ -216,7 +216,8 @@ public sealed class HuAnalyzer
                     _diag.Error("HB0305", $"DIM {name} の上限が範囲外です (0〜{max})", dim.Pos);
                     continue;
                 }
-                var storage = Math.Max((int)bound.Value, 10);
+                // 置き場は DIM の上限の分だけ (DIM を通る前に使うと、実行時に上限 min(10, 置き場の上限) で確定する: BAS_AIDX)
+                var storage = (int)bound.Value;
                 _arrays[key] = _arrays.TryGetValue(key, out var prev) ? Math.Max(prev, storage) : storage;
             }
         }
