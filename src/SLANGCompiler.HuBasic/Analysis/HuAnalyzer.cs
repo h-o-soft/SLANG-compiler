@@ -16,12 +16,14 @@ public sealed class HuAnalyzer
     public const int MaxArrayBytes = 16 * 1024;
     public const int MaxArrayIndex = MaxArrayBytes / 2 - 1; // 8191
     public const int MaxFloatArrayIndex = MaxArrayBytes / 3 - 1; // 5460 (1 要素 3 バイト)
-    public const int MaxStrArrayIndex = MaxArrayBytes / 256 - 1; // 63 (1 要素 256 バイト)
+    public const int MaxStringLen = 255; // 文字列 1 本の長さの上限 (Hu-BASIC と同じ。--string-len の既定)
     public const int MaxDataBytes = 32767;
     public const int MaxNameLength = 28; // SLANG の名前の上限 32 から接頭辞の分を引く
 
     private readonly HuDiagnosticBag _diag;
     private readonly int _dataBudget;
+    /// <summary>文字列 1 本の長さの上限 (--string-len)。文字列の変数と配列の要素のバッファは これ + 1 バイト</summary>
+    private readonly int _stringLen;
 
     private readonly HuVarKind _defaultKind;
     /// <summary>DEFxxx で決めた頭文字の型の種類と、その頭文字の最初の DEFxxx の行</summary>
@@ -47,18 +49,20 @@ public sealed class HuAnalyzer
     private readonly Dictionary<string, int> _labelTargets = new(StringComparer.Ordinal);
     private readonly Dictionary<HuLabel, int> _labelIds = new(ReferenceEqualityComparer.Instance);
 
-    private HuAnalyzer(HuDiagnosticBag diag, int dataBudget, bool assumeDefint)
+    private HuAnalyzer(HuDiagnosticBag diag, int dataBudget, bool assumeDefint, int stringLen)
     {
         _diag = diag;
         _dataBudget = dataBudget;
+        _stringLen = stringLen;
         _defaultKind = assumeDefint ? HuVarKind.Int : HuVarKind.Single;
     }
 
     /// <param name="assumeDefint">接尾辞も DEFxxx もない頭文字の既定の型を整数にする (--assume-defint)。
     /// ソースの DEFxxx と接尾辞のほうが優先で、DEFxxx の衝突の検査などには数えない</param>
+    /// <param name="stringLen">文字列 1 本の長さの上限 (--string-len。1〜255)</param>
     public static HuProgram Analyze(HuAstProgram ast, HuDiagnosticBag diag, int dataBudget = DefaultDataBudget,
-                                    bool assumeDefint = false)
-        => new HuAnalyzer(diag, dataBudget, assumeDefint).Run(ast);
+                                    bool assumeDefint = false, int stringLen = MaxStringLen)
+        => new HuAnalyzer(diag, dataBudget, assumeDefint, stringLen).Run(ast);
 
     private HuProgram Run(HuAstProgram ast)
     {
@@ -88,6 +92,7 @@ public sealed class HuAnalyzer
             FloatVars = _floatVars.ToList(),
             StrVars = _strVars.ToList(),
             Arrays = new Dictionary<string, int>(_arrays),
+            StringLen = _stringLen,
             Literals = _literals,
             DataBytes = dataBytes,
             DataLines = dataLines,
@@ -216,7 +221,8 @@ public sealed class HuAnalyzer
                     _diag.Error("HB0305", $"DIM {name} の上限が範囲外です (0〜{max})", dim.Pos);
                     continue;
                 }
-                var storage = Math.Max((int)bound.Value, 10);
+                // 置き場は DIM の上限の分だけ (DIM を通る前に使うと、実行時に上限 min(10, 置き場の上限) で確定する: BAS_AIDX)
+                var storage = (int)bound.Value;
                 _arrays[key] = _arrays.TryGetValue(key, out var prev) ? Math.Max(prev, storage) : storage;
             }
         }
@@ -285,10 +291,10 @@ public sealed class HuAnalyzer
     };
 
     /// <summary>配列の上限の添字 (配列の大きさの上限 16 KiB を、1 要素の大きさで割ったもの)</summary>
-    private static int MaxIndexOf(HuVarKind kind) => kind switch
+    private int MaxIndexOf(HuVarKind kind) => kind switch
     {
         HuVarKind.Int => MaxArrayIndex,
-        HuVarKind.Str => MaxStrArrayIndex,
+        HuVarKind.Str => MaxArrayBytes / (_stringLen + 1) - 1,
         _ => MaxFloatArrayIndex,
     };
 
@@ -956,17 +962,17 @@ public sealed class HuAnalyzer
         return (bytes.ToArray(), dataLines);
     }
 
-    /// <summary>配列の 1 要素の大きさ (文字列の配列の要素は、文字列の変数と同じ 256 バイトのバッファ)</summary>
-    private static int ElementBytes(HuVarKind kind) => kind switch
+    /// <summary>配列の 1 要素の大きさ (文字列の配列の要素は、文字列の変数と同じ 長さの上限 + 1 バイトのバッファ)</summary>
+    private int ElementBytes(HuVarKind kind) => kind switch
     {
         HuVarKind.Int => 2,
-        HuVarKind.Str => 256,
+        HuVarKind.Str => _stringLen + 1,
         _ => 3,
     };
 
     private int ComputeStaticBytes(int dataBytes, int dataLineCount)
     {
-        long total = _intVars.Count * 2L + _floatVars.Count * 3L + _strVars.Count * 256L;
+        long total = _intVars.Count * 2L + _floatVars.Count * 3L + _strVars.Count * (_stringLen + 1L);
         foreach (var (key, bound) in _arrays)
             total += (bound + 1L) * ElementBytes(HuProgram.KindOfKey(key)) + 4;
         foreach (var lit in _literals) total += lit.Length + 1L;

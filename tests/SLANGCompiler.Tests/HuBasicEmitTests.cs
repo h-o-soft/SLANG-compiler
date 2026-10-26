@@ -708,8 +708,8 @@ public class HuBasicEmitTests
         var sl = Transpile(G2Program).Output!.Replace("\r\n", "\n");
         foreach (var expected in new[]
         {
-            "ARRAY BYTE SA_P[2815];", "ARRAY BYTE SA_N[5375];", "ARRAY BYTE SA_Q[2815];", "ARRAY BYTE S_A[255];",
-            "H_DIM_S_P=0;\n  H_UB_S_P=10;", "H_UB_S_N=20;", "BAS_DIM(&H_DIM_S_P, &H_UB_S_P, 1);",
+            "ARRAY BYTE SA_P[511];", "ARRAY BYTE SA_N[5375];", "ARRAY BYTE SA_Q[2815];", "ARRAY BYTE S_A[255];",
+            "H_DIM_S_P=0;\n  H_UB_S_P=1;", "H_UB_S_N=20;", "BAS_DIM(&H_DIM_S_P, &H_UB_S_P, 1);",
             "BAS_SSET((SA_P+(BAS_AIDX(0, &H_DIM_S_P, &H_UB_S_P)<<8)), K_",
             "BAS_SSET((SA_P+(BAS_AIDX(((V_I)-(1)), &H_DIM_S_P, &H_UB_S_P)<<8)), BAS_SCAT((SA_P+(BAS_AIDX(((V_I)-(1)), &H_DIM_S_P, &H_UB_S_P)<<8)), S_A));",
             "BAS_PNUM(BAS_SLEN((SA_P+(BAS_AIDX(1, &H_DIM_S_P, &H_UB_S_P)<<8))));",
@@ -720,6 +720,94 @@ public class HuBasicEmitTests
             "BAS_SSET((SA_Q+(BAS_AIDX(10, &H_DIM_S_Q, &H_UB_S_Q)<<8)), K_",
         })
             Assert.Contains(expected, sl);
+    }
+
+    /// <summary>配列の置き場は DIM の上限の分だけ (10 未満でも。DIM が複数なら最大)。初めの H_UB も同じ値、DIM なしは 10</summary>
+    [Fact]
+    public void Slang_ArrayStorageFollowsDim()
+    {
+        var sl = Transpile("10 DEFINT A:DIM P$(0),A(3):IF A(0) THEN DIM S$(1) ELSE DIM S$(5)\n20 Q$(1)=P$(0):A(2)=1").Output!
+            .Replace("\r\n", "\n");
+        foreach (var expected in new[]
+        {
+            "ARRAY BYTE SA_P[255];", "ARRAY A_A[3];", "ARRAY BYTE SA_S[1535];", "ARRAY BYTE SA_Q[2815];",
+            "H_UB_S_P=0;", "H_UB_A=3;", "H_UB_S_S=5;", "H_UB_S_Q=10;",
+            "BAS_DIM(&H_DIM_S_S, &H_UB_S_S, 1);", "BAS_DIM(&H_DIM_S_S, &H_UB_S_S, 5);",
+        })
+            Assert.Contains(expected, sl);
+    }
+
+    /// <summary>
+    /// --string-len N: 文字列の変数と配列の要素は N+1 バイト (2 の累乗ならシフト、そうでなければ掛け算で要素の番地)。
+    /// 代入・READ・INPUT は長さを調べる BAS_SSETL(先, 元, N)。SWAP と MID$ の文は今のまま
+    /// </summary>
+    [Theory]
+    [InlineData(63, "<<6")]
+    [InlineData(100, "*101")]
+    [InlineData(1, "<<1")]
+    [InlineData(254, "*255")]
+    public void Slang_StringLen(int n, string offset)
+    {
+        var sl = Transpile(G2Program + "\n60 MID$(A$,1)=\"Z\"", new HuTranspileOptions(StringLen: n)).Output!.Replace("\r\n", "\n");
+        int s = n + 1;
+        foreach (var expected in new[]
+        {
+            $"ARRAY BYTE SA_P[{2 * s - 1}];", $"ARRAY BYTE SA_N[{21 * s - 1}];", $"ARRAY BYTE SA_Q[{11 * s - 1}];", $"ARRAY BYTE S_A[{n}];",
+            $"BAS_SSETL((SA_P+(BAS_AIDX(0, &H_DIM_S_P, &H_UB_S_P){offset})), K_",
+            $"BAS_SSETL((SA_N+(BAS_AIDX(V_I, &H_DIM_S_N, &H_UB_S_N){offset})), BAS_READS(), {n});",
+            $"BAS_SSETL((SA_N+(BAS_AIDX(20, &H_DIM_S_N, &H_UB_S_N){offset})), BAS_INFS(), {n});",
+            $"BAS_SWAP((SA_P+(H_I1{offset})), (SA_P+(H_I2{offset})), 0);",
+            "BAS_SMIDSET(S_A, ",
+        })
+            Assert.Contains(expected, sl);
+        Assert.DoesNotContain("BAS_SSET(", sl);
+    }
+
+    /// <summary>--string-len 255 (上限そのもの) は既定と 1 文字も同じ</summary>
+    [Fact]
+    public void Slang_StringLen255IsDefault()
+    {
+        Assert.Equal(Transpile(G2Program).Output, Transpile(G2Program, new HuTranspileOptions(StringLen: 255)).Output);
+    }
+
+    /// <summary>--string-len で文字列の配列の上限の添字 (16384 / (N+1) - 1) と、静的なデータの見積り (N+1 バイトで数える) が変わる</summary>
+    [Fact]
+    public void Analyzer_StringLenBoundsAndStaticBytes()
+    {
+        var opt = new HuTranspileOptions(StringLen: 63);
+        Assert.NotNull(Transpile("10 DIM X$(255)", opt).Output);
+        var r = HuTranspiler.Transpile("10 DIM X$(256)", opt);
+        Assert.Null(r.Output);
+        Assert.Contains(r.Diagnostics.Items, d => d.Code == "HB0305");
+        Assert.Null(HuTranspiler.Transpile("10 DIM X$(64)").Output);   // 既定は 63 まで
+        long Bytes(string p, HuTranspileOptions o) => Transpile(p, o).Program!.StaticDataBytes;
+        Assert.Equal(11 * 64 + 4 + 64, Bytes("10 A$(1)=B$", opt) - Bytes("10 PRINT 1", opt));
+        Assert.Equal(11 * 256 + 4 + 256, Bytes("10 A$(1)=B$", new()) - Bytes("10 PRINT 1", new()));
+    }
+
+    /// <summary>CLI の --string-len は 1〜255 の整数だけ (それ以外は終了コード 2)</summary>
+    [Fact]
+    public void Cli_StringLen()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"hubasic2sl_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var bas = Path.Combine(dir, "T.bas");
+            File.WriteAllText(bas, "10 A$=\"X\"\n");
+            var main = typeof(SLANGCompiler.HuBasic.CLI.Program).GetMethod("Main",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+            int Run(params string[] a) => (int)main.Invoke(null, new object[] { a })!;
+            Assert.Equal(0, Run(bas, "-o", Path.Combine(dir, "A.SL"), "--string-len", "31"));
+            Assert.Contains("ARRAY BYTE S_A[31];", File.ReadAllText(Path.Combine(dir, "A.SL")));
+            foreach (var bad in new[] { "0", "-1", "256", "X", "99999999999" })
+                Assert.Equal(2, Run(bas, "-o", Path.Combine(dir, "B.SL"), "--string-len", bad));
+            Assert.Equal(2, Run(bas, "-o", Path.Combine(dir, "B.SL"), "--string-len"));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
     }
 
     /// <summary>
@@ -957,7 +1045,7 @@ public class HuBasicEmitTests
         var sl = Transpile("10 A=1.5:B=A*2:DIM C(3):C(1)=A/B:I%=A:C(2)=I%:PRINT A;C(1)").Output!;
         Assert.Contains("VAR V_I, H_T, H_LINE, H_DIM_F_C, H_UB_F_C;", sl);
         Assert.Contains("VAR FLOAT F_A, FLOAT F_B;", sl);
-        Assert.Contains("ARRAY FLOAT FA_C[10];", sl);
+        Assert.Contains("ARRAY FLOAT FA_C[3];", sl);
         Assert.Contains("F_A=H_FK[0];", sl);
         Assert.Contains("F_B=(F_A*H_FK[1]);", sl);
         // 浮動小数の割り算は変数の番地をそのまま渡す。代入先の添字は値より先に調べる (Hu-BASIC と同じ)
@@ -1035,9 +1123,9 @@ public class HuBasicEmitTests
         var sl = Transpile("10 A=1:A!=2:A#=3:A%=4:A$=\"X\":DIM A(2),A#(2),A%(2)").Output!;
         Assert.Contains("VAR V_A, H_T, H_LINE, H_DIM_F_A, H_UB_F_A, H_DIM_D_A, H_UB_D_A, H_DIM_A;", sl);
         Assert.Contains("VAR FLOAT F_A, FLOAT D_A;", sl);
-        Assert.Contains("ARRAY FLOAT FA_A[10];", sl);
-        Assert.Contains("ARRAY FLOAT DA_A[10];", sl);
-        Assert.Contains("ARRAY A_A[10];", sl);
+        Assert.Contains("ARRAY FLOAT FA_A[2];", sl);
+        Assert.Contains("ARRAY FLOAT DA_A[2];", sl);
+        Assert.Contains("ARRAY A_A[2];", sl);
         Assert.Contains("ARRAY BYTE S_A[255];", sl);
         Assert.Contains("F_A=H_FK[1];", sl);   // A と A! は同じ変数
     }
@@ -1351,6 +1439,15 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "NL"));
             RunSlangbuild(root, dir, sl15, asmPath, Path.Combine(dir, "NLS"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "NLS"));
+            // --string-len の出力 (シフトの 63 と掛け算の 100) も組み立てまで通る
+            var sl16 = Path.Combine(dir, "SL.SL");
+            File.WriteAllText(sl16, Transpile(G2Program, new HuTranspileOptions(StringLen: 63)).Output!);
+            RunSlangbuild(root, dir, sl16, asmPath, Path.Combine(dir, "SL"));
+            AssertBuilt(Path.Combine(dir, "SL"));
+            var sl17 = Path.Combine(dir, "SM.SL");
+            File.WriteAllText(sl17, Transpile(G2Program, new HuTranspileOptions(StringLen: 100)).Output!);
+            RunSlangbuild(root, dir, sl17, asmPath, Path.Combine(dir, "SMS"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "SMS"));
         }
         finally
         {

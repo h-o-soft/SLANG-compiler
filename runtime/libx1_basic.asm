@@ -1226,12 +1226,22 @@ JP BAS_ERROR
 ; @param_count 3
 ; @calls BAS_ERROR
 ; HL = 添字, DE = &状態, BC = &上限 → HL = 添字。
-; 状態が 0 なら上限 10 で確定 (状態 1)。添字が 0〜上限の外ならエラー 9
+; 状態が 0 なら上限 10 で確定 (状態 1。ただし初めに入れてある上限 = 置き場の上限が 10 より小さければそのまま)。
+; 添字が 0〜上限の外ならエラー 9
 LD A, (DE)
 OR A
 JP NZ, .ba_check
 LD A, 1
 LD (DE), A
+INC BC
+LD A, (BC)
+DEC BC
+OR A
+JP NZ, .ba_ten      ; 置き場の上限が 256 以上
+LD A, (BC)
+CP 10
+JP C, .ba_check     ; 置き場の上限が 10 より小さい (DIM の上限) ならそのまま
+.ba_ten
 LD A, 10
 LD (BC), A
 INC BC
@@ -1464,7 +1474,7 @@ JP BAS_ERROR
 ; @name BAS_SSET
 ; @resident shared
 ; @param_count 2
-; HL = 代入先の変数のバッファ (256 バイト), DE = 文字列 → 長さ+1 バイトを写す
+; HL = 代入先の変数のバッファ (256 バイト。--string-len N なら N+1 バイト), DE = 文字列 → 長さ+1 バイトを写す
 EX DE, HL           ; HL = 元, DE = 先
 LD A, (HL)
 LD C, A
@@ -1472,6 +1482,21 @@ LD B, 0
 INC BC
 LDIR
 RET
+
+
+; @name BAS_SSETL
+; @resident shared
+; @param_count 3
+; @calls BAS_SSET,BAS_ERROR
+; HL = 代入先の変数のバッファ (N+1 バイト), DE = 文字列, BC = 長さの上限 N (--string-len、0〜254)
+; → 長さが N を超えたらエラー 15 (String too long)、でなければ BAS_SSET と同じく写す
+LD A, C
+EX DE, HL
+CP (HL)             ; N - 長さ
+EX DE, HL
+JP NC, BAS_SSET
+LD HL, 15
+JP BAS_ERROR
 
 
 ; @name BAS_SCAT

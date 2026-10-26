@@ -30,8 +30,11 @@ public sealed class HuProgram
     /// <summary>文字列の単純変数 (変数の鍵: "A$")</summary>
     public required IReadOnlyList<string> StrVars { get; init; }
 
-    /// <summary>配列 (整数・浮動小数・文字列): 変数の鍵 → 記憶域の上限の添字 (DIM の上限の最大値と 10 の大きい方)</summary>
+    /// <summary>配列 (整数・浮動小数・文字列): 変数の鍵 → 記憶域の上限の添字 (DIM の上限の最大値。DIM がなければ 10)</summary>
     public required IReadOnlyDictionary<string, int> Arrays { get; init; }
+
+    /// <summary>文字列 1 本の長さの上限 (--string-len。既定 255)。文字列の変数と配列の要素のバッファは これ + 1 バイト</summary>
+    public int StringLen { get; init; } = HuAnalyzer.MaxStringLen;
 
     /// <summary>文字列リテラル (重複をまとめたもの、X1 文字コード)。添字が ID</summary>
     public required IReadOnlyList<string> Literals { get; init; }

@@ -540,7 +540,7 @@ public class HuBasicFrontendTests
     {
         // 浮動小数の定数 1 つの上限は、f24 に直した値を四捨五入 (2.5 → 3)
         var prog = AnalyzeOk("10 DEFINT A-Z:DIM A(2.5),B(12.4)");
-        Assert.Equal(10, prog.Arrays["A%"]);   // 上限が 10 未満なら 10 を確保する
+        Assert.Equal(3, prog.Arrays["A%"]);    // 置き場は DIM の上限の分だけ (10 未満でも)
         Assert.Equal(12, prog.Arrays["B%"]);
     }
 
@@ -943,7 +943,7 @@ public class HuBasicFrontendTests
         var bytes = AnalyzeOk("10 A$(1)=\"X\"").StaticDataBytes - AnalyzeOk("10 PRINT \"X\"").StaticDataBytes;
         Assert.Equal(11 * 256 + 4, bytes);
         prog = AnalyzeOk("10 DEFSTR A:DIM A(3):A(1)=\"X\":READ A(2):INPUT A(3)");
-        Assert.Equal(10, prog.Arrays["A$"]);
+        Assert.Equal(3, prog.Arrays["A$"]);
     }
 
     /// <summary>段階 G1: PLAY は文字列なら MML、数ならテンポ。KEY は 2 つ目が文字列で、warning HB0704 を出す</summary>
