@@ -1024,6 +1024,189 @@ public class HuBasicEmitTests
         }
     }
 
+    private static int RunCli(params string[] args)
+    {
+        var main = typeof(SLANGCompiler.HuBasic.CLI.Program).GetMethod("Main",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        return (int)main.Invoke(null, new object[] { args })!;
+    }
+
+    private static string NewTempDir()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"hubasic2sl_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    /// <summary>--emit と一緒に書くオプションの誤りは、変換も組み立てもせずに終了コード 2</summary>
+    [Fact]
+    public void Cli_EmitOptionErrors()
+    {
+        var dir = NewTempDir();
+        try
+        {
+            var bas = Path.Combine(dir, "T.bas");
+            File.WriteAllText(bas, "10 PRINT 1\n");
+            var none = Path.Combine(dir, "none");
+            foreach (var bad in new[]
+            {
+                new[] { bas, "--emit" }, new[] { bas, "--emit", "bin" },
+                new[] { bas, "--disk-main-name", "X" }, new[] { bas, "--tape-name", "X" }, new[] { bas, "--wav" },
+                new[] { bas, "--slangbuild", none },
+                new[] { bas, "--emit", "disk", "--tape-name", "X" }, new[] { bas, "--emit", "disk", "--wav" },
+                new[] { bas, "--emit", "tape", "--disk-main-name", "X" },
+                new[] { bas, "--emit", "disk", "--disk-main-name" }, new[] { bas, "--emit", "tape", "--tape-name" },
+                new[] { bas, "--emit", "disk", "--slangbuild" },
+                new[] { bas, "--emit", "disk", "--env", "x1native" }, new[] { bas, "--emit", "tape", "--env", "x1native_slfs" },
+                new[] { bas, "--emit", "disk", "-o", Path.Combine(dir, "A.tap") },
+                new[] { bas, "--emit", "tape", "-o", Path.Combine(dir, "A.D88") },
+                new[] { "--emit", "disk", "--check-bin", Path.Combine(dir, "A.bin") },
+            })
+                Assert.Equal(2, RunCli(bad));
+            Assert.Empty(Directory.GetFiles(dir, "*.SL"));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// slangbuild は --slangbuild、hubasic2sl と同じ所、その下の bin/、開発の publish (今の OS の RID、Release と Debug の新しい方) の順に探す。
+    /// ない所を指した --slangbuild は見つからない (次へ行かない)
+    /// </summary>
+    [Fact]
+    public void Cli_SlangbuildResolution()
+    {
+        var dir = NewTempDir();
+        try
+        {
+            var name = OperatingSystem.IsWindows() ? "slangbuild.exe" : "slangbuild";
+            // リポジトリの形を真似る: <dir>/src/SLANGCompiler.HuBasic/bin/Release/net8.0 が hubasic2sl の置き場
+            var baseDir = Path.Combine(dir, "src", "SLANGCompiler.HuBasic", "bin", "Release", "net8.0");
+            Directory.CreateDirectory(baseDir);
+            var runner = new SLANGCompiler.HuBasic.CLI.SlangbuildRunner(baseDir);
+            var os = OperatingSystem.IsWindows() ? "win" : OperatingSystem.IsMacOS() ? "osx" : "linux";
+            var arch = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant();
+            string Publish(string config)
+            {
+                var d = Path.Combine(dir, "src", "SLANGCompiler.Build", "bin", config, "net8.0", $"{os}-{arch}", "publish");
+                Directory.CreateDirectory(d);
+                File.WriteAllText(Path.Combine(d, name), "");
+                return Path.Combine(d, name);
+            }
+            var release = Publish("Release");
+            var debug = Publish("Debug");
+            File.SetLastWriteTimeUtc(release, DateTime.UtcNow.AddHours(-1));
+            Assert.Equal(debug, runner.Resolve(null, out _)!.FileName);
+            File.SetLastWriteTimeUtc(release, DateTime.UtcNow.AddHours(1));
+            Assert.Equal(release, runner.Resolve(null, out _)!.FileName);
+
+            Directory.CreateDirectory(Path.Combine(baseDir, "bin"));
+            File.WriteAllText(Path.Combine(baseDir, "bin", name), "");
+            Assert.Equal(Path.Combine(baseDir, "bin", name), runner.Resolve(null, out _)!.FileName);
+            File.WriteAllText(Path.Combine(baseDir, name), "");
+            Assert.Equal(Path.Combine(baseDir, name), runner.Resolve(null, out _)!.FileName);
+            var other = Path.Combine(dir, "other");
+            File.WriteAllText(other, "");
+            Assert.Equal(other, runner.Resolve(other, out _)!.FileName);
+            Assert.Null(runner.Resolve(Path.Combine(dir, "none"), out var tried));
+            Assert.Contains("none", tried);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// --emit の段: slangbuild の代わりの sh (Windows では飛ばす) で、渡す引数 (空白・日本語・引用符もそのまま 1 つ) と、
+    /// 変換・組み立て・大きさの検査のどこで止まっても終了コード 1 でイメージを残さないこと、変換で止まったら slangbuild を呼ばないことを見る
+    /// </summary>
+    [Fact]
+    public void Cli_EmitStages()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var root = NewTempDir();
+        var dir = Path.Combine(root, "作業 1");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var bas = Path.Combine(dir, "ゲーム 1.bas");
+            File.WriteAllText(bas, "10 PRINT 1\n");
+            var argsFile = Path.Combine(root, "args.txt");
+            string Fake(string name, string body, bool exec = true)
+            {
+                var path = Path.Combine(dir, name);
+                File.WriteAllText(path, "#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + argsFile + "'\nfor a; do p=$a; done\n" + body + "\n");
+                File.SetUnixFileMode(path, exec ? UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                                                : UnixFileMode.UserRead | UnixFileMode.UserWrite);
+                return path;
+            }
+            const string image = "case \"$2\" in disk) : > \"$p.d88\" ;; tape) : > \"$p.tap\" ;; esac; " +
+                                 "case \" $* \" in *\" --wav \"*) : > \"$p.wav\" ;; esac";
+            string Built(string workEnd) => $"printf x > \"$p.bin\"; echo '  {workEnd}  __WORKEND__ EQU $' > \"$p.LST\"; " + image;
+            var ok = Fake("ok 1.sh", Built("2000"));
+            var prefix = Path.Combine(dir, "ゲーム 1");
+            string[] Args() => File.ReadAllLines(argsFile);
+
+            Assert.Equal(0, RunCli(bas, "--emit", "disk", "--slangbuild", ok, "--disk-main-name", "A \"B\"", "--wait", "line:480"));
+            Assert.Equal(new[] { "--emit", "disk", "-E", "x1native_slfs", "--disk-main-name", "A \"B\"", prefix + ".SL", "-o", prefix }, Args());
+            Assert.True(File.Exists(prefix + ".d88"));
+            Assert.Contains("BAS_WLINE(480)", File.ReadAllText(prefix + ".SL"));
+
+            var outPrefix = Path.Combine(dir, "out");
+            Assert.Equal(0, RunCli(bas, "--emit", "tape", "--wav", "--tape-name", "T", "-o", outPrefix + ".tap", "--slangbuild", ok));
+            Assert.Equal(new[] { "--emit", "tape", "-E", "x1native", "--tape-name", "T", "--wav", outPrefix + ".SL", "-o", outPrefix }, Args());
+            Assert.True(File.Exists(outPrefix + ".tap") && File.Exists(outPrefix + ".SL"));
+
+            // 作業領域の終わりが予約領域の頭 $FFE0 ちょうどは通る
+            Assert.Equal(0, RunCli(bas, "--emit", "disk", "--slangbuild", Fake("edge.sh", Built("FFE0"))));
+
+            // 止まったら 1。前の回のイメージも、できかけのイメージも残さない
+            foreach (var tool in new[]
+            {
+                Fake("fail.sh", "exit 3"),
+                Fake("tapefail.sh", ": > \"$p.d88\"; exit 1"),
+                Fake("noimage.sh", "printf x > \"$p.bin\"; echo '  2000  __WORKEND__ EQU $' > \"$p.LST\""),
+                Fake("noexec.sh", Built("2000"), exec: false),
+                Fake("big.sh", Built("FFE1")),
+                Fake("nolst.sh", "printf x > \"$p.bin\"; rm -f \"$p.LST\"; " + image),
+                Fake("noworkend.sh", "printf x > \"$p.bin\"; echo '' > \"$p.LST\"; " + image),
+                Path.Combine(dir, "none"),
+            })
+            {
+                File.WriteAllText(prefix + ".d88", "old");
+                Assert.Equal(1, RunCli(bas, "--emit", "disk", "--slangbuild", tool));
+                Assert.False(File.Exists(prefix + ".d88"), tool);
+            }
+            File.WriteAllText(outPrefix + ".wav", "old");
+            Assert.Equal(1, RunCli(bas, "--emit", "tape", "--wav", "-o", outPrefix, "--slangbuild", Fake("wavfail.sh", ": > \"$p.tap\"; exit 1")));
+            Assert.False(File.Exists(outPrefix + ".tap") || File.Exists(outPrefix + ".wav"));
+
+            // 変換で止まったら slangbuild を呼ばず、前の回のイメージも消えている
+            File.Delete(argsFile);
+            File.WriteAllText(prefix + ".d88", "old");
+            File.WriteAllText(bas, "10 CIRCLE\n");
+            Assert.Equal(1, RunCli(bas, "--emit", "disk", "--slangbuild", ok));
+            Assert.False(File.Exists(argsFile));
+            Assert.False(File.Exists(prefix + ".d88"));
+
+            // 入力と作るファイルが同じなら 2 で、入力は消えない
+            foreach (var (name, emit) in new[] { ("G.tap", "tape"), ("G.d88", "disk"), ("G.bin", "disk"), ("G.SL", "disk"), ("G.asm", "disk"), ("G.sym", "tape"), ("G.inc", "disk") })
+            {
+                var input = Path.Combine(dir, name);
+                File.WriteAllText(input, "10 PRINT 1\n");
+                Assert.Equal(2, RunCli(input, "--emit", emit, "--slangbuild", ok));
+                Assert.True(File.Exists(input), name);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
     // ------------------------------------------------------------ SLANG 生成
 
     [Fact]

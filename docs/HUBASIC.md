@@ -8,17 +8,35 @@ SLANG compiler の `x1native` / `x1native_slfs` 環境で X1 の機械語のプ�
 
 ## 使い方
 
-変換ツールの実行ファイルは `hubasic2sl` です。BASIC を SLANG に変換し、`slangbuild` で組み立てます。
+変換ツールの実行ファイルは `hubasic2sl` です。1 行で、BASIC からディスクイメージかテープを作ります。
 
 ```sh
-hubasic2sl PROG.BAS -o PROG.SL --wait line:480    # 変換 (--wait は下を参照)
-slangbuild --emit disk -E x1native_slfs PROG.SL -o PROG   # PROG.d88 (ディスクイメージ) を作る
-hubasic2sl --check-bin PROG.bin --lst PROG.LST     # メモリ ($1000〜$FFDF) に収まるかを確かめる
+hubasic2sl PROG.BAS --emit disk --wait line:480   # PROG.d88 (ディスクイメージ) を作る (--wait は下を参照)
+hubasic2sl PROG.BAS --emit tape --wait line:480   # PROG.tap (テープ) を作る
 ```
 
-- `x1native_slfs` のディスクイメージでは、BASIC のファイル名 (拡張子なし。13 文字まで、ASCII だけ) が IPL の起動名になります
-  (変換した SLANG の頭の `// disk-main-name:` の行。slangbuild の `--disk-main-name <name>` で変えられます。[SLFS.md](SLFS.md))。
-- テープにするときは `slangbuild --emit tape -E x1native PROG.SL -o PROG` (`.tap`。`.wav` も作れます。[X1.md](X1.md) を参照)。
+- 中では、BASIC を SLANG に変換し (`PROG.SL`)、`slangbuild` で組み立て (`PROG.bin`・`PROG.LST`)、メモリ ($1000〜$FFDF) に収まるかを確かめています。
+  できたファイルはどれも残ります。名前は、入力 (か `-o`) の拡張子を `.SL`・`.d88`・`.tap` にしたものです
+  (`-o out/GAME` でも `-o out/GAME.d88` でも `out/GAME.SL`・`out/GAME.d88`)。
+- 途中で止まったときは、最後の 1 行が「変換で止まりました」「組み立て (slangbuild) で止まりました」「大きさの検査で止まりました」のどれかになり、
+  イメージは残りません (前の回のイメージも消えます)。終了コードは 1 (オプションの誤りは 2)。
+- 変換のオプション (`--wait`・`--string-len`・`--no-line-numbers` など) は、`--emit` と一緒に、どの順でも書けます。
+- `--emit disk` は `x1native_slfs`、`--emit tape` は `x1native` の環境で組み立てます。
+- ディスクイメージでは、BASIC のファイル名 (拡張子なし。13 文字まで、ASCII だけ) が IPL の起動名になります
+  (変換した SLANG の頭の `// disk-main-name:` の行。`--disk-main-name <name>` で変えられます。[SLFS.md](SLFS.md))。
+- テープの名前は `PROG` です (`--tape-name <name>` で変えられます)。`--wav` で `.wav` も作れます ([X1.md](X1.md) を参照)。
+- slangbuild は、hubasic2sl と同じ所、その下の `bin/`、開発で publish したもの、PATH、`dotnet run` (開発のとき) の順に探します。
+  `--slangbuild <path>` で決めることもできます。
+- 使える条件は slangbuild を手で使うときと同じです: 配布の zip を解いたフォルダで setup-tools (AILZ80ASM などを取ってくる) をしてから install する
+  (順が逆なら install し直す)。または、解いたフォルダの中で動かす。install の `--config-dir` を変えたときは `SLANG_HOME` をそこに向けます。
+  条件が足りないと、slangbuild の `env not found` などの後に「組み立て (slangbuild) で止まりました」になります。
+- 途中を分けて動かすときは、今までどおり次の 3 行です (`--emit` は中でこれをしています)。
+
+  ```sh
+  hubasic2sl PROG.BAS -o PROG.SL --wait line:480    # 変換
+  slangbuild --emit disk -E x1native_slfs PROG.SL -o PROG   # PROG.d88 を作る (テープは --emit tape -E x1native)
+  hubasic2sl --check-bin PROG.bin --lst PROG.LST     # メモリ ($1000〜$FFDF) に収まるかを確かめる
+  ```
 - サンプル: [examples/hubasic/](../examples/hubasic/)
 
 ### 入力のファイル
@@ -32,8 +50,8 @@ hubasic2sl --check-bin PROG.bin --lst PROG.LST     # メモリ ($1000〜$FFDF) �
 
 | オプション | 意味 |
 |---|---|
-| `-o <path>` | 出力する SLANG のファイル (既定: 入力の拡張子を `.SL` にしたもの) |
-| `--env <name>` | `x1native` (既定) / `x1native_slfs` |
+| `-o <path>` | 出力する SLANG のファイル (既定: 入力の拡張子を `.SL` にしたもの。`--emit` のときは拡張子を除いた名前が、できるファイルの名前の元) |
+| `--env <name>` | `x1native` (既定) / `x1native_slfs` (`--emit` のときは `--emit` で決まり、合わない値は誤り) |
 | `--wait <mode>` | `none` (既定。待たない)、`line:N` (各行の頭で約 0.1ms × N 待つ。N=450〜500 で Hu-BASIC に近い速さの目安。ループが 1 行の中で回る場合は効かない)、`frame` (`'#VSYNC n` と書いた所で n フレーム待つ。n がなければ 1。`frame:N` とも書けるが N は使わない) |
 | `--input-encoding <enc>` | `auto` (既定) / `utf8` / `sjis` / `x1` |
 | `--emit-line-comments` | 元の BASIC の行をコメントで出す |
@@ -42,6 +60,11 @@ hubasic2sl --check-bin PROG.bin --lst PROG.LST     # メモリ ($1000〜$FFDF) �
 | `--no-line-numbers` | 各行の頭 (と GOSUB の戻り先・`LABEL` の所) で実行中の行番号を書かない。1 か所 6 バイト・約 6.5 マイクロ秒の分、小さく速くなる。実行時エラーは「<メッセージ>」と「Ok」だけになり、` in <行番号>` が出ない |
 | `--data-budget <bytes>` | 静的データの上限 (既定 24576) |
 | `--check-bin <bin>` / `--lst <lst>` | 組み立てた後の大きさを検査する |
+| `--emit disk` / `--emit tape` | 変換・組み立て・大きさの検査を続けてして、ディスクイメージ (`.d88`) かテープ (`.tap`) を作る (上の「使い方」) |
+| `--disk-main-name <name>` | IPL の起動名 (`--emit disk` のとき。既定は BASIC のファイル名) |
+| `--tape-name <name>` | テープの名前 (`--emit tape` のとき。既定は `PROG`) |
+| `--wav` | `.wav` も作る (`--emit tape` のとき) |
+| `--slangbuild <path>` | 呼ぶ slangbuild (`--emit` のとき。既定は上の順に探す) |
 
 ### 変換に失敗したとき
 
