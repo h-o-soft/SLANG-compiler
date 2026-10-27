@@ -260,7 +260,7 @@ public class ToolResolver
     }
 
     /// <summary>
-    /// HuDisk (S-OS hu-basic 系 .dsk/.d88 操作ツール) を解決。`--emit disk` の
+    /// HuDisk (S-OS HuBASIC 系 .dsk/.d88 操作ツール) を解決。`--emit disk` の
     /// tool: hudisk 経路で必要 (sos / sosx1 等)。
     ///
     /// 配布物の HuDisk は ho-ogino/HuDisk fork (= ASCII 書き込み可能版) の

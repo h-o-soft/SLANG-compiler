@@ -9,7 +9,7 @@
     <Copyright>Copyright (c) 2022-2026 OGINO Hiroshi / H.O SOFT</Copyright>
     <Company>H.O SOFT</Company>
     <Version>0.1.0-alpha</Version>
-    <AssemblyTitle>Hu-BASIC to SLANG transpiler</AssemblyTitle>
+    <AssemblyTitle>HuBASIC to SLANG transpiler</AssemblyTitle>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />

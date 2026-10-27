@@ -152,7 +152,7 @@ images/templates/SOSPROG.D88
 include/.source.txt
 src/src.sln
 
-# Hu-BASIC の変換のサンプル: 変換した SLANG は置かない (examples/hubasic/README.md)
+# HuBASIC の変換のサンプル: 変換した SLANG は置かない (examples/hubasic/README.md)
 examples/hubasic/*.SL
 examples/hubasic/*.sl
 

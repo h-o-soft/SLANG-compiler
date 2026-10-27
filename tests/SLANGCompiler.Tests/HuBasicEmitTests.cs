@@ -327,7 +327,7 @@ public class HuBasicEmitTests
         Assert.DoesNotContain("BAS_TALLOC", fs["BAS_KEYIN"].Dependencies);
     }
 
-    /// <summary>MID$ の文の書き込みは前から写す (自分自身を重ねて代入したとき、Hu-BASIC と同じく書いた文字をまた読む)</summary>
+    /// <summary>MID$ の文の書き込みは前から写す (自分自身を重ねて代入したとき、HuBASIC と同じく書いた文字をまた読む)</summary>
     [Fact]
     public void Runtime_MidSetCopiesForwardLikeHuBasic()
     {
@@ -338,7 +338,7 @@ public class HuBasicEmitTests
         Assert.DoesNotContain("LDDR", code);
     }
 
-    /// <summary>MML の O・V の後に数字がなければ、エラーにせずオクターブ・音量をそのままにする (Hu-BASIC の実測: "v5cvc" は 2 つとも音量 5)</summary>
+    /// <summary>MML の O・V の後に数字がなければ、エラーにせずオクターブ・音量をそのままにする (HuBASIC の実測: "v5cvc" は 2 つとも音量 5)</summary>
     [Fact]
     public void Runtime_MmlOctaveAndVolumeWithoutDigitKeepValue()
     {
@@ -402,7 +402,7 @@ public class HuBasicEmitTests
     public void Float_IntegerOnlyProgramHasNoFloatCode()
     {
         // 整数だけのプログラムには、浮動小数の宣言・定数の表・関数が一切出ない (VAL と数の READ を使わないもの。
-        // VAL と数の READ は Hu-BASIC と同じく浮動小数で読む: 設計 1 章の意図した変更 2・5)
+        // VAL と数の READ は HuBASIC と同じく浮動小数で読む: 設計 1 章の意図した変更 2・5)
         foreach (var prog in new[] { Stage1Program, FullProgram.Replace("VAL(", "ASC(").Replace("READ D$,M:", "READ D$:") })
         {
             var sl = Transpile(prog).Output!;
@@ -619,7 +619,7 @@ public class HuBasicEmitTests
         Assert.Contains("V_A=(0-25536);", sl);                        // 定数の丸めは変換のときに (40000 → -25536)
         Assert.Contains("V_B=(0-3);", sl);
         Assert.Contains("BAS_PFLT(FRAND());", sl);
-        Assert.Contains("BAS_PFLT(BAS_FFLOOR(H_F1));", sl);           // INT は浮動小数を返す (Hu-BASIC と同じ)
+        Assert.Contains("BAS_PFLT(BAS_FFLOOR(H_F1));", sl);           // INT は浮動小数を返す (HuBASIC と同じ)
         Assert.Contains("V_G=V_X;", Body(Transpile("10 DEFINT A-Z:G=INT(X)").Output!)); // 整数に入れる INT(整数) は何もしない
     }
 
@@ -925,7 +925,7 @@ public class HuBasicEmitTests
     }
 
     /// <summary>
-    /// VSYNC 文 (Hu-BASIC にない命令) は --wait によらず BAS_VSYNCS。引数なしは 1、数は今の規則で整数にする。
+    /// VSYNC 文 (HuBASIC にない命令) は --wait によらず BAS_VSYNCS。引数なしは 1、数は今の規則で整数にする。
     /// '#VSYNC のコメントは今までどおり frame のときだけ BAS_VSYNC、BAS_WLINE は line のときだけ
     /// </summary>
     [Theory]
@@ -1212,7 +1212,7 @@ public class HuBasicEmitTests
     [Fact]
     public void Slang_NamesAreSeparatedAndArraysChecked()
     {
-        // DEFINT の下の A と A% は同じ変数 V_A (Hu-BASIC と同じ。以前は V_A と V_A_I に分けていた)
+        // DEFINT の下の A と A% は同じ変数 V_A (HuBASIC と同じ。以前は V_A と V_A_I に分けていた)
         var sl = Transpile("10 DEFINT A-Z:A=1:A(2)=A:A%=3:A$=\"Q\"").Output!;
         Assert.Contains("VAR V_A, H_T", sl);
         Assert.Contains("V_A=3;", sl);
@@ -1231,7 +1231,7 @@ public class HuBasicEmitTests
         Assert.Contains("ARRAY FLOAT FA_C[3];", sl);
         Assert.Contains("F_A=H_FK[0];", sl);
         Assert.Contains("F_B=(F_A*H_FK[1]);", sl);
-        // 浮動小数の割り算は変数の番地をそのまま渡す。代入先の添字は値より先に調べる (Hu-BASIC と同じ)
+        // 浮動小数の割り算は変数の番地をそのまま渡す。代入先の添字は値より先に調べる (HuBASIC と同じ)
         Assert.Contains("H_I1=BAS_AIDX(1, &H_DIM_F_C, &H_UB_F_C);\n  FA_C[H_I1]=BAS_FDIV(&F_A, &F_B);", sl);
         Assert.Contains("V_I=BAS_FTOIR(F_A);", sl);
         // 整数の値を浮動小数にする前置きの代入が出るときも、添字の検査を先に出す

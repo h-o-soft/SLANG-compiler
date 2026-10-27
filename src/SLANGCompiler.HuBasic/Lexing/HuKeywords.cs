@@ -1,8 +1,8 @@
 namespace SLANGCompiler.HuBasic.Lexing;
 
 /// <summary>
-/// Hu-BASIC の予約語表。MVP で対応しない語も含める (変数名の誤認を防ぐため。
-/// 未対応の語は構文解析でエラーにする)。VSYNC は Hu-BASIC にない hubasic2sl の命令。
+/// HuBASIC の予約語表。MVP で対応しない語も含める (変数名の誤認を防ぐため。
+/// 未対応の語は構文解析でエラーにする)。VSYNC は HuBASIC にない hubasic2sl の命令。
 /// </summary>
 public static class HuKeywords
 {

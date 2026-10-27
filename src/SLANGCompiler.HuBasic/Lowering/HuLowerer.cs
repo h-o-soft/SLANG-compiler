@@ -257,7 +257,7 @@ public sealed class HuLowerer
                 Call("BAS_RESTORE", I(rs.Line ?? 0));
                 break;
             case HuInput inp:
-                // 1 行を読んでから、項目を順に代入する (項目が足りなければ空・0、多すぎれば捨てる。Hu-BASIC の実測)
+                // 1 行を読んでから、項目を順に代入する (項目が足りなければ空・0、多すぎれば捨てる。HuBASIC の実測)
                 Call("BAS_INPUT", inp.Prompt != null ? E(new HuStr(inp.Prompt, inp.Pos) { Type = HuType.Str }) : I(0),
                     I(inp.Question ? 1 : 0));
                 foreach (var t in inp.Targets)

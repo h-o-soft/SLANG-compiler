@@ -16,7 +16,7 @@ public sealed class HuAnalyzer
     public const int MaxArrayBytes = 16 * 1024;
     public const int MaxArrayIndex = MaxArrayBytes / 2 - 1; // 8191
     public const int MaxFloatArrayIndex = MaxArrayBytes / 3 - 1; // 5460 (1 要素 3 バイト)
-    public const int MaxStringLen = 255; // 文字列 1 本の長さの上限 (Hu-BASIC と同じ。--string-len の既定)
+    public const int MaxStringLen = 255; // 文字列 1 本の長さの上限 (HuBASIC と同じ。--string-len の既定)
     public const int MaxDataBytes = 32767;
     public const int MaxNameLength = 28; // SLANG の名前の上限 32 から接頭辞の分を引く
 
@@ -318,7 +318,7 @@ public sealed class HuAnalyzer
     };
 
     /// <summary>
-    /// DEFxxx は位置に関係なくプログラム全体に効くものとして先に集める (Hu-BASIC は実行した時点から効く)。
+    /// DEFxxx は位置に関係なくプログラム全体に効くものとして先に集める (HuBASIC は実行した時点から効く)。
     /// 同じ頭文字に違う DEFxxx があれば、どちらに決めてよいか分からないのでエラー。IF の中の DEFxxx も同じく数える。
     /// </summary>
     private void CollectDefTypes(List<HuLine> lines)
@@ -350,7 +350,7 @@ public sealed class HuAnalyzer
         if (bare.Length > MaxNameLength)
             _diag.Error("HB0310", $"変数名 {name} が長すぎます ({MaxNameLength} 文字まで)", pos);
         var key = Key(name);
-        // 接尾辞のない変数を、その頭文字の DEFxxx より前の行で使っている (Hu-BASIC ではそこは既定の型)
+        // 接尾辞のない変数を、その頭文字の DEFxxx より前の行で使っている (HuBASIC ではそこは既定の型)
         if (key.Length != name.Length && _defLines.TryGetValue(name[0], out var defLine) && _curLine < defLine)
             _earlyUses.TryAdd(name[0], (name, pos));
         if (HuProgram.KindOfKey(key) == HuVarKind.Double && _warnedDouble.Add(key))
@@ -368,7 +368,7 @@ public sealed class HuAnalyzer
             var kw = DefKeyword(group.Key.Kind);
             _diag.Warning("HB0411",
                 $"{group.Key.Line} 行の {kw} より前の行で、変数 {list} を使っています " +
-                $"(Hu-BASIC ではその行を実行するまで既定の型です。hubasic2sl はプログラム全体で {kw} の型にします)",
+                $"(HuBASIC ではその行を実行するまで既定の型です。hubasic2sl はプログラム全体で {kw} の型にします)",
                 group.Select(u => u.Value.Pos).OrderBy(p => p.SourceLine).ThenBy(p => p.Column).First());
         }
     }
@@ -509,7 +509,7 @@ public sealed class HuAnalyzer
                 return HuType.Int;
             case "/":
             {
-                // Hu-BASIC の / は浮動小数の割り算。ただし左右とも整数で、結果がその場で整数に丸められる
+                // HuBASIC の / は浮動小数の割り算。ただし左右とも整数で、結果がその場で整数に丸められる
                 // 位置なら、整数の割り算を四捨五入する BAS_IDIVR で同じ値になる (型を Int にして目印にする)
                 var lt = ExpectNum(b.Left, intConv: false);
                 var rt = ExpectNum(b.Right, intConv: false);
@@ -548,7 +548,7 @@ public sealed class HuAnalyzer
                 ExpectStr(a[0]);
                 return HuType.Int;
             case "VAL":
-                // Hu-BASIC の VAL は浮動小数を返す (VAL("1.6") は 1.6。整数に入れるときに四捨五入)
+                // HuBASIC の VAL は浮動小数を返す (VAL("1.6") は 1.6。整数に入れるときに四捨五入)
                 ExpectStr(a[0]);
                 return HuType.Float;
             case "STR$":
@@ -915,7 +915,7 @@ public sealed class HuAnalyzer
                 for (int k = 0; k < parts; k++)
                 {
                     bool named = nx.Vars.Count > 0;
-                    // 同じ変数を名指しする NEXT は深さに関係なく一致 (Hu-BASIC はその NEXT で
+                    // 同じ変数を名指しする NEXT は深さに関係なく一致 (HuBASIC はその NEXT で
                     // 内側の FOR 枠を捨てる)。それ以外は内側のループを閉じたものとして深さを減らし、
                     // 深さ 0 の変数なしの NEXT は一致
                     if ((named && Key(nx.Vars[k]) == Key(fr.Var)) || (!named && depth == 0))

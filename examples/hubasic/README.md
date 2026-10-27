@@ -1,6 +1,6 @@
-# Hu-BASIC のサンプル
+# HuBASIC のサンプル
 
-Hu-BASIC のテキストを SLANG に変換して動かすサンプルです。使い方は [docs/HUBASIC.md](../../docs/HUBASIC.md) を見てください。
+HuBASIC のテキストを SLANG に変換して動かすサンプルです。使い方は [docs/HUBASIC.md](../../docs/HUBASIC.md) を見てください。
 
 | ファイル | 内容 |
 |---|---|

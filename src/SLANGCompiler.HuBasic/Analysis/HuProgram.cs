@@ -18,7 +18,7 @@ public sealed class HuProgram
     /// </summary>
     public required IReadOnlyDictionary<char, HuVarKind> LetterKinds { get; init; }
 
-    /// <summary>接尾辞もなく DEFxxx もない頭文字の型の種類 (Hu-BASIC の既定は単精度。--assume-defint なら整数)</summary>
+    /// <summary>接尾辞もなく DEFxxx もない頭文字の型の種類 (HuBASIC の既定は単精度。--assume-defint なら整数)</summary>
     public HuVarKind DefaultKind { get; init; } = HuVarKind.Single;
 
     /// <summary>整数の単純変数 (変数の鍵: "A%")</summary>
