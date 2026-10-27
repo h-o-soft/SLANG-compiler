@@ -94,7 +94,7 @@ scripts/build-hubasic-wasm.sh out/hubasic-wasm
 - `testdata/`: 試験用のプログラム 4 本 (HELLO・GRAPH・MUSIC・FLOAT) の `.BAS`・`.SL`・`.bin`・`.LST`・`.d88`。
   同じ木の hubasic2sl・slangbuild (`--emit disk -E x1native_slfs`)・slangc で作ったもので、ブラウザの側の道具と比べるのに使う
   (D88 は日付が 0 で、同じ入力からは同じバイトになる)
-- `manifest.json`: 組み立てた SHA (`slangCompilerRevision`)、`dirty`、版、`loadAddress` ($1000)・`reservedStart` ($FFE0)、
+- `manifest.json`: 組み立てた SHA (`slangCompilerRevision`)、`dirty`、版、組の印の番号 (`basAbi`、下を参照)、`loadAddress` ($1000)・`reservedStart` ($FFE0)、
   env ごとの `envType`・`osType`・`defaultOrg`・`defines`・`libraries` (順番どおり)・`defaultDiskMainName`・`diskMainLoad`・`diskMainExec`・`diskVolume`、
   testdata を作ったアセンブラ (`assembler`: 版と sha256)、`testdata` (ケースごとのファイルと起動名)、
   束の全部のファイルの `files` (path・sha256・size)
@@ -120,13 +120,25 @@ const r = JSON.parse(api.Transpile(bytes, 'PROG.BAS', JSON.stringify({ wait: 'li
 
 const c = JSON.parse(api.CheckLayout(binLength, workEnd));   // workEnd はアセンブラの記号 __WORKEND__ の値
 // c = { ok, message, loadAddress, reservedStart }。message は --check-bin と同じ 1 行。__WORKEND__ が無いときは呼ぶ側で失敗にする
-const v = JSON.parse(api.Version());                          // { version, informational: "0.1.0-alpha+<SHA>" }
+const v = JSON.parse(api.Version());                          // { version, informational: "0.1.0-alpha+<SHA>", basAbi }
 ```
 
 - `Transpile` の第 3 引数は、CLI のオプションに当たる項目の JSON です (省いた項目は CLI の既定。空文字列は `{}` と同じ):
   `inputEncoding` (`"auto"`・`"utf8"`・`"sjis"`・`"x1"`)、`wait` (`"none"`・`"line:N"`・`"frame"` など。`--wait` と同じ読み方)、
   `stringLen` (1〜255)、`dataBudget`、`noLineNumbers`・`assumeDefint`・`emitLineComments` (true / false)。
 - 結果の SL・診断の文・大きさの検査の文は、同じ版の CLI と同じです。
+
+### 出力とランタイムの組の印 (BAS_ABI_n)
+
+変換した SLANG は、MAIN の最初に `BAS_ABI_<n>();` を呼びます (何もしない関数。足す命令は 4 バイト)。
+ランタイム (`runtime/libx1_basic.asm`) には、同じ番号の `BAS_ABI_<n>` が 1 つだけあります。
+番号の違う組 (古い変換の出力と新しいランタイム、またはその逆) を混ぜると、アセンブルで未定義のラベルになって止まります
+(slangc は知らない関数をそのまま CALL にするので、止まるのはアセンブルです)。
+
+- 見つけられるのは番号の違いだけです。印を入れる前の出力や、番号が同じで commit の違う組は止まりません (組は同じ SHA で使ってください)。
+- 出力とランタイムの約束 (関数の引数・戻り値の意味、作業領域・バッファの作り、呼ぶ順番の前提) を変えたら、
+  ランタイムの `@name BAS_ABI_<n>` と `SlangBackend.BasAbi` を一緒に 1 つ上げます (迷ったら上げる)。
+- 番号は、ブラウザ向けの束の `manifest.json` の `basAbi` と、wasm の `Version()` の `basAbi` にも出ます。
 
 ## 変数と値
 

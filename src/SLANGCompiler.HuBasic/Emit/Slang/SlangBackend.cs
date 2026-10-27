@@ -16,6 +16,12 @@ namespace SLANGCompiler.HuBasic.Emit.Slang;
 /// </summary>
 public sealed class SlangBackend : IHuBackend
 {
+    /// <summary>
+    /// 出力とランタイム (libx1_basic.asm の BAS_ABI_n) の組の印の番号。出力は MAIN の最初に BAS_ABI_n() を呼ぶ。
+    /// 出力とランタイムの約束を変えたら、ランタイムの印と一緒に 1 つ上げる
+    /// </summary>
+    public const int BasAbi = 1;
+
     private readonly StringBuilder _sb = new();   // MAIN の本体
     private HuProgram _prog = null!;
     private readonly List<string> _pre = new();   // いまの文の行の前に出す代入 (浮動小数の一時変数)
@@ -50,6 +56,7 @@ public sealed class SlangBackend : IHuBackend
         head.AppendLine();
         head.AppendLine("MAIN()");
         head.AppendLine("BEGIN");
+        head.AppendLine($"  BAS_ABI_{BasAbi}();");
         head.Append(_sb);
         head.AppendLine("END;");
         return head.ToString();

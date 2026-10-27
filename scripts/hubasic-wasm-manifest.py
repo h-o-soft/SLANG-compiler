@@ -2,7 +2,7 @@
 """hubasic2sl のブラウザ向けの一式 (束) の manifest.json を作り、束を検査する (scripts/build-hubasic-wasm.sh から呼ぶ)。
 
 使い方 (python3 -I で動かす):
-  hubasic-wasm-manifest.py envs   <repo>                      env の値を JSON で stdout に出す (テストが使う)
+  hubasic-wasm-manifest.py envs   <repo>                      env の値と組の印の番号を JSON で stdout に出す (テストが使う)
   hubasic-wasm-manifest.py copy   <repo> <out>                runtime/ (2 つの env の libraries の和集合の .asm) と env/ を写す
   hubasic-wasm-manifest.py write  <repo> <out> <sha> <dirty> <version> <asm> <asm-version> <case,...>
                                                               束の全部のファイルを数えて <out>/manifest.json を書く
@@ -120,6 +120,15 @@ def read_envs(repo):
     return envs
 
 
+def read_bas_abi(repo):
+    """runtime/libx1_basic.asm の組の印 (; @name BAS_ABI_n) の番号。ちょうど 1 つでなければ止める"""
+    with open(os.path.join(repo, "runtime", "libx1_basic.asm"), encoding="utf-8") as f:
+        found = re.findall(r"^;\s*@name\s+BAS_ABI_(\d+)\s*$", f.read(), re.M)
+    if len(found) != 1:
+        fail(f"runtime/libx1_basic.asm の組の印 BAS_ABI_n がちょうど 1 つではありません ({len(found)} 個)")
+    return int(found[0])
+
+
 def sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -177,6 +186,7 @@ def cmd_write(repo, out, sha, dirty, version, asm, asm_version, cases):
         "slangCompilerRevision": sha,
         "dirty": dirty == "true",
         "hubasic2slVersion": version,
+        "basAbi": read_bas_abi(repo),
         "loadAddress": 0x1000,
         "reservedStart": 0xFFE0,
         "envs": envs,
@@ -224,7 +234,7 @@ def cmd_verify(out):
 def main():
     args = sys.argv[1:]
     if args[:1] == ["envs"] and len(args) == 2:
-        json.dump({"envs": read_envs(args[1])}, sys.stdout, indent=2, ensure_ascii=False)
+        json.dump({"envs": read_envs(args[1]), "basAbi": read_bas_abi(args[1])}, sys.stdout, indent=2, ensure_ascii=False)
         print()
     elif args[:1] == ["copy"] and len(args) == 3:
         cmd_copy(args[1], args[2])

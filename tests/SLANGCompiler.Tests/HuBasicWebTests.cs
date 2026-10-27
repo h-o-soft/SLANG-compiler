@@ -281,6 +281,7 @@ public class HuBasicWebTests
         var web = Parse(HuWebApi.Version());
         var info = web.GetProperty("informational").GetString()!;
         Assert.Equal("0.1.0-alpha", web.GetProperty("version").GetString());
+        Assert.Equal(SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.BasAbi, web.GetProperty("basAbi").GetInt32());
         Assert.StartsWith("0.1.0-alpha", info);
     }
 
@@ -352,6 +353,7 @@ public class HuBasicWebTests
             Assert.True(proc.WaitForExit(60_000));
             Assert.True(proc.ExitCode == 0, se.Result);
             var m = Parse(so.Result);
+            Assert.Equal(SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.BasAbi, m.GetProperty("basAbi").GetInt32());
             foreach (var name in new[] { "x1native", "x1native_slfs" })
             {
                 var cfg = EnvironmentLoader.Load(Path.Combine(root, "runtime", "env", name + ".env"));

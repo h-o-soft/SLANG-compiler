@@ -67,7 +67,10 @@ public static class HuWebApi
         });
     }
 
-    /// <summary>{"version","informational"}。informational は組み立てた git の SHA を含む (例: 0.1.0-alpha+&lt;SHA&gt;)</summary>
+    /// <summary>
+    /// {"version","informational","basAbi"}。informational は組み立てた git の SHA を含む (例: 0.1.0-alpha+&lt;SHA&gt;)。
+    /// basAbi は出力とランタイムの組の印の番号 (ランタイムの BAS_ABI_n と同じ)
+    /// </summary>
     public static string Version()
     {
         var asm = Assembly.GetExecutingAssembly();
@@ -77,6 +80,7 @@ public static class HuWebApi
         {
             w.WriteString("version", plus >= 0 ? info[..plus] : info);
             w.WriteString("informational", info);
+            w.WriteNumber("basAbi", SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.BasAbi);
         });
     }
 

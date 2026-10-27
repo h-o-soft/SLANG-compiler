@@ -4,7 +4,7 @@
 //   node hubasic-wasm-smoke.mjs <一式のフォルダ> <リポジトリ> <hubasic2sl.dll>
 //
 // 確かめること: examples/hubasic/*.BAS の SL と診断 (オプションあり・なし)、Shift_JIS の入力、error と warning の診断、
-// 束の testdata の .SL、CheckLayout の境目、Version の版と SHA が manifest と合うこと。
+// 束の testdata の .SL、CheckLayout の境目、Version の版・組の印・SHA が manifest と合うこと。
 // 改行は LF にそろえて比べる (Windows の CLI は CRLF で書く)。node は 22.7 以上 (.js の ES モジュールの dotnet.js を読むため)。
 import fs from 'node:fs';
 import os from 'node:os';
@@ -87,6 +87,7 @@ try {
 
   const v = JSON.parse(api.Version());
   check(v.version === manifest.hubasic2slVersion, `Version の版 ${v.version} が manifest と合う`);
+  check(v.basAbi === manifest.basAbi, `Version の組の印 ${v.basAbi} が manifest と合う`);
   check(v.informational.endsWith('+' + manifest.slangCompilerRevision), `Version の SHA が manifest (${manifest.slangCompilerRevision}) と合う`);
 } finally {
   fs.rmSync(tmp, { recursive: true, force: true });

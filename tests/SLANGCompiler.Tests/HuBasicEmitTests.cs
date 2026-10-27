@@ -1416,7 +1416,7 @@ public class HuBasicEmitTests
         var sl = Transpile(Stage1Program).Output! + Transpile(FullProgram).Output! + Transpile(FloatProgram).Output!
                  + Transpile(StringScreenProgram).Output! + Transpile(InputSoundProgram).Output!
                  + Transpile(FloatVarProgram).Output! + Transpile(G5Program).Output!;
-        var called = Regex.Matches(sl, @"\b(BAS_[A-Z0-9]+)\(").Select(m => m.Groups[1].Value).Distinct().ToList();
+        var called = Regex.Matches(sl, @"\b(BAS_[A-Z0-9_]+)\(").Select(m => m.Groups[1].Value).Distinct().ToList();
         Assert.NotEmpty(called);
         foreach (var name in called)
         {
@@ -1511,6 +1511,46 @@ public class HuBasicEmitTests
     {
         var config = EnvironmentLoader.Load(Path.Combine(RepoRoot(), "runtime", "env", env + ".env"));
         Assert.Contains(config.Libraries, l => Path.GetFileName(l).StartsWith("libx1_basic"));
+    }
+
+    /// <summary>組の印: ランタイムの BAS_ABI_n はちょうど 1 つで、番号は SlangBackend.BasAbi と同じ。出力は MAIN の最初にそれを呼ぶ</summary>
+    [Fact]
+    public void Runtime_BasAbiMarkerMatchesBackend()
+    {
+        var path = Path.Combine(RepoRoot(), "runtime", "libx1_basic.asm");
+        var markers = RuntimeParser.Parse(File.ReadAllText(path), path).Where(f => Regex.IsMatch(f.Name, @"^BAS_ABI_\d+$")).ToList();
+        var marker = Assert.Single(markers);
+        Assert.Equal($"BAS_ABI_{SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.BasAbi}", marker.Name);
+        Assert.Equal(RuntimeResidency.Shared, marker.Residency);
+        var sl = Transpile(Stage1Program).Output!.Replace("\r\n", "\n");
+        Assert.Contains($"MAIN()\nBEGIN\n  BAS_ABI_{SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.BasAbi}();\n  BAS_INIT();\n", sl);
+    }
+
+    /// <summary>組の印の番号が違うと、アセンブルで未定義のラベルになって止まる (slangc は知らない関数をそのまま CALL にする)</summary>
+    [SkippableFact]
+    public void Build_BasAbiMismatchStopsAtAssembly()
+    {
+        var root = RepoRoot();
+        var asmPath = Path.Combine(root, "tools", OperatingSystem.IsWindows() ? "AILZ80ASM.exe" : "AILZ80ASM");
+        Skip.IfNot(File.Exists(asmPath), "AILZ80ASM がない (make setup-tools で取得)");
+        var dir = Path.Combine(Path.GetTempPath(), $"hubasic2sl_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var mark = $"BAS_ABI_{SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.BasAbi}();";
+            var text = Transpile(Stage1Program).Output!;
+            Assert.Contains(mark, text);
+            var sl = Path.Combine(dir, "ABI.SL");
+            File.WriteAllText(sl, text.Replace(mark, "BAS_ABI_999();"));
+            var (code, output) = RunSlangbuildRaw(root, dir, sl, asmPath, Path.Combine(dir, "ABI"));
+            Assert.NotEqual(0, code);
+            Assert.Contains("BAS_ABI_999", output);
+            Assert.Contains("E0004", output);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
     }
 
     /// <summary>hubasic2sl の出力を slangbuild で AILZ80ASM まで通し、BAS_ 関数がリンクされた bin ができる</summary>
@@ -1640,6 +1680,13 @@ public class HuBasicEmitTests
 
     private static void RunSlangbuild(string root, string dir, string sl, string asmPath, string outBase, string env = "x1native")
     {
+        var (code, output) = RunSlangbuildRaw(root, dir, sl, asmPath, outBase, env);
+        Assert.True(code == 0, $"slangbuild failed:\n{output}");
+    }
+
+    /// <summary>slangbuild を動かして、終了コードと stdout・stderr をつないだものを返す</summary>
+    private static (int Code, string Output) RunSlangbuildRaw(string root, string dir, string sl, string asmPath, string outBase, string env = "x1native")
+    {
         var psi = new ProcessStartInfo("dotnet")
         {
             WorkingDirectory = dir,
@@ -1656,7 +1703,7 @@ public class HuBasicEmitTests
         var so = proc.StandardOutput.ReadToEndAsync();
         var se = proc.StandardError.ReadToEndAsync();
         Assert.True(proc.WaitForExit(180_000), "slangbuild timed out");
-        Assert.True(proc.ExitCode == 0, $"slangbuild failed:\n{so.Result}\n{se.Result}");
+        return (proc.ExitCode, so.Result + "\n" + se.Result);
     }
 
     /// <summary>bin ができていて、作業領域 (__WORKEND__) まで含めて $1000〜予約領域 $FFE0 の手前に収まる</summary>
