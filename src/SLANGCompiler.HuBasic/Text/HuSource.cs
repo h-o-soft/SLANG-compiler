@@ -82,8 +82,11 @@ public sealed class HuSource
     /// UTF-8 として読めないファイルを utf8 で読むと、例外ではなく error HB0111 にする (auto の warning は HB0110)
     /// </summary>
     public static HuSource FromFile(string path, string encoding, HuDiagnosticBag diag)
+        => FromBytes(File.ReadAllBytes(path), encoding, diag);
+
+    /// <summary>ファイルの中身のバイト列を読む。encoding と診断は <see cref="FromFile"/> と同じ</summary>
+    public static HuSource FromBytes(byte[] bytes, string encoding, HuDiagnosticBag diag)
     {
-        var bytes = File.ReadAllBytes(path);
         string text;
         if (encoding == "x1") return FromX1Bytes(bytes);
         if (encoding == "sjis")

@@ -76,6 +76,48 @@ prog.bas:2:4: error HB0301 (BASIC 20): 未対応の命令 CIRCLE
 - 構文のエラーがあると、そこで止まって型の検査まで進みません。直すと、次のエラーが出ることがあります。
 - warning は変換を止めません (結果が Hu-BASIC と違うかもしれない、というお知らせ)。
 
+### ブラウザで使う (wasm、X1Pen などに組み込むための材料)
+
+変換だけを .NET の browser-wasm で動かす入口があります (`src/SLANGCompiler.HuBasic.Wasm/`。SLANGCompiler.sln には入っていません)。
+組み立てと試験は次の 1 行です (要るもの: dotnet SDK、python3。node があれば最後に CLI と同じ出力かを確かめます。`NODE` で指せます)。
+
+```sh
+scripts/build-hubasic-wasm.sh out/hubasic-wasm
+```
+
+できるフォルダ:
+
+- `_framework/`: wasm の一式 (`dotnet.js` から読む)
+- `runtime/`: `x1native`・`x1native_slfs` の env の libraries の `.asm` (LSX 用は入りません。混ぜないでください)
+- `env/`: 2 つの env ファイルの写し
+- `manifest.json`: 組み立てた SHA (`slangCompilerRevision`)、`dirty`、版、`loadAddress` ($1000)・`reservedStart` ($FFE0)、
+  env ごとの `envType`・`osType`・`defaultOrg`・`defines`・`libraries` (順番どおり)
+
+wasm とランタイムは、同じ SHA の一式をまとめて使います (`dirty: true` の一式は使わない)。SLANG のコンパイラとアセンブラに渡す値は、今の slangc・slangbuild と同じにします:
+コンパイラには `ENV_TYPE`・`OS_TYPE` (前もって決めた定数)、`defines`、`defaultOrg`。アセンブラには `OS_TYPE`・`ENV_TYPE` と `defines`。
+
+JS からの呼び方:
+
+```js
+const { dotnet } = await import('./hubasic-wasm/_framework/dotnet.js');
+const runtime = await dotnet.create();
+const api = (await runtime.getAssemblyExports('hubasic2sl-wasm')).SLANGCompiler.HuBasic.Wasm.HuBasicWeb;
+
+const bytes = new Uint8Array(await (await fetch('PROG.BAS')).arrayBuffer());
+const r = JSON.parse(api.Transpile(bytes, 'PROG.BAS', JSON.stringify({ wait: 'line:480' })));
+// r = { ok, sl, diskMainName, diagnostics: [{ severity, code, message, sourceLine, column, basicLine, text }] }
+// オプションの誤りは { ok: false, error }
+
+const c = JSON.parse(api.CheckLayout(binLength, workEnd));   // workEnd はアセンブラの記号 __WORKEND__ の値
+// c = { ok, message, loadAddress, reservedStart }。message は --check-bin と同じ 1 行。__WORKEND__ が無いときは呼ぶ側で失敗にする
+const v = JSON.parse(api.Version());                          // { version, informational: "0.1.0-alpha+<SHA>" }
+```
+
+- `Transpile` の第 3 引数は、CLI のオプションに当たる項目の JSON です (省いた項目は CLI の既定。空文字列は `{}` と同じ):
+  `inputEncoding` (`"auto"`・`"utf8"`・`"sjis"`・`"x1"`)、`wait` (`"none"`・`"line:N"`・`"frame"` など。`--wait` と同じ読み方)、
+  `stringLen` (1〜255)、`dataBudget`、`noLineNumbers`・`assumeDefint`・`emitLineComments` (true / false)。
+- 結果の SL・診断の文・大きさの検査の文は、同じ版の CLI と同じです。
+
 ## 変数と値
 
 - 変数は Hu-BASIC と同じ決まりで、整数 (`A%` か `DEFINT`)・浮動小数 (`A` か `A!` か `DEFSNG`。倍精度の `A#` と `DEFDBL` も同じ浮動小数で扱う)・

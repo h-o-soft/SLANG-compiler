@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <!--
+    hubasic2sl の変換をブラウザ (browser-wasm) で動かす入口。SLANGCompiler.sln には入れない
+    (組み立てるのは scripts/build-hubasic-wasm.sh だけ)。
+    HuBasic は自己完結でない Exe なので ProjectReference にせず (NETSDK1151)、CLI の外側を除いたソースを共有する。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <RootNamespace>SLANGCompiler.HuBasic.Wasm</RootNamespace>
+    <AssemblyName>hubasic2sl-wasm</AssemblyName>
+    <Copyright>Copyright (c) 2022-2026 OGINO Hiroshi / H.O SOFT</Copyright>
+    <Company>H.O SOFT</Company>
+    <!-- HuBasic の csproj と同じ版にする (テストで比べる) -->
+    <Version>0.1.0-alpha</Version>
+    <AssemblyTitle>Hu-BASIC to SLANG transpiler (browser)</AssemblyTitle>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../SLANGCompiler.HuBasic/**/*.cs"
+             Exclude="../SLANGCompiler.HuBasic/obj/**;../SLANGCompiler.HuBasic/bin/**;../SLANGCompiler.HuBasic/Program.cs;../SLANGCompiler.HuBasic/SlangbuildRunner.cs" />
+    <Compile Include="HuBasicWeb.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+  </ItemGroup>
+</Project>

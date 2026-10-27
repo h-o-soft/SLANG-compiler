@@ -8,10 +8,6 @@ class Program
 {
     const string Version = "0.1.0-alpha";
 
-    /// <summary>x1native / x1native_slfs のプログラムの配置先と、割り込み用に予約された領域の先頭</summary>
-    const int LoadAddress = 0x1000;
-    const int ReservedStart = 0xFFE0;
-
     static int Main(string[] args)
     {
         if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
@@ -277,23 +273,20 @@ class Program
     static int CheckBin(string path, string? lstPath)
     {
         if (!File.Exists(path)) return Fail($"bin がありません: {path}");
-        long binEnd = LoadAddress + new FileInfo(path).Length;
+        long binLength = new FileInfo(path).Length;
         lstPath ??= Path.ChangeExtension(path, ".LST");
         if (!File.Exists(lstPath))
             return Fail($"LST がありません: {lstPath} (--lst で指定してください。作業領域の終わりを確かめるのに要ります)");
         var workEnd = ReadWorkEnd(lstPath);
         if (workEnd == null)
             return Fail($"{lstPath} に __WORKEND__ が見つかりません");
-        long end = Math.Max(binEnd, workEnd.Value);
-        if (end > ReservedStart)
+        var (fits, message) = HuLayout.Check(binLength, workEnd.Value);
+        if (!fits)
         {
-            Console.Error.WriteLine(
-                $"hubasic2sl: error HB0312: プログラムの終わり ${end:X4} (bin ${binEnd:X4}、作業領域 ${workEnd:X4}) が " +
-                $"予約領域 ${ReservedStart:X4} を越えています ({end - ReservedStart} バイト超過)");
+            Console.Error.WriteLine(message);
             return 1;
         }
-        Console.WriteLine($"hubasic2sl: ${LoadAddress:X4}-${end - 1:X4} に収まります " +
-                          $"(bin ${binEnd:X4}、作業領域 ${workEnd:X4}、残り {ReservedStart - end} バイト)");
+        Console.WriteLine(message);
         return 0;
     }
 
