@@ -79,7 +79,8 @@ prog.bas:2:4: error HB0301 (BASIC 20): 未対応の命令 CIRCLE
 ### ブラウザで使う (wasm、X1Pen などに組み込むための材料)
 
 変換だけを .NET の browser-wasm で動かす入口があります (`src/SLANGCompiler.HuBasic.Wasm/`。SLANGCompiler.sln には入っていません)。
-組み立てと試験は次の 1 行です (要るもの: dotnet SDK、python3。node があれば最後に CLI と同じ出力かを確かめます。`NODE` で指せます)。
+組み立てと試験は次の 1 行です (要るもの: dotnet SDK、python3、AILZ80ASM (`AILZ80ASM_PATH`・PATH・`tools/` の順に探す)。
+node 22.7 以上があれば、最後に wasm の変換が CLI と同じかを確かめます。`NODE` で指せます)。
 
 ```sh
 scripts/build-hubasic-wasm.sh out/hubasic-wasm
@@ -90,8 +91,17 @@ scripts/build-hubasic-wasm.sh out/hubasic-wasm
 - `_framework/`: wasm の一式 (`dotnet.js` から読む)
 - `runtime/`: `x1native`・`x1native_slfs` の env の libraries の `.asm` (LSX 用は入りません。混ぜないでください)
 - `env/`: 2 つの env ファイルの写し
+- `testdata/`: 試験用のプログラム 4 本 (HELLO・GRAPH・MUSIC・FLOAT) の `.BAS`・`.SL`・`.bin`・`.LST`・`.d88`。
+  同じ木の hubasic2sl・slangbuild (`--emit disk -E x1native_slfs`)・slangc で作ったもので、ブラウザの側の道具と比べるのに使う
+  (D88 は日付が 0 で、同じ入力からは同じバイトになる)
 - `manifest.json`: 組み立てた SHA (`slangCompilerRevision`)、`dirty`、版、`loadAddress` ($1000)・`reservedStart` ($FFE0)、
-  env ごとの `envType`・`osType`・`defaultOrg`・`defines`・`libraries` (順番どおり)
+  env ごとの `envType`・`osType`・`defaultOrg`・`defines`・`libraries` (順番どおり)・`defaultDiskMainName`・`diskMainLoad`・`diskMainExec`・`diskVolume`、
+  testdata を作ったアセンブラ (`assembler`: 版と sha256)、`testdata` (ケースごとのファイルと起動名)、
+  束の全部のファイルの `files` (path・sha256・size)
+
+スクリプトは、作ったあとに束が manifest と合っているか (ファイルの集まり・大きさ・sha256・testdata) を確かめます。
+決めた SHA から作るときは、`git worktree add <一時フォルダ> <SHA>` をして、その中のスクリプトを動かします
+(一時の木には AILZ80ASM が無いので、`AILZ80ASM_PATH` で指します)。
 
 wasm とランタイムは、同じ SHA の一式をまとめて使います (`dirty: true` の一式は使わない)。SLANG のコンパイラとアセンブラに渡す値は、今の slangc・slangbuild と同じにします:
 コンパイラには `ENV_TYPE`・`OS_TYPE` (前もって決めた定数)、`defines`、`defaultOrg`。アセンブラには `OS_TYPE`・`ENV_TYPE` と `defines`。

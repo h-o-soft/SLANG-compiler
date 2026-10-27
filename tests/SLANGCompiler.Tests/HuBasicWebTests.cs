@@ -10,9 +10,14 @@ using SkippableFactAttribute = Xunit.SkippableFactAttribute;
 
 namespace SLANGCompiler.Tests;
 
+/// <summary>Console.Out・Console.Error を差し替えるテストは、ほかのテストと並べて走らせない</summary>
+[CollectionDefinition("ConsoleCapture", DisableParallelization = true)]
+public class ConsoleCaptureCollection { }
+
 /// <summary>
 /// hubasic2sl をブラウザ (wasm) から呼ぶ口と、CLI と共有する大きさの検査のテスト。
 /// </summary>
+[Collection("ConsoleCapture")]
 public class HuBasicWebTests
 {
     private static string RepoRoot()
@@ -159,8 +164,10 @@ public class HuBasicWebTests
         var bytes = Encoding.ASCII.GetBytes("10 PRINT 1\n");
         var web = Parse(HuWebApi.Transpile(bytes, "dir/MyGame.bas", "{}"));
         Assert.Equal("MyGame", web.GetProperty("diskMainName").GetString());
-        Assert.Contains("// disk-main-name: MyGame\n", web.GetProperty("sl").GetString());
-        Assert.Contains("// source: MyGame.bas\n", web.GetProperty("sl").GetString());
+        // SL の改行は AppendLine (Windows では CRLF) なので LF にそろえて見る
+        var sl = web.GetProperty("sl").GetString()!.Replace("\r\n", "\n");
+        Assert.Contains("// disk-main-name: MyGame\n", sl);
+        Assert.Contains("// source: MyGame.bas\n", sl);
         Assert.Equal("", Parse(HuWebApi.Transpile(bytes, "", "{}")).GetProperty("diskMainName").GetString());
     }
 
@@ -321,7 +328,7 @@ public class HuBasicWebTests
                      Ver("src/SLANGCompiler.HuBasic.Wasm/SLANGCompiler.HuBasic.Wasm.csproj"));
     }
 
-    /// <summary>manifest の 5 つの項目は EnvironmentLoader と同じ値 (libraries は順番も)</summary>
+    /// <summary>manifest の env の値は EnvironmentLoader と同じ (libraries は順番も、disk の起動名・番地・ボリューム名も)</summary>
     [SkippableFact]
     public void Manifest_SameAsEnvironmentLoader()
     {
@@ -332,7 +339,7 @@ public class HuBasicWebTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var a in new[] { "-I", Path.Combine(root, "scripts", "hubasic-wasm-manifest.py"), root, "abc", "false", "0.1.0-alpha" })
+        foreach (var a in new[] { "-I", Path.Combine(root, "scripts", "hubasic-wasm-manifest.py"), "envs", root })
             psi.ArgumentList.Add(a);
         Process? proc;
         try { proc = Process.Start(psi); }
@@ -345,8 +352,6 @@ public class HuBasicWebTests
             Assert.True(proc.WaitForExit(60_000));
             Assert.True(proc.ExitCode == 0, se.Result);
             var m = Parse(so.Result);
-            Assert.Equal(0x1000, m.GetProperty("loadAddress").GetInt32());
-            Assert.Equal(0xFFE0, m.GetProperty("reservedStart").GetInt32());
             foreach (var name in new[] { "x1native", "x1native_slfs" })
             {
                 var cfg = EnvironmentLoader.Load(Path.Combine(root, "runtime", "env", name + ".env"));
@@ -357,6 +362,12 @@ public class HuBasicWebTests
                 Assert.Equal(cfg.Libraries, e.GetProperty("libraries").EnumerateArray().Select(x => x.GetString()!).ToList());
                 var defines = e.GetProperty("defines").EnumerateObject().ToDictionary(p => p.Name, p => p.Value.GetInt32());
                 Assert.Equal((cfg.Defines ?? new Dictionary<string, int>()).OrderBy(kv => kv.Key), defines.OrderBy(kv => kv.Key));
+                string? Str(string key) => e.GetProperty(key).ValueKind == JsonValueKind.Null ? null : e.GetProperty(key).GetString();
+                int? Num(string key) => e.GetProperty(key).ValueKind == JsonValueKind.Null ? null : e.GetProperty(key).GetInt32();
+                Assert.Equal(cfg.Disk?.MainName is { Length: > 0 } n ? n : null, Str("defaultDiskMainName"));
+                Assert.Equal(cfg.Disk?.MainLoad, Num("diskMainLoad"));
+                Assert.Equal(cfg.Disk?.MainExec, Num("diskMainExec"));
+                Assert.Equal(cfg.Disk?.Volume, Str("diskVolume"));
             }
         }
     }
