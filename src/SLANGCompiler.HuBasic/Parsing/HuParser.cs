@@ -4,9 +4,9 @@ using SLANGCompiler.HuBasic.Text;
 namespace SLANGCompiler.HuBasic.Parsing;
 
 /// <summary>
-/// Hu-BASIC の再帰下降の構文解析。
+/// HuBASIC の再帰下降の構文解析。
 /// 優先順位 (強い順): 括弧・関数 / ^ / 単項 - + / * / / \ / MOD / + - / 比較 / NOT / AND / OR XOR
-/// (Hu-BASIC で実測した順序)。IF は行末までを THEN 節・ELSE 節として吸収する。
+/// (HuBASIC で実測した順序)。IF は行末までを THEN 節・ELSE 節として吸収する。
 /// </summary>
 public sealed class HuParser
 {
@@ -330,7 +330,7 @@ public sealed class HuParser
             case "CSIZE":
             case "CGEN":    // 引数なしは CGEN 0
             case "PRW":     // 引数なしは PRW 0
-            case "VSYNC":   // Hu-BASIC にない命令。引数なしは VSYNC 1
+            case "VSYNC":   // HuBASIC にない命令。引数なしは VSYNC 1
                 return new HuCommand(t.Text, new[] { AtStatementEnd ? null : ParseExpr() }, pos);
             case "WIDTH":
             case "TEMPO":

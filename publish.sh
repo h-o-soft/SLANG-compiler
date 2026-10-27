@@ -56,7 +56,7 @@ createRelease() {
     cp ../../examples/zxn/Makefile examples/zxn/ 2>/dev/null
   fi
 
-  # examples/hubasic は Hu-BASIC の変換のサンプル。BASIC と README・MANIFEST.txt だけを写す
+  # examples/hubasic は HuBASIC の変換のサンプル。BASIC と README・MANIFEST.txt だけを写す
   # (変換した *.SL などは含めない。置いてよいファイルは MANIFEST.txt の一覧)
   if [ -d "../../examples/hubasic" ]; then
     mkdir -p examples/hubasic

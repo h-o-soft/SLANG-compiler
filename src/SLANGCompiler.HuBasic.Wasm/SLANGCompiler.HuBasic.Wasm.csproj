@@ -18,7 +18,7 @@
     <Company>H.O SOFT</Company>
     <!-- HuBasic の csproj と同じ版にする (テストで比べる) -->
     <Version>0.1.0-alpha</Version>
-    <AssemblyTitle>Hu-BASIC to SLANG transpiler (browser)</AssemblyTitle>
+    <AssemblyTitle>HuBASIC to SLANG transpiler (browser)</AssemblyTitle>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../SLANGCompiler.HuBasic/**/*.cs"

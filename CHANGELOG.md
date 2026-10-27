@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- X1 の Hu-BASIC のテキストを SLANG に変換するツールを同梱 (アルファ版、 版は 0.1.0-alpha で SLANG compiler とは別に数える)。 変換した SLANG は `x1native` / `x1native_slfs` で組み立てる。 ランタイム `libx1_basic` を追加。 使い方・対応している命令・Hu-BASIC との違いは [docs/HUBASIC.md](docs/HUBASIC.md)、 サンプルは `examples/hubasic/`
+- X1 の HuBASIC のテキストを SLANG に変換するツールを同梱 (アルファ版、 版は 0.1.0-alpha で SLANG compiler とは別に数える)。 変換した SLANG は `x1native` / `x1native_slfs` で組み立てる。 ランタイム `libx1_basic` を追加。 使い方・対応している命令・HuBASIC との違いは [docs/HUBASIC.md](docs/HUBASIC.md)、 サンプルは `examples/hubasic/`
 - ランタイムに `TATTR(ATTR)` を追加 — 現在のテキストカーソル位置のセルのテキスト属性を 1 バイト設定する (`x1` / `sosx1` / `x1native` / `x1native_slfs`)。 `LOCATE(X,Y)` → `TATTR(ATTR)` → `PRINT(...)` の順で使う。 戻り値は成功 1 / 検証失敗 0。
   - ビット割当は bit7=横倍角 / bit6=縦倍角 / bit5=PCG 選択 / bit4=点滅 / bit3=反転 / bit2-0=BRG 色。 `$00`-`$FF` をマスクせずそのまま書き込む (`$0100` 以上は書き込まず 0 を返す)。
   - 文字も漢字セレクタも書かず、カーソルも動かさない。 属性を保持しない `PRINT` の既存動作は変更なしで、一度設定した属性は後続の `PRINT` でも維持される。

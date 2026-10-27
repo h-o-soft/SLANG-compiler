@@ -329,7 +329,7 @@ public sealed class SlangBackend : IHuBackend
     }
 
     /// <summary>
-    /// 数の変数・配列の要素への代入。Hu-BASIC は代入先の添字を先に調べる (A(9)=1/0 は Subscript out of range) が、
+    /// 数の変数・配列の要素への代入。HuBASIC は代入先の添字を先に調べる (A(9)=1/0 は Subscript out of range) が、
     /// SLANG は値を先に計算する。そこで代入先が配列の要素で、値の計算が前置きの代入 (一時変数) を出したとき、
     /// または浮動小数が関わる代入で値が定数と単純変数でないときは、添字の検査を値より先に一時変数へ入れる
     /// (整数だけの代入は、生成するコードを変えないためにいままでどおり。既知の違い)。INPUT の項目の代入は、1 行を読んだ
@@ -368,7 +368,7 @@ public sealed class SlangBackend : IHuBackend
     {
         if (e is HuBinary b && SignedCompare.ContainsKey(b.Op))
             return Compare(b);
-        // 浮動小数の条件は、四捨五入で整数にしてから 0 でないかを見る (Hu-BASIC の実測: IF .25 は偽、IF .5 は真)
+        // 浮動小数の条件は、四捨五入で整数にしてから 0 でないかを見る (HuBASIC の実測: IF .25 は偽、IF .5 は真)
         return $"({Int(e)})";
     }
 

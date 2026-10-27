@@ -5,7 +5,7 @@ namespace SLANGCompiler.HuBasic.Lexing;
 /// <summary>
 /// 1 行分 (行番号を除いた本体) をトークンに分ける。
 /// - 予約語は空白なしで詰めて書いても、識別子の位置で最長一致で切り出す
-///   (Hu-BASIC の変数名は予約語で始められないため)。
+///   (HuBASIC の変数名は予約語で始められないため)。
 /// - DATA の後ろは、引用符の外の ':' か行末までを生の項目として読む。
 /// - ' と REM 以降は行末までコメントとして読み飛ばす。
 /// </summary>
@@ -127,7 +127,7 @@ public sealed class HuLexer
 
     private static string Printable(char ch) => ch >= 0x20 && ch < 0x7F ? ch.ToString() : $"\\x{(int)ch:X2}";
 
-    // "..." 行末で閉じていなくてもよい (Hu-BASIC の規則)
+    // "..." 行末で閉じていなくてもよい (HuBASIC の規則)
     private string ReadString()
     {
         _pos++; // "
@@ -176,7 +176,7 @@ public sealed class HuLexer
             return new HuToken(HuTokenKind.Float, text, 0, Col(start));
         bool intSuffix = text.EndsWith('%');
         var digits = text.TrimEnd('%');
-        // 32768 以上の 10 進の数は、Hu-BASIC と同じく浮動小数の定数 (変数に入れるまでそのままの値)
+        // 32768 以上の 10 進の数は、HuBASIC と同じく浮動小数の定数 (変数に入れるまでそのままの値)
         if (!intSuffix && (!long.TryParse(digits, out var big) || big > 32767))
             return new HuToken(HuTokenKind.Float, text, 0, Col(start));
         if (!long.TryParse(digits, out var v) || v > 65535)
@@ -294,7 +294,7 @@ public sealed class HuLexer
         return new HuToken(HuTokenKind.Data, "DATA", 0, Col(start)) { DataItems = items };
     }
 
-    /// <summary>引用符のない項目は頭の空白だけを除く (後ろの空白は残す。Hu-BASIC の実測: DATA  X , は "X ")</summary>
+    /// <summary>引用符のない項目は頭の空白だけを除く (後ろの空白は残す。HuBASIC の実測: DATA  X , は "X ")</summary>
     private static string FinishItem(StringBuilder cur, bool quoted)
         => quoted ? cur.ToString() : cur.ToString().TrimStart(' ');
 }

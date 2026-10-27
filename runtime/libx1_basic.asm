@@ -1,8 +1,8 @@
 ; libx1_basic.asm
 ; SLANG x1native runtime — X1 BASIC 系ライブラリ (BAS_ 接頭辞)
 ;
-; Hu-BASIC と同じように振る舞う画面・文字列・DATA・制御スタック等の処理。
-; hubasic2sl (Hu-BASIC → SLANG トランスパイラ) の出力が使うが、手書きの SLANG
+; HuBASIC と同じように振る舞う画面・文字列・DATA・制御スタック等の処理。
+; hubasic2sl (HuBASIC → SLANG トランスパイラ) の出力が使うが、手書きの SLANG
 ; からも呼べる汎用ライブラリ。x1native / x1native_slfs の env から選択リンクされる。
 ;
 ; 呼び出し規約: SLANG の MACHINE 規約 (引数 1-3 個は HL/DE/BC、4 個以上はスタックで
@@ -69,8 +69,8 @@ RET
 ; @resident shared
 ; @param_count 0
 ; @calls BAS_WORK,sWORK,INIT_CRTC,_C4025L,_C4025H,BAS_CLS,BAS_SETPAL,BAS_INITSTATE,BAS_SNDINIT
-; Hu-BASIC 起動直後と同じ状態にする: WIDTH 40 (CRTC R0-R9 は _C4025L と同じ、
-; R10/R11 は Hu-BASIC の値 $60/$07)、パレット AA CC F0、プライオリティ 0、
+; HuBASIC 起動直後と同じ状態にする: WIDTH 40 (CRTC R0-R9 は _C4025L と同じ、
+; R10/R11 は HuBASIC の値 $60/$07)、パレット AA CC F0、プライオリティ 0、
 ; COLOR 7,0、REPEAT ON、制御スタックと一時領域を空に、CLS 4。
 LD A, 40
 LD (AT_WIDTH), A
@@ -111,7 +111,7 @@ JP BAS_CLS
 ; @resident shared
 ; @param_count 0
 ; @calls BAS_WORK,BAS_PALRST
-; INIT 文と BAS_INIT で共通の初期値: 色 7、装飾なし、プライオリティ 0、パレット既定 (INIT 文もプライオリティを戻す。Hu-BASIC の実測)
+; INIT 文と BAS_INIT で共通の初期値: 色 7、装飾なし、プライオリティ 0、パレット既定 (INIT 文もプライオリティを戻す。HuBASIC の実測)
 LD A, $07
 LD (BAS_ATTR), A
 XOR A
@@ -184,8 +184,8 @@ RET
 ; @resident shared
 ; @param_count 1
 ; @calls BAS_WORK,BAS_PNL,BAS_PSTRZ,BAS_UTOA,BAS_END
-; HL = エラー番号。Hu-BASIC と同じく、改行してから「<メッセージ> in <行番号>」、次の行に「Ok」を出して止まる
-; (メッセージの綴りは Hu-BASIC の実測。表にない番号は「Error <番号>」、行番号が分からなければ in を出さない)
+; HL = エラー番号。HuBASIC と同じく、改行してから「<メッセージ> in <行番号>」、次の行に「Ok」を出して止まる
+; (メッセージの綴りは HuBASIC の実測。表にない番号は「Error <番号>」、行番号が分からなければ in を出さない)
 PUSH HL
 XOR A
 LD (BAS_RAW), A
@@ -340,7 +340,7 @@ JP BAS_CLSTEXT
 ; @resident shared
 ; @param_count 0
 ; @calls BAS_WORK,BAS_VPUT
-; テキストを空白で埋め、属性を「$40 + 現在の属性」で埋める (Hu-BASIC の実測)。カーソルを左上へ
+; テキストを空白で埋め、属性を「$40 + 現在の属性」で埋める (HuBASIC の実測)。カーソルを左上へ
 LD A, (BAS_ATTR)
 OR $40
 LD D, A
@@ -509,7 +509,7 @@ JP NC, BAS_NEWLINE
 LD (BAS_CX), A
 RET
 .bp_left
-; 左: 左端なら前の行の右端 (いちばん上の行なら同じ行の右端。Hu-BASIC の実測)
+; 左: 左端なら前の行の右端 (いちばん上の行なら同じ行の右端。HuBASIC の実測)
 LD A, (BAS_CX)
 OR A
 JP Z, .bp_lwrap
@@ -558,7 +558,7 @@ LD D, A             ; D = 属性 (拡大なら HS/VS 付き)
 CALL .bp_one
 BIT 1, C
 RET Z
-; 横 2 倍は右半分をもう 1 マス (左半分で右端を越えていれば、次の行の左端に書く。Hu-BASIC と同じ)
+; 横 2 倍は右半分をもう 1 マス (左半分で右端を越えていれば、次の行の左端に書く。HuBASIC と同じ)
 .bp_one
 PUSH BC
 PUSH DE
@@ -580,7 +580,7 @@ POP DE
 POP BC
 .bp_adv
 ; カーソルを進める。右端を越えたら、その場で次の行の左端へ (縦 2 倍なら 2 行下)。
-; 最下行を越えたらスクロールする (右下の隅に書いた直後にもスクロールする。Hu-BASIC と同じ)
+; 最下行を越えたらスクロールする (右下の隅に書いた直後にもスクロールする。HuBASIC と同じ)
 LD A, (BAS_CX)
 INC A
 LD (BAS_CX), A
@@ -822,7 +822,7 @@ JP BAS_ERROR
 ; @param_count 2
 ; @calls BAS_WORK,BAS_SETPAL
 ; HL = 前景色 (-1 = 変えない)、DE = 背景色 (-1 = 変えない)。
-; 背景色はパレットの色番号 0 を置き換える (Hu-BASIC の実測)
+; 背景色はパレットの色番号 0 を置き換える (HuBASIC の実測)
 BIT 7, H
 JP NZ, .bco_bg
 LD A, (BAS_ATTR)
@@ -1143,7 +1143,7 @@ SBC A, A            ; A = step の符号の拡張
 ADD HL, DE
 ADC A, C
 LD C, A             ; C:HL = 和
-; 和が 16 ビットの符号付きの範囲を出たらエラー 6 (Overflow)。Hu-BASIC は NEXT での
+; 和が 16 ビットの符号付きの範囲を出たらエラー 6 (Overflow)。HuBASIC は NEXT での
 ; 増分だけはオーバーフローをエラーにする (A=A+1 は回り込む)
 LD A, H
 RLA                 ; キャリー = 和の bit 15
@@ -1410,7 +1410,7 @@ JP BAS_WAITF
 ; @resident shared
 ; @param_count 1
 ; @calls BAS_WAITF
-; VSYNC 文 (Hu-BASIC にない命令): HL フレーム待つ。0 と負は待たない
+; VSYNC 文 (HuBASIC にない命令): HL フレーム待つ。0 と負は待たない
 BIT 7, H
 RET NZ
 JP BAS_WAITF
@@ -1670,7 +1670,7 @@ JP BAS_ERROR
 ; @name BAS_SASC
 ; @resident shared
 ; @param_count 1
-; HL = s → 先頭の文字コード (空文字列は 0。Hu-BASIC の実測)
+; HL = s → 先頭の文字コード (空文字列は 0。HuBASIC の実測)
 LD A, (HL)
 OR A
 JP Z, .bas_empty
@@ -1951,7 +1951,7 @@ RET
 ; @resident shared
 ; @param_count 0
 ; @calls BAS_WORK,sGETKY
-; A = キーの文字 (なければ 0。一時文字列を作らない)。Hu-BASIC と同じく押しっぱなしでは自動でリピートする:
+; A = キーの文字 (なければ 0。一時文字列を作らない)。HuBASIC と同じく押しっぱなしでは自動でリピートする:
 ; 押した瞬間に 1 回、約 30 フレーム後から約 3.8 フレームごと (4,4,4,4,4,3 の繰り返し、実測に合わせた値)。
 ; REPEAT OFF (BAS_KREP が 0) なら押した瞬間の 1 回だけ。
 ; フレームは呼ばれるたびに垂直帰線の切り替わり (8255 port B の bit 7) を見て数えるので、
@@ -2376,8 +2376,8 @@ RET
 ; DE = 小数部の数字列 (0 終端。小数部の桁より短ければ後ろを 0 で埋める。DE = 0 なら全部 0)、BAS_PUNEG = 負なら 1。
 ; 符号の文字 (先頭の '+'、または負で末尾の '-' がないときの '-') は数字の直前に置き、前を空白 ('**' なら *) で埋める。
 ; 整数部が 0 で小数部があるとき、符号の文字が欄の中にあるか、整数部の桁がなければ、頭の 0 を出さない
-; (Hu-BASIC の実測: ###.## の -.5 は "  -.50"、+#.## の .5 は " +.50"、#.## の .5 は "0.50"、.## の .5 は ".50")。
-; 欄に入らなければエラー 36 (Format over。Hu-BASIC の実測)
+; (HuBASIC の実測: ###.## の -.5 は "  -.50"、+#.## の .5 は " +.50"、#.## の .5 は "0.50"、.## の .5 は ".50")。
+; 欄に入らなければエラー 36 (Format over。HuBASIC の実測)
 LD (.bpl_frac), DE
 LD C, 0             ; C = 符号の文字が欄の中に要るか
 LD A, (BAS_PUPLUS)
@@ -2891,7 +2891,7 @@ RET
 ; @resident shared
 ; @param_count 2
 ; @calls BAS_ERROR
-; KEY n, 文字列: 何もしない (ファンクションキーの文字列は持たない)。n が 0〜10 の外ならエラー 5 (Hu-BASIC の実測)
+; KEY n, 文字列: 何もしない (ファンクションキーの文字列は持たない)。n が 0〜10 の外ならエラー 5 (HuBASIC の実測)
 LD A, H
 OR A
 JP NZ, .bky_err
@@ -3144,7 +3144,7 @@ LD A, (BAS_ATTR)
 LD D, A
 JP BAS_VPUT
 ; 線: 主軸を 1 つずつ進める Bresenham。誤差は符号なし 16 ビットの借りで判定するので、座標がどの値でも
-; 主軸の長さ + 1 回で必ず終わる。誤差の初期値は主軸の長さの半分の切り捨て (Hu-BASIC と同じ点を置く。実測)
+; 主軸の長さ + 1 回で必ず終わる。誤差の初期値は主軸の長さの半分の切り捨て (HuBASIC と同じ点を置く。実測)
 .btl_line
 LD HL, (.btl_x1)
 LD DE, (.btl_x2)
@@ -3518,7 +3518,7 @@ LD H, 0
 PUSH HL
 CALL LINE
 RET
-; はみ出す線: 本物の Hu-BASIC と同じ手順で端から端まで点を求め、画面の中の点だけを .bgl_rect (1 × 1) で描く (本物で 39 本を
+; はみ出す線: 本物の HuBASIC と同じ手順で端から端まで点を求め、画面の中の点だけを .bgl_rect (1 × 1) で描く (本物で 39 本を
 ; 測って点まで一致を確かめた手順)。書いた順の 1 つ目の端から始める。XX = |x2 - x1|、YY = |y2 - y1|、長い方を major・
 ; 短い方を minor として、増分 = minor × 65536 ÷ major (同じなら 65535、両方 0 なら 0)。小数は 32768 (y が減る向きの線は
 ; 32768 + 128) から始め、点ごとに増分を足して、繰り上がったら短い方の軸を 1 進める。点は major + 1 個 (65536 個まで)。
@@ -4454,7 +4454,7 @@ JP BAS_ERROR
 ; @name BAS_TICK
 ; @resident shared
 ; @param_count 0
-; 約 1ms (3983 T、Hu-BASIC の実測した刻み) 待つ。割り込みは止めている前提
+; 約 1ms (3983 T、HuBASIC の実測した刻み) 待つ。割り込みは止めている前提
 PUSH BC
 LD B, 0
 .btk_a
@@ -4488,7 +4488,7 @@ JP .buw_loop
 ; @param_count 1
 ; @calls BAS_WORK,BAS_PSGW,BAS_UNITWAIT,BAS_PLNOTE,BAS_ERROR
 ; HL = MML の文字列。':' で区切った最大 3 チャンネルを同時に進め、鳴らし終わるまで戻らない
-; (Hu-BASIC の実測: PLAY はブロックする)。チャンネルごとの状態 (オクターブ・長さ・音量) は PLAY をまたいで残る
+; (HuBASIC の実測: PLAY はブロックする)。チャンネルごとの状態 (オクターブ・長さ・音量) は PLAY をまたいで残る
 LD B, (HL)          ; B = 残りの文字数
 INC HL
 ; チャンネルを空にする
@@ -4790,7 +4790,7 @@ LD (.bpn_delta), A
 JP .bpn_parse
 .bpn_oct
 CALL .bpn_digit
-JP C, .bpn_parse    ; 数字がなければオクターブはそのまま (Hu-BASIC の実測)
+JP C, .bpn_parse    ; 数字がなければオクターブはそのまま (HuBASIC の実測)
 OR A
 JP Z, .bpn_err
 CP 9
@@ -4800,7 +4800,7 @@ LD (HL), A
 JP .bpn_parse
 .bpn_vol
 CALL .bpn_digit
-JP C, .bpn_parse    ; 数字がなければ音量はそのまま (Hu-BASIC の実測)
+JP C, .bpn_parse    ; 数字がなければ音量はそのまま (HuBASIC の実測)
 LD C, A
 CALL .bpn_peekdigit ; 2 桁目
 JP C, .bpn_v1
@@ -4910,14 +4910,14 @@ RET
 .bpn_semit DB 0
 .bpn_last DB 0
 .bpn_semi DB 9, 11, 0, 2, 4, 5, 7
-; 長さ 0-9 → 1/32 音符の個数 (Hu-BASIC の実測)
+; 長さ 0-9 → 1/32 音符の個数 (HuBASIC の実測)
 .bpn_ltab DB 1, 2, 3, 4, 6, 8, 12, 16, 24, 32
 
 
 ; @name BAS_PTAB
 ; @resident shared
 ; @param_count 0
-; 音程の値 (PSG 2MHz、125000 / 周波数 の切り捨て、Hu-BASIC の実測と一致)。O1-O8 × C C# D D# E F F# G G# A A# B
+; 音程の値 (PSG 2MHz、125000 / 周波数 の切り捨て、HuBASIC の実測と一致)。O1-O8 × C C# D D# E F F# G G# A A# B
 DW 3822, 3607, 3405, 3214, 3033, 2863, 2702, 2551, 2407, 2272, 2145, 2024
 DW 1911, 1803, 1702, 1607, 1516, 1431, 1351, 1275, 1203, 1136, 1072, 1012
 DW 955, 901, 851, 803, 758, 715, 675, 637, 601, 568, 536, 506
@@ -4932,7 +4932,7 @@ DW 29, 28, 26, 25, 23, 22, 21, 19, 18, 17, 16, 15
 ; @resident shared
 ; @param_count 0
 ; @calls BAS_PSGW,BAS_PSGR,BAS_TICK
-; チャンネル C を音程の値 190・音量 15 で約 80ms 鳴らし、音程を元に戻す (Hu-BASIC の実測)
+; チャンネル C を音程の値 190・音量 15 で約 80ms 鳴らし、音程を元に戻す (HuBASIC の実測)
 LD A, 4
 CALL BAS_PSGR
 LD (.bbp_save), A
@@ -5892,7 +5892,7 @@ RET
 ; @resident shared
 ; @param_count 1
 ; @calls BAS_ERROR,f24toa
-; AHL = 浮動小数 → HL = Hu-BASIC の形の文字列 (0 終端)。頭に符号の桁 (正は空白、負は '-')、後ろの空白は付けない。
+; AHL = 浮動小数 → HL = HuBASIC の形の文字列 (0 終端)。頭に符号の桁 (正は空白、負は '-')、後ろの空白は付けない。
 ; 小数部のない値で 8 桁以下のものは整数として正確に出す。それ以外は f24toa の有効 5 桁を組み直す:
 ; 小数点の位置 X (数字の並びの頭から数えた位置) が 0〜8 なら 123.45 / .5 の形、X が負で桁が 8 以内なら .000123 の形、
 ; それ以外は 1.2345E+18 の形 (指数は 2 桁)。無限大・NaN はエラー 6
@@ -6305,7 +6305,7 @@ JP BAS_PCHR
 ; @param_count 2
 ; @calls BAS_TALLOC,BAS_ERROR
 ; HL = 回数 n、DE = 文字列 s → s を n 回つなげたもの (STRING$。s は全体を繰り返す)。
-; n が 0〜255 の外、s が空、結果が 255 バイトを超えるとエラー 5 (Hu-BASIC の実測)
+; n が 0〜255 の外、s が空、結果が 255 バイトを超えるとエラー 5 (HuBASIC の実測)
 LD A, H
 OR A
 JP NZ, .bss_err
@@ -6397,7 +6397,7 @@ JP BAS_ERROR
 ; @param_count 3
 ; @calls BAS_WORK,BAS_VOFF,BAS_TALLOC,BAS_ERROR
 ; HL = x、DE = y、BC = n → 画面の (x, y) から n 文字 (SCRN$。テキスト VRAM を画面の順に読む。右端の次は次の行の左端、
-; 画面の最後の先は空白)。x が 0〜桁数-1、y が 0〜24、n が 0〜255 の外はエラー 5 (Hu-BASIC の実測)
+; 画面の最後の先は空白)。x が 0〜桁数-1、y が 0〜24、n が 0〜255 の外はエラー 5 (HuBASIC の実測)
 LD A, H
 OR D
 OR B
@@ -6468,7 +6468,7 @@ JP BAS_ERROR
 ; @stack_cleanup callee
 ; スタック引数 (変数の文字列, 位置 p, 長さ m, 文字列 s)。MID$ の文: 変数の p 文字目から、m・s の長さ・変数の残りの
 ; 長さのうち いちばん短い数だけを s で置き換える (変数の長さは変えない)。p が 1〜255 の外、m が 0〜255 の外は
-; エラー 5。p が変数の長さより大きければ何もしない (Hu-BASIC の実測)
+; エラー 5。p が変数の長さより大きければ何もしない (HuBASIC の実測)
 POP HL
 LD (.bms_ret), HL
 POP HL
@@ -6524,7 +6524,7 @@ EX DE, HL               ; DE = 書き込み先
 LD HL, (.bms_s)
 INC HL                  ; HL = 写す元
 ; いつも前から写す。元と先が同じ変数で重なるとき (MID$(A$,2)=A$) は、書いた文字をまた読むことになるが、
-; Hu-BASIC も同じ (実測: A$="ABCDEF":MID$(A$,2)=A$ は AAAAAA)
+; HuBASIC も同じ (実測: A$="ABCDEF":MID$(A$,2)=A$ は AAAAAA)
 LDIR
 RET
 .bms_err
@@ -6678,7 +6678,7 @@ RET
 ; @param_count 0
 ; @calls BAS_WORK,BAS_TALLOC
 ; INPUT で読んだ行の次の項目 → 一時文字列。項目はカンマで区切り、頭と後ろの空白を除く。" で始まれば次の " までを
-; そのまま (カンマを含めてよい)。項目が尽きていれば空文字列 (Hu-BASIC は聞き直さない。実測)
+; そのまま (カンマを含めてよい)。項目が尽きていれば空文字列 (HuBASIC は聞き直さない。実測)
 LD A, (BAS_INBUF)
 LD E, A
 LD D, 0
@@ -6809,7 +6809,7 @@ RET
 ; @param_count 0
 ; @result_type float
 ; @calls BAS_INFS,BAS_SVALF
-; INPUT で読んだ行の次の項目を数として → AHL (VAL と同じ読み方。読めなければ 0。Hu-BASIC は聞き直さない。実測)
+; INPUT で読んだ行の次の項目を数として → AHL (VAL と同じ読み方。読めなければ 0。HuBASIC は聞き直さない。実測)
 CALL BAS_INFS
 JP BAS_SVALF
 
@@ -6819,7 +6819,7 @@ JP BAS_SVALF
 ; @param_count 0
 ; @result_type float
 ; @calls BAS_READS,BAS_SVALF
-; 次の DATA の項目を数として読む → AHL (VAL と同じ読み方。読めなければ 0、空の項目も 0。Hu-BASIC の実測:
+; 次の DATA の項目を数として読む → AHL (VAL と同じ読み方。読めなければ 0、空の項目も 0。HuBASIC の実測:
 ; DATA 12X は 12、DATA ABC は 0。読み尽くしたらエラー 4)
 CALL BAS_READS
 JP BAS_SVALF
@@ -6832,7 +6832,7 @@ JP BAS_SVALF
 ; @calls BAS_SVAL,i16tof24,f24mul,f24div,f24pow10_LUT
 ; HL = 文字列 → AHL = 数として読めた所までの値 (VAL と同じ読み方で、小数点と指数 E・D も読む。読めなければ 0)。
 ; 有効数字は 9 桁まで (それより下の桁は捨てる)。&H・&O・&B は整数の VAL (BAS_SVAL) と同じ。
-; 10 進の数の中の空白は、指数の E・D より前なら読み飛ばす (Hu-BASIC の実測: "1 2" は 12、" - 1" は -1、"1. 5" は 1.5、
+; 10 進の数の中の空白は、指数の E・D より前なら読み飛ばす (HuBASIC の実測: "1 2" は 12、" - 1" は -1、"1. 5" は 1.5、
 ; "1 E2" は 100)。指数の中の空白は読み飛ばさず、そこで止める ("1E 2" は 1、"1E -2" は 1、"1E2 3" は 100)
 LD (.bsv_str), HL
 LD B, (HL)              ; B = 残りの文字数
@@ -6870,7 +6870,7 @@ LD (.bsv_neg), A
 .bsv_sg1
 INC HL
 DEC B
-LD A, B                 ; 符号の後の &H・&O・&B も、整数の VAL に任せる (-&H10 は -16。Hu-BASIC の実測)
+LD A, B                 ; 符号の後の &H・&O・&B も、整数の VAL に任せる (-&H10 は -16。HuBASIC の実測)
 OR A
 JP Z, .bsv_conv
 LD A, (HL)
@@ -7525,7 +7525,7 @@ JP BAS_ERROR
 ; @resident shared
 ; @param_count 1
 ; @calls BAS_ERROR
-; HL = POKE・POKE@ の値。0〜255 ならそのまま返す。それ以外はエラー 5 (Hu-BASIC と同じ Illegal function call)
+; HL = POKE・POKE@ の値。0〜255 ならそのまま返す。それ以外はエラー 5 (HuBASIC と同じ Illegal function call)
 LD A, H
 OR A
 RET Z

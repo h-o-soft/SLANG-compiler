@@ -310,7 +310,7 @@ class Program
 
     static void PrintUsage()
     {
-        Console.Error.WriteLine($"hubasic2sl {Version} - Hu-BASIC to SLANG transpiler");
+        Console.Error.WriteLine($"hubasic2sl {Version} - HuBASIC to SLANG transpiler");
         Console.Error.WriteLine();
         Console.Error.WriteLine("Usage: hubasic2sl INPUT.BAS [-o OUT.SL] [options]");
         Console.Error.WriteLine("       hubasic2sl INPUT.BAS --emit disk|tape [-o OUT] [options]");
@@ -320,13 +320,13 @@ class Program
         Console.Error.WriteLine("  -o <path>                出力する SLANG のファイル (既定: 入力の拡張子を .SL に)");
         Console.Error.WriteLine("  --env <name>             x1native (既定) / x1native_slfs");
         Console.Error.WriteLine("  --wait <mode>            none (既定) / line[:N] / frame[:N]");
-        Console.Error.WriteLine("                           line:N = 各行の頭で約 0.1ms × N 待つ (N=450〜500 で Hu-BASIC に近い速さの目安)");
+        Console.Error.WriteLine("                           line:N = 各行の頭で約 0.1ms × N 待つ (N=450〜500 で HuBASIC に近い速さの目安)");
         Console.Error.WriteLine("                           frame = '#VSYNC n の指示コメントの位置で n フレーム待つ (n がなければ 1)");
         Console.Error.WriteLine("                           (VSYNC [n] の文は --wait によらず n フレーム待つ)");
         Console.Error.WriteLine("  --input-encoding <enc>   auto (既定。UTF-8 として読めなければ X1 の文字コード) / utf8 / sjis /");
         Console.Error.WriteLine("                           x1 (X1 でアスキーセーブしたファイル。1 バイト = X1 の 1 文字)");
         Console.Error.WriteLine("  --emit-line-comments     元の行をコメントで出す");
-        Console.Error.WriteLine("  --assume-defint          接尾辞も DEFxxx もない変数を整数にする (Hu-BASIC の既定は単精度の浮動小数)");
+        Console.Error.WriteLine("  --assume-defint          接尾辞も DEFxxx もない変数を整数にする (HuBASIC の既定は単精度の浮動小数)");
         Console.Error.WriteLine("  --no-line-numbers        各行の頭で実行中の行番号を書かない (小さく速くなる。実行時エラーに行番号が出ない)");
         Console.Error.WriteLine("  --string-len <N>         文字列 1 本の長さの上限 (1〜255、既定 255)。文字列の変数と配列が小さくなる");
         Console.Error.WriteLine("                           (超える文字列を入れると String too long)");

@@ -60,7 +60,7 @@ public class HuBasicFrontendTests
         Assert.Contains(diag.Items, d => d.Code == "HB0103");
     }
 
-    /// <summary>32768 以上の 10 進の数は浮動小数の定数 (Hu-BASIC と同じく、変数に入れるまでそのままの値)。
+    /// <summary>32768 以上の 10 進の数は浮動小数の定数 (HuBASIC と同じく、変数に入れるまでそのままの値)。
     /// % を付けたものだけ 16 ビットの整数として警告する</summary>
     [Theory]
     [InlineData("A=40000", false, true)]
@@ -284,7 +284,7 @@ public class HuBasicFrontendTests
     [Fact]
     public void Lexer_DataModeKeepsRawItems()
     {
-        // 引用符のない項目は頭の空白だけを除き、後ろの空白は残す (Hu-BASIC の実測: DATA  X , は "X ")
+        // 引用符のない項目は頭の空白だけを除き、後ろの空白は残す (HuBASIC の実測: DATA  X , は "X ")
         var t = Lex("DATA 1, \"A,B:C\" ,PRINT ,,  X Y  :PRINT 1");
         var data = t.Single(x => x.Kind == HuTokenKind.Data);
         Assert.Equal(new[] { "1", "A,B:C", "PRINT ", "", "X Y  " }, data.DataItems);
@@ -324,7 +324,7 @@ public class HuBasicFrontendTests
         _ => "?",
     };
 
-    /// <summary>Hu-BASIC で実測した優先順位: * / > \ > MOD > + - > 比較 > NOT > AND > OR XOR</summary>
+    /// <summary>HuBASIC で実測した優先順位: * / > \ > MOD > + - > 比較 > NOT > AND > OR XOR</summary>
     [Theory]
     [InlineData("2+7\\2", "(2 + (7 \\ 2))")]
     [InlineData("2+7 MOD 3", "(2 + (7 MOD 3))")]
@@ -527,7 +527,7 @@ public class HuBasicFrontendTests
     [InlineData("10 DEFINT A-Z:A=\"X\"+1", "HB0404")]
     [InlineData("10 DEFINT A-Z:FOR I=1 TO 2:NEXT A$", "HB0404")] // NEXT の変数も整数
     [InlineData("10 FOR A$=1 TO 2:NEXT", "HB0404")]
-    [InlineData("10 VSYNC \"X\"", "HB0404")]                  // VSYNC (Hu-BASIC にない命令) の引数は数
+    [InlineData("10 VSYNC \"X\"", "HB0404")]                  // VSYNC (HuBASIC にない命令) の引数は数
     [InlineData("10 GOTO 20", "HB0503")]
     [InlineData("10 DEFINT A-Z:ON A GOSUB 10,99", "HB0503")]
     [InlineData("10 DEFINT A-Z:FOR I=1 TO 2", "HB0601")]
@@ -649,7 +649,7 @@ public class HuBasicFrontendTests
     // ------------------------------------------------------------ 段階 F2a: 変数の型と鍵
 
     /// <summary>
-    /// 変数の鍵は (名前, 型の種類)。接尾辞のない名前は頭文字の型 (既定は単精度)。Hu-BASIC の実測と同じ:
+    /// 変数の鍵は (名前, 型の種類)。接尾辞のない名前は頭文字の型 (既定は単精度)。HuBASIC の実測と同じ:
     /// DEFINT A の下の A と A% は同じ、既定の B と B! は同じ、C! と C# は別、DEFSTR S の S と S$ は同じ、DEFDBL D の D と D# は同じ
     /// </summary>
     [Fact]
