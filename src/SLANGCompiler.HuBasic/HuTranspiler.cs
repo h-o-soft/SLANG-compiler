@@ -29,9 +29,13 @@ public static class HuTranspiler
     }
 
     public static HuTranspileResult TranspileFile(string path, string encoding, HuTranspileOptions options)
+        => TranspileBytes(File.ReadAllBytes(path), encoding, options);
+
+    /// <summary>ファイルの中身のバイト列から変換する (ブラウザから呼ぶ口)。encoding は <see cref="TranspileFile"/> と同じ</summary>
+    public static HuTranspileResult TranspileBytes(byte[] bytes, string encoding, HuTranspileOptions options)
     {
         var diag = new HuDiagnosticBag();
-        return Run(HuSource.FromFile(path, encoding, diag), diag, options);
+        return Run(HuSource.FromBytes(bytes, encoding, diag), diag, options);
     }
 
     /// <summary>前段だけ (解析済みのプログラムまで)。テストと別の後段から使う。</summary>
