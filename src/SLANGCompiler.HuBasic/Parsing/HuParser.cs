@@ -348,6 +348,12 @@ public sealed class HuParser
             case "VSYNC":   // HuBASIC にない命令。引数なしは VSYNC 1
                 return new HuCommand(t.Text, new[] { AtStatementEnd ? null : ParseExpr() }, pos);
             case "WIDTH":
+            {
+                // WIDTH 桁 [,行 [,a,b]]。2 つめから後は X1turbo の BASIC の形 (解析で読み飛ばす)
+                var args = new List<HuExpr?> { ParseExpr() };
+                while (args.Count < 4 && AcceptSymbol(",")) args.Add(ParseExpr());
+                return new HuCommand("WIDTH", args, pos);
+            }
             case "TEMPO":
             case "PAUSE":
                 return new HuCommand(t.Text, new HuExpr?[] { ParseExpr() }, pos);
@@ -362,6 +368,23 @@ public sealed class HuParser
                 ExpectSymbol(",");
                 return new HuCommand("KEY", new HuExpr?[] { n, ParseExpr() }, pos);
             }
+            case "KEYLIST":
+            case "KLIST":
+                // KEYLIST n・KLIST n (X1turbo のファンクションキーの表示。何もしない)。数のない KEYLIST (一覧を出す) は未対応
+                if (AtStatementEnd)
+                {
+                    _diag.Error("HB0301", $"未対応の命令 {t.Text}", pos);
+                    return null;
+                }
+                return new HuCommand("KLIST", new HuExpr?[] { ParseExpr() }, pos);
+            case "KMODE":
+                // KMODE n (X1turbo の漢字のモード。何もしない)
+                if (AtStatementEnd)
+                {
+                    _diag.Error("HB0203", "KMODE に引数が必要です", pos);
+                    return null;
+                }
+                return new HuCommand("KMODE", new HuExpr?[] { ParseExpr() }, pos);
             case "PALET":
             {
                 // PALET (既定に戻す) / PALET 色のコード, パレットの色

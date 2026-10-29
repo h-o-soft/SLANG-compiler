@@ -2,7 +2,7 @@ namespace SLANGCompiler.HuBasic.Lexing;
 
 /// <summary>
 /// HuBASIC の予約語表。MVP で対応しない語も含める (変数名の誤認を防ぐため。
-/// 未対応の語は構文解析でエラーにする)。VSYNC は HuBASIC にない hubasic2sl の命令。
+/// 未対応の語は構文解析でエラーにする)。VSYNC は HuBASIC にない hubasic2sl の命令。KMODE は X1turbo の BASIC の語。
 /// </summary>
 public static class HuKeywords
 {
@@ -15,7 +15,7 @@ public static class HuKeywords
         "DEFSNG", "DEFSTR", "DELETE", "DEVF", "DIM", "DSKF", "EDIT", "ELSE", "END", "EOF", "EQV",
         "ERASE", "ERL", "ERR", "ERROR", "EXP", "FIELD", "FILES", "FIX", "FN", "FOR", "FPOS", "FRAC",
         "FRE", "GET", "GOSUB", "GOTO", "HEX$", "HEXCHR$", "IF", "IMP", "INIT", "INKEY$", "INP",
-        "INPUT", "INPUT$", "INSTR", "INT", "KBUF", "KEY", "KILL", "LABEL", "LEFT$", "LEN", "LET", "LINE", "LIST",
+        "INPUT", "INPUT$", "INSTR", "INT", "KBUF", "KEY", "KEYLIST", "KILL", "KLIST", "KMODE", "LABEL", "LEFT$", "LEN", "LET", "LINE", "LIST",
         "LLIST", "LOAD", "LOC", "LOCATE", "LOF", "LOG", "LPOS", "LPRINT", "LSET", "MERGE", "MID$",
         "MIRROR$", "MKD$", "MKI$", "MKS$", "MOD", "MON", "MUSIC", "NAME", "NEW", "NEXT", "NOT", "OCT$", "OFF",
         "ON", "OPEN", "OPTION", "OR", "OUT", "PAI", "PAINT", "PALET", "PAUSE", "PEEK", "PLAY", "POINT",

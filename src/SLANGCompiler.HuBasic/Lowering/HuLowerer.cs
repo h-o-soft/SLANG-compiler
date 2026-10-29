@@ -466,6 +466,8 @@ public sealed class HuLowerer
             case "SOUND": Call("BAS_SOUND", E(Arg(0)!), E(Arg(1)!)); break;
             case "KBUF":
             case "SCREEN":
+            case "KLIST":
+            case "KMODE":
                 break; // 何もしない (解析で warning を出している)
             case "CLICK": Call("BAS_CLICK", E(Arg(0)!)); break;
             case "PAUSE": Call("BAS_PAUSE", E(Arg(0)!)); break;

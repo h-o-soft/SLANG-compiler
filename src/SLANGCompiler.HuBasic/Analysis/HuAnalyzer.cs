@@ -854,8 +854,27 @@ public sealed class HuAnalyzer
                                         "表示も書き込みも 0 頁のまま)", cmd.Pos);
             return;
         }
+        if (cmd.Name is "KLIST" or "KMODE")
+        {
+            // 何もしない命令なので、引数は評価を省いてよい数の定数だけ。0 (表示なし・漢字なし) は hubasic2sl の状態と同じ
+            var a = cmd.Args[0]!;
+            ExpectNum(a, intConv: true);
+            if (!IsSignedNumConst(a))
+                _diag.Error("HB0703", "KEYLIST・KLIST・KMODE の引数は数の定数だけに対応しています", cmd.Pos);
+            else if (a is not HuNum { Value: 0 })
+                _diag.Warning("HB0706", "KEYLIST・KLIST・KMODE は何もしない命令として扱います", cmd.Pos);
+            return;
+        }
         foreach (var a in cmd.Args)
             if (a != null) ExpectNum(a, intConv: true);
+        if (cmd.Name == "WIDTH" && cmd.Args.Count > 1)
+        {
+            // 2 つめ (行数) から後は読み飛ばす。評価を省くので数の定数だけ。25 だけなら今の画面と同じ
+            if (cmd.Args.Skip(1).Any(a => !IsSignedNumConst(a!)))
+                _diag.Error("HB0703", "WIDTH の 2 つめから後は数の定数だけに対応しています", cmd.Pos);
+            else if (cmd.Args.Count > 2 || cmd.Args[1] is not HuNum { Value: 25 })
+                _diag.Warning("HB0705", "WIDTH の行数 (25 以外) と 3 つめ・4 つめは読み飛ばします (画面は 25 行のまま)", cmd.Pos);
+        }
         if (cmd.Name == "WIDTH" && cmd.Args[0] is HuNum w && w.Value != 40 && w.Value != 80)
             _diag.Error("HB0311", "WIDTH は 40 か 80 です", cmd.Pos);
     }
