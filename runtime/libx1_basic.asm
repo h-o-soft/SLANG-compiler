@@ -60,6 +60,7 @@ RET
 ; 番号の違う組を混ぜると、アセンブルで未定義のラベルになって止まる。
 ; 出力とランタイムの約束 (関数の引数・戻り値の意味、作業領域・バッファの作り、呼ぶ順番の前提) を変えたら、
 ; ここの番号と hubasic2sl の SlangBackend.BasAbi を一緒に 1 つ上げる (迷ったら上げる)。
+; ランタイムの中だけの直し (出力が前提にしない振る舞いを HuBASIC に合わせるなど) では上げない。
 RET
 
 
@@ -1865,47 +1866,112 @@ RET
 ; @resident shared
 ; @param_count 1
 ; @calls BAS_TALLOC,BAS_HEXDIGIT,BAS_ERROR
-; HL = s (16 進の文字列) → 2 文字を 1 バイトにした文字列。奇数の長さ・16 進以外の文字はエラー 5
+; HL = s (16 進の文字列) → 2 桁を 1 バイトにした文字列。本物と同じく、スペースは区切りとして飛ばし、
+; スペースか終わりの前の 1 桁は 1 バイトにする。空の文字列・16 進でもスペースでもない文字はエラー 5
 LD A, (HL)
-BIT 0, A
-JP NZ, .bsh_err
+OR A
+JP Z, .bsh_err
+LD C, A             ; C = 入力の残りの文字数
 SRL A
+ADC A, 0            ; 結果は多くて (長さ + 1) / 2 バイト (255 → 128)
 PUSH HL
 CALL BAS_TALLOC     ; HL = 結果
 POP DE              ; DE = s
 PUSH HL
-LD B, (HL)          ; B = 結果の長さ
 INC HL
 INC DE
-LD A, B
-OR A
-JP Z, .bsh_end
+LD B, 0             ; B = 結果の長さ
 .bsh_loop
 LD A, (DE)
+INC DE
+DEC C
+CP ' '
+JP Z, .bsh_next
 CALL BAS_HEXDIGIT
 JP C, .bsh_err_pop
-ADD A, A
-ADD A, A
-ADD A, A
-ADD A, A
-LD C, A
-INC DE
+LD (HL), A          ; 1 桁目 (1 桁で終わればこのまま)
+LD A, C
+OR A
+JP Z, .bsh_put      ; 残りがない
 LD A, (DE)
+CP ' '
+JP Z, .bsh_put      ; 次がスペース
 CALL BAS_HEXDIGIT
 JP C, .bsh_err_pop
-OR C
-LD (HL), A
-INC HL
 INC DE
-DJNZ .bsh_loop
-.bsh_end
+DEC C
+PUSH BC
+LD B, A             ; B = 2 桁目
+LD A, (HL)
+ADD A, A
+ADD A, A
+ADD A, A
+ADD A, A
+OR B
+POP BC
+LD (HL), A
+.bsh_put
+INC HL
+INC B
+.bsh_next
+LD A, C
+OR A
+JP NZ, .bsh_loop
 POP HL
+LD (HL), B
 RET
 .bsh_err_pop
 POP HL
 .bsh_err
 LD HL, 5
 JP BAS_ERROR
+
+
+; @name BAS_SMIRROR
+; @resident shared
+; @param_count 1
+; @calls BAS_TALLOC,BAS_SMIRRORV
+; HL = s (定数・式の値) → 一時領域に写してから、各バイトのビットを左右逆にした文字列 (MIRROR$。s は変えない)
+LD A, (HL)
+PUSH HL
+CALL BAS_TALLOC     ; HL = 結果 (長さは書き込み済み)
+POP DE              ; DE = s
+PUSH HL
+EX DE, HL           ; HL = s, DE = 結果
+LD C, (HL)
+LD B, 0
+INC BC
+LDIR
+POP HL
+JP BAS_SMIRRORV
+
+
+; @name BAS_SMIRRORV
+; @resident shared
+; @param_count 1
+; HL = 変数・配列の要素の中身 → その場で各バイトのビットを左右逆にし、同じ HL を返す
+; (本物の MIRROR$ は、引数が変数なら変数も書き換え、結果もその中身になる。&H83 → &HC1)
+PUSH HL
+LD B, (HL)          ; B = 残りのバイト数
+INC HL
+LD A, B
+OR A
+JP Z, .bmv_end
+.bmv_loop
+LD C, (HL)
+PUSH BC
+LD B, 8
+.bmv_bit
+RR C                ; 下の桁から順にキャリーへ
+RLA                 ; キャリーを下から入れる (8 回で元の A は全部押し出される)
+DJNZ .bmv_bit
+POP BC
+LD (HL), A
+INC HL
+DJNZ .bmv_loop
+.bmv_end
+POP HL
+RET
 
 
 ; @name BAS_SCMP

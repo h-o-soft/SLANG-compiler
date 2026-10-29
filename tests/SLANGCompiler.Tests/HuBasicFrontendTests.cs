@@ -946,6 +946,20 @@ public class HuBasicFrontendTests
         Assert.Equal(3, prog.Arrays["A$"]);
     }
 
+    /// <summary>MUSIC は PLAY と同じ命令 (本物も同じ)。MIRROR$ は文字列の関数で、予約語は MIRROR$ まで (MIRRORX は変数)</summary>
+    [Fact]
+    public void Analyzer_MusicAndMirror()
+    {
+        var prog = AnalyzeOk("10 MUSIC \"C\":MUSIC 120:MUSIC A$:X=2.5:MUSIC X:PLAY \"D\":MUSIC \"E\"");
+        var cmds = HuAnalyzer.AllStatements(prog.Lines).OfType<HuCommand>().ToList();
+        Assert.Equal(6, cmds.Count);
+        Assert.All(cmds, c => Assert.Equal("PLAY", c.Name));
+        AssertError("10 MUSIC", "HB0211");
+        AnalyzeOk("10 A$=MIRROR$(\"A\")+MIRROR$(HEXCHR$(\"01 2\")):MIRRORX=1:PRINT MIRRORX");
+        AssertError("10 A$=MIRROR$(1)", "HB0404");
+        AssertError("10 A=MIRROR$(\"A\")", "HB0404");
+    }
+
     /// <summary>段階 G1: PLAY は文字列なら MML、数ならテンポ。KEY は 2 つ目が文字列で、warning HB0704 を出す</summary>
     [Fact]
     public void Analyzer_PlayNumberAndKey()

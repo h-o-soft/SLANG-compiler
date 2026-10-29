@@ -17,7 +17,7 @@ public sealed class HuParser
     private static readonly Dictionary<string, (int Min, int Max)> Functions = new()
     {
         ["INP"] = (1, 1), ["MID$"] = (2, 3), ["RIGHT$"] = (2, 2), ["CHR$"] = (1, 255),
-        ["ASC"] = (1, 1), ["VAL"] = (1, 1), ["HEXCHR$"] = (1, 1), ["CGPAT$"] = (1, 1),
+        ["ASC"] = (1, 1), ["VAL"] = (1, 1), ["HEXCHR$"] = (1, 1), ["MIRROR$"] = (1, 1), ["CGPAT$"] = (1, 1),
         ["STICK"] = (1, 1), ["STRIG"] = (1, 1), ["RND"] = (0, 1), ["INT"] = (1, 1),
         ["LEFT$"] = (2, 2), ["STRING$"] = (2, 2), ["CHARACTER$"] = (2, 2), ["INPUT$"] = (1, 1),
         ["STR$"] = (1, 1),
@@ -337,7 +337,8 @@ public sealed class HuParser
             case "PAUSE":
                 return new HuCommand(t.Text, new HuExpr?[] { ParseExpr() }, pos);
             case "PLAY":
-                // PLAY 文字列 (MML) / PLAY 数 (TEMPO と同じ。解析で見分ける)
+            case "MUSIC":
+                // PLAY 文字列 (MML) / PLAY 数 (TEMPO と同じ。解析で見分ける)。MUSIC は本物でも PLAY と同じ
                 return new HuCommand("PLAY", new HuExpr?[] { ParseExpr() }, pos);
             case "KEY":
             {
