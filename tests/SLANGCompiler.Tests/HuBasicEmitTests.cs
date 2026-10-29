@@ -145,6 +145,12 @@ public class HuBasicEmitTests
         50 LABEL"S":LINE(-10,-10)-(400,300),PSET,7:LINE(0-X,5)-(10,5),PRESET:RETURN
         """;
 
+    /// <summary>MIRROR$・スペース入りの HEXCHR$・MUSIC (PLAY の別名) を使う小さなプログラム (自作)</summary>
+    private const string MirrorProgram = """
+        10 A$=HEXCHR$("0102 0304 5"):B$=MIRROR$(A$)+MIRROR$(HEXCHR$("83")):PRINT LEN(B$)
+        20 C$="CDE":MUSIC C$:MUSIC 120:X=150:MUSIC X:PLAY "C":MUSIC "D":END
+        """;
+
     private const string FullProgram = """
         10 DEFINT A-Z:CLS:INIT:WIDTH 40:CLICK OFF:TEMPO 300
         20 A$="AB":B$=A$+CHR$(65):C$=MID$(A$,1,1)+MID$(A$,2)+RIGHT$(A$,1)+HEXCHR$("41")+CGPAT$(65)+INKEY$
@@ -264,6 +270,7 @@ public class HuBasicEmitTests
     [InlineData(G3Program)]
     [InlineData(G4Program)]
     [InlineData(G5Program)]
+    [InlineData(MirrorProgram)]
     public void Lowering_StatementExprsCoversEveryExpressionField(string program)
     {
         // 構文木の文の型のうち式を持つものは、すべて StatementExprs で式を返す
@@ -1415,7 +1422,7 @@ public class HuBasicEmitTests
         var functions = RuntimeParser.Parse(File.ReadAllText(path), path).ToDictionary(f => f.Name);
         var sl = Transpile(Stage1Program).Output! + Transpile(FullProgram).Output! + Transpile(FloatProgram).Output!
                  + Transpile(StringScreenProgram).Output! + Transpile(InputSoundProgram).Output!
-                 + Transpile(FloatVarProgram).Output! + Transpile(G5Program).Output!;
+                 + Transpile(FloatVarProgram).Output! + Transpile(G5Program).Output! + Transpile(MirrorProgram).Output!;
         var called = Regex.Matches(sl, @"\b(BAS_[A-Z0-9_]+)\(").Select(m => m.Groups[1].Value).Distinct().ToList();
         Assert.NotEmpty(called);
         foreach (var name in called)
@@ -1434,6 +1441,11 @@ public class HuBasicEmitTests
         // 段階 G5b: 引数の数と、TIME の 3 つの関数が同じ作業領域を使うこと
         foreach (var (name, n) in new[] { ("BAS_BYTE", 1), ("BAS_CALL", 1), ("BAS_TIMESET", 1), ("BAS_TIMEH", 0), ("BAS_TIMEL", 0) })
             Assert.Equal(n, functions[name].ParamCount);
+        // MIRROR$ と HEXCHR$ は文字列を 1 つ受け取る
+        Assert.Equal(1, functions["BAS_SMIRROR"].ParamCount);
+        Assert.Equal(1, functions["BAS_SMIRRORV"].ParamCount);
+        Assert.Contains("BAS_SMIRRORV", functions["BAS_SMIRROR"].Dependencies);
+        Assert.Equal(1, functions["BAS_SHEX"].ParamCount);
         Assert.Contains(("BAS_TBASE", 3), functions["BAS_TIMEH"].Works!);
         Assert.Contains("BAS_TIMEH", functions["BAS_TIMEL"].Dependencies);
         Assert.Contains("BAS_TIMEH", functions["BAS_TIMESET"].Dependencies);
@@ -1650,6 +1662,13 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "G5"));
             RunSlangbuild(root, dir, sl13, asmPath, Path.Combine(dir, "G5S"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "G5S"));
+            // MIRROR$・HEXCHR$・MUSIC も両方で組み立てまで通る
+            var slm = Path.Combine(dir, "MIR.SL");
+            File.WriteAllText(slm, Transpile(MirrorProgram).Output!);
+            RunSlangbuild(root, dir, slm, asmPath, Path.Combine(dir, "MIR"));
+            AssertBuilt(Path.Combine(dir, "MIR"));
+            RunSlangbuild(root, dir, slm, asmPath, Path.Combine(dir, "MIRS"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "MIRS"));
             // VSYNC 文 (BAS_VSYNC) も組み立てまで通る
             var sl14 = Path.Combine(dir, "VS.SL");
             File.WriteAllText(sl14, Transpile("10 A=2:VSYNC:VSYNC A:GOTO 10").Output!);
@@ -1776,6 +1795,47 @@ public class HuBasicEmitTests
         else
             Assert.DoesNotContain("disk-main-name", head);
         Assert.Equal(warns, r.Diagnostics.Items.Any(d => d.Code == "HB0112" && d.Severity == HuSeverity.Warning));
+    }
+
+    /// <summary>
+    /// MIRROR$ は、引数が変数・配列の要素なら BAS_SMIRRORV (その場で書き換える。本物と同じ)、定数・式なら BAS_SMIRROR (写してから)。
+    /// MUSIC は PLAY と同じく、文字列なら BAS_PLAY、数なら BAS_TEMPO
+    /// </summary>
+    [Fact]
+    public void Slang_MirrorAndMusic()
+    {
+        var sl = Body(Transpile(MirrorProgram).Output!);
+        foreach (var expected in new[]
+        {
+            "BAS_SSET(S_A, BAS_SHEX(K_0));", "BAS_SCAT(BAS_SMIRRORV(S_A), BAS_SMIRROR(BAS_SHEX(K_1)))",
+            "BAS_PLAY(S_C);", "BAS_TEMPO(120);", "BAS_TEMPO(BAS_FTOIR(F_X));", "BAS_PLAY(K_3);", "BAS_PLAY(K_4);",
+        })
+            Assert.Contains(expected, sl);
+        var kinds = Body(Transpile("10 DIM N$(3):A$=MIRROR$(\"A\")+MIRROR$(N$(1))+MIRROR$(S$+\"\")").Output!);
+        Assert.Contains("BAS_SMIRROR(K_0)", kinds);
+        Assert.Contains("BAS_SMIRRORV((SA_N+(BAS_AIDX(1, &H_DIM_S_N, &H_UB_S_N)<<8)))", kinds);
+        Assert.Contains("BAS_SMIRROR(BAS_SCAT(S_S, K_1))", kinds);
+    }
+
+    /// <summary>
+    /// 値が変数を書き換える MIRROR$ を含む代入と OUT は、本物と同じく添字・ポートを先に読む
+    /// (本物の実測: N%(ASC(S$))=ASC(MIRROR$(S$)) は N%(1) に入れる)。含まないときの出力は前と同じ
+    /// </summary>
+    [Fact]
+    public void Slang_InPlaceMirrorReadsIndexFirst()
+    {
+        var sl = Body(Transpile("10 DIM N%(200):N%(ASC(S$))=ASC(MIRROR$(S$)):OUT ASC(S$),ASC(MIRROR$(S$)):OUT 5,ASC(MIRROR$(S$))").Output!)
+            .Replace("\r\n", "\n");
+        Assert.Contains("H_I1=BAS_AIDX(BAS_SASC(S_S), &H_DIM_N, &H_UB_N);\n  A_N[H_I1]=BAS_SASC(BAS_SMIRRORV(S_S));", sl);
+        Assert.Contains("H_I1=BAS_SASC(S_S);\n  PORT[H_I1]=BAS_SASC(BAS_SMIRRORV(S_S));", sl);
+        Assert.Contains("PORT[5]=BAS_SASC(BAS_SMIRRORV(S_S));", sl);
+        // 添字・ポートの側で書き換えるときも先に読む (本物では N%(128)=128)
+        var rev = Body(Transpile("10 DIM N%(128):N%(ASC(MIRROR$(S$)))=ASC(S$):OUT ASC(MIRROR$(S$)),ASC(S$)").Output!).Replace("\r\n", "\n");
+        Assert.Contains("H_I1=BAS_AIDX(BAS_SASC(BAS_SMIRRORV(S_S)), &H_DIM_N, &H_UB_N);\n  A_N[H_I1]=BAS_SASC(S_S);", rev);
+        Assert.Contains("H_I1=BAS_SASC(BAS_SMIRRORV(S_S));\n  PORT[H_I1]=BAS_SASC(S_S);", rev);
+        var plain = Body(Transpile("10 DIM N%(200):N%(ASC(S$))=ASC(MIRROR$(S$+\"\")):OUT ASC(S$),ASC(S$)").Output!);
+        Assert.Contains("A_N[BAS_AIDX(BAS_SASC(S_S), &H_DIM_N, &H_UB_N)]=BAS_SASC(BAS_SMIRROR(BAS_SCAT(S_S, K_0)));", plain);
+        Assert.Contains("PORT[BAS_SASC(S_S)]=BAS_SASC(S_S);", plain);
     }
 
     [Fact]

@@ -138,6 +138,7 @@ const v = JSON.parse(api.Version());                          // { version, info
 - 見つけられるのは番号の違いだけです。印を入れる前の出力や、番号が同じで commit の違う組は止まりません (組は同じ SHA で使ってください)。
 - 出力とランタイムの約束 (関数の引数・戻り値の意味、作業領域・バッファの作り、呼ぶ順番の前提) を変えたら、
   ランタイムの `@name BAS_ABI_<n>` と `SlangBackend.BasAbi` を一緒に 1 つ上げます (迷ったら上げる)。
+  ランタイムの中だけの直し (出力が前提にしない振る舞いを HuBASIC に合わせるなど) では上げません。
 - 番号は、ブラウザ向けの束の `manifest.json` の `basAbi` と、wasm の `Version()` の `basAbi` にも出ます。
 
 ## 変数と値
@@ -170,7 +171,7 @@ PAINT (x,y),色[,境界色 (7 つまで)]
 MID$(変数,位置[,長さ])=文字列  INPUT ["案内";|,] 変数,…  SWAP a,b
 OUT ポート,値  INIT  CLICK ON/OFF  REPEAT ON/OFF  PALET [c,p]  PRW [n]
 POKE 番地,値[,値…]  POKE@ ポート,値[,値…]  CALL 番地  TIME=秒
-PLAY "MML"  PLAY n  TEMPO n  BEEP [0|1]  SOUND レジスタ,値  PAUSE n  RANDOMIZE [n]
+PLAY "MML"  PLAY n  MUSIC (PLAY と同じ)  TEMPO n  BEEP [0|1]  SOUND レジスタ,値  PAUSE n  RANDOMIZE [n]
 VSYNC [n]   (HuBASIC にない命令。下の説明)
 KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出ます)
 ```
@@ -202,13 +203,18 @@ KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出�
 ## 対応している関数
 
 ```
-ASC  CHR$(a[,b,…])  MID$(s,n[,m])  LEFT$  RIGHT$  STRING$(n,s または 文字コード)  VAL  STR$  HEXCHR$  CGPAT$
+ASC  CHR$(a[,b,…])  MID$(s,n[,m])  LEFT$  RIGHT$  STRING$(n,s または 文字コード)  VAL  STR$  HEXCHR$  MIRROR$  CGPAT$
 CHARACTER$(x,y)  INKEY$  INKEY$(0)  INPUT$(n)  INP  STICK  STRIG  RND  INT
 ABS  SGN  SQR  SIN  COS  TAN  ATN  LOG  EXP  FIX  CINT  FRAC  CSNG  CDBL  PAI  RAD
 LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート)  TIME
 ```
 
 - 数学の関数は FLOAT の精度で、HuBASIC とふつう 4〜5 桁合います。大きな引数の `SIN`・`COS`、0 に近い引数の `SIN`、1 に近い引数の `LOG` は合う桁が少なくなります。
+- `HEXCHR$` は HuBASIC と同じく、スペースを区切りとして飛ばし、スペースか終わりの前の 1 桁は 1 バイトにします
+  (`"0102 0304"` は 4 バイト、`"123 4"` は &H12・&H03・&H04)。空の文字列と、16 進の数字でもスペースでもない文字は Illegal function call。
+- `MIRROR$(s)` は各バイトのビットを左右逆にします (&H83 は &HC1。PCG の模様を左右にひっくり返すのに使う)。
+  HuBASIC と同じく、引数が文字列の変数か配列の要素なら、その変数の中身もその場で書き換わります (`B$=MIRROR$(A$)` の後は A$ も逆になっている)。
+  定数や式 (`MIRROR$(A$+"")`) なら元は変わりません。HuBASIC では `MIRROR$(MID$(A$,1))` も A$ を書き換えますが、こちらは書き換えません。
 - `PAI`・`RAD`・`SCRN$`・`PRW`・`LABEL` は HuBASIC と同じく予約語です (`RADIUS`・`PAIR`・`LABELX` のような変数名は使えません)。
 
 ## まだないもの (変換のときの error)

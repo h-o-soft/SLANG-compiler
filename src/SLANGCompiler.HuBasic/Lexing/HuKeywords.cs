@@ -17,7 +17,7 @@ public static class HuKeywords
         "FRE", "GET", "GOSUB", "GOTO", "HEX$", "HEXCHR$", "IF", "IMP", "INIT", "INKEY$", "INP",
         "INPUT", "INPUT$", "INSTR", "INT", "KBUF", "KEY", "KILL", "LABEL", "LEFT$", "LEN", "LET", "LINE", "LIST",
         "LLIST", "LOAD", "LOC", "LOCATE", "LOF", "LOG", "LPOS", "LPRINT", "LSET", "MERGE", "MID$",
-        "MKD$", "MKI$", "MKS$", "MOD", "MON", "MUSIC", "NAME", "NEW", "NEXT", "NOT", "OCT$", "OFF",
+        "MIRROR$", "MKD$", "MKI$", "MKS$", "MOD", "MON", "MUSIC", "NAME", "NEW", "NEXT", "NOT", "OCT$", "OFF",
         "ON", "OPEN", "OPTION", "OR", "OUT", "PAI", "PAINT", "PALET", "PAUSE", "PEEK", "PLAY", "POINT",
         "POKE", "POP", "POS", "PRESET", "PRINT", "PRW", "PSET", "PUSH", "PUT", "RAD", "RANDOMIZE", "READ", "REM",
         "RENUM", "REPEAT", "RESTORE", "RESUME", "RETURN", "RIGHT$", "RND", "RSET", "RUN", "SAVE",

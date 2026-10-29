@@ -576,6 +576,7 @@ public sealed class HuAnalyzer
                 CheckExpr(a[1], intConv: true);
                 return HuType.Str;
             case "HEXCHR$":
+            case "MIRROR$":
                 ExpectStr(a[0]);
                 return HuType.Str;
             case "MID$":

@@ -218,6 +218,17 @@ public sealed class SlangBackend : IHuBackend
             }
             case FPortOut po:
             {
+                if ((HasInPlaceMirror(po.Value) || HasInPlaceMirror(po.Port)) && HuAnalyzer.ConstValue(po.Port) == null)
+                {
+                    // 値かポートが変数を書き換える MIRROR$ を含むときは、本物と同じくポートの番号を先に読む
+                    var port = Int(po.Port);
+                    int mark = _pre.Count;
+                    var value = Int(po.Value);
+                    var t = NewITemp();
+                    _pre.Insert(mark, $"{t}={port};");
+                    Line($"PORT[{t}]={value};");
+                    break;
+                }
                 var pv = Seq((po.Port, K.Int), (po.Value, K.Int));
                 Line($"PORT[{pv[0]}]={pv[1]};");
                 break;
@@ -347,7 +358,9 @@ public sealed class SlangBackend : IHuBackend
                        || (target.Type != HuType.Float && value is HuVar { Type: HuType.Float });
         bool floatOrder = (target.Type == HuType.Float || HasFloat(value)) && mayFail
                           && value is not HuCall { Name: FlatPseudo.InputNum };
-        if ((_pre.Count > mark || floatOrder) && index != null)
+        // 値か添字が変数を書き換える MIRROR$ を含むときも、本物と同じく添字を先に読む (N%(ASC(S$))=ASC(MIRROR$(S$)) は N%(1) に入れる)
+        bool mirrorOrder = target is HuIndex mx && (HasInPlaceMirror(value) || HasInPlaceMirror(mx.Index));
+        if ((_pre.Count > mark || floatOrder || mirrorOrder) && index != null)
         {
             var t = NewITemp();
             _pre.Insert(mark, $"{t}={index};");
@@ -463,6 +476,19 @@ public sealed class SlangBackend : IHuBackend
         HuUnary u => HasFloat(u.Operand),
         HuBinary b => HasFloat(b.Left) || HasFloat(b.Right),
         HuCall c => c.Args.Any(HasFloat),
+        _ => false,
+    };
+
+    /// <summary>変数・配列の要素をその場で書き換える MIRROR$ か</summary>
+    private static bool IsInPlaceMirror(HuCall c) => c is { Name: "MIRROR$", Args: [HuVar or HuIndex] };
+
+    /// <summary>変数・配列の要素をその場で書き換える MIRROR$ を (入れ子の中も) 含むか</summary>
+    private static bool HasInPlaceMirror(HuExpr e) => e switch
+    {
+        HuCall c => IsInPlaceMirror(c) || c.Args.Any(HasInPlaceMirror),
+        HuIndex ix => HasInPlaceMirror(ix.Index),
+        HuUnary u => HasInPlaceMirror(u.Operand),
+        HuBinary b => HasInPlaceMirror(b.Left) || HasInPlaceMirror(b.Right),
         _ => false,
     };
 
@@ -757,6 +783,10 @@ public sealed class SlangBackend : IHuBackend
                     "RIGHT$" => Call("BAS_SRIGHT", (c.Args[0], K.Str), (c.Args[1], K.Int)),
                     "CHR$" => $"BAS_SCHR({Int(c.Args[0])})",
                     "HEXCHR$" => $"BAS_SHEX({Str(c.Args[0])})",
+                    // 本物の MIRROR$ は、引数が変数・配列の要素ならその中身をその場で書き換え、結果もその中身になる
+                    "MIRROR$" => IsInPlaceMirror(c)
+                        ? $"BAS_SMIRRORV({Str(c.Args[0])})"
+                        : $"BAS_SMIRROR({Str(c.Args[0])})",
                     "CGPAT$" => $"BAS_SCGPAT({Int(c.Args[0])})",
                     "HEX$" => $"BAS_SHEXS({Int(c.Args[0])})",
                     // SPACE$(n) は STRING$(n," ") と同じ (n の範囲の検査も同じ)
