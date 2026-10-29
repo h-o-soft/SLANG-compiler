@@ -975,6 +975,53 @@ public class HuBasicFrontendTests
         AssertError("10 A=MIRROR$(\"A\")", "HB0404");
     }
 
+    /// <summary>
+    /// X1turbo の形: WIDTH の 2 つめから後 (25 だけなら黙って受け、ほかは HB0705 で読み飛ばす)、KEYLIST n・KLIST n・KMODE n (何もしない。
+    /// 0 以外は HB0706)。引数は数の定数だけ (HB0703)。数のない KEYLIST・KLIST は未対応の命令、数のない KMODE は引数が足りない
+    /// </summary>
+    [Fact]
+    public void Analyzer_TurboForms()
+    {
+        var (prog, diag) = Analyze("10 WIDTH 40,25:KEYLIST 0:KLIST 0:KMODE 0:KEYLIST0:kmode 0");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Items.Select(d => d.Code + " " + d.Message)));
+        Assert.DoesNotContain(diag.Items, d => d.Code is "HB0705" or "HB0706");
+        var cmds = HuAnalyzer.AllStatements(prog!.Lines).OfType<HuCommand>().ToList();
+        Assert.Equal(new[] { "WIDTH", "KLIST", "KLIST", "KMODE", "KLIST", "KMODE" }, cmds.Select(c => c.Name));
+        foreach (var p in new[] { "10 WIDTH 40,20", "10 WIDTH 40,25,0,1", "10 WIDTH 80,25,0" })
+        {
+            (_, diag) = Analyze(p);
+            Assert.False(diag.HasErrors, p);
+            Assert.Contains(diag.Items, d => d.Code == "HB0705" && d.Severity == HuSeverity.Warning);
+        }
+        foreach (var p in new[] { "10 KLIST 1", "10 KMODE 1", "10 KEYLIST 2" })
+        {
+            (_, diag) = Analyze(p);
+            Assert.False(diag.HasErrors, p);
+            Assert.Contains(diag.Items, d => d.Code == "HB0706" && d.Severity == HuSeverity.Warning);
+        }
+        foreach (var p in new[] { "10 WIDTH 40,R", "10 WIDTH 40,25,R", "10 WIDTH 40,25,0,R", "10 KEYLIST R", "10 KLIST ASC(INPUT$(1))",
+                                  "10 KMODE R", "10 KMODEX", "10 KLISTX" })
+            AssertError(p, "HB0703");
+        AssertError("10 KEYLIST", "HB0301");
+        AssertError("10 KLIST:PRINT", "HB0301");
+        AssertError("10 KMODE", "HB0203");
+        AssertError("10 WIDTH 40,25,0,1,2", "HB0202");
+        foreach (var p in new[] { "10 WIDTH 40,,0", "10 WIDTH 40," })
+            Assert.True(Analyze(p).Diag.HasErrors, p);
+        AssertError("10 KMODE \"A\"", "HB0404");
+        // KEY はいまと同じ。KMODE が名前の途中にある変数はそのまま
+        (_, diag) = Analyze("10 KEY 1,\"A\":KEY0,\"\":XKMODE=1:PRINT XKMODE");
+        Assert.False(diag.HasErrors);
+        Assert.Contains(diag.Items, d => d.Code == "HB0704");
+        // ':' を省いた続きと ELSE は残る
+        prog = AnalyzeOk("10 WIDTH 40,25 INIT:WIDTH 40,25,0,1 INIT:WIDTH 80 INIT:IF A THEN WIDTH 40,25 ELSE WIDTH 80,25");
+        var all = HuAnalyzer.AllStatements(prog.Lines).Where(s => s is not HuIf).ToList();
+        Assert.Equal(8, all.Count);
+        Assert.Equal(new[] { 2, 4, 1, 2, 2 }, all.OfType<HuCommand>().Where(c => c.Name == "WIDTH").Select(c => c.Args.Count));
+        Assert.Equal(3, all.Count(s => s is not HuCommand { Name: "WIDTH" }));
+        Assert.NotNull(prog.Lines[0].Statements.OfType<HuIf>().Single().Else);
+    }
+
     /// <summary>段階 G1: PLAY は文字列なら MML、数ならテンポ。KEY は 2 つ目が文字列で、warning HB0704 を出す</summary>
     [Fact]
     public void Analyzer_PlayNumberAndKey()

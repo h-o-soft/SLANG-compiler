@@ -5067,6 +5067,16 @@ LD E, (HL)          ; 音量
 LD A, (.bpn_ch)
 ADD A, 8
 CALL BAS_PSGW
+; エンベロープの形 (R13) を PSG から読んで同じ値を書き直す (V16 のエンベロープを音符ごとに最初から。
+; 値は SOUND 13 や OUT で書いた今の値のまま。HuBASIC の実測)
+PUSH BC
+LD BC, $1C00
+LD A, 13
+OUT (C), A
+LD B, $1B
+IN A, (C)
+OUT (C), A
+POP BC
 JP .bpn_count
 .bpn_rest
 CALL .bpn_len
@@ -5108,29 +5118,36 @@ LD HL, (.bpn_st)
 LD (HL), A
 JP .bpn_parse
 .bpn_vol
+; 音量 0-16 (16 は PSG のエンベロープ)。先頭 2 桁が 16 以下なら 2 桁、そうでなければ 1 桁。
+; 後に続く数字は捨てる (V17 は 1、V107 は 10、V255 は 2。HuBASIC の実測)
 CALL .bpn_digit
 JP C, .bpn_parse    ; 数字がなければ音量はそのまま (HuBASIC の実測)
 LD C, A
 CALL .bpn_peekdigit ; 2 桁目
-JP C, .bpn_v1
+JP C, .bpn_vskip
+LD B, A
 LD A, C
 ADD A, A
-LD B, A
+LD D, A
 ADD A, A
 ADD A, A
-ADD A, B            ; ×10
-LD B, A
-CALL .bpn_digit
+ADD A, D            ; ×10
 ADD A, B
+CP 17
+JP NC, .bpn_vskip   ; 17 以上なら 1 桁目だけ
 LD C, A
-.bpn_v1
-LD A, C
-CP 16
-JP NC, .bpn_err
+.bpn_vskip
+CALL .bpn_digit     ; 残りの数字を捨てる
+JP NC, .bpn_vskip
 LD HL, (.bpn_st)
 INC HL
 INC HL
-LD (HL), A
+LD (HL), C
+; V を読んだ所で、すぐにそのチャンネルの音量のレジスタに書く (HuBASIC の実測)
+LD E, C
+LD A, (.bpn_ch)
+ADD A, 8
+CALL BAS_PSGW
 JP .bpn_parse
 .bpn_end
 ; 文字列が尽きた: 音量 0、動作中を 0 に

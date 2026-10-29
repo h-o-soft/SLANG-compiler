@@ -1871,6 +1871,19 @@ public class HuBasicEmitTests
             Assert.Contains(expected, sl);
     }
 
+    /// <summary>WIDTH の 2 つめから後は読み飛ばし (1 つめは今までどおり渡す)、KEYLIST・KLIST・KMODE は何も出さない</summary>
+    [Fact]
+    public void Slang_TurboForms()
+    {
+        var sl = Body(Transpile("10 DEFINT A-Z:W=80:WIDTH 40,25:WIDTH W,25,0,1:KEYLIST 0:KLIST 1:KMODE 0:PRINT 1").Output!);
+        Assert.Contains("BAS_WIDTH(40);", sl);
+        Assert.Contains("BAS_WIDTH(V_W);", sl);
+        Assert.Equal(2, sl.Split("BAS_WIDTH(").Length - 1);
+        Assert.DoesNotContain("25", sl);
+        Assert.DoesNotContain("KLIST", sl);
+        Assert.DoesNotContain("KMODE", sl);
+    }
+
     [Fact]
     public void Slang_StageG5bCalls()
     {

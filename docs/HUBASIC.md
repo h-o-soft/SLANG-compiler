@@ -164,7 +164,7 @@ REM (')  LET  GOTO  GOSUB  RETURN [行]  ON 式 GOTO/GOSUB/RESTORE  IF … THEN 
 LABEL "名前"  GOTO "名前"  GOSUB "名前"  ON 式 GOTO/GOSUB 行か "名前",…
 FOR … TO … STEP / NEXT [変数,…]  REPEAT / UNTIL  WHILE / WEND  END
 DIM  DEFINT/DEFSNG/DEFDBL/DEFSTR  DATA  READ  RESTORE [行]
-PRINT (; , SPC() TAB() USING)  PRINT#0  LOCATE x,y  CLS [n]  COLOR [前景][,背景]  WIDTH 40/80
+PRINT (; , SPC() TAB() USING)  PRINT#0  LOCATE x,y  CLS [n]  COLOR [前景][,背景]  WIDTH 40/80[,行[,a,b]]
 CONSOLE [ys,yl[,xs,xl]]   (テキストの窓。下の説明)
 CFLASH [n]  CSIZE [n]  CGEN [n]  DEFCHR$(n)=文字列  LINE (x1,y1)-(x2,y2),"文字"[,B|BF]
 LINE (x1,y1)-(x2,y2),PSET|PRESET[,色][,B|BF]   (グラフィック画面の線・箱・塗りつぶした箱)
@@ -175,6 +175,7 @@ POKE 番地,値[,値…]  POKE@ ポート,値[,値…]  CALL 番地  TIME=秒
 PLAY "MML"  PLAY n  MUSIC (PLAY と同じ)  TEMPO n  BEEP [0|1]  SOUND レジスタ,値  PAUSE n  RANDOMIZE [n]
 VSYNC [n]   (HuBASIC にない命令。下の説明)
 KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出ます)
+KEYLIST n・KLIST n・KMODE n   (X1turbo の形。何もしない。0 以外は warning が出ます)
 ```
 
 - 文の区切りの `:` は、HuBASIC と同じく、文が終わった所なら省けます (`COLOR 4 LOCATE 0,2 PRINT "A"`、`A=1 B=2`)。
@@ -188,6 +189,13 @@ KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出�
   HuBASIC と同じく、値は先に 16 ビットに回り込むので、`-65535` は 1 として書かれます)。
 - `TIME` はサブ CPU の時計で数える秒です (`CALL` でマシン語を動かしている間も進みます)。
 - `PRINT USING` は数値の書式だけ (`# . + - **` と `,` の区切り)。`PRINT#` は `#0` だけ。
+- `WIDTH` の 2 つめから後 (`WIDTH 40,25,0,1` のような X1turbo の形) は数の定数だけ書けます。画面はいつも 25 行で、行が 25 のときは
+  黙って受け、25 以外のときと 3 つめ・4 つめがあるときは warning HB0705 を出して読み飛ばします。
+  `KEYLIST n`・`KLIST n` (ファンクションキーの表示)・`KMODE n` (漢字のモード) も数の定数だけで、何もしません (数のない `KEYLIST` は未対応)。
+- `PLAY` の MML の音量 `V` は 0〜16 です。`V16` は PSG のハードウェアのエンベロープを使います (音量のレジスタに 16 を書く。
+  エンベロープの形 (`SOUND 13,…` で決めた値、決めていなければ 0 = 1 回だけ小さくなって消える) は音符ごとに書き直して最初からやり直し、
+  長さ (周期) は書かないので `SOUND 11,…`・`SOUND 12,…` で決めます)。
+  数字は、先頭 2 桁が 16 以下なら 2 桁、そうでなければ先頭 1 桁を使い、後に続く数字は捨てます (`V17` は 1、`V107` は 10。HuBASIC と同じ)。
 - `INPUT` は 1 行の入力 (BS で 1 文字消す、RETURN で終わり)。数が読めなくても聞き直さず 0 (HuBASIC と同じ)。
 - `PRINT` の文字列の中のカーソルの制御コード (`CHR$(28)`〜`CHR$(31)`) でカーソルが動きます。`CHR$(11)` は窓の左上へ、`CHR$(12)` は窓の中を消します。
   `CHR$(14)` は窓の上の行からカーソルの行までを 1 行上にずらしてカーソルの行を空け、`CHR$(15)` はカーソルの行から窓の下の行までを
@@ -287,6 +295,7 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート
   - `INKEY$` の自動リピート: 1 周が 1 フレームより長いループでは、リピートの回数が少ない。
   - `KEY` は何もしません (`INKEY$` はファンクションキーでキーの文字コードを返す)。
   - 音のない MML (最後が数字のない `V`、音符のない `"v15:v15:v15"`) の次の `PLAY` は、HuBASIC は 60〜70ms ほど音が切れてから鳴るが、こちらは切れ目なく鳴る。
+  - X1turbo の BASIC の動き (行数の切り替え、ファンクションキーの表示、漢字のモード、turbo の MML) は確かめていません。HuBASIC (CZ-8FB01) に合わせています。
 - 速さ: ウェイトの付け方が「行ごと」なので、HuBASIC と同じ速さになるのは目安です。文字列の処理や `PAINT` は HuBASIC よりずっと速い。
 
 合わせてあるもの (比べて確かめたもの): 実行時エラーの表示 (既定では「<メッセージ> in <行番号>」と「Ok」)、`PLAY` の音程・長さ・テンポ、`BEEP`、
@@ -311,3 +320,5 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート
 | warning HB0501 | 行番号が昇順でない (並べ替えて続ける) |
 | warning HB0505 | 同じ名前の `LABEL` が 2 つ以上ある (前の方に飛ぶ) |
 | warning HB0701・HB0702・HB0704 | `KBUF`・`SCREEN`・`KEY` (何もしない) |
+| warning HB0705 | `WIDTH` の行数 (25 以外) と 3 つめ・4 つめ (読み飛ばす) |
+| warning HB0706 | `KEYLIST`・`KLIST`・`KMODE` の 0 以外 (何もしない) |
