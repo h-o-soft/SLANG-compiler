@@ -19,7 +19,7 @@
 ; @name BAS_WORK
 ; @resident shared
 ; @param_count 0
-; @works BAS_CXY:2,BAS_WID:1,BAS_ATTR:1,BAS_CSZ:1,BAS_RAW:1,BAS_PAL:3,BAS_CSP:2,BAS_CSTK:640,BAS_TMPP:2,BAS_TMP:1024,BAS_NUMBUF:8,BAS_DBASE:2,BAS_DLTAB:2,BAS_DPOS:2,BAS_DEND:2,BAS_UFMT:256,BAS_PCGBUF:32,BAS_TEMPN:2,BAS_PLST:9,BAS_PLCH:15,BAS_LASTKEY:1,BAS_CLK:1,BAS_LNPTR:2,BAS_INBUF:256,BAS_INPOS:2,BAS_PUST:10,BAS_KREP:1
+; @works BAS_CXY:2,BAS_WID:1,BAS_ATTR:1,BAS_CSZ:1,BAS_RAW:1,BAS_PAL:3,BAS_CSP:2,BAS_CSTK:640,BAS_TMPP:2,BAS_TMP:1024,BAS_NUMBUF:8,BAS_DBASE:2,BAS_DLTAB:2,BAS_DPOS:2,BAS_DEND:2,BAS_UFMT:256,BAS_PCGBUF:32,BAS_TEMPN:2,BAS_PLST:9,BAS_PLCH:15,BAS_LASTKEY:1,BAS_CLK:1,BAS_LNPTR:2,BAS_INBUF:256,BAS_INPOS:2,BAS_PUST:10,BAS_KREP:1,BAS_WIN:4
 ; BAS_CX/CY: カーソル、BAS_WID: 桁数 (40/80)、BAS_ATTR: 現在の属性 (色 + CR/CF/CG)
 ; BAS_CSZ: CSIZE (0-3)、BAS_RAW: PRINT#0 中なら 1、BAS_PAL*: パレットの影 (書込専用ポートのため)
 ; BAS_CSP/BAS_CSTK: 制御スタック (10 バイト × 64 枠)
@@ -33,9 +33,14 @@
 ; BAS_INBUF: INPUT で読んだ 1 行 (長さ付き)、BAS_INPOS: 次の項目の始まり (1 始まりの位置)
 ; BAS_PUST: PRINT USING の数値の欄 (BAS_PUPARSE が読み、BAS_PULAY が使う。下の EQU)
 ; BAS_KREP: キーのリピート (REPEAT ON で 1、OFF で 0。起動したときは 1、INIT では戻さない)
+; BAS_WIN: テキストの窓 (CONSOLE)。左・上・右・下 (右と下も窓に含む)。全画面は 0・0・桁数-1・24
 ; カーソルとパレットは連続した番地が要るので、まとめて確保して EQU で分ける
 BAS_CX EQU BAS_CXY
 BAS_CY EQU BAS_CXY + 1
+BAS_WX0 EQU BAS_WIN             ; 窓の左の桁 (BAS_WY0 と続けて置く。LD HL,(BAS_WX0) で L = 左、H = 上)
+BAS_WY0 EQU BAS_WIN + 1         ; 窓の上の行
+BAS_WX1 EQU BAS_WIN + 2         ; 窓の右の桁
+BAS_WY1 EQU BAS_WIN + 3         ; 窓の下の行
 BAS_PALB EQU BAS_PAL
 BAS_PALR EQU BAS_PAL + 1
 BAS_PALG EQU BAS_PAL + 2
@@ -111,8 +116,10 @@ JP BAS_CLS
 ; @name BAS_INITSTATE
 ; @resident shared
 ; @param_count 0
-; @calls BAS_WORK,BAS_PALRST
-; INIT 文と BAS_INIT で共通の初期値: 色 7、装飾なし、プライオリティ 0、パレット既定 (INIT 文もプライオリティを戻す。HuBASIC の実測)
+; @calls BAS_WORK,BAS_PALRST,BAS_WINRST
+; INIT 文と BAS_INIT で共通の初期値: 色 7、装飾なし、プライオリティ 0、パレット既定 (INIT 文もプライオリティを戻す。HuBASIC の実測)、
+; テキストの窓は全画面 (INIT 文も CONSOLE を戻す。カーソルは動かさない。HuBASIC の実測)
+CALL BAS_WINRST
 LD A, $07
 LD (BAS_ATTR), A
 XOR A
@@ -191,8 +198,10 @@ PUSH HL
 XOR A
 LD (BAS_RAW), A
 LD (BAS_CSZ), A
+LD A, (BAS_WX0)     ; カーソルが窓の左端でなければ改行
+LD B, A
 LD A, (BAS_CX)
-OR A
+CP B
 CALL NZ, BAS_PNL
 POP DE              ; E = エラー番号
 LD HL, .ber_tab
@@ -340,24 +349,20 @@ JP BAS_CLSTEXT
 ; @name BAS_CLSTEXT
 ; @resident shared
 ; @param_count 0
-; @calls BAS_WORK,BAS_VPUT
-; テキストを空白で埋め、属性を「$40 + 現在の属性」で埋める (HuBASIC の実測)。カーソルを左上へ
-LD A, (BAS_ATTR)
-OR $40
-LD D, A
-LD E, $20
-LD HL, 0
+; @calls BAS_WORK,BAS_WBLANK
+; テキストの窓 (CONSOLE。ふだんは全画面) を空白で埋め、属性を「$40 + 現在の属性」で埋める (HuBASIC の実測)。カーソルを窓の左上へ
+LD A, (BAS_WY0)
 .bct_loop
-PUSH HL
-CALL BAS_VPUT
-POP HL
-INC HL
-LD A, H
-CP $08              ; $800 セル (2048 = 80×25 + 余り)
-JP NZ, .bct_loop
-XOR A
-LD (BAS_CX), A
-LD (BAS_CY), A
+PUSH AF
+LD H, A
+CALL BAS_WBLANK
+POP AF
+LD HL, BAS_WY1
+CP (HL)
+INC A               ; キャリーは変えない
+JP C, .bct_loop     ; 窓の下の行まで
+LD HL, (BAS_WX0)
+LD (BAS_CXY), HL
 RET
 
 
@@ -394,66 +399,126 @@ RET
 ; @name BAS_SCROLL
 ; @resident shared
 ; @param_count 0
-; @calls BAS_WORK,BAS_VPUT
-; 1 行上にずらし、最下行を空白 (属性 $40 + 現在の属性) で埋める
-LD A, (BAS_WID)
+; @calls BAS_WORK,BAS_WSCRL
+; テキストの窓 (ふだんは全画面) を 1 行上にずらし、窓の下の行を空白 (属性 $40 + 現在の属性) で埋める
+LD A, (BAS_WY0)
+LD D, A
+LD A, (BAS_WY1)
 LD E, A
-LD D, 0             ; DE = 桁数 (読み出し側のずれ)
-LD HL, 0            ; HL = 書き込み先の位置
-LD A, (BAS_WID)
-CP 80
-LD BC, 40 * 24
-JP NZ, .bs_n
-LD BC, 80 * 24
-.bs_n
-.bs_loop
-PUSH BC
+XOR A
+JP BAS_WSCRL
+
+
+; @name BAS_WSCRL
+; @resident shared
+; @param_count 0
+; @calls BAS_WORK,BAS_VOFF,BAS_WBLANK
+; D = 上の行、E = 下の行 (D ≦ E)、A = 0 なら 1 行上へ・1 なら 1 行下へ。窓の桁の中だけで行 D〜E をずらし、空いた行を空白にする
+; (ずらすのはテキストと属性。漢字の面は触らない。空白にする行は BAS_WBLANK)。スクロールと CHR$(14)・CHR$(15) が使う
+OR A
+JP NZ, .bws_down
+.bws_up
+LD A, D
+CP E
+JP NC, .bws_bl_e
+LD H, D
+INC H               ; 元 = D + 1
+LD L, D             ; 先 = D
+CALL .bws_copy
+INC D
+JP .bws_up
+.bws_bl_e
+LD H, E
+JP BAS_WBLANK
+.bws_down
+LD A, E
+CP D
+JP Z, .bws_bl_d
+JP C, .bws_bl_d
+LD H, E
+DEC H               ; 元 = E - 1
+LD L, E             ; 先 = E
+CALL .bws_copy
+DEC E
+JP .bws_down
+.bws_bl_d
+LD H, D
+JP BAS_WBLANK
+.bws_copy
+; H = 元の行、L = 先の行 → 窓の桁の分だけ、テキストと属性を写す (DE は保つ)
+PUSH DE
 PUSH HL
-ADD HL, DE          ; 読み出し元 = 書き込み先 + 桁数
-LD A, H
+LD A, (BAS_WX0)
+LD L, A
+CALL BAS_VOFF       ; HL = 元の位置
+EX DE, HL           ; DE = 元の位置
+POP HL
+PUSH HL
+LD H, L
+LD A, (BAS_WX0)
+LD L, A
+CALL BAS_VOFF       ; HL = 先の位置
+LD A, (BAS_WX0)
+LD B, A
+LD A, (BAS_WX1)
+SUB B
+INC A               ; A = 窓の桁の数
+.bwc_loop
+PUSH AF
+LD A, D
 OR $30
 LD B, A
-LD C, L
+LD C, E
 IN A, (C)           ; テキスト
 EX AF, AF'
 RES 4, B
 IN A, (C)           ; 属性
-POP HL
-PUSH HL
 PUSH AF
 LD A, H
 OR $30
 LD B, A
 LD C, L
-EX AF, AF'
+EX AF, AF'          ; A = テキスト
 OUT (C), A
 RES 4, B
-POP AF
+POP AF              ; A = 属性
 OUT (C), A
-POP HL
+INC DE
 INC HL
-POP BC
-DEC BC
-LD A, B
-OR C
-JP NZ, .bs_loop
-; 最下行
+POP AF
+DEC A
+JP NZ, .bwc_loop
+POP HL
+POP DE
+RET
+
+
+; @name BAS_WBLANK
+; @resident shared
+; @param_count 0
+; @calls BAS_WORK,BAS_VOFF,BAS_VPUT
+; H = 行 → 窓の桁 (BAS_WX0〜BAS_WX1) のその行を空白 (文字 $20・属性 $40 + 現在の属性・漢字 0) にする。A・BC・DE・HL を壊す
+LD A, (BAS_WX0)
+LD L, A
+CALL BAS_VOFF       ; HL = 位置
+LD A, (BAS_WX0)
+LD B, A
+LD A, (BAS_WX1)
+SUB B
+INC A
+LD B, A             ; B = 窓の桁の数
 LD A, (BAS_ATTR)
 OR $40
 LD D, A
-LD A, (BAS_WID)
-LD B, A
-.bs_fill
+LD E, $20
+.bwb_loop
 PUSH BC
 PUSH HL
-PUSH DE
-LD E, $20
 CALL BAS_VPUT
-POP DE
 POP HL
 INC HL
 POP BC
-DJNZ .bs_fill
+DJNZ .bwb_loop
 RET
 
 
@@ -461,16 +526,15 @@ RET
 ; @resident shared
 ; @param_count 0
 ; @calls BAS_WORK,BAS_SCROLL
-; カーソルを次の行の先頭へ (最下行ならスクロール)
-XOR A
+; カーソルを次の行の窓の左の端へ (窓の下の行ならスクロールして、下の行のまま)
+LD A, (BAS_WX0)
 LD (BAS_CX), A
+LD A, (BAS_WY1)
+LD B, A
 LD A, (BAS_CY)
+CP B
+JP NC, BAS_SCROLL
 INC A
-CP 25
-JP C, .bn_set
-CALL BAS_SCROLL
-LD A, 24
-.bn_set
 LD (BAS_CY), A
 RET
 
@@ -478,9 +542,10 @@ RET
 ; @name BAS_PCHR
 ; @resident shared
 ; @param_count 1
-; @calls BAS_WORK,BAS_VOFF,BAS_VPUT,BAS_NEWLINE,BAS_CLSTEXT,BAS_SCROLL
-; L = 文字コード。生出力 (PRINT#0) でなければ制御コード ($0D 改行、$0B HOME、$0C CLS、$1C-$1F カーソルの右・左・上・下)
-; を解釈し、ほかの $00-$1F は出さない。生出力では CSIZE の拡大で書く。
+; @calls BAS_WORK,BAS_VOFF,BAS_VPUT,BAS_NEWLINE,BAS_CLSTEXT,BAS_SCROLL,BAS_WSCRL
+; L = 文字コード。生出力 (PRINT#0) でなければ制御コード ($0D 改行、$0B HOME、$0C CLS、$0E 上へ詰める、$0F 下へ空ける、
+; $1C-$1F カーソルの右・左・上・下) を解釈し、ほかの $00-$1F は出さない。生出力では CSIZE の拡大で書く。
+; カーソルの動き・折り返し・スクロールはテキストの窓 (CONSOLE。ふだんは全画面) の中で行う
 LD A, (BAS_RAW)
 OR A
 LD A, L
@@ -491,6 +556,10 @@ CP $0B
 JP Z, .bp_home
 CP $0C
 JP Z, BAS_CLSTEXT
+CP $0E
+JP Z, .bp_rup
+CP $0F
+JP Z, .bp_rdn
 CP $20
 JP NC, .bp_char
 CP $1C
@@ -501,42 +570,60 @@ CP $1E
 JP Z, .bp_up
 CP $1F
 JP Z, .bp_down
-; 右: 右端なら次の行の左端 (最下行ならスクロール。改行と同じ)
+; 右: 窓の右端なら次の行の窓の左端 (窓の下の行ならスクロール。改行と同じ)
 LD A, (BAS_CX)
-INC A
-LD HL, BAS_WID
+LD HL, BAS_WX1
 CP (HL)
 JP NC, BAS_NEWLINE
+INC A
 LD (BAS_CX), A
 RET
 .bp_left
-; 左: 左端なら前の行の右端 (いちばん上の行なら同じ行の右端。HuBASIC の実測)
+; 左: 窓の左端なら前の行の窓の右端 (窓のいちばん上の行なら同じ行の窓の右端。HuBASIC の実測)
 LD A, (BAS_CX)
-OR A
+LD HL, BAS_WX0
+CP (HL)
 JP Z, .bp_lwrap
 DEC A
 LD (BAS_CX), A
 RET
 .bp_lwrap
-LD A, (BAS_WID)
-DEC A
+LD A, (BAS_WX1)
 LD (BAS_CX), A
 .bp_up
-; 上: いちばん上の行なら動かない
+; 上: 窓のいちばん上の行なら動かない
 LD A, (BAS_CY)
-OR A
+LD HL, BAS_WY0
+CP (HL)
 RET Z
 DEC A
 LD (BAS_CY), A
 RET
 .bp_down
-; 下: 最下行ならスクロールして最下行のまま (桁はそのまま)
+; 下: 窓の下の行ならスクロールして下の行のまま (桁はそのまま)
 LD A, (BAS_CY)
-CP 24
+LD HL, BAS_WY1
+CP (HL)
 JP NC, BAS_SCROLL
 INC A
 LD (BAS_CY), A
 RET
+.bp_rup
+; $0E: 窓の上の行からカーソルの行までを 1 行上にずらし、カーソルの行を空白にする (カーソルは動かさない。HuBASIC の実測)
+LD A, (BAS_WY0)
+LD D, A
+LD A, (BAS_CY)
+LD E, A
+XOR A
+JP BAS_WSCRL
+.bp_rdn
+; $0F: カーソルの行から窓の下の行までを 1 行下にずらし、カーソルの行を空白にする
+LD A, (BAS_CY)
+LD D, A
+LD A, (BAS_WY1)
+LD E, A
+LD A, 1
+JP BAS_WSCRL
 .bp_char
 LD E, A             ; E = 文字
 LD A, (BAS_RAW)
@@ -569,26 +656,28 @@ POP DE
 POP BC
 BIT 0, C
 JP Z, .bp_adv
-LD HL, (BAS_CX)     ; 縦 2 倍は 1 行下にも (最下行なら書かない)
+LD HL, (BAS_CX)     ; 縦 2 倍は 1 行下にも (窓の下の行なら書かない)
 INC H
-LD A, H
-CP 25
-JP NC, .bp_adv
+LD A, (BAS_WY1)
+CP H
+JP C, .bp_adv
 PUSH BC
 PUSH DE
 CALL .bp_cell
 POP DE
 POP BC
 .bp_adv
-; カーソルを進める。右端を越えたら、その場で次の行の左端へ (縦 2 倍なら 2 行下)。
-; 最下行を越えたらスクロールする (右下の隅に書いた直後にもスクロールする。HuBASIC と同じ)
+; カーソルを進める。窓の右端を越えたら、その場で次の行の窓の左端へ (縦 2 倍なら 2 行下)。
+; 窓の下の行を越えたらスクロールする (右下の隅に書いた直後にもスクロールする。HuBASIC と同じ)
 LD A, (BAS_CX)
+LD HL, BAS_WX1
+CP (HL)
+JP NC, .bp_wrap
 INC A
 LD (BAS_CX), A
-LD HL, BAS_WID
-CP (HL)
-RET C
-XOR A
+RET
+.bp_wrap
+LD A, (BAS_WX0)
 LD (BAS_CX), A
 LD A, (BAS_CY)
 INC A
@@ -596,8 +685,10 @@ BIT 0, C
 JP Z, .bp_wy
 INC A
 .bp_wy
-CP 25
+LD HL, BAS_WY1
+CP (HL)
 JP C, .bp_wset
+JP Z, .bp_wset
 PUSH BC
 PUSH DE
 PUSH AF
@@ -619,9 +710,8 @@ CALL BAS_VPUT
 POP DE
 RET
 .bp_home
-XOR A
-LD (BAS_CX), A
-LD (BAS_CY), A
+LD HL, (BAS_WX0)    ; 窓の左上
+LD (BAS_CXY), HL
 RET
 
 
@@ -698,8 +788,49 @@ RET
 ; @name BAS_PZONE
 ; @resident shared
 ; @param_count 0
-; @calls BAS_WORK,BAS_PCHR,BAS_NEWLINE
-; 次の 10 桁区切りの位置まで空白。次の区切りが行末を越えるなら改行
+; @calls BAS_WORK,BAS_PCHR
+; 次の 10 桁区切り (画面の絶対の桁) の位置まで空白。次の区切りが窓の右端を越えるなら、窓の右端まで空白を出して折り返し、
+; 折り返した所 (窓の左端) が区切りでなければ、そこから次の区切りまで空白 (HuBASIC の実測。全画面では折り返した所が 0 なので、そこで終わり)
+CALL .bpz_next
+LD A, (BAS_WX1)
+CP C
+JP NC, .bpz_pad     ; 次の区切りが窓の中
+.bpz_eol
+LD A, (BAS_CX)
+LD B, A             ; B = 空白を出す前の桁
+PUSH BC
+LD L, $20
+CALL BAS_PCHR
+POP BC
+LD A, B
+LD HL, BAS_CX
+CP (HL)
+JP C, .bpz_eol      ; 進んだ (まだ折り返していない)
+CALL .bpz_next
+LD A, C
+SUB 10
+LD HL, BAS_CX
+CP (HL)
+RET Z               ; 改行した所が区切り
+LD A, (BAS_WX1)
+CP C
+RET C               ; 次の区切りも窓の右端を越える
+.bpz_pad
+LD A, (BAS_CX)
+CP C
+RET NC
+LD B, A             ; B = 空白を出す前の桁
+PUSH BC
+LD L, $20
+CALL BAS_PCHR
+POP BC
+LD A, B
+LD HL, BAS_CX
+CP (HL)
+RET NC              ; 進まなかった (出す前の桁 ≧ いまの桁。折り返した。CSIZE 2 の生出力で区切りを飛び越えて止まらなくなるのを防ぐ)
+JP .bpz_pad
+.bpz_next
+; C = いまの桁より後の、次の区切りの桁
 LD A, (BAS_CX)
 LD B, 0
 .bpz_div
@@ -716,19 +847,7 @@ ADD A, A
 ADD A, A
 ADD A, C            ; A = B * 10 (次の区切りの桁)
 LD C, A
-LD A, (BAS_WID)
-DEC A
-CP C
-JP C, BAS_NEWLINE   ; 次の区切りが行内にない
-.bpz_pad
-LD A, (BAS_CX)
-CP C
-RET NC
-PUSH BC
-LD L, $20
-CALL BAS_PCHR
-POP BC
-JP .bpz_pad
+RET
 
 
 ; @name BAS_PNUM
@@ -797,21 +916,31 @@ RET
 ; @resident shared
 ; @param_count 2
 ; @calls BAS_WORK,BAS_ERROR
-; HL = X, DE = Y (範囲外はエラー 5)
+; HL = X, DE = Y (画面の絶対の座標。テキストの窓 (CONSOLE。ふだんは全画面) の外はエラー 5。HuBASIC の実測)
 LD A, H
 OR D
 JP NZ, .bl_err
-LD A, (BAS_WID)
-DEC A
-CP L
-JP C, .bl_err
-LD A, E
-CP 25
-JP NC, .bl_err
-LD A, L
-LD (BAS_CX), A
-LD A, E
-LD (BAS_CY), A
+LD B, L
+LD C, E
+LD HL, BAS_WX0
+LD A, B
+CP (HL)
+JP C, .bl_err       ; 窓の左より左
+INC HL              ; BAS_WY0
+LD A, C
+CP (HL)
+JP C, .bl_err       ; 窓の上より上
+INC HL              ; BAS_WX1
+LD A, (HL)
+CP B
+JP C, .bl_err       ; 窓の右より右
+INC HL              ; BAS_WY1
+LD A, (HL)
+CP C
+JP C, .bl_err       ; 窓の下より下
+LD L, B
+LD H, C
+LD (BAS_CXY), HL
 RET
 .bl_err
 LD HL, 5
@@ -852,8 +981,8 @@ JP BAS_SETPAL
 ; @name BAS_WIDTH
 ; @resident shared
 ; @param_count 1
-; @calls BAS_WORK,sWORK,INIT_CRTC,_C4025L,_C4025H,_C8025L,_C8025H,BAS_CLS
-; HL = 桁数 (40 以下 → 40、それより大きい → 80)。CLS 4 と同じ消去をする
+; @calls BAS_WORK,sWORK,INIT_CRTC,_C4025L,_C4025H,_C8025L,_C8025H,BAS_CLS,BAS_WINRST
+; HL = 桁数 (40 以下 → 40、それより大きい → 80)。テキストの窓を全画面に戻し (HuBASIC の実測)、CLS 4 と同じ消去をする
 LD A, H
 OR A
 JP NZ, .bw_80
@@ -878,8 +1007,122 @@ JP C, .bw_crtc
 EX DE, HL
 .bw_crtc
 CALL INIT_CRTC
+CALL BAS_WINRST
 LD HL, 4
 JP BAS_CLS
+
+
+; @name BAS_WINRST
+; @resident shared
+; @param_count 0
+; @calls BAS_WORK
+; テキストの窓を全画面 (0, 0)-(桁数-1, 24) に戻す (起動・INIT・WIDTH・引数のない CONSOLE)。カーソルは動かさない
+LD HL, 0
+LD (BAS_WX0), HL
+LD A, (BAS_WID)
+DEC A
+LD L, A
+LD H, 24
+LD (BAS_WX1), HL
+RET
+
+
+; @name BAS_CONSOLE0
+; @resident shared
+; @param_count 0
+; @calls BAS_WINRST
+; CONSOLE (引数なし): テキストの窓を全画面に戻す。画面は消さず、カーソルも動かさない (HuBASIC の実測)
+JP BAS_WINRST
+
+
+; @name BAS_CONSOLEY
+; @resident shared
+; @param_count 2
+; @calls BAS_WORK,BAS_CONSOLE
+; HL = ys, DE = yl → CONSOLE ys,yl,0,桁数 と同じ
+POP BC              ; 戻り先
+PUSH HL             ; ys
+PUSH DE             ; yl
+LD HL, 0
+PUSH HL             ; xs
+LD A, (BAS_WID)
+LD L, A
+PUSH HL             ; xl
+PUSH BC
+JP BAS_CONSOLE
+
+
+; @name BAS_CONSOLE
+; @resident shared
+; @calls BAS_WORK,BAS_ERROR
+; @stack_cleanup callee
+; スタック引数 (ys, yl, xs, xl)。テキストの窓を行 ys から yl 行・桁 xs から xl 桁にし、カーソルを (xs, ys) へ。
+; ys 0〜24、yl 1〜25-ys、xs 0〜桁数-1、xl 1〜桁数-xs を外れたらエラー 5 (Illegal function call。HuBASIC の実測)
+POP HL
+LD (.bco_ret), HL
+POP HL
+LD (.bco_xl), HL
+POP HL
+LD (.bco_xs), HL
+POP DE              ; DE = yl
+POP HL              ; HL = ys
+LD BC, (.bco_ret)
+PUSH BC
+LD A, H
+OR D
+JP NZ, .bco_err
+LD A, L
+CP 25
+JP NC, .bco_err
+LD B, L             ; B = ys
+LD A, E
+OR A
+JP Z, .bco_err
+LD A, 25
+SUB B
+CP E
+JP C, .bco_err      ; yl > 25 - ys
+LD A, B
+ADD A, E
+DEC A
+LD C, A             ; C = 下の行
+LD HL, (.bco_xs)
+LD A, H
+OR A
+JP NZ, .bco_err
+LD A, (BAS_WID)
+DEC A
+CP L
+JP C, .bco_err      ; xs > 桁数 - 1
+LD D, L             ; D = xs
+LD HL, (.bco_xl)
+LD A, H
+OR A
+JP NZ, .bco_err
+LD A, L
+OR A
+JP Z, .bco_err
+LD A, (BAS_WID)
+SUB D
+CP L
+JP C, .bco_err      ; xl > 桁数 - xs
+LD A, D
+ADD A, L
+DEC A
+LD (BAS_WX1), A
+LD A, C
+LD (BAS_WY1), A
+LD L, D
+LD H, B
+LD (BAS_WX0), HL    ; 左と上
+LD (BAS_CXY), HL    ; カーソルを窓の左上へ
+RET
+.bco_err
+LD HL, 5
+JP BAS_ERROR
+.bco_ret DW 0
+.bco_xs DW 0
+.bco_xl DW 0
 
 
 ; ============================================================ 制御スタック (GOSUB と FOR)
@@ -6712,15 +6955,18 @@ LD A, (HL)
 OR A
 JP Z, .bin_key
 DEC (HL)
-LD A, (BAS_CX)          ; カーソルを 1 つ戻して、そこを空白にする (行の頭なら前の行の末尾へ)
-OR A
+LD A, (BAS_CX)          ; カーソルを 1 つ戻して、そこを空白にする (窓の左端なら前の行の窓の右端へ)
+LD HL, BAS_WX0
+CP (HL)
 JP NZ, .bin_bs1
 LD A, (BAS_CY)
-OR A
-JP Z, .bin_key
+LD HL, BAS_WY0
+CP (HL)
+JP Z, .bin_key          ; 窓の左上
 DEC A
 LD (BAS_CY), A
-LD A, (BAS_WID)
+LD A, (BAS_WX1)
+INC A
 .bin_bs1
 DEC A
 LD (BAS_CX), A

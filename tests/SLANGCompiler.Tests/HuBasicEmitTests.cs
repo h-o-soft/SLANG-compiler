@@ -151,6 +151,12 @@ public class HuBasicEmitTests
         20 C$="CDE":MUSIC C$:MUSIC 120:X=150:MUSIC X:PLAY "C":MUSIC "D":END
         """;
 
+    /// <summary>CONSOLE (テキストの窓) と CHR$(14)・CHR$(15) を使う小さなプログラム (自作)</summary>
+    private const string ConsoleProgram = """
+        10 CONSOLE 5,10,3,20:PRINT "A","B";CHR$(14);CHR$(15):LOCATE 3,14:CLS
+        20 A=2:CONSOLE A,A+1:CONSOLE:PRINT "Z":END
+        """;
+
     private const string FullProgram = """
         10 DEFINT A-Z:CLS:INIT:WIDTH 40:CLICK OFF:TEMPO 300
         20 A$="AB":B$=A$+CHR$(65):C$=MID$(A$,1,1)+MID$(A$,2)+RIGHT$(A$,1)+HEXCHR$("41")+CGPAT$(65)+INKEY$
@@ -271,6 +277,7 @@ public class HuBasicEmitTests
     [InlineData(G4Program)]
     [InlineData(G5Program)]
     [InlineData(MirrorProgram)]
+    [InlineData(ConsoleProgram)]
     public void Lowering_StatementExprsCoversEveryExpressionField(string program)
     {
         // 構文木の文の型のうち式を持つものは、すべて StatementExprs で式を返す
@@ -1422,7 +1429,8 @@ public class HuBasicEmitTests
         var functions = RuntimeParser.Parse(File.ReadAllText(path), path).ToDictionary(f => f.Name);
         var sl = Transpile(Stage1Program).Output! + Transpile(FullProgram).Output! + Transpile(FloatProgram).Output!
                  + Transpile(StringScreenProgram).Output! + Transpile(InputSoundProgram).Output!
-                 + Transpile(FloatVarProgram).Output! + Transpile(G5Program).Output! + Transpile(MirrorProgram).Output!;
+                 + Transpile(FloatVarProgram).Output! + Transpile(G5Program).Output! + Transpile(MirrorProgram).Output!
+                 + Transpile(ConsoleProgram).Output!;
         var called = Regex.Matches(sl, @"\b(BAS_[A-Z0-9_]+)\(").Select(m => m.Groups[1].Value).Distinct().ToList();
         Assert.NotEmpty(called);
         foreach (var name in called)
@@ -1446,6 +1454,12 @@ public class HuBasicEmitTests
         Assert.Equal(1, functions["BAS_SMIRRORV"].ParamCount);
         Assert.Contains("BAS_SMIRRORV", functions["BAS_SMIRROR"].Dependencies);
         Assert.Equal(1, functions["BAS_SHEX"].ParamCount);
+        // CONSOLE: 引数なし・2 つは HL/DE、4 つはスタックで関数が後始末する
+        Assert.Equal(0, functions["BAS_CONSOLE0"].ParamCount);
+        Assert.Equal(2, functions["BAS_CONSOLEY"].ParamCount);
+        Assert.True(functions["BAS_CONSOLE"].CalleeCleanup, "4 引数の BAS_CONSOLE は callee cleanup");
+        Assert.Contains("BAS_CONSOLE", functions["BAS_CONSOLEY"].Dependencies);
+        Assert.Contains(("BAS_WIN", 4), functions["BAS_WORK"].Works!);
         Assert.Contains(("BAS_TBASE", 3), functions["BAS_TIMEH"].Works!);
         Assert.Contains("BAS_TIMEH", functions["BAS_TIMEL"].Dependencies);
         Assert.Contains("BAS_TIMEH", functions["BAS_TIMESET"].Dependencies);
@@ -1669,6 +1683,13 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "MIR"));
             RunSlangbuild(root, dir, slm, asmPath, Path.Combine(dir, "MIRS"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "MIRS"));
+            // CONSOLE と CHR$(14)・CHR$(15) も両方で組み立てまで通る
+            var slc = Path.Combine(dir, "CON.SL");
+            File.WriteAllText(slc, Transpile(ConsoleProgram).Output!);
+            RunSlangbuild(root, dir, slc, asmPath, Path.Combine(dir, "CON"));
+            AssertBuilt(Path.Combine(dir, "CON"));
+            RunSlangbuild(root, dir, slc, asmPath, Path.Combine(dir, "CONS"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "CONS"));
             // VSYNC 文 (BAS_VSYNC) も組み立てまで通る
             var sl14 = Path.Combine(dir, "VS.SL");
             File.WriteAllText(sl14, Transpile("10 A=2:VSYNC:VSYNC A:GOTO 10").Output!);
@@ -1836,6 +1857,18 @@ public class HuBasicEmitTests
         var plain = Body(Transpile("10 DIM N%(200):N%(ASC(S$))=ASC(MIRROR$(S$+\"\")):OUT ASC(S$),ASC(S$)").Output!);
         Assert.Contains("A_N[BAS_AIDX(BAS_SASC(S_S), &H_DIM_N, &H_UB_N)]=BAS_SASC(BAS_SMIRROR(BAS_SCAT(S_S, K_0)));", plain);
         Assert.Contains("PORT[BAS_SASC(S_S)]=BAS_SASC(S_S);", plain);
+    }
+
+    /// <summary>CONSOLE は引数なし・2 つ・4 つで BAS_CONSOLE0・BAS_CONSOLEY・BAS_CONSOLE を呼ぶ (引数は整数にする)</summary>
+    [Fact]
+    public void Slang_Console()
+    {
+        var sl = Body(Transpile(ConsoleProgram).Output!);
+        foreach (var expected in new[]
+        {
+            "BAS_CONSOLE(5, 10, 3, 20);", "BAS_CONSOLEY(BAS_FTOIR(F_A), BAS_FTOIR((F_A+H_FK[1])));", "BAS_CONSOLE0();",
+        })
+            Assert.Contains(expected, sl);
     }
 
     [Fact]

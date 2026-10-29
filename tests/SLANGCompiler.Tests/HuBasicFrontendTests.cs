@@ -946,6 +946,21 @@ public class HuBasicFrontendTests
         Assert.Equal(3, prog.Arrays["A$"]);
     }
 
+    /// <summary>CONSOLE は引数なし・2 つ・4 つ。引数なしと見るのは文の終わりだけ (CLS などと同じ)。引数は数</summary>
+    [Fact]
+    public void Analyzer_Console()
+    {
+        var prog = AnalyzeOk("10 CONSOLE:CONSOLE 1,2:CONSOLE 1,2,3,4:IF A THEN CONSOLE ELSE CONSOLE 0,25");
+        var counts = HuAnalyzer.AllStatements(prog.Lines).OfType<HuCommand>().Where(c => c.Name == "CONSOLE")
+            .Select(c => c.Args.Count).ToList();
+        Assert.Equal(new[] { 0, 2, 4, 0, 2 }, counts);
+        AssertError("10 CONSOLE 5", "HB0203");
+        AssertError("10 CONSOLE 5,10,3", "HB0203");
+        AssertError("10 CONSOLE 1,2,3,4,5", "HB0202");
+        AssertError("10 CONSOLE \"A\",1", "HB0404");
+        AssertError("10 CONSOLE PRINT \"A\"", "HB0302");   // CLS PRINT "A" と同じく、PRINT を引数の式として読んで error
+    }
+
     /// <summary>MUSIC は PLAY と同じ命令 (本物も同じ)。MIRROR$ は文字列の関数で、予約語は MIRROR$ まで (MIRRORX は変数)</summary>
     [Fact]
     public void Analyzer_MusicAndMirror()

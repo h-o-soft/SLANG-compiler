@@ -165,6 +165,7 @@ LABEL "名前"  GOTO "名前"  GOSUB "名前"  ON 式 GOTO/GOSUB 行か "名前"
 FOR … TO … STEP / NEXT [変数,…]  REPEAT / UNTIL  WHILE / WEND  END
 DIM  DEFINT/DEFSNG/DEFDBL/DEFSTR  DATA  READ  RESTORE [行]
 PRINT (; , SPC() TAB() USING)  PRINT#0  LOCATE x,y  CLS [n]  COLOR [前景][,背景]  WIDTH 40/80
+CONSOLE [ys,yl[,xs,xl]]   (テキストの窓。下の説明)
 CFLASH [n]  CSIZE [n]  CGEN [n]  DEFCHR$(n)=文字列  LINE (x1,y1)-(x2,y2),"文字"[,B|BF]
 LINE (x1,y1)-(x2,y2),PSET|PRESET[,色][,B|BF]   (グラフィック画面の線・箱・塗りつぶした箱)
 PAINT (x,y),色[,境界色 (7 つまで)]
@@ -188,7 +189,18 @@ KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出�
 - `TIME` はサブ CPU の時計で数える秒です (`CALL` でマシン語を動かしている間も進みます)。
 - `PRINT USING` は数値の書式だけ (`# . + - **` と `,` の区切り)。`PRINT#` は `#0` だけ。
 - `INPUT` は 1 行の入力 (BS で 1 文字消す、RETURN で終わり)。数が読めなくても聞き直さず 0 (HuBASIC と同じ)。
-- `PRINT` の文字列の中のカーソルの制御コード (`CHR$(28)`〜`CHR$(31)`) でカーソルが動きます。
+- `PRINT` の文字列の中のカーソルの制御コード (`CHR$(28)`〜`CHR$(31)`) でカーソルが動きます。`CHR$(11)` は窓の左上へ、`CHR$(12)` は窓の中を消します。
+  `CHR$(14)` は窓の上の行からカーソルの行までを 1 行上にずらしてカーソルの行を空け、`CHR$(15)` はカーソルの行から窓の下の行までを
+  1 行下にずらしてカーソルの行を空けます (カーソルは動かない。HuBASIC と同じ)。`PRINT#0` ではどれも文字として出ます。
+- `PRINT ,` は 10 桁ごとの区切り (画面の桁) まで空白を出します。次の区切りが行 (窓) の右端を越えるときは、右端まで空白を書いて
+  次の行へ折り返し、そこが区切りでなければ次の区切りまで進みます (HuBASIC と同じ)。
+- `CONSOLE ys,yl,xs,xl` は、行 ys から yl 行・桁 xs から xl 桁の長方形を、文字を出す窓にします (`CONSOLE ys,yl` は桁が全部、
+  引数のない `CONSOLE` は全画面に戻す)。窓を決めるとカーソルは窓の左上へ動きます。そのあとの表示・改行・折り返し・スクロール・
+  `CLS` (`CLS 4` のテキストも)・`INPUT` は窓の中だけで行われ、窓の外は変わりません。`LOCATE`・`TAB`・`PRINT ,` の区切り・
+  `CHARACTER$`・`SCRN$` の座標は画面の絶対の座標のままで、`LOCATE` で窓の外を指すと Illegal function call です。
+  テキストの `LINE` は窓に関係なく描きます。`WIDTH`・`INIT` で窓は全画面に戻ります。範囲 (ys 0〜24、yl 1〜25-ys、
+  xs 0〜桁数-1、xl 1〜桁数-xs) を外れると Illegal function call。どれも HuBASIC で確かめた動きです。
+  `CONSOLE` の後に `:` なしで別の文を続けることはできません (`CLS` などと同じ)。
 - グラフィックの `LINE` は、SLANG の X1 のグラフィックのライブラリ (`libx1_grp`) の線を使います (使うと約 2KB 増えます)。箱と `BF` は直接塗ります。
   `PRESET` は HuBASIC と同じく、指定の色のビットを落とします (箱と `BF`)。
 - `VSYNC [n]` は HuBASIC にない、hubasic2sl だけの命令です。垂直帰線の始まりを n 回待ちます (1 秒に約 60 回。n がなければ 1)。
@@ -263,6 +275,11 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート
   - テキストの `LINE …,BF` で画面の外の大きな座標を書いたとき、HuBASIC より速く終わる (結果は同じ)。
   - `SCRN$` で画面の最後 (右下) の先を読むと、いつも空白。
   - `WIDTH` の直後 (`CLS` をしていないとき)、空白の升の属性の値が違う (見た目は同じ)。
+  - HuBASIC の画面は、折り返して続いた行をつないで 1 つの行 (論理行) として覚えていて、改行はその論理行の次の行へ行きます
+    (40 文字ずつ折り返して埋めた画面の途中で改行すると、下まで飛んでスクロールする)。こちらは行をつながないので、いつも次の行へ行きます。
+  - `INPUT` は、HuBASIC は RETURN を押した行を画面から読み直します (窓の中や行の後ろに残っていた文字も値に入る)。また、入力が次の行に
+    折り返すとき、上の行を押し上げて行を空けます。こちらは打った文字だけを値にし、行を押し上げません。
+  - `CSIZE 1`・`3` (縦 2 倍) の `PRINT#0` が行の端で折り返すときの行の送り方が違うことがあります (画面の下の端や窓の中で)。
   - 文字列の配列の上限は既定で 63 (HuBASIC はメモリが続く限り。文字列 1 本は中身の分だけ使う)。
   - `DIM` の上限が 10 より小さい配列を、その `DIM` を通らずに使うと、`DIM` の上限を超える添字で Subscript out of range になる
     (HuBASIC は上限 10 で使える。なお HuBASIC でも、使った後にその `DIM` を通ると Duplicate definition)。

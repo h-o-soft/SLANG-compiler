@@ -444,6 +444,12 @@ public sealed class HuLowerer
         switch (c.Name)
         {
             case "LOCATE": Call("BAS_LOCATE", E(Arg(0)!), E(Arg(1)!)); break;
+            // CONSOLE: 引数なしは全画面に戻す。2 つなら桁は全部
+            case "CONSOLE":
+                if (c.Args.Count == 0) Call("BAS_CONSOLE0");
+                else if (c.Args.Count == 2) Call("BAS_CONSOLEY", E(Arg(0)!), E(Arg(1)!));
+                else Call("BAS_CONSOLE", E(Arg(0)!), E(Arg(1)!), E(Arg(2)!), E(Arg(3)!));
+                break;
             case "COLOR": Call("BAS_COLOR", ArgOr(0, -1), ArgOr(1, -1)); break;
             case "CLS": Call("BAS_CLS", ArgOr(0, -1)); break; // 省略 = テキストだけ (-1)、0-3 = グラフィック、4 = 全部
             case "WIDTH": Call("BAS_WIDTH", E(Arg(0)!)); break;

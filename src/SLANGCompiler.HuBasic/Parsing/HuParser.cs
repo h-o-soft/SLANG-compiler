@@ -317,6 +317,21 @@ public sealed class HuParser
                 ExpectSymbol(",");
                 return new HuCommand("LOCATE", new HuExpr?[] { x, ParseExpr() }, pos);
             }
+            case "CONSOLE":
+            {
+                // CONSOLE (全画面に戻す) / CONSOLE ys,yl / CONSOLE ys,yl,xs,xl。引数なしと見るのは CLS などと同じく文の終わりだけ
+                if (AtStatementEnd) return new HuCommand("CONSOLE", Array.Empty<HuExpr?>(), pos);
+                var args = new List<HuExpr?> { ParseExpr() };
+                ExpectSymbol(",");
+                args.Add(ParseExpr());
+                if (AcceptSymbol(","))
+                {
+                    args.Add(ParseExpr());
+                    ExpectSymbol(",");
+                    args.Add(ParseExpr());
+                }
+                return new HuCommand("CONSOLE", args, pos);
+            }
             case "COLOR":
             {
                 HuExpr? f = null, b = null;
