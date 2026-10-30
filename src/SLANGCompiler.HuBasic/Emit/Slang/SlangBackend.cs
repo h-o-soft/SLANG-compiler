@@ -102,6 +102,7 @@ public sealed class SlangBackend : IHuBackend
         if (hidden == HuLowerer.PokeAddr) return "H_PK";
         if (hidden.StartsWith("DIM:")) return "H_DIM_" + ArrayTag(hidden[4..]);
         if (hidden.StartsWith("UB:")) return "H_UB_" + ArrayTag(hidden[3..]);
+        if (hidden.StartsWith("UB2:")) return "H_UB2_" + ArrayTag(hidden[4..]);
         return "H_" + hidden;
     }
 
@@ -332,11 +333,27 @@ public sealed class SlangBackend : IHuBackend
         return $"({ArrayName(_prog.Key(ix.Name))}+({offset}))";
     }
 
-    /// <summary>配列の添字 (BAS_AIDX が範囲を調べて、初めて使う配列なら DIM なしの上限 10 で確保したことにする)</summary>
+    /// <summary>
+    /// 配列の添字 (BAS_AIDX が範囲を調べて、初めて使う配列なら DIM なしの上限 10 で確保したことにする)。
+    /// 2 次元は次元ごとに調べて「1 つめ × 置き場の 2 つめの大きさ + 2 つめ」に並べる。添字は左から決めるので、2 つめの式が前置きの代入を
+    /// 出すか、その場で書き換える MIRROR$ を含むときは、1 つめをその前置きより前に一時変数へ入れる
+    /// </summary>
     private string ArrayIndex(HuIndex ix)
     {
         var key = _prog.Key(ix.Name);
-        return $"BAS_AIDX({Int(ix.Index)}, &{HiddenName(HuLowerer.DimState(key))}, &{HiddenName(HuLowerer.UpperBound(key))})";
+        var state = HiddenName(HuLowerer.DimState(key));
+        var first = $"BAS_AIDX({Int(ix.Index)}, &{state}, &{HiddenName(HuLowerer.UpperBound(key))})";
+        if (ix.Index2 == null) return first;
+        int mark = _pre.Count;
+        var second = Int(ix.Index2);
+        if (_pre.Count > mark || HasInPlaceMirror(ix.Index2))
+        {
+            var t = NewITemp();
+            _pre.Insert(mark, $"{t}={first};");
+            first = t;
+        }
+        var stride = _prog.Arrays2[key].Bound2 + 1;
+        return $"({first}*{Num(stride)}+BAS_AIDX({second}, &{state}, &{HiddenName(HuLowerer.UpperBound2(key))}))";
     }
 
     /// <summary>
@@ -472,7 +489,7 @@ public sealed class SlangBackend : IHuBackend
     /// <summary>式のどこかに浮動小数の値があるか</summary>
     private static bool HasFloat(HuExpr e) => e.Type == HuType.Float || e switch
     {
-        HuIndex ix => HasFloat(ix.Index),
+        HuIndex ix => HasFloat(ix.Index) || (ix.Index2 != null && HasFloat(ix.Index2)),
         HuUnary u => HasFloat(u.Operand),
         HuBinary b => HasFloat(b.Left) || HasFloat(b.Right),
         HuCall c => c.Args.Any(HasFloat),
@@ -486,7 +503,7 @@ public sealed class SlangBackend : IHuBackend
     private static bool HasInPlaceMirror(HuExpr e) => e switch
     {
         HuCall c => IsInPlaceMirror(c) || c.Args.Any(HasInPlaceMirror),
-        HuIndex ix => HasInPlaceMirror(ix.Index),
+        HuIndex ix => HasInPlaceMirror(ix.Index) || (ix.Index2 != null && HasInPlaceMirror(ix.Index2)),
         HuUnary u => HasInPlaceMirror(u.Operand),
         HuBinary b => HasInPlaceMirror(b.Left) || HasInPlaceMirror(b.Right),
         _ => false,
@@ -789,6 +806,7 @@ public sealed class SlangBackend : IHuBackend
                         : $"BAS_SMIRROR({Str(c.Args[0])})",
                     "CGPAT$" => $"BAS_SCGPAT({Int(c.Args[0])})",
                     "HEX$" => $"BAS_SHEXS({Int(c.Args[0])})",
+                    "BIN$" => $"BAS_SBINS({Int(c.Args[0])})",
                     // SPACE$(n) は STRING$(n," ") と同じ (n の範囲の検査も同じ)
                     "SPACE$" => $"BAS_SSTR({Int(c.Args[0])}, BAS_SCHR(32))",
                     // STR$ は整数も浮動小数にしてから PRINT の形で文字列にする (後ろの空白は付けない)

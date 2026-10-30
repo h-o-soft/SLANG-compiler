@@ -33,6 +33,12 @@ public sealed class HuProgram
     /// <summary>配列 (整数・浮動小数・文字列): 変数の鍵 → 記憶域の上限の添字 (DIM の上限の最大値。DIM がなければ 10)</summary>
     public required IReadOnlyDictionary<string, int> Arrays { get; init; }
 
+    /// <summary>2 次元の配列: 変数の鍵 → 次元ごとの置き場の上限 (<see cref="Arrays"/> には並べたときの上限 (s1+1)*(s2+1)-1)</summary>
+    public IReadOnlyDictionary<string, (int Bound1, int Bound2)> Arrays2 { get; init; } = new Dictionary<string, (int, int)>();
+
+    /// <summary>文字列の置き場の数 (文字列の変数と、文字列の配列の要素。HB0309 の手当ての計算に使う)</summary>
+    public int StringSlots { get; init; }
+
     /// <summary>文字列 1 本の長さの上限 (--string-len。既定 255)。文字列の変数と配列の要素のバッファは これ + 1 バイト</summary>
     public int StringLen { get; init; } = HuAnalyzer.MaxStringLen;
 

@@ -38,6 +38,11 @@ public sealed class HuAnalyzer
     private readonly SortedSet<string> _floatVars = new(StringComparer.Ordinal);
     private readonly SortedSet<string> _strVars = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _arrays = new(StringComparer.Ordinal);
+    /// <summary>2 次元の配列: 変数の鍵 → 次元ごとの置き場の上限 (_arrays には並べたときの上限)</summary>
+    private readonly Dictionary<string, (int, int)> _arrays2 = new(StringComparer.Ordinal);
+    /// <summary>配列の次元の数 (DIM か最初に使った所で決まる)。違う次元の数で使ったら HB0314 (配列ごとに 1 回)</summary>
+    private readonly Dictionary<string, int> _arrayRanks = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _warnedRank = new(StringComparer.Ordinal);
     private readonly List<string> _literals = new();
     private readonly Dictionary<HuFor, int> _forIds = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<HuFor, (HuNext Next, int Part)> _forExits = new(ReferenceEqualityComparer.Instance);
@@ -92,6 +97,8 @@ public sealed class HuAnalyzer
             FloatVars = _floatVars.ToList(),
             StrVars = _strVars.ToList(),
             Arrays = new Dictionary<string, int>(_arrays),
+            Arrays2 = new Dictionary<string, (int, int)>(_arrays2),
+            StringSlots = StringSlots(),
             StringLen = _stringLen,
             Literals = _literals,
             DataBytes = dataBytes,
@@ -110,7 +117,8 @@ public sealed class HuAnalyzer
             _diag.Error("HB0309",
                 $"静的なデータの合計 {program.StaticDataBytes} バイトが上限 {_dataBudget} バイトを超えています " +
                 $"(整数変数 {_intVars.Count}、浮動小数の変数 {_floatVars.Count}、配列 {_arrays.Count}、文字列変数 {_strVars.Count}、" +
-                $"文字列リテラル {_literals.Count}、DATA {dataBytes.Length} バイト)",
+                $"文字列リテラル {_literals.Count}、DATA {dataBytes.Length} バイト)" +
+                StringLenHint(program.StaticDataBytes, _dataBudget, program.StringSlots, _stringLen, afterBackend: false),
                 HuPos.None);
         }
         return program;
@@ -199,33 +207,82 @@ public sealed class HuAnalyzer
         {
             if (s is not HuDim dim) continue;
             _curLine = line.Number;
-            foreach (var (name, boundExpr) in dim.Arrays)
+            foreach (var (name, boundExpr, bound2Expr) in dim.Arrays)
             {
                 var key = CheckVarName(name, dim.Pos);
                 var kind = HuProgram.KindOfKey(key);
-                if (ConstExprOnly(boundExpr) == false)
-                {
-                    _diag.Error("HB0304", $"DIM {name} の上限は定数で書いてください (変数を含む上限は未対応)", dim.Pos);
-                    continue;
-                }
-                if (ContainsFloat(boundExpr) && !IsSignedFloatConst(boundExpr))
-                {
-                    _diag.Error("HB0313", $"DIM {name} の上限に浮動小数の計算は未対応です (浮動小数の定数 1 つなら書けます)", dim.Pos);
-                    continue;
-                }
-                var bound = ConstValue(boundExpr);
+                if (!CheckRank(key, name, bound2Expr != null ? 2 : 1, dim.Pos)) continue;
                 var max = MaxIndexOf(kind);
-                // 上限の添字そのものを直接比べる (掛け算で大きさを計算して比べるとあふれるため)
-                if (bound == null || bound < 0 || bound > max)
+                var bound = DimBound(name, boundExpr, max, kind, dim.Pos);
+                if (bound == null) continue;
+                if (bound2Expr == null)
                 {
-                    _diag.Error("HB0305", $"DIM {name} の上限が範囲外です (0〜{max})", dim.Pos);
+                    // 置き場は DIM の上限の分だけ (DIM を通る前に使うと、実行時に上限 min(10, 置き場の上限) で確定する: BAS_AIDX)
+                    _arrays[key] = _arrays.TryGetValue(key, out var prev) ? Math.Max(prev, bound.Value) : bound.Value;
                     continue;
                 }
-                // 置き場は DIM の上限の分だけ (DIM を通る前に使うと、実行時に上限 min(10, 置き場の上限) で確定する: BAS_AIDX)
-                var storage = (int)bound.Value;
-                _arrays[key] = _arrays.TryGetValue(key, out var prev) ? Math.Max(prev, storage) : storage;
+                var bound2 = DimBound(name, bound2Expr, max, kind, dim.Pos);
+                if (bound2 == null) continue;
+                // 次元ごとの上限は max 以下なので、要素の数の掛け算はあふれない
+                long count = (bound.Value + 1L) * (bound2.Value + 1L);
+                if (count - 1 > max)
+                {
+                    _diag.Error("HB0305", $"DIM {name}({bound},{bound2}) の要素の数 {count} が上限 {max + 1} を超えています" + StrArrayHint(kind), dim.Pos);
+                    continue;
+                }
+                // DIM が複数あれば次元ごとに大きい方。合わせた大きさも上限に収まるか調べる
+                var (s1, s2) = _arrays2.TryGetValue(key, out var p2) ? (Math.Max(p2.Item1, bound.Value), Math.Max(p2.Item2, bound2.Value)) : (bound.Value, bound2.Value);
+                long merged = (s1 + 1L) * (s2 + 1L);
+                if (merged - 1 > max)
+                {
+                    _diag.Error("HB0305", $"DIM {name} の DIM を合わせた大きさ ({s1},{s2}) の要素の数 {merged} が上限 {max + 1} を超えています" + StrArrayHint(kind), dim.Pos);
+                    continue;
+                }
+                _arrays2[key] = (s1, s2);
+                _arrays[key] = (int)merged - 1;
             }
         }
+    }
+
+    /// <summary>DIM の 1 つの次元の上限 (定数で 0〜max)。書けない形ならエラーを出して null</summary>
+    private int? DimBound(string name, HuExpr boundExpr, int max, HuVarKind kind, HuPos pos)
+    {
+        if (ConstExprOnly(boundExpr) == false)
+        {
+            _diag.Error("HB0304", $"DIM {name} の上限は定数で書いてください (変数を含む上限は未対応)", pos);
+            return null;
+        }
+        if (ContainsFloat(boundExpr) && !IsSignedFloatConst(boundExpr))
+        {
+            _diag.Error("HB0313", $"DIM {name} の上限に浮動小数の計算は未対応です (浮動小数の定数 1 つなら書けます)", pos);
+            return null;
+        }
+        var bound = ConstValue(boundExpr);
+        // 上限の添字そのものを直接比べる (掛け算で大きさを計算して比べるとあふれるため)
+        if (bound == null || bound < 0 || bound > max)
+        {
+            _diag.Error("HB0305", $"DIM {name} の上限が範囲外です (0〜{max})" + StrArrayHint(kind), pos);
+            return null;
+        }
+        return (int)bound.Value;
+    }
+
+    /// <summary>文字列の配列の大きさのエラーに足す手当て</summary>
+    private static string StrArrayHint(HuVarKind kind)
+        => kind == HuVarKind.Str ? " (文字列の配列は --string-len で 1 本を短くすると上限が増えます)" : "";
+
+    /// <summary>配列の次元の数を覚える。前に違う次元の数で使っていれば HB0314 を出して false</summary>
+    private bool CheckRank(string key, string name, int rank, HuPos pos)
+    {
+        if (!_arrayRanks.TryGetValue(key, out var prev))
+        {
+            _arrayRanks[key] = rank;
+            return true;
+        }
+        if (prev == rank) return true;
+        if (_warnedRank.Add(key))
+            _diag.Error("HB0314", $"配列 {name} を 1 次元と 2 次元の両方で使っています (HuBASIC では Duplicate definition)", pos);
+        return false;
     }
 
     /// <summary>
@@ -298,12 +355,28 @@ public sealed class HuAnalyzer
         _ => MaxFloatArrayIndex,
     };
 
-    /// <summary>配列の要素を使う。要素の型を返す</summary>
-    private HuType UseArray(string name, HuPos pos)
+    /// <summary>配列の要素を使う (rank は添字の数)。要素の型を返す</summary>
+    private HuType UseArray(string name, int rank, HuPos pos)
     {
         var key = CheckVarName(name, pos);
         var kind = HuProgram.KindOfKey(key);
-        if (!_arrays.ContainsKey(key)) _arrays[key] = 10; // DIM なし → 上限 10
+        if (CheckRank(key, name, rank, pos) && !_arrays.ContainsKey(key))
+        {
+            if (rank == 1)
+                _arrays[key] = 10; // DIM なし → 上限 10
+            else
+            {
+                // DIM なしの 2 次元 → 11×11。文字列の配列は 1 本が長いと 1 つの配列の上限を超える
+                const int AutoCount = 11 * 11;
+                var max = MaxIndexOf(kind);
+                if (AutoCount - 1 > max)
+                    _diag.Error("HB0305",
+                        $"DIM なしの 2 次元の配列 {name} は 11×11 = {AutoCount} 要素で、1 つの配列の上限 ({max + 1} 要素) を超えます。" +
+                        $"DIM で大きさを書くか、--string-len で文字列 1 本を {MaxArrayBytes / AutoCount - 1} 以下にしてください", pos);
+                _arrays2[key] = (10, 10);
+                _arrays[key] = AutoCount - 1;
+            }
+        }
         return HuProgram.TypeOfKind(kind);
     }
 
@@ -423,8 +496,9 @@ public sealed class HuAnalyzer
                 t = VarType(v.Name);
                 break;
             case HuIndex ix:
-                t = UseArray(ix.Name, ix.Pos);
+                t = UseArray(ix.Name, ix.Index2 != null ? 2 : 1, ix.Pos);
                 ExpectNum(ix.Index, intConv: true);
+                if (ix.Index2 != null) ExpectNum(ix.Index2, intConv: true);
                 break;
             case HuUnary u:
             {
@@ -627,6 +701,7 @@ public sealed class HuAnalyzer
                 ExpectStr(a[^1]);
                 return HuType.Int;
             case "HEX$":
+            case "BIN$":
             case "SPACE$":
                 ExpectNum(a[0], intConv: true);
                 return HuType.Str;
@@ -990,11 +1065,36 @@ public sealed class HuAnalyzer
         _ => 3,
     };
 
+    /// <summary>文字列の置き場の数 (文字列の変数と、文字列の配列の要素)</summary>
+    private int StringSlots()
+    {
+        long n = _strVars.Count;
+        foreach (var (key, bound) in _arrays)
+            if (HuProgram.KindOfKey(key) == HuVarKind.Str) n += bound + 1L;
+        return (int)Math.Min(n, int.MaxValue);
+    }
+
+    /// <summary>
+    /// HB0309 に足す手当て: 文字列 1 本の置き場を短くすれば収まるなら、収まる最大の --string-len を書く (なければ空)。
+    /// total は文字列の置き場 (slots 個 × stringLen + 1 バイト) を含む合計。afterBackend が偽なら、後段の分を知らない解析の時点の値
+    /// </summary>
+    public static string StringLenHint(long total, long budget, int slots, int stringLen, bool afterBackend)
+    {
+        if (slots <= 0) return "";
+        long fixedBytes = total - (long)slots * (stringLen + 1);
+        long n = (budget - fixedBytes) / slots - 1;
+        if (budget < fixedBytes || n < 1 || n >= stringLen) return "";
+        return afterBackend
+            ? $"。文字列の置き場が大きいので、--string-len {n} 以下にすると収まります (いまは {stringLen}。文字列 1 本がその長さを超えると実行時にエラー)"
+            : $"。文字列の置き場が大きいので、--string-len {n} 以下にすると、この時点の計算では収まります (いまは {stringLen}。" +
+              "文字列 1 本がその長さを超えると実行時にエラー。浮動小数の定数などの分で、もう少し短くする必要があることがあります)";
+    }
+
     private int ComputeStaticBytes(int dataBytes, int dataLineCount)
     {
         long total = _intVars.Count * 2L + _floatVars.Count * 3L + _strVars.Count * (_stringLen + 1L);
         foreach (var (key, bound) in _arrays)
-            total += (bound + 1L) * ElementBytes(HuProgram.KindOfKey(key)) + 4;
+            total += (bound + 1L) * ElementBytes(HuProgram.KindOfKey(key)) + (_arrays2.ContainsKey(key) ? 6 : 4); // 状態・上限 (2 次元は 2 つめの上限も)
         foreach (var lit in _literals) total += lit.Length + 1L;
         total += dataBytes + (dataLineCount + 1L) * 4;
         return (int)Math.Min(total, int.MaxValue);

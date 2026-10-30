@@ -65,7 +65,8 @@ public static class HuTranspiler
         {
             diag.Error("HB0309",
                 $"静的なデータの合計 {total} バイトが上限 {options.DataBudget} バイトを超えています " +
-                $"(そのうち浮動小数の定数と一時変数 {backend.ExtraStaticBytes} バイト)", HuPos.None);
+                $"(そのうち浮動小数の定数と一時変数 {backend.ExtraStaticBytes} バイト)" +
+                HuAnalyzer.StringLenHint(total, options.DataBudget, prog.StringSlots, prog.StringLen, afterBackend: true), HuPos.None);
             return new HuTranspileResult(null, diag, prog, flat);
         }
         return new HuTranspileResult(output, diag, prog, flat);

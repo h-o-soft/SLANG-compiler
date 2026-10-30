@@ -24,7 +24,7 @@ public sealed class HuParser
         ["ABS"] = (1, 1), ["SGN"] = (1, 1), ["SQR"] = (1, 1), ["SIN"] = (1, 1), ["COS"] = (1, 1),
         ["TAN"] = (1, 1), ["ATN"] = (1, 1), ["LOG"] = (1, 1), ["EXP"] = (1, 1), ["FIX"] = (1, 1),
         ["CINT"] = (1, 1), ["FRAC"] = (1, 1), ["CSNG"] = (1, 1), ["CDBL"] = (1, 1), ["PAI"] = (1, 1),
-        ["RAD"] = (1, 1), ["LEN"] = (1, 1), ["INSTR"] = (2, 3), ["HEX$"] = (1, 1), ["SPACE$"] = (1, 1),
+        ["RAD"] = (1, 1), ["LEN"] = (1, 1), ["INSTR"] = (2, 3), ["HEX$"] = (1, 1), ["BIN$"] = (1, 1), ["SPACE$"] = (1, 1),
         ["SCRN$"] = (3, 3), ["PEEK"] = (1, 1), ["PEEK@"] = (1, 1),
     };
 
@@ -559,16 +559,7 @@ public sealed class HuParser
         }
         Next();
         if (AcceptSymbol("("))
-        {
-            var index = ParseExpr();
-            if (Peek.IsSymbol(","))
-            {
-                Error("HB0303", "2 次元以上の配列は未対応です");
-                while (AcceptSymbol(",")) ParseExpr();
-            }
-            ExpectSymbol(")");
-            return new HuIndex(t.Text, index, PosOf(t));
-        }
+            return ParseIndex(t.Text, PosOf(t));
         return new HuVar(t.Text, PosOf(t));
     }
 
@@ -682,21 +673,36 @@ public sealed class HuParser
 
     private HuStmt ParseDim(HuPos pos)
     {
-        var arrays = new List<(string, HuExpr)>();
+        var arrays = new List<(string, HuExpr, HuExpr?)>();
         do
         {
             var name = ParseVarName();
             ExpectSymbol("(");
             var bound = ParseExpr();
-            if (Peek.IsSymbol(","))
-            {
-                Error("HB0303", "2 次元以上の配列は未対応です");
-                while (AcceptSymbol(",")) ParseExpr();
-            }
+            var bound2 = AcceptSymbol(",") ? ParseExpr() : null;
+            SkipExtraSubscripts();
             ExpectSymbol(")");
-            arrays.Add((name, bound));
+            arrays.Add((name, bound, bound2));
         } while (AcceptSymbol(","));
         return new HuDim(arrays, pos);
+    }
+
+    /// <summary>配列の要素の添字 ("(" の後ろから ")" まで)。2 次元まで</summary>
+    private HuIndex ParseIndex(string name, HuPos pos)
+    {
+        var index = ParseExpr();
+        var index2 = AcceptSymbol(",") ? ParseExpr() : null;
+        SkipExtraSubscripts();
+        ExpectSymbol(")");
+        return new HuIndex(name, index, pos) { Index2 = index2 };
+    }
+
+    /// <summary>3 つめから先の添字はエラーにして読み飛ばす</summary>
+    private void SkipExtraSubscripts()
+    {
+        if (!Peek.IsSymbol(",")) return;
+        Error("HB0303", "3 次元以上の配列は未対応です (2 次元までです)");
+        while (AcceptSymbol(",")) ParseExpr();
     }
 
     private HuStmt ParseDefType(HuVarKind kind, string keyword, HuPos pos)
@@ -1033,16 +1039,7 @@ public sealed class HuParser
             {
                 Next();
                 if (AcceptSymbol("("))
-                {
-                    var index = ParseExpr();
-                    if (Peek.IsSymbol(","))
-                    {
-                        Error("HB0303", "2 次元以上の配列は未対応です");
-                        while (AcceptSymbol(",")) ParseExpr();
-                    }
-                    ExpectSymbol(")");
-                    return new HuIndex(t.Text, index, pos);
-                }
+                    return ParseIndex(t.Text, pos);
                 return new HuVar(t.Text, pos);
             }
             case HuTokenKind.Symbol when t.Text == "(":

@@ -149,10 +149,15 @@ const v = JSON.parse(api.Version());                          // { version, info
 - 浮動小数は SLANG の FLOAT (24 ビット、有効数字 約 5 桁、約 ±1.8E+19 まで) で計算します。整数の変数に入れるときは四捨五入
   (65535 を超えると Overflow)。`PRINT` の表示は HuBASIC と同じ形 (`.5` / `-.25` / `1E+18`) で、桁数は 5 桁。
 - 整数は 16 ビット (-32768〜32767。65535 までの数は回り込んだ値として入る)。文字列は 255 バイトまで (`--string-len N` なら変数に入れられるのは N バイトまで)。
-- 配列は 1 次元だけ (`DIM A(100)`)。整数・浮動小数・文字列の配列が使えます。上限は定数で書く (整数 0〜8191、浮動小数 0〜5460、文字列 0〜63。
-  文字列は `--string-len N` なら 0〜16384/(N+1)-1)。`DIM` なしで使うと上限 10。置き場は `DIM` の上限の分だけ取ります
-  (同じ配列の `DIM` が複数あれば大きい方。`DIM` がなければ 11 要素)。文字列の配列は既定で 1 要素 256 バイト (`--string-len N` なら N+1 バイト)。
+- 配列は 2 次元まで (`DIM A(100)`・`DIM B(10,20)`)。整数・浮動小数・文字列の配列が使えます。上限は定数で書く (整数 0〜8191、浮動小数 0〜5460、文字列 0〜63。
+  文字列は `--string-len N` なら 0〜16384/(N+1)-1。2 次元は要素の数 (上限+1)×(上限+1) がこの数+1 まで)。`DIM` なしで使うと上限 10 (2 次元は 11×11)。
+  添字は次元ごとに調べます。置き場は `DIM` の上限の分だけ取ります
+  (同じ配列の `DIM` が複数あれば大きい方 (2 次元は次元ごとに)。`DIM` がなければ 11 要素、2 次元は 121 要素)。文字列の配列は既定で 1 要素 256 バイト (`--string-len N` なら N+1 バイト)。
   メモリを減らしたいときは、使う分だけ `DIM` を書いてください。
+- 3 次元以上の配列は使えません (error HB0303。HuBASIC は使える)。同じ名前の配列を 1 次元と 2 次元の両方で使うと error HB0314 (HuBASIC では実行時に Duplicate definition)。
+- 文字列の 2 次元の配列を `DIM` なしで使うと、既定の 1 要素 256 バイトでは 121 要素が 1 つの配列の上限を超えます (error HB0305)。
+  `DIM` で大きさを書くか、`--string-len` で文字列 1 本を短くしてください (134 以下で収まる)。静的なデータの合計が上限を超えたとき (error HB0309) も、
+  文字列を短くすれば収まるなら、収まる `--string-len` の値をエラーの文に書きます。
 - `VAL`・`READ`・`INPUT` の数は HuBASIC と同じ読み方 (読めた所までの値。`12X` は 12、読めなければ 0、数の中の空白は読み飛ばす)。
 - 数値は 10 進・`&H`・`&O`・`&B`、小数・指数。32768 以上の 10 進の数は浮動小数。
 - 演算子: `+ - * / \ MOD ^`、`= <> < > <= >=`、`NOT AND OR XOR`、文字列の `+` と比較。優先順位と丸め方は HuBASIC に合わせてあります。
@@ -226,7 +231,7 @@ KEYLIST n・KLIST n・KMODE n   (X1turbo の形。何もしない。0 以外は 
 ASC  CHR$(a[,b,…])  MID$(s,n[,m])  LEFT$  RIGHT$  STRING$(n,s または 文字コード)  VAL  STR$  HEXCHR$  MIRROR$  CGPAT$
 CHARACTER$(x,y)  INKEY$  INKEY$(0)  INPUT$(n)  INP  STICK  STRIG  RND  INT
 ABS  SGN  SQR  SIN  COS  TAN  ATN  LOG  EXP  FIX  CINT  FRAC  CSNG  CDBL  PAI  RAD
-LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート)  TIME
+LEN  INSTR([n,]a$,b$)  HEX$  BIN$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート)  TIME
 ```
 
 - 数学の関数は FLOAT の精度で、HuBASIC とふつう 4〜5 桁合います。大きな引数の `SIN`・`COS`、0 に近い引数の `SIN`、1 に近い引数の `LOG` は合う桁が少なくなります。
@@ -235,6 +240,7 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート
 - `MIRROR$(s)` は各バイトのビットを左右逆にします (&H83 は &HC1。PCG の模様を左右にひっくり返すのに使う)。
   HuBASIC と同じく、引数が文字列の変数か配列の要素なら、その変数の中身もその場で書き換わります (`B$=MIRROR$(A$)` の後は A$ も逆になっている)。
   定数や式 (`MIRROR$(A$+"")`) なら元は変わりません。HuBASIC では `MIRROR$(MID$(A$,1))` も A$ を書き換えますが、こちらは書き換えません。
+- `BIN$(n)` は HuBASIC と同じく、16 ビットの値を頭の 0 なしの 2 進にします (`BIN$(5)` は `101`、`BIN$(-1)` は `1` が 16 個)。引数の扱いは `HEX$` と同じです。
 - `PAI`・`RAD`・`SCRN$`・`PRW`・`LABEL` は HuBASIC と同じく予約語です (`RADIUS`・`PAIR`・`LABELX` のような変数名は使えません)。
 
 ## まだないもの (変換のときの error)
@@ -242,8 +248,8 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート
 - 命令: `CIRCLE`・`PSET`・`POLY` などほかのグラフィックの命令、`LINE -(x,y)`・`STEP`、`DEF FN`、`ON ERROR`、`USR`、`ERASE`、
   `CLEAR`・`LOADM`・`RUN "ファイル"`、`TIME$`、
   ファイル・ディスク・テープの命令 (error HB0301)
-- 関数: `OCT$`・`BIN$` など (error HB0302)
-- 2 次元以上の配列 (error HB0303)、`MID$` の文の配列の要素
+- 関数: `OCT$` など (error HB0302)
+- 3 次元以上の配列 (error HB0303。2 次元までにすると決めたもの)、`MID$` の文の配列の要素
 - `PAINT` の色の省略、タイルパターン (`PAINT`・`BF` の文字列)
 - 名前の飛び先の式 (`GOTO A$`)、`RESTORE "名前"`・`RETURN "名前"`
 
@@ -290,7 +296,8 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート
   - `CSIZE 1`・`3` (縦 2 倍) の `PRINT#0` が行の端で折り返すときの行の送り方が違うことがあります (画面の下の端や窓の中で)。
   - 文字列の配列の上限は既定で 63 (HuBASIC はメモリが続く限り。文字列 1 本は中身の分だけ使う)。
   - `DIM` の上限が 10 より小さい配列を、その `DIM` を通らずに使うと、`DIM` の上限を超える添字で Subscript out of range になる
-    (HuBASIC は上限 10 で使える。なお HuBASIC でも、使った後にその `DIM` を通ると Duplicate definition)。
+    (HuBASIC は上限 10 で使える。なお HuBASIC でも、使った後にその `DIM` を通ると Duplicate definition)。2 次元の配列も次元ごとに同じです
+    (`DIM A(2,20)` を通る前の `A(3,0)` は、HuBASIC は使えて、こちらは Subscript out of range)。
 - 入力と音
   - `INKEY$` の自動リピート: 1 周が 1 フレームより長いループでは、リピートの回数が少ない。
   - `KEY` は何もしません (`INKEY$` はファンクションキーでキーの文字コードを返す)。
@@ -308,7 +315,7 @@ LEN  INSTR([n,]a$,b$)  HEX$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート
 |---|---|
 | error HB01xx | 文字・数値の書き方 (変換できない文字、大きすぎる数、1 行 255 文字超え、DATA が大きすぎる など) |
 | error HB02xx | 構文 (文として読めない、`:` や `)` が足りない、行番号がない など) |
-| error HB03xx | 未対応 (命令 HB0301、関数 HB0302、2 次元配列 HB0303 など)。HB0312 はメモリに収まらない |
+| error HB03xx | 未対応 (命令 HB0301、関数 HB0302、3 次元以上の配列 HB0303、1 次元と 2 次元の両方で使う配列 HB0314 など)。HB0305 は配列が大きすぎる、HB0309・HB0312 はメモリに収まらない |
 | error HB04xx | 型 (整数と文字列の取り違え HB0404、同じ頭文字に違う DEFxxx HB0410 など) |
 | error HB05xx | 行番号 (飛び先の行がない HB0503、同じ行番号が 2 回 HB0502、飛び先の名前の `LABEL` がない HB0504) |
 | error HB06xx | ループの対応 (FOR に NEXT がない、WEND に WHILE がない など) |

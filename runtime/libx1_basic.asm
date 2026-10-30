@@ -6170,6 +6170,42 @@ RET
 .bhs_buf DB 0, 0, 0, 0
 
 
+; @name BAS_SBINS
+; @resident shared
+; @param_count 1
+; @calls BAS_TALLOC
+; HL = 16 ビットの値 → その 2 進 (頭の 0 なし。0 は "0") の一時文字列 (BIN$ 関数)
+LD B, 16
+.bbs_lz             ; 頭の 0 を飛ばす (最後の 1 桁は残す)。HL は一番上の桁が bit 15 になるよう左へずらす
+LD A, B
+CP 1
+JP Z, .bbs_go
+BIT 7, H
+JP NZ, .bbs_go
+ADD HL, HL
+DEC B
+JP .bbs_lz
+.bbs_go             ; B = 桁の数
+PUSH HL
+PUSH BC
+LD A, B
+CALL BAS_TALLOC
+POP BC
+POP DE              ; DE = 値 (一番上の桁が bit 15)
+PUSH HL
+INC HL
+.bbs_cp
+LD A, '0'
+SLA E
+RL D
+ADC A, 0            ; 押し出した桁が 1 なら '1'
+LD (HL), A
+INC HL
+DJNZ .bbs_cp
+POP HL
+RET
+
+
 ; @name BAS_PRTAB
 ; @resident shared
 ; @param_count 1

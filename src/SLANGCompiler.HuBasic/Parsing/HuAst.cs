@@ -29,8 +29,11 @@ public sealed record HuStr(string Text, HuPos Pos) : HuExpr(Pos);
 /// <summary>単純変数 (Name は接尾辞込み: A, A%, A$)</summary>
 public sealed record HuVar(string Name, HuPos Pos) : HuExpr(Pos);
 
-/// <summary>配列の要素 (1 次元)</summary>
-public sealed record HuIndex(string Name, HuExpr Index, HuPos Pos) : HuExpr(Pos);
+/// <summary>配列の要素 (1 次元。2 次元なら Index2 に 2 つめの添字)</summary>
+public sealed record HuIndex(string Name, HuExpr Index, HuPos Pos) : HuExpr(Pos)
+{
+    public HuExpr? Index2 { get; init; }
+}
 
 public sealed record HuUnary(string Op, HuExpr Operand, HuPos Pos) : HuExpr(Pos);   // "-", "+", "NOT"
 
@@ -75,7 +78,8 @@ public sealed record HuWhile(HuExpr Cond, HuPos Pos) : HuStmt(Pos);
 public sealed record HuWend(HuPos Pos) : HuStmt(Pos);
 public sealed record HuEnd(HuPos Pos) : HuStmt(Pos);
 public sealed record HuInit(HuPos Pos) : HuStmt(Pos);
-public sealed record HuDim(IReadOnlyList<(string Name, HuExpr Bound)> Arrays, HuPos Pos) : HuStmt(Pos);
+/// <summary>DIM。Bound2 は 2 次元の 2 つめの上限 (1 次元は null)</summary>
+public sealed record HuDim(IReadOnlyList<(string Name, HuExpr Bound, HuExpr? Bound2)> Arrays, HuPos Pos) : HuStmt(Pos);
 /// <summary>DEFINT / DEFSNG / DEFDBL / DEFSTR (Kind はその型の種類)</summary>
 public sealed record HuDefType(HuVarKind Kind, IReadOnlyList<(char From, char To)> Ranges, HuPos Pos) : HuStmt(Pos);
 public sealed record HuData(IReadOnlyList<string> Items, HuPos Pos) : HuStmt(Pos);
