@@ -376,7 +376,7 @@ public sealed class SlangBackend : IHuBackend
         bool floatOrder = (target.Type == HuType.Float || HasFloat(value)) && mayFail
                           && value is not HuCall { Name: FlatPseudo.InputNum };
         // 値か添字が変数を書き換える MIRROR$ を含むときも、本物と同じく添字を先に読む (N%(ASC(S$))=ASC(MIRROR$(S$)) は N%(1) に入れる)
-        bool mirrorOrder = target is HuIndex mx && (HasInPlaceMirror(value) || HasInPlaceMirror(mx.Index));
+        bool mirrorOrder = target is HuIndex mx && (HasInPlaceMirror(value) || HasInPlaceMirror(mx));
         if ((_pre.Count > mark || floatOrder || mirrorOrder) && index != null)
         {
             var t = NewITemp();

@@ -1923,13 +1923,16 @@ public class HuBasicEmitTests
     {
         var sl = Body(Transpile("10 S$=CHR$(1):A%(ASC(S$)\\128,(ASC(MIRROR$(S$))\\128)+0.0)=1").Output!).Replace("\r\n", "\n");
         Assert.Contains("H_I1=BAS_AIDX(((BAS_SASC(S_S))./.(128)), &H_DIM_A, &H_UB_A);\n  H_F1=((BAS_SASC(BAS_SMIRRORV(S_S)))./.(128));\n" +
-                        "  A_A[(H_I1*11+BAS_AIDX(BAS_FTOIR((H_F1+H_FK[0])), &H_DIM_A, &H_UB2_A))]=1;", sl);
-        // その場の MIRROR$ だけ (前置きなし) でも 1 つめを先に入れる
-        sl = Body(Transpile("10 S$=CHR$(1):A%(ASC(S$),ASC(MIRROR$(S$)))=1").Output!).Replace("\r\n", "\n");
-        Assert.Contains("H_I1=BAS_AIDX(BAS_SASC(S_S), &H_DIM_A, &H_UB_A);\n  A_A[(H_I1*11+", sl);
+                        "  H_I2=(H_I1*11+BAS_AIDX(BAS_FTOIR((H_F1+H_FK[0])), &H_DIM_A, &H_UB2_A));\n  A_A[H_I2]=1;", sl);
+        // 式の中で読む添字: その場の MIRROR$ だけ (前置きなし) でも 1 つめを先に入れる (本物も左から 1 回)
+        sl = Body(Transpile("10 S$=CHR$(1):PRINT A%(ASC(S$),ASC(MIRROR$(S$)))").Output!).Replace("\r\n", "\n");
+        Assert.Contains("H_I1=BAS_AIDX(BAS_SASC(S_S), &H_DIM_A, &H_UB_A);\n  BAS_PNUM(A_A[(H_I1*11+BAS_AIDX(BAS_SASC(BAS_SMIRRORV(S_S)), &H_DIM_A, &H_UB2_A))]);", sl);
         // ループの中で 2 つめだけが一時文字列を作る
         sl = Body(Transpile("10 FOR I%=0 TO 3:A%(I%,LEN(STR$(I%)))=1:NEXT").Output!).Replace("\r\n", "\n");
         Assert.Contains("BAS_STMP();\n  H_I1=BAS_AIDX(V_I, &H_DIM_A, &H_UB_A);", sl);
+        // 代入先の 2 つめの添字のその場の MIRROR$ も、値より先に添字を決める (1 次元の 1 つめと同じ)
+        sl = Body(Transpile("10 S$=CHR$(1):A%(0,ASC(MIRROR$(S$))\\128)=ASC(S$)").Output!).Replace("\r\n", "\n");
+        Assert.Contains("H_I2=(H_I1*11+BAS_AIDX(((BAS_SASC(BAS_SMIRRORV(S_S)))./.(128)), &H_DIM_A, &H_UB2_A));\n  A_A[H_I2]=BAS_SASC(S_S);", sl);
         // 前置きがなければ一時変数を使わない
         sl = Body(Transpile("10 A%(1,B%+1)=A%(2,3)").Output!);
         Assert.DoesNotContain("H_I1", sl);

@@ -298,6 +298,8 @@ LEN  INSTR([n,]a$,b$)  HEX$  BIN$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポ
   - `DIM` の上限が 10 より小さい配列を、その `DIM` を通らずに使うと、`DIM` の上限を超える添字で Subscript out of range になる
     (HuBASIC は上限 10 で使える。なお HuBASIC でも、使った後にその `DIM` を通ると Duplicate definition)。2 次元の配列も次元ごとに同じです
     (`DIM A(2,20)` を通る前の `A(3,0)` は、HuBASIC は使えて、こちらは Subscript out of range)。
+  - 配列の要素に代入するとき、代入先の添字の中の `MIRROR$` が変数を書き換えると、入る場所が違います。HuBASIC は代入先の添字を
+    2 回計算するらしく (`MIRROR$` も 2 回効いて元に戻る)、こちらは左から 1 回だけ計算します (1 次元の配列でも同じ)。式の中で読むだけの添字は同じです。
 - 入力と音
   - `INKEY$` の自動リピート: 1 周が 1 フレームより長いループでは、リピートの回数が少ない。
   - `KEY` は何もしません (`INKEY$` はファンクションキーでキーの文字コードを返す)。
