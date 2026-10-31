@@ -402,7 +402,9 @@ public class HuBasicFrontendTests
     [InlineData("10 A=1E99", "HB0103")]   // f24 で表せない大きさ
     [InlineData("10 CIRCLE(100,100),50", "HB0301")]   // CALL は段階 G5b で対応した
     [InlineData("10 X$=OCT$(1)", "HB0302")]
-    [InlineData("10 DIM A(2,3)", "HB0303")]
+    [InlineData("10 DIM A(2,3,4)", "HB0303")]   // 2 次元までにした (3 次元以上は範囲外)
+    [InlineData("10 A(1,2,3)=0", "HB0303")]
+    [InlineData("10 PRINT A(1,2,3,4)", "HB0303")]
     [InlineData("10 LINE(0,0)-(1,1),\"A\",X", "HB0203")]   // B と BF のほかは書けない
     [InlineData("10 PRINT#1,A", "HB0308")]
     public void Parser_ReportsUnsupported(string line, string code)
@@ -973,6 +975,157 @@ public class HuBasicFrontendTests
         AnalyzeOk("10 A$=MIRROR$(\"A\")+MIRROR$(HEXCHR$(\"01 2\")):MIRRORX=1:PRINT MIRRORX");
         AssertError("10 A$=MIRROR$(1)", "HB0404");
         AssertError("10 A=MIRROR$(\"A\")", "HB0404");
+    }
+
+    /// <summary>2 次元の配列: DIM・代入・式・READ・INPUT・SWAP が通り、次元ごとの置き場の上限と並べたときの上限が入る</summary>
+    [Fact]
+    public void Analyzer_TwoDimArrays()
+    {
+        var prog = AnalyzeOk("10 DEFINT A-Z:DIM A(2,20),B$(3,4):A(1,2)=C(3,4)+A(0,0):READ A(0,0),B$(1,1)\n" +
+                             "20 INPUT B$(2,2),A(1,1):SWAP A(1,1),A(2,2):SWAP B$(0,0),B$(3,4):PRINT B$(1,2);A(1.5,2)\n30 DATA 1,X");
+        Assert.Equal((2, 20), prog.Arrays2["A%"]);
+        Assert.Equal(3 * 21 - 1, prog.Arrays["A%"]);
+        Assert.Equal((3, 4), prog.Arrays2["B$"]);
+        Assert.Equal(4 * 5 - 1, prog.Arrays["B$"]);
+        Assert.Equal((10, 10), prog.Arrays2["C%"]);   // DIM なしは 11×11
+        Assert.Equal(120, prog.Arrays["C%"]);
+        // DIM が複数あれば次元ごとに大きい方
+        prog = AnalyzeOk("10 DEFINT A-Z:DIM A(2,5):IF X THEN DIM A(4,1)");
+        Assert.Equal((4, 5), prog.Arrays2["A%"]);
+        Assert.Equal(5 * 6 - 1, prog.Arrays["A%"]);
+        // 1 次元の配列はいままでどおり (2 次元の表には入らない)
+        prog = AnalyzeOk("10 DIM D(3):D(1)=0:E(2)=0");
+        Assert.Empty(prog.Arrays2);
+        Assert.Equal(3, prog.Arrays["D!"]);
+        Assert.Equal(10, prog.Arrays["E!"]);
+        // 浮動小数の 2 次元配列・添字の浮動小数
+        prog = AnalyzeOk("10 DIM F(3,3):F(1,2)=1.5:X=F(.5,1)");
+        Assert.Equal((3, 3), prog.Arrays2["F!"]);
+    }
+
+    /// <summary>3 次元以上は HB0303 (2 次元までと書く)、1 次元と 2 次元を混ぜると HB0314</summary>
+    [Fact]
+    public void Analyzer_TwoDimArrayErrors()
+    {
+        foreach (var p in new[] { "10 DIM A(1,2,3)", "10 A(1,2,3)=1", "10 PRINT A(1,2,3)" })
+        {
+            var (_, diag) = Analyze(p);
+            var d = Assert.Single(diag.Items, x => x.Code == "HB0303");
+            Assert.Contains("3 次元以上", d.Message);
+            Assert.Contains("2 次元まで", d.Message);
+        }
+        foreach (var p in new[] { "10 DIM A(3):A(1,2)=1", "10 A(1,2)=1:PRINT A(1)", "10 A(1)=1:B=A(1,2)", "10 DIM A(1,2):A(1)=0",
+                                  "10 DIM A(1,2):DIM A(3)", "10 DIM A$(3):PRINT A$(1,1)" })
+            AssertError(p, "HB0314");
+        // 同じ配列で何度混ぜても HB0314 は 1 回
+        var (_, d2) = Analyze("10 A(1)=1:A(1,2)=1:A(2,3)=1");
+        Assert.Single(d2.Items, x => x.Code == "HB0314");
+        // 大きさ: 要素の数が上限を超える、DIM を合わせると超える、次元ごとの上限が大きすぎる
+        foreach (var p in new[] { "10 DEFINT A-Z:DIM A(99,99)", "10 DEFINT A-Z:DIM A(99,0):DIM A(0,99)", "10 DEFINT A-Z:DIM A(99999,1)",
+                                  "10 DEFINT A-Z:DIM A(1,-1)", "10 DIM A$(7,8)", "10 DIM A(54,99)" })
+            AssertError(p, "HB0305");
+        AnalyzeOk("10 DEFINT A-Z:DIM A(63,127)");   // ちょうど 8192 要素
+        AnalyzeOk("10 DIM A$(7,7)");   // 文字列はちょうど 64 要素
+        AnalyzeOk("10 DIM B$(0,63)");
+        AssertError("10 DIM A(N,2)", "HB0304");
+        AssertError("10 DIM A(2,1.5*2)", "HB0313");
+        AssertError("10 A$(1,2)=\"\"", "HB0305");   // DIM なしの文字列の 2 次元配列 (既定の長さでは 121 要素が入らない)
+    }
+
+    /// <summary>DIM なしの文字列の 2 次元配列は、--string-len 134 まで入る。エラーの文に --string-len が出る</summary>
+    [Fact]
+    public void Analyzer_AutoTwoDimStringArray()
+    {
+        var (_, diag) = Analyze("10 A$(1,2)=\"X\"");
+        var d = Assert.Single(diag.Items, x => x.Code == "HB0305");
+        Assert.Contains("--string-len", d.Message);
+        Assert.Contains("134", d.Message);
+        var ok = HuTranspiler.Transpile("10 A$(1,2)=\"X\"", new HuTranspileOptions(StringLen: 134));
+        Assert.False(ok.Diagnostics.HasErrors);
+        var ng = HuTranspiler.Transpile("10 A$(1,2)=\"X\"", new HuTranspileOptions(StringLen: 135));
+        Assert.Contains(ng.Diagnostics.Items, x => x.Code == "HB0305");
+        // 1 次元の文字列の配列の DIM が大きすぎるときも --string-len の手当てを書く (数の配列には書かない)
+        (_, diag) = Analyze("10 DIM A$(64)");
+        Assert.Contains("--string-len", Assert.Single(diag.Items, x => x.Code == "HB0305").Message);
+        (_, diag) = Analyze("10 DEFINT A-Z:DIM A(8192)");
+        Assert.DoesNotContain("--string-len", Assert.Single(diag.Items, x => x.Code == "HB0305").Message);
+    }
+
+    /// <summary>2 次元の配列の管理の領域は 6 バイト (1 次元は 4 バイト)。上限ちょうどは通り、1 バイト超えると HB0309</summary>
+    [Fact]
+    public void Analyzer_TwoDimArrayStaticBytes()
+    {
+        var two = AnalyzeOk("10 DEFINT A-Z:DIM A(1,1)").StaticDataBytes;
+        var one = AnalyzeOk("10 DEFINT A-Z:DIM A(3)").StaticDataBytes;
+        Assert.Equal(one + 2, two);
+        var diag = new HuDiagnosticBag();
+        HuTranspiler.Analyze("10 DEFINT A-Z:DIM A(1,1)", diag, dataBudget: two);
+        Assert.False(diag.HasErrors);
+        diag = new HuDiagnosticBag();
+        HuTranspiler.Analyze("10 DEFINT A-Z:DIM A(1,1)", diag, dataBudget: two - 1);
+        Assert.Contains(diag.Items, x => x.Code == "HB0309");
+    }
+
+    /// <summary>
+    /// HB0309 の文に、収まる最大の --string-len を書く。その値で変換し直すと通り、1 つ長いと超える。
+    /// 文字列がないとき・短くしても収まらないときは書かない
+    /// </summary>
+    [Fact]
+    public void Analyzer_DataBudgetStringLenHint()
+    {
+        const string P = "10 DEFINT A-Z:A$=\"\":B$=\"\":DIM C$(9):C$(1)=A$";
+        var prog = AnalyzeOk(P);
+        Assert.Equal(12, prog.StringSlots);
+        var budget = prog.StaticDataBytes - 12 * 156;   // --string-len 99 ちょうどで収まる大きさ
+        var diag = new HuDiagnosticBag();
+        HuTranspiler.Analyze(P, diag, dataBudget: budget);
+        var msg = Assert.Single(diag.Items, x => x.Code == "HB0309").Message;
+        Assert.Contains("--string-len 99 以下", msg);
+        Assert.Contains("この時点の計算", msg);
+        Assert.False(HuTranspiler.Transpile(P, new HuTranspileOptions(DataBudget: budget, StringLen: 99)).Diagnostics.HasErrors);
+        Assert.Contains(HuTranspiler.Transpile(P, new HuTranspileOptions(DataBudget: budget, StringLen: 100)).Diagnostics.Items,
+                        x => x.Code == "HB0309");
+        // 文字列がない
+        diag = new HuDiagnosticBag();
+        HuTranspiler.Analyze("10 DEFINT A-Z:DIM A(8000)", diag, dataBudget: 1000);
+        Assert.DoesNotContain("--string-len", Assert.Single(diag.Items, x => x.Code == "HB0309").Message);
+        // 文字列を 1 にしても収まらない
+        diag = new HuDiagnosticBag();
+        HuTranspiler.Analyze("10 DEFINT A-Z:DIM A(8000):B$=\"\"", diag, dataBudget: 1000);
+        Assert.DoesNotContain("--string-len", Assert.Single(diag.Items, x => x.Code == "HB0309").Message);
+    }
+
+    /// <summary>
+    /// 後段の分 (浮動小数の定数) があると、解析の時点の N では後段の HB0309 になることがある。後段の文の N で変換し直すと通る
+    /// </summary>
+    [Fact]
+    public void Transpiler_DataBudgetStringLenHintAfterBackend()
+    {
+        const string P = "10 A$=\"\":B$=\"\":X=1.5:Y=2.5:Z=X*3.25";
+        var prog = AnalyzeOk(P);
+        var budget = prog.StaticDataBytes - prog.StringSlots * (256 - 101);   // 解析の時点では --string-len 100 で収まる
+        var first = HuTranspiler.Transpile(P, new HuTranspileOptions(DataBudget: budget));
+        Assert.Contains("--string-len 100 以下にすると、この時点の計算では収まります",
+                        Assert.Single(first.Diagnostics.Items, x => x.Code == "HB0309").Message);
+        var second = HuTranspiler.Transpile(P, new HuTranspileOptions(DataBudget: budget, StringLen: 100));
+        var msg = Assert.Single(second.Diagnostics.Items, x => x.Code == "HB0309").Message;
+        Assert.DoesNotContain("この時点の計算", msg);
+        var m = System.Text.RegularExpressions.Regex.Match(msg, @"--string-len (\d+) 以下にすると収まります");
+        Assert.True(m.Success, msg);
+        var n = int.Parse(m.Groups[1].Value);
+        Assert.True(n < 100);
+        Assert.False(HuTranspiler.Transpile(P, new HuTranspileOptions(DataBudget: budget, StringLen: n)).Diagnostics.HasErrors);
+        Assert.True(HuTranspiler.Transpile(P, new HuTranspileOptions(DataBudget: budget, StringLen: n + 1)).Diagnostics.HasErrors);
+    }
+
+    /// <summary>BIN$ は文字列を返し、引数は数 (HEX$ と同じ)</summary>
+    [Fact]
+    public void Analyzer_BinS()
+    {
+        AnalyzeOk("10 A$=BIN$(5)+BIN$(1.5)+BIN$(-1):PRINT BIN$(VAL(\"&HFFFF\"))");
+        AssertError("10 A$=BIN$(\"1\")", "HB0404");
+        AssertError("10 A=BIN$(1)", "HB0404");
+        AssertError("10 A$=BIN$(1,2)", "HB0212");
     }
 
     /// <summary>

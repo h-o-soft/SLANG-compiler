@@ -15,7 +15,7 @@ public sealed record HuLowerOptions(HuWaitMode Wait = HuWaitMode.None, int WaitA
 ///   浮動小数の FOR は BAS_FFORPUSH で別の種類の枠を積み、浮動小数の FOR があるプログラムの NEXT は、どちらの枠にも
 ///   対応する BAS_FFORNEXT を呼ぶ (整数だけのプログラムは BAS_FORNEXT のまま)
 /// - IF・REPEAT・WHILE はすべてラベルと条件付きの飛び先にする
-/// 隠し変数の名前は抽象名 ("T", "DIM:変数の鍵", "UB:変数の鍵") で、後段が実際の名前に写す。
+/// 隠し変数の名前は抽象名 ("T", "DIM:変数の鍵", "UB:変数の鍵", "UB2:変数の鍵") で、後段が実際の名前に写す。
 /// 変数・配列の名前は構文木のまま (ソースの綴り) 持ち、後段が <see cref="HuProgram.Key"/> で鍵にする。
 /// </summary>
 public sealed class HuLowerer
@@ -27,6 +27,8 @@ public sealed class HuLowerer
     public const string PokeAddr = "PK";
     public static string DimState(string array) => "DIM:" + array;
     public static string UpperBound(string array) => "UB:" + array;
+    /// <summary>2 次元の配列の 2 つめの上限</summary>
+    public static string UpperBound2(string array) => "UB2:" + array;
 
     public const string ReturnLabel = "H_RET";
     public const string ForLabel = "H_FOR";
@@ -91,7 +93,14 @@ public sealed class HuLowerer
         foreach (var name in _prog.Arrays.Keys)
         {
             Emit(new FAssignHidden(DimState(name), new HuNum(0, HuPos.None)));
-            Emit(new FAssignHidden(UpperBound(name), new HuNum(_prog.Arrays[name], HuPos.None)));
+            if (_prog.Arrays2.TryGetValue(name, out var b2))
+            {
+                // 2 次元は DIM なしの上限 min(10, 置き場の上限) を初めから入れておく (2 つの次元のどちらを先に調べても同じになる)
+                Emit(new FAssignHidden(UpperBound(name), new HuNum(Math.Min(10, b2.Bound1), HuPos.None)));
+                Emit(new FAssignHidden(UpperBound2(name), new HuNum(Math.Min(10, b2.Bound2), HuPos.None)));
+            }
+            else
+                Emit(new FAssignHidden(UpperBound(name), new HuNum(_prog.Arrays[name], HuPos.None)));
         }
 
         foreach (var line in _prog.Lines)
@@ -125,6 +134,7 @@ public sealed class HuLowerer
         {
             hidden.Add(DimState(name));
             hidden.Add(UpperBound(name));
+            if (_prog.Arrays2.ContainsKey(name)) hidden.Add(UpperBound2(name));
         }
         return new HuFlat(_ops, hidden);
     }
@@ -228,12 +238,15 @@ public sealed class HuLowerer
                 Call("BAS_INIT2");
                 break;
             case HuDim d:
-                foreach (var (name, bound) in d.Arrays)
+                foreach (var (name, bound, bound2) in d.Arrays)
                 {
                     var key = _prog.Key(name);
                     if (!_prog.Arrays.ContainsKey(key)) continue;
                     var n = (int)(HuAnalyzer.ConstValue(bound) ?? 0);
                     Call("BAS_DIM", new FHiddenAddrArg(DimState(key)), new FHiddenAddrArg(UpperBound(key)), I(n));
+                    // 2 次元: BAS_DIM が 2 回目の DIM をエラーにした後なので、2 つめの上限はそのまま入れてよい
+                    if (bound2 != null)
+                        Emit(new FAssignHidden(UpperBound2(key), new HuNum((int)(HuAnalyzer.ConstValue(bound2) ?? 0), HuPos.None)));
                 }
                 break;
             case HuRead rd:
@@ -504,7 +517,7 @@ public sealed class HuLowerer
         HuCall c => c.Type == HuType.Str || c.Args.Any(MakesTemps),
         HuBinary b => (b.Op == "+" && b.Type == HuType.Str) || MakesTemps(b.Left) || MakesTemps(b.Right),
         HuUnary u => MakesTemps(u.Operand),
-        HuIndex ix => MakesTemps(ix.Index),
+        HuIndex ix => MakesTemps(ix.Index) || (ix.Index2 != null && MakesTemps(ix.Index2)),
         _ => false,
     };
 
@@ -531,7 +544,13 @@ public sealed class HuLowerer
                 break;
             case HuUntil u: yield return u.Cond; break;
             case HuWhile w: yield return w.Cond; break;
-            case HuDim d: foreach (var (_, b) in d.Arrays) yield return b; break;
+            case HuDim d:
+                foreach (var (_, b, b2) in d.Arrays)
+                {
+                    yield return b;
+                    if (b2 != null) yield return b2;
+                }
+                break;
             case HuRead r: foreach (var t in r.Targets) yield return t; break;
             case HuOut o: yield return o.Port; yield return o.Value; break;
             case HuPoke pk:

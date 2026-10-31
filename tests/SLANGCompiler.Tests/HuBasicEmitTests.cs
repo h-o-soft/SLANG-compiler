@@ -151,6 +151,14 @@ public class HuBasicEmitTests
         20 C$="CDE":MUSIC C$:MUSIC 120:X=150:MUSIC X:PLAY "C":MUSIC "D":END
         """;
 
+    /// <summary>2 次元の配列と BIN$ を使う小さなプログラム (自作)</summary>
+    private const string TwoDimProgram = """
+        10 DEFINT A-Z:DIM A(2,20),B$(3,4):A(1,2)=C(3,4)+A(0,0):B$(1,1)="X":SWAP B$(1,1),B$(2,2):SWAP A(1,1),A(2,2)
+        20 READ A(0,1),B$(0,1):DIM F!(3,3):F!(1,2)=1.5:X=F!(.5,1):PRINT BIN$(A(1,2));BIN$(-1);B$(2,2)
+        30 S$=CHR$(1):A(ASC(S$)\128,(ASC(MIRROR$(S$))\128)+0.0)=1:FOR I=0 TO 3:A(I,LEN(STR$(I)))=1:NEXT
+        40 DATA 7,Y
+        """;
+
     /// <summary>CONSOLE (テキストの窓) と CHR$(14)・CHR$(15) を使う小さなプログラム (自作)</summary>
     private const string ConsoleProgram = """
         10 CONSOLE 5,10,3,20:PRINT "A","B";CHR$(14);CHR$(15):LOCATE 3,14:CLS
@@ -1683,6 +1691,13 @@ public class HuBasicEmitTests
             AssertBuilt(Path.Combine(dir, "MIR"));
             RunSlangbuild(root, dir, slm, asmPath, Path.Combine(dir, "MIRS"), "x1native_slfs");
             AssertBuilt(Path.Combine(dir, "MIRS"));
+            // 2 次元の配列と BIN$ も両方で組み立てまで通る
+            var sl2d = Path.Combine(dir, "TWO.SL");
+            File.WriteAllText(sl2d, Transpile(TwoDimProgram).Output!);
+            RunSlangbuild(root, dir, sl2d, asmPath, Path.Combine(dir, "TWO"));
+            AssertBuilt(Path.Combine(dir, "TWO"));
+            RunSlangbuild(root, dir, sl2d, asmPath, Path.Combine(dir, "TWOS"), "x1native_slfs");
+            AssertBuilt(Path.Combine(dir, "TWOS"));
             // CONSOLE と CHR$(14)・CHR$(15) も両方で組み立てまで通る
             var slc = Path.Combine(dir, "CON.SL");
             File.WriteAllText(slc, Transpile(ConsoleProgram).Output!);
@@ -1869,6 +1884,66 @@ public class HuBasicEmitTests
             "BAS_CONSOLE(5, 10, 3, 20);", "BAS_CONSOLEY(BAS_FTOIR(F_A), BAS_FTOIR((F_A+H_FK[1])));", "BAS_CONSOLE0();",
         })
             Assert.Contains(expected, sl);
+    }
+
+    /// <summary>
+    /// 2 次元の配列: 起動のときに上限を min(10, 置き場の上限) で入れ、DIM は BAS_DIM と 2 つめの上限の代入、要素は次元ごとに
+    /// BAS_AIDX で調べて「1 つめ × 置き場の 2 つめの大きさ + 2 つめ」
+    /// </summary>
+    [Fact]
+    public void Slang_TwoDimArrays()
+    {
+        var r = Transpile("10 DEFINT A-Z:DIM A(2,20):A(1,2)=A(2,3)+B(4,5):DIM C$(1,1):C$(1,0)=\"X\"");
+        var sl = Body(r.Output!).Replace("\r\n", "\n");
+        foreach (var expected in new[]
+        {
+            "H_DIM_A=0;\n  H_UB_A=2;\n  H_UB2_A=10;", "H_UB_B=10;\n  H_UB2_B=10;", "H_UB_S_C=1;\n  H_UB2_S_C=1;",
+            "BAS_DIM(&H_DIM_A, &H_UB_A, 2);\n  H_UB2_A=20;",
+            "A_A[(BAS_AIDX(1, &H_DIM_A, &H_UB_A)*21+BAS_AIDX(2, &H_DIM_A, &H_UB2_A))]=((A_A[(BAS_AIDX(2, &H_DIM_A, &H_UB_A)*21+BAS_AIDX(3, &H_DIM_A, &H_UB2_A))])+(A_B[(BAS_AIDX(4, &H_DIM_B, &H_UB_B)*11+BAS_AIDX(5, &H_DIM_B, &H_UB2_B))]));",
+            "BAS_SSET((SA_C+((BAS_AIDX(1, &H_DIM_S_C, &H_UB_S_C)*2+BAS_AIDX(0, &H_DIM_S_C, &H_UB2_S_C))<<8)), K_0);",
+        })
+            Assert.Contains(expected, sl);
+        var head = r.Output!.Split("MAIN()")[0];
+        Assert.Contains("H_UB2_A", head);
+        Assert.Contains("ARRAY A_A[62];", head);    // 3×21 要素
+        Assert.Contains("ARRAY A_B[120];", head);   // DIM なしは 11×11
+        // 文字列の要素の番地: 1 要素がシフトになる長さ (64) と掛け算になる長さ (41)
+        sl = Body(Transpile("10 DIM C$(1,1):C$(1,0)=\"X\"", new HuTranspileOptions(StringLen: 63)).Output!);
+        Assert.Contains("BAS_AIDX(0, &H_DIM_S_C, &H_UB2_S_C))<<6)", sl);
+        sl = Body(Transpile("10 DIM C$(1,1):C$(1,0)=\"X\"", new HuTranspileOptions(StringLen: 40)).Output!);
+        Assert.Contains("BAS_AIDX(0, &H_DIM_S_C, &H_UB2_S_C))*41)", sl);
+    }
+
+    /// <summary>
+    /// 2 次元の添字は左から決める: 2 つめが前置きの代入を出す (浮動小数・その場の MIRROR$) と、1 つめを先に一時変数へ入れる。
+    /// 前置きがなければ 1 つの式のまま
+    /// </summary>
+    [Fact]
+    public void Slang_TwoDimIndexOrder()
+    {
+        var sl = Body(Transpile("10 S$=CHR$(1):A%(ASC(S$)\\128,(ASC(MIRROR$(S$))\\128)+0.0)=1").Output!).Replace("\r\n", "\n");
+        Assert.Contains("H_I1=BAS_AIDX(((BAS_SASC(S_S))./.(128)), &H_DIM_A, &H_UB_A);\n  H_F1=((BAS_SASC(BAS_SMIRRORV(S_S)))./.(128));\n" +
+                        "  H_I2=(H_I1*11+BAS_AIDX(BAS_FTOIR((H_F1+H_FK[0])), &H_DIM_A, &H_UB2_A));\n  A_A[H_I2]=1;", sl);
+        // 式の中で読む添字: その場の MIRROR$ だけ (前置きなし) でも 1 つめを先に入れる (本物も左から 1 回)
+        sl = Body(Transpile("10 S$=CHR$(1):PRINT A%(ASC(S$),ASC(MIRROR$(S$)))").Output!).Replace("\r\n", "\n");
+        Assert.Contains("H_I1=BAS_AIDX(BAS_SASC(S_S), &H_DIM_A, &H_UB_A);\n  BAS_PNUM(A_A[(H_I1*11+BAS_AIDX(BAS_SASC(BAS_SMIRRORV(S_S)), &H_DIM_A, &H_UB2_A))]);", sl);
+        // ループの中で 2 つめだけが一時文字列を作る
+        sl = Body(Transpile("10 FOR I%=0 TO 3:A%(I%,LEN(STR$(I%)))=1:NEXT").Output!).Replace("\r\n", "\n");
+        Assert.Contains("BAS_STMP();\n  H_I1=BAS_AIDX(V_I, &H_DIM_A, &H_UB_A);", sl);
+        // 代入先の 2 つめの添字のその場の MIRROR$ も、値より先に添字を決める (1 次元の 1 つめと同じ)
+        sl = Body(Transpile("10 S$=CHR$(1):A%(0,ASC(MIRROR$(S$))\\128)=ASC(S$)").Output!).Replace("\r\n", "\n");
+        Assert.Contains("H_I2=(H_I1*11+BAS_AIDX(((BAS_SASC(BAS_SMIRRORV(S_S)))./.(128)), &H_DIM_A, &H_UB2_A));\n  A_A[H_I2]=BAS_SASC(S_S);", sl);
+        // 前置きがなければ一時変数を使わない
+        sl = Body(Transpile("10 A%(1,B%+1)=A%(2,3)").Output!);
+        Assert.DoesNotContain("H_I1", sl);
+    }
+
+    [Fact]
+    public void Slang_BinS()
+    {
+        var sl = Body(Transpile("10 DEFINT A-Z:A$=BIN$(5):PRINT BIN$(X)").Output!);
+        Assert.Contains("BAS_SBINS(5)", sl);
+        Assert.Contains("BAS_SBINS(V_X)", sl);
     }
 
     /// <summary>WIDTH の 2 つめから後は読み飛ばし (1 つめは今までどおり渡す)、KEYLIST・KLIST・KMODE は何も出さない</summary>
