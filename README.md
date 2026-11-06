@@ -119,7 +119,7 @@ file I/O は linker error で reject されます (= 必要なら `lsx` / `sosx1
 
 `x1native` 環境をベースに、 Hu-BASIC (CZ-8FB01) と同じ形の 2D D88 ディスクを使う環境です。 作ったディスクは本物の Hu-BASIC や HuDisk でも一覧・読み書きできます。
 
-いまはディスクの作り方 (`slfs-pack hu`、 `slangbuild --emit disk --hufs-add`) と、 レコードを直に読み書きする `FRAWREAD` / `FRAWWRITE` までです (ファイルを名前で読み書きする API は次の段階)。 詳細は [docs/HUFS.md](docs/HUFS.md) を参照してください。
+ディスクの作り方 (`slfs-pack hu`、 `slangbuild --emit disk --hufs-add`)、 ファイルを名前で読み書きする API (`FOPEN` / `FREAD` / `FWRITE` / `FDELETE` / `FRENAME` / `FFIRST` など)、 レコードを直に読み書きする `FRAWREAD` / `FRAWWRITE` があります (hubasic2sl のファイル命令は、 まだありません)。 詳細は [docs/HUFS.md](docs/HUFS.md) を参照してください。
 
 ## sos ( S-OS )
 
