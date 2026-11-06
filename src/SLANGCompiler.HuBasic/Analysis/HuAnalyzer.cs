@@ -19,6 +19,10 @@ public sealed class HuAnalyzer
     public const int MaxStringLen = 255; // 文字列 1 本の長さの上限 (HuBASIC と同じ。--string-len の既定)
     public const int MaxDataBytes = 32767;
     public const int MaxNameLength = 28; // SLANG の名前の上限 32 から接頭辞の分を引く
+    /// <summary>ファイル番号の上限 (Hu-BASIC の MAXFILES の上限)</summary>
+    public const int MaxFiles = 15;
+    /// <summary>ファイル 1 本の緩衝の大きさ (x1native_hufs の FSETBUF に渡す FCB)</summary>
+    public const int FileBufferBytes = 272;
 
     private readonly HuDiagnosticBag _diag;
     private readonly int _dataBudget;
@@ -53,6 +57,12 @@ public sealed class HuAnalyzer
     /// <summary>LABEL の名前 → 番号 (同じ名前は前の方)、LABEL の文 → 番号</summary>
     private readonly Dictionary<string, int> _labelTargets = new(StringComparer.Ordinal);
     private readonly Dictionary<HuLabel, int> _labelIds = new(ReferenceEqualityComparer.Instance);
+    /// <summary>ファイルの命令・関数を使うか (PRINT#0 は数えない) と、最初に使った所</summary>
+    private bool _usesFiles;
+    private HuPos _firstFilePos = HuPos.None;
+    /// <summary>ファイルの緩衝を取る本数 (定数のファイル番号と MAXFILES の最大。2 未満なら 2)。式があれば 15</summary>
+    private int _fileCap = 2;
+    private bool _fileCapDynamic;
 
     private HuAnalyzer(HuDiagnosticBag diag, int dataBudget, bool assumeDefint, int stringLen)
     {
@@ -111,7 +121,13 @@ public sealed class HuAnalyzer
             LoopPairs = _loopPairs,
             LoopIds = _loopIds,
             StaticDataBytes = ComputeStaticBytes(dataBytes.Length, dataLines.Count),
+            UsesFiles = _usesFiles,
+            FirstFilePos = _firstFilePos,
+            FileCapacity = FileCapacity,
         };
+        if (_usesFiles && _fileCapDynamic)
+            _diag.Warning("HB0707", $"ファイル番号か MAXFILES に式があるので、ファイルの緩衝を {MaxFiles} 本分 " +
+                                    $"({(MaxFiles - 2) * FileBufferBytes} バイト) 取ります (定数で書くと、使う本数だけになります)", _firstFilePos);
         if (program.StaticDataBytes > _dataBudget)
         {
             _diag.Error("HB0309",
@@ -122,6 +138,35 @@ public sealed class HuAnalyzer
                 HuPos.None);
         }
         return program;
+    }
+
+    /// <summary>ファイルの緩衝を取る本数 (ファイルを使わなければ 0)</summary>
+    private int FileCapacity => !_usesFiles ? 0 : _fileCapDynamic ? MaxFiles : _fileCap;
+
+    private void UseFiles(HuPos pos)
+    {
+        if (!_usesFiles) _firstFilePos = pos;
+        _usesFiles = true;
+    }
+
+    /// <summary>
+    /// ファイル番号の式。定数なら 1〜15 を調べて緩衝の本数に数える。式なら 15 本取る。
+    /// allowZero は PRINT#・WRITE# (0 は画面への生の出力。本物の WRITE #0 も画面に出す。実測)
+    /// </summary>
+    private void CheckFileNumber(HuExpr e, HuPos pos, bool allowZero = false)
+    {
+        UseFiles(pos);
+        ExpectNum(e, intConv: true);
+        if (HuAnalyzer.ConstValue(e) is long v && !ContainsFloat(e))
+        {
+            if (v == 0 && allowZero) return;
+            if (v < 1 || v > MaxFiles)
+                _diag.Error("HB0316", $"ファイル番号は 1〜{MaxFiles} です ({v})", pos);
+            else
+                _fileCap = Math.Max(_fileCap, (int)v);
+        }
+        else
+            _fileCapDynamic = true;
     }
 
     // ------------------------------------------------------------ 行
@@ -694,6 +739,10 @@ public sealed class HuAnalyzer
             case "LEN":
                 ExpectStr(a[0]);
                 return HuType.Int;
+            case "EOF":
+                // EOF(番号): -1 (終わり) / 0
+                CheckFileNumber(a[0], c.Pos);
+                return HuType.Int;
             case "INSTR":
                 // INSTR([n,]a,b)。n は整数に入れる位置と同じに丸める
                 if (a.Count > 2) ExpectNum(a[0], intConv: true);
@@ -804,6 +853,7 @@ public sealed class HuAnalyzer
                 break;
             }
             case HuPrint p:
+                if (p.File != null) CheckFileNumber(p.File, p.Pos, allowZero: true);
                 if (p.Using != null) ExpectStr(p.Using);
                 foreach (var item in p.Items)
                 {
@@ -861,6 +911,53 @@ public sealed class HuAnalyzer
                 ExpectNum(ms.Start, intConv: true);
                 if (ms.Length != null) ExpectNum(ms.Length, intConv: true);
                 ExpectStr(ms.Value);
+                break;
+            case HuOpen op:
+            {
+                UseFiles(op.Pos);
+                ExpectStr(op.Mode);
+                // ランダム ("R") は段階 2。ほかの字は実行のときに Bad file mode (本物と同じ)
+                if (op.Mode is HuStr { Text.Length: > 0 } ms && char.ToUpperInvariant(ms.Text[0]) == 'R')
+                    _diag.Error("HB0301", "ランダムファイル (OPEN \"R\") は未対応です", op.Pos);
+                CheckFileNumber(op.Number, op.Pos);
+                ExpectStr(op.Name);
+                break;
+            }
+            case HuClose cl:
+                UseFiles(cl.Pos);
+                foreach (var num in cl.Numbers) CheckFileNumber(num, cl.Pos);
+                break;
+            case HuWrite wr:
+                CheckFileNumber(wr.Number, wr.Pos, allowZero: true);
+                foreach (var item in wr.Items) CheckExpr(item, false);
+                break;
+            case HuInputFile inf:
+                CheckFileNumber(inf.Number, inf.Pos);
+                foreach (var t in inf.Targets) CheckExpr(t, false);
+                if (inf.Line && inf.Targets[0].Type != HuType.Str)
+                    _diag.Error("HB0404", "LINE INPUT# の変数は文字列の変数にしてください", inf.Pos);
+                break;
+            case HuKill k:
+                UseFiles(k.Pos);
+                ExpectStr(k.Name);
+                break;
+            case HuNameAs na:
+                UseFiles(na.Pos);
+                ExpectStr(na.Old);
+                ExpectStr(na.New);
+                break;
+            case HuMaxFiles mf:
+                UseFiles(mf.Pos);
+                ExpectNum(mf.Count, intConv: true);
+                if (HuAnalyzer.ConstValue(mf.Count) is long n && !ContainsFloat(mf.Count))
+                {
+                    if (n < 0 || n > MaxFiles)
+                        _diag.Error("HB0316", $"MAXFILES は 0〜{MaxFiles} です ({n})", mf.Pos);
+                    else
+                        _fileCap = Math.Max(_fileCap, (int)n);
+                }
+                else
+                    _fileCapDynamic = true;
                 break;
             case HuDim:
             case HuDefType:
@@ -1097,6 +1194,8 @@ public sealed class HuAnalyzer
             total += (bound + 1L) * ElementBytes(HuProgram.KindOfKey(key)) + (_arrays2.ContainsKey(key) ? 6 : 4); // 状態・上限 (2 次元は 2 つめの上限も)
         foreach (var lit in _literals) total += lit.Length + 1L;
         total += dataBytes + (dataLineCount + 1L) * 4;
+        // ファイル番号 3 から後ろの緩衝 (1 と 2 はライブラリが持つ)
+        if (FileCapacity > 2) total += (FileCapacity - 2L) * FileBufferBytes;
         return (int)Math.Min(total, int.MaxValue);
     }
 }

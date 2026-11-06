@@ -37,8 +37,8 @@ class Program
                     break;
                 case "--env":
                     env = NextArg();
-                    if (env != "x1native" && env != "x1native_slfs")
-                        return Fail($"--env は x1native か x1native_slfs です: {env}");
+                    if (env is not ("x1native" or "x1native_slfs" or HuTranspiler.HufsEnv))
+                        return Fail($"--env は x1native・x1native_slfs・{HuTranspiler.HufsEnv} のどれかです: {env}");
                     break;
                 case "--wait":
                     var w = NextArg() ?? "";
@@ -122,22 +122,30 @@ class Program
             if (checkBin != null) return Fail("--emit と --check-bin は一緒に書けません");
             if (emit == "disk" && (tapeName != null || wav)) return Fail("--tape-name と --wav は --emit tape のときだけ書けます");
             if (emit == "tape" && diskMainName != null) return Fail("--disk-main-name は --emit disk のときだけ書けます");
-            var envForEmit = emit == "disk" ? "x1native_slfs" : "x1native";
-            if (env != null && env != envForEmit) return Fail($"--emit {emit} は --env {envForEmit} です: {env}");
-            env = envForEmit;
+            // テープは x1native。ディスクは x1native_slfs か x1native_hufs (--env がなければ、ファイルの命令を使うかで変換の後に決める)
+            if (emit == "tape")
+            {
+                if (env != null && env != "x1native") return Fail($"--emit tape は --env x1native です: {env}");
+                env = "x1native";
+            }
+            else if (env == "x1native")
+                return Fail($"--emit disk は --env x1native_slfs か {HuTranspiler.HufsEnv} です: {env}");
         }
 
         if (checkBin != null) return CheckBin(checkBin, checkLst);
         if (input == null) return Fail("入力ファイルを指定してください");
         if (!File.Exists(input)) return Fail($"入力ファイルがありません: {input}");
 
-        if (emit != null) return Emit(input, output, encoding, opt, emit, env!, diskMainName, tapeName, wav, slangbuild);
+        if (emit != null) return Emit(input, output, encoding, opt, emit, env, diskMainName, tapeName, wav, slangbuild);
 
-        opt = opt with { SourceName = Path.GetFileName(input) };
+        opt = opt with { SourceName = Path.GetFileName(input), Env = env };
         var result = HuTranspiler.TranspileFile(input, encoding, opt);
         foreach (var d in result.Diagnostics.Items)
             Console.Error.WriteLine(d.Format(Path.GetFileName(input)));
         if (result.Output == null) return 1;
+        if (result.RequiredEnv != null && env == null)
+            Console.Error.WriteLine($"hubasic2sl: ファイルの命令を使うので、slangbuild -E {result.RequiredEnv} で組み立ててください " +
+                                    "(--emit disk なら、そうします)");
 
         output ??= Path.ChangeExtension(input, ".SL");
         File.WriteAllText(output, result.Output);
@@ -149,7 +157,7 @@ class Program
     /// SLANG は &lt;元&gt;.SL、イメージは &lt;元&gt;.d88 か &lt;元&gt;.tap (--wav なら &lt;元&gt;.wav も)。
     /// 止まったら、どの段で止まったかを最後の 1 行で言い (終了コード 1)、イメージを残さない
     /// </summary>
-    static int Emit(string input, string? output, string encoding, HuTranspileOptions opt, string emit, string env,
+    static int Emit(string input, string? output, string encoding, HuTranspileOptions opt, string emit, string? env,
                     string? diskMainName, string? tapeName, bool wav, string? slangbuildPath)
     {
         var imageExt = emit == "disk" ? ".d88" : ".tap";
@@ -174,7 +182,7 @@ class Program
         HuTranspileResult result;
         try
         {
-            result = HuTranspiler.TranspileFile(input, encoding, opt with { SourceName = Path.GetFileName(input) });
+            result = HuTranspiler.TranspileFile(input, encoding, opt with { SourceName = Path.GetFileName(input), Env = env });
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -193,6 +201,8 @@ class Program
             return Stop($"変換で止まりました: {sl} に書けません ({e.Message})");
         }
 
+        // --env のないディスク: ファイルの命令を使うなら x1native_hufs、使わなければ x1native_slfs
+        env ??= result.RequiredEnv ?? "x1native_slfs";
         var tool = new SlangbuildRunner().Resolve(slangbuildPath, out var tried);
         if (tool == null)
             return Stop($"組み立てで止まりました: slangbuild が見つかりません (探した所: {tried})。--slangbuild <path> で指定できます");
@@ -318,7 +328,8 @@ class Program
         Console.Error.WriteLine();
         Console.Error.WriteLine("Options:");
         Console.Error.WriteLine("  -o <path>                出力する SLANG のファイル (既定: 入力の拡張子を .SL に)");
-        Console.Error.WriteLine("  --env <name>             x1native (既定) / x1native_slfs");
+        Console.Error.WriteLine("  --env <name>             x1native (既定) / x1native_slfs / x1native_hufs");
+        Console.Error.WriteLine("                           (ファイルの命令 OPEN・PRINT#・INPUT# などは x1native_hufs だけ)");
         Console.Error.WriteLine("  --wait <mode>            none (既定) / line[:N] / frame[:N]");
         Console.Error.WriteLine("                           line:N = 各行の頭で約 0.1ms × N 待つ (N=450〜500 で HuBASIC に近い速さの目安)");
         Console.Error.WriteLine("                           frame = '#VSYNC n の指示コメントの位置で n フレーム待つ (n がなければ 1)");
@@ -335,7 +346,8 @@ class Program
         Console.Error.WriteLine("  --lst <lst>              --check-bin で読む LST (既定: bin と同じ名前の .LST)");
         Console.Error.WriteLine();
         Console.Error.WriteLine("  --emit disk|tape         変換 → slangbuild → 大きさの検査を続けてして、ディスクイメージ (.d88) かテープ (.tap) を作る");
-        Console.Error.WriteLine("                           (disk は x1native_slfs、tape は x1native。名前は -o か入力の拡張子を除いたもの + .SL / .d88 / .tap)");
+        Console.Error.WriteLine("                           (disk は x1native_slfs、ファイルの命令を使えば x1native_hufs。tape は x1native。");
+        Console.Error.WriteLine("                           名前は -o か入力の拡張子を除いたもの + .SL / .d88 / .tap)");
         Console.Error.WriteLine("  --disk-main-name <name>  IPL の起動名 (--emit disk。既定は BASIC のファイル名)");
         Console.Error.WriteLine("  --tape-name <name>       テープの名前 (--emit tape。既定は PROG)");
         Console.Error.WriteLine("  --wav                    .wav も作る (--emit tape)");

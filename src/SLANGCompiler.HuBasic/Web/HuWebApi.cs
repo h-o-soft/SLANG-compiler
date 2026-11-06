@@ -16,7 +16,8 @@ public static class HuWebApi
     /// <summary>
     /// BASIC のファイルの中身を変換する。sourceName は入力のファイル名 (SL の頭の `// source:` と IPL の起動名の元)。
     /// optionsJson は CLI のオプションに当たる項目の object (空文字列は {} と同じ)。
-    /// 結果は {"ok","sl","diskMainName","diagnostics":[…]}、オプションの誤りは {"ok":false,"error"}
+    /// 結果は {"ok","sl","diskMainName","requiredEnv","diagnostics":[…]}、オプションの誤りは {"ok":false,"error"}。
+    /// requiredEnv は、ファイルの命令を使うなら "x1native_hufs" (そのディスクで組み立てる)、使わなければ null
     /// </summary>
     public static string Transpile(byte[] source, string sourceName, string optionsJson)
     {
@@ -31,6 +32,8 @@ public static class HuWebApi
             if (result.Output != null) w.WriteString("sl", result.Output);
             else w.WriteNull("sl");
             w.WriteString("diskMainName", result.Output != null ? ReadDiskMainName(result.Output) : "");
+            if (result.RequiredEnv != null) w.WriteString("requiredEnv", result.RequiredEnv);
+            else w.WriteNull("requiredEnv");
             w.WriteStartArray("diagnostics");
             foreach (var d in result.Diagnostics.Items)
             {

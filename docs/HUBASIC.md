@@ -1,7 +1,7 @@
 # HuBASIC から SLANG への変換 (アルファ版)
 
 X1 の HuBASIC (CZ-8FB01 系) で書いた行番号付きの BASIC のテキストを SLANG のソースに変換し、
-SLANG compiler の `x1native` / `x1native_slfs` 環境で X1 の機械語のプログラムにする変換ツールです。
+SLANG compiler の `x1native` / `x1native_slfs` 環境 (ファイルの命令を使うプログラムは `x1native_hufs`) で X1 の機械語のプログラムにする変換ツールです。
 変換したプログラムは、OS なしで起動するディスクイメージ (`.d88`) やテープ (`.tap`) になります。
 
 **アルファ版です。** 対応している命令・関数はまだ一部で、実際の HuBASIC と動きが違う所があります (下の「HuBASIC との違い」)。
@@ -22,6 +22,8 @@ hubasic2sl PROG.BAS --emit tape --wait line:480   # PROG.tap (テープ) を作�
   イメージは残りません (前の回のイメージも消えます)。終了コードは 1 (オプションの誤りは 2)。
 - 変換のオプション (`--wait`・`--string-len`・`--no-line-numbers` など) は、`--emit` と一緒に、どの順でも書けます。
 - `--emit disk` は `x1native_slfs`、`--emit tape` は `x1native` の環境で組み立てます。
+  ファイルの命令 (`OPEN` など。下の「[ファイルの命令](#ファイルの命令-x1native_hufs)」) を使うプログラムは、`--emit disk` で `x1native_hufs`
+  (Hu-BASIC と同じ形のディスク) になります。テープでは使えません。
 - ディスクイメージでは、BASIC のファイル名 (拡張子なし。13 文字まで、ASCII だけ) が IPL の起動名になります
   (変換した SLANG の頭の `// disk-main-name:` の行。`--disk-main-name <name>` で変えられます。[SLFS.md](SLFS.md))。
 - テープの名前は `PROG` です (`--tape-name <name>` で変えられます)。`--wav` で `.wav` も作れます ([X1.md](X1.md) を参照)。
@@ -51,7 +53,7 @@ hubasic2sl PROG.BAS --emit tape --wait line:480   # PROG.tap (テープ) を作�
 | オプション | 意味 |
 |---|---|
 | `-o <path>` | 出力する SLANG のファイル (既定: 入力の拡張子を `.SL` にしたもの。`--emit` のときは拡張子を除いた名前が、できるファイルの名前の元) |
-| `--env <name>` | `x1native` (既定) / `x1native_slfs` (`--emit` のときは `--emit` で決まり、合わない値は誤り) |
+| `--env <name>` | `x1native` (既定) / `x1native_slfs` / `x1native_hufs`。`--emit tape` は `x1native`、`--emit disk` は `x1native_slfs` か `x1native_hufs` (書かなければ、ファイルの命令を使うかで決める)。ファイルの命令は `x1native_hufs` だけ (ほかを指すと error HB0315)。ファイルを使わないプログラムを `x1native_hufs` で組み立てるときは、`--env x1native_hufs` で変換し直す (下の「ファイルの命令」) |
 | `--wait <mode>` | `none` (既定。待たない)、`line:N` (各行の頭で約 0.1ms × N 待つ。N=450〜500 で HuBASIC に近い速さの目安。ループが 1 行の中で回る場合は効かない)、`frame` (`'#VSYNC n` と書いた所で n フレーム待つ。n がなければ 1。`frame:N` とも書けるが N は使わない) |
 | `--input-encoding <enc>` | `auto` (既定) / `utf8` / `sjis` / `x1` |
 | `--emit-line-comments` | 元の BASIC の行をコメントで出す |
@@ -89,13 +91,15 @@ scripts/build-hubasic-wasm.sh out/hubasic-wasm
 できるフォルダ:
 
 - `_framework/`: wasm の一式 (`dotnet.js` から読む)
-- `runtime/`: `x1native`・`x1native_slfs` の env の libraries の `.asm` (LSX 用は入りません。混ぜないでください)
-- `env/`: 2 つの env ファイルの写し
+- `runtime/`: `x1native`・`x1native_slfs`・`x1native_hufs` の env の libraries の `.asm` (LSX 用は入りません。混ぜないでください)
+- `env/`: 3 つの env ファイルの写し
 - `testdata/`: 試験用のプログラム 4 本 (HELLO・GRAPH・MUSIC・FLOAT) の `.BAS`・`.SL`・`.bin`・`.LST`・`.d88`。
   同じ木の hubasic2sl・slangbuild (`--emit disk -E x1native_slfs`)・slangc で作ったもので、ブラウザの側の道具と比べるのに使う
   (D88 は日付が 0 で、同じ入力からは同じバイトになる)
 - `manifest.json`: 組み立てた SHA (`slangCompilerRevision`)、`dirty`、版、組の印の番号 (`basAbi`、下を参照)、`loadAddress` ($1000)・`reservedStart` ($FFE0)、
-  env ごとの `envType`・`osType`・`defaultOrg`・`defines`・`libraries` (順番どおり)・`defaultDiskMainName`・`diskMainLoad`・`diskMainExec`・`diskVolume`、
+  ファイルの命令の組の印の番号 (`basFileAbi`)、
+  env ごとの `envType`・`osType`・`defaultOrg`・`defines`・`libraries` (順番どおり)・`defaultDiskMainName`・`diskMainLoad`・`diskMainExec`・`diskVolume`・
+  `diskTool` (`slfs-pack` = SLFS のディスク、`hufs-pack` = Hu-BASIC と同じ形のディスク。ブラウザの側でディスクを作るときに見分ける)、
   testdata を作ったアセンブラ (`assembler`: 版と sha256)、`testdata` (ケースごとのファイルと起動名)、
   束の全部のファイルの `files` (path・sha256・size)
 
@@ -115,7 +119,8 @@ const api = (await runtime.getAssemblyExports('hubasic2sl-wasm')).SLANGCompiler.
 
 const bytes = new Uint8Array(await (await fetch('PROG.BAS')).arrayBuffer());
 const r = JSON.parse(api.Transpile(bytes, 'PROG.BAS', JSON.stringify({ wait: 'line:480' })));
-// r = { ok, sl, diskMainName, diagnostics: [{ severity, code, message, sourceLine, column, basicLine, text }] }
+// r = { ok, sl, diskMainName, requiredEnv, diagnostics: [{ severity, code, message, sourceLine, column, basicLine, text }] }
+// requiredEnv はファイルの命令を使うなら "x1native_hufs" (そのディスクで組み立てる)、使わなければ null
 // オプションの誤りは { ok: false, error }
 
 const c = JSON.parse(api.CheckLayout(binLength, workEnd));   // workEnd はアセンブラの記号 __WORKEND__ の値
@@ -140,6 +145,8 @@ const v = JSON.parse(api.Version());                          // { version, info
   ランタイムの `@name BAS_ABI_<n>` と `SlangBackend.BasAbi` を一緒に 1 つ上げます (迷ったら上げる)。
   ランタイムの中だけの直し (出力が前提にしない振る舞いを HuBASIC に合わせるなど) では上げません。
 - 番号は、ブラウザ向けの束の `manifest.json` の `basAbi` と、wasm の `Version()` の `basAbi` にも出ます。
+- ファイルの命令を使う出力 (`x1native_hufs`) は、その次に `BAS_FABI_<n>();` も呼びます (ランタイムは `runtime/libx1_basic_file.asm`。
+  番号は `SlangBackend.BasFileAbi` と manifest の `basFileAbi`)。ファイルを使わない出力には入りません。
 
 ## 変数と値
 
@@ -169,7 +176,7 @@ REM (')  LET  GOTO  GOSUB  RETURN [行]  ON 式 GOTO/GOSUB/RESTORE  IF … THEN 
 LABEL "名前"  GOTO "名前"  GOSUB "名前"  ON 式 GOTO/GOSUB 行か "名前",…
 FOR … TO … STEP / NEXT [変数,…]  REPEAT / UNTIL  WHILE / WEND  END
 DIM  DEFINT/DEFSNG/DEFDBL/DEFSTR  DATA  READ  RESTORE [行]
-PRINT (; , SPC() TAB() USING)  PRINT#0  LOCATE x,y  CLS [n]  COLOR [前景][,背景]  WIDTH 40/80[,行[,a,b]]
+PRINT (; , SPC() TAB() USING)  PRINT#0  PRINT#n  LOCATE x,y  CLS [n]  COLOR [前景][,背景]  WIDTH 40/80[,行[,a,b]]
 CONSOLE [ys,yl[,xs,xl]]   (テキストの窓。下の説明)
 CFLASH [n]  CSIZE [n]  CGEN [n]  DEFCHR$(n)=文字列  LINE (x1,y1)-(x2,y2),"文字"[,B|BF]
 LINE (x1,y1)-(x2,y2),PSET|PRESET[,色][,B|BF]   (グラフィック画面の線・箱・塗りつぶした箱)
@@ -193,7 +200,7 @@ KEYLIST n・KLIST n・KMODE n   (X1turbo の形。何もしない。0 以外は 
 - `POKE@`・`PEEK@` は I/O 空間 (テキスト VRAM `&H3000`〜・属性 `&H2000`〜 など) の読み書きです。値は 0〜255 (外なら Illegal function call。`POKE` も同じ。
   HuBASIC と同じく、値は先に 16 ビットに回り込むので、`-65535` は 1 として書かれます)。
 - `TIME` はサブ CPU の時計で数える秒です (`CALL` でマシン語を動かしている間も進みます)。
-- `PRINT USING` は数値の書式だけ (`# . + - **` と `,` の区切り)。`PRINT#` は `#0` だけ。
+- `PRINT USING` は数値の書式だけ (`# . + - **` と `,` の区切り)。`PRINT#0` は画面への生の出力、`PRINT#n` (n は 1〜15) はファイル (下の「ファイルの命令」)。
 - `WIDTH` の 2 つめから後 (`WIDTH 40,25,0,1` のような X1turbo の形) は数の定数だけ書けます。画面はいつも 25 行で、行が 25 のときは
   黙って受け、25 以外のときと 3 つめ・4 つめがあるときは warning HB0705 を出して読み飛ばします。
   `KEYLIST n`・`KLIST n` (ファンクションキーの表示)・`KMODE n` (漢字のモード) も数の定数だけで、何もしません (数のない `KEYLIST` は未対応)。
@@ -243,12 +250,66 @@ LEN  INSTR([n,]a$,b$)  HEX$  BIN$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポ
 - `BIN$(n)` は HuBASIC と同じく、16 ビットの値を頭の 0 なしの 2 進にします (`BIN$(5)` は `101`、`BIN$(-1)` は `1` が 16 個)。引数の扱いは `HEX$` と同じです。
 - `PAI`・`RAD`・`SCRN$`・`PRW`・`LABEL` は HuBASIC と同じく予約語です (`RADIUS`・`PAIR`・`LABELX` のような変数名は使えません)。
 
+## ファイルの命令 (x1native_hufs)
+
+```
+OPEN "O"|"I"|"A",#n,名前   CLOSE [#n,…]   PRINT #n,…   PRINT #n,USING …   WRITE #n,式,…
+INPUT #n,変数,…   LINE INPUT #n,文字列の変数   EOF(n)   KILL 名前   NAME 古い名前 AS 新しい名前   MAXFILES n
+```
+
+ファイルの命令を使うプログラムは、`x1native_hufs` の環境 (Hu-BASIC (CZ-8FB01) と同じ形の 2D のディスク。[HUFS.md](HUFS.md)) で
+組み立てます。ファイルはプログラムと同じディスクに作られ、本物の Hu-BASIC と読み書きし合えます (同じプログラムを本物と並べて、
+画面と書いたファイルのバイト列が同じになることを確かめました)。
+
+- `hubasic2sl PROG.BAS --emit disk` で、`x1native_hufs` のディスクができます。変換だけのときは、SLANG の頭に
+  `// env: x1native_hufs` と書き、「`slangbuild -E x1native_hufs` で組み立ててください」と出ます。
+- `PRINT#0` (画面への生の出力) はファイルの命令に数えません (いままでどおり `x1native_slfs` などで組み立てられます)。
+- ファイル番号は 1〜`MAXFILES` (始めは 2、`MAXFILES n` で 0〜15)。`#` の後ろは式も書けます (`PRINT #N+1` は N+1 番。
+  本物と同じ)。ただし `PRINT#0` の数の 0 だけは、いままでどおり数の字句 1 つだけを番号にします (`PRINT#0+1` は画面に `+1`)。
+- 名前は `"0:"` を付けても付けなくてもよく、ほかのドライブ・`CAS:` などは使えません (Bad file descripter)。
+  名前 13 字・拡張子 3 字まで、大文字と小文字は区別します。
+- `MAXFILES`・`WRITE`・`AS` は、いままでどおり変数の名前にも使えます (`MAXFILES=2` は代入。代入として読めないときだけ命令)。
+
+### 大きさ
+
+- ファイルを使うと、プログラムは約 **4.6 KB** 増えます (ファイルの読み書きの仕組み 約 3.2 KB と、BASIC の命令の分 約 1.5 KB。
+  ファイル 2 本分の緩衝・FAT とディレクトリの写しを含む)。
+- ファイル番号 3 から後ろは、1 本 **272 バイト** ずつ増えます (緩衝を取る本数は、定数のファイル番号と `MAXFILES` の最大。
+  番号か `MAXFILES` に式を書くと 15 本分取り、warning HB0707 が出ます)。
+- `INPUT#` で数を読むと、`VAL`・`READ`・`INPUT` (キー) で数を読んでいないプログラムでは、数を読む処理の分 約 **1.6 KB** 増えます。
+
+### 本物と同じにしてあること (本物で測ったもの)
+
+- `PRINT#` はファイルごとに桁を数え、`,` は 8 桁ごとの区切り (画面は 10 桁)。`TAB`・`SPC`・`USING` も使えます。行の終わりは CR だけ。
+  `CLOSE` で終わりに `$1A` を 1 つ書きます (何も書かずに閉じても `$1A` だけのファイルになる)。
+- `WRITE#` は `,` で区切り、文字列を `"` で囲み、数は前後の空白なし (`1,"A",-2.5`)。
+- `INPUT#` は項目を 1 つずつ読み、読み残しは次の `INPUT#` に続きます (文や行をまたぐ)。頭の空白は飛ばし、`"` で始まれば次の `"` まで
+  (中の `,` も含む)。文字列は `,` か CR まで (後ろの空白は残る)、数は空白か `,` か CR まで (`VAL` と同じ読み方。`12AB` は 12)。
+  1 項目は 254 字まで (255 字目は捨て、その後ろは次の項目)。
+- `LINE INPUT#` は CR まで。255 字を読んだら、後ろは次に読みます。
+- `EOF(n)` は次が `$1A` か物理の終わりなら -1。`$1A` の後ろを読むと Input past end。
+- `OPEN "A"` は、最後のレコードの最初の `$1A` の所から書き足します。ないファイルは File not found (作らない)。
+- `CLOSE #n` の n が開いていなければ何もしません。`NAME` は開いているファイルにも使えます。
+- エラーの番号と文: Bad file mode (30)・Bad file number (52)・File not found (53)・Already open (54)・Device I/O error (56)・
+  File already exists (57)・Device full (60)・Input past end (61)・Bad allocation table (64)・Bad file descripter (65。本物の綴りのまま)・
+  File not open (71)・Write protected (72)。
+
+### 本物との違い
+
+- 同じファイルを 2 つの番号で開くとき、読む同士はよいですが、書くもの (`"O"`・`"A"`) があると Already open です (本物はエラーにしない)。
+- 本物は `END` だけがファイルを閉じ、エラーで止まったとき・プログラムの終わりを越えたとき・`MAXFILES` では書き出さずに捨てます。
+  こちらは、どれでも閉じて書き出します。
+- `MAXFILES n` は、n が緩衝を取った本数を超えると Illegal function call です (定数なら超えることはありません)。
+  `MAXFILES` は変数を消します (本物と同じ) が、`FOR`・`GOSUB` の途中の状態は消しません。
+- 作ったファイルの日付は 0 です。ドライブ 1〜3 は使えません。
+- ランダムファイル (`OPEN "R"`・`FIELD`・`GET`・`PUT`)・`LOC`・`LOF`・`FILES`・`DEVI$`/`DEVO$` はまだありません。
+
 ## まだないもの (変換のときの error)
 
 - 命令: `CIRCLE`・`PSET`・`POLY` などほかのグラフィックの命令、`LINE -(x,y)`・`STEP`、`DEF FN`、`ON ERROR`、`USR`、`ERASE`、
-  `CLEAR`・`LOADM`・`RUN "ファイル"`、`TIME$`、
-  ファイル・ディスク・テープの命令 (error HB0301)
-- 関数: `OCT$` など (error HB0302)
+  `CLEAR`・`LOADM`・`RUN "ファイル"`、`TIME$`、キーボードからの `LINE INPUT`、
+  ランダムファイル (`OPEN "R"`・`FIELD`・`GET`・`PUT`)・`FILES`・`DEVI$`/`DEVO$`・`LOAD`/`SAVE` などのディスク・テープの命令 (error HB0301)
+- 関数: `OCT$`・`LOC`・`LOF` など (error HB0302)
 - 3 次元以上の配列 (error HB0303。2 次元までにすると決めたもの)、`MID$` の文の配列の要素
 - `PAINT` の色の省略、タイルパターン (`PAINT`・`BF` の文字列)
 - 名前の飛び先の式 (`GOTO A$`)、`RESTORE "名前"`・`RETURN "名前"`
@@ -317,7 +378,7 @@ LEN  INSTR([n,]a$,b$)  HEX$  BIN$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポ
 |---|---|
 | error HB01xx | 文字・数値の書き方 (変換できない文字、大きすぎる数、1 行 255 文字超え、DATA が大きすぎる など) |
 | error HB02xx | 構文 (文として読めない、`:` や `)` が足りない、行番号がない など) |
-| error HB03xx | 未対応 (命令 HB0301、関数 HB0302、3 次元以上の配列 HB0303、1 次元と 2 次元の両方で使う配列 HB0314 など)。HB0305 は配列が大きすぎる、HB0309・HB0312 はメモリに収まらない |
+| error HB03xx | 未対応 (命令 HB0301、関数 HB0302、3 次元以上の配列 HB0303、1 次元と 2 次元の両方で使う配列 HB0314 など)。HB0305 は配列が大きすぎる、HB0309・HB0312 はメモリに収まらない。HB0315 はファイルの命令を `x1native_hufs` でない環境 (テープ・`--env x1native_slfs` など) で使った、HB0316 はファイル番号 (1〜15) か `MAXFILES` (0〜15) の定数が範囲外 |
 | error HB04xx | 型 (整数と文字列の取り違え HB0404、同じ頭文字に違う DEFxxx HB0410 など) |
 | error HB05xx | 行番号 (飛び先の行がない HB0503、同じ行番号が 2 回 HB0502、飛び先の名前の `LABEL` がない HB0504) |
 | error HB06xx | ループの対応 (FOR に NEXT がない、WEND に WHILE がない など) |
@@ -331,3 +392,4 @@ LEN  INSTR([n,]a$,b$)  HEX$  BIN$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポ
 | warning HB0701・HB0702・HB0704 | `KBUF`・`SCREEN`・`KEY` (何もしない) |
 | warning HB0705 | `WIDTH` の行数 (25 以外) と 3 つめ・4 つめ (読み飛ばす) |
 | warning HB0706 | `KEYLIST`・`KLIST`・`KMODE` の 0 以外 (何もしない) |
+| warning HB0707 | ファイル番号か `MAXFILES` に式がある (ファイルの緩衝を 15 本分取る) |

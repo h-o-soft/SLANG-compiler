@@ -75,6 +75,15 @@ public sealed class HuProgram
     /// <summary>静的に確保するデータの合計 (バイト)</summary>
     public int StaticDataBytes { get; init; }
 
+    /// <summary>ファイルの命令・関数 (OPEN・PRINT#n (n は数の字句の 0 でない)・EOF など) を使うか。使うなら x1native_hufs で組み立てる</summary>
+    public bool UsesFiles { get; init; }
+
+    /// <summary>最初にファイルの命令・関数を使った所 (環境が合わないときのエラーの位置)</summary>
+    public HuPos FirstFilePos { get; init; } = HuPos.None;
+
+    /// <summary>ファイルの緩衝を取る本数 (2〜15。ファイルを使わなければ 0)。3 本目から後ろは hubasic2sl が静的に取る</summary>
+    public int FileCapacity { get; init; }
+
     /// <summary>
     /// 変数の鍵: 名前に、型の種類を表す接尾辞 (% ! # $) を必ず付けたもの。接尾辞のない名前は頭文字の型の種類で補う
     /// (DEFINT A の下の A と A% は同じ鍵 "A%"、既定の A と A! は同じ鍵 "A!")。

@@ -6,7 +6,9 @@ namespace SLANGCompiler.HuBasic.Lowering;
 public enum HuWaitMode { None, Line, Frame }
 
 // LineNumbers = false なら実行中の行番号 (CurrentLine) を書かない (--no-line-numbers。実行時エラーに行番号が出ない)
-public sealed record HuLowerOptions(HuWaitMode Wait = HuWaitMode.None, int WaitArg = 1, bool LineMarks = false, bool LineNumbers = true);
+// Hufs = x1native_hufs で組み立てる (ファイルを使う、か --env x1native_hufs)。始めに BAS_FINIT を呼び、3 本目から後ろの緩衝を渡す
+public sealed record HuLowerOptions(HuWaitMode Wait = HuWaitMode.None, int WaitArg = 1, bool LineMarks = false, bool LineNumbers = true,
+                                    bool Hufs = false);
 
 /// <summary>
 /// <see cref="HuProgram"/> を、ラベルと飛び先とランタイム呼び出しの列に展開する。
@@ -88,20 +90,17 @@ public sealed class HuLowerer
     private HuFlat Run()
     {
         Call("BAS_INIT");
+        if (_opt.Hufs)
+        {
+            // x1native_hufs: ファイルの状態を始めに戻す (libx1_basic の #if exists HUFS の中が使う記号は、すべて BAS_FINIT からたどれる)。
+            // ファイル番号 3 から後ろの緩衝は、ここで静的に取ったものを渡す (1 と 2 はライブラリが持つ)
+            var cap = Math.Max(2, _prog.FileCapacity);
+            Call("BAS_FINIT", I(cap));
+            for (int k = 3; k <= cap; k++) Call("FSETBUF", I(k - 1), new FFileBufArg(k));
+        }
         if (_opt.LineNumbers) Call("BAS_LNINIT", new FHiddenAddrArg(CurrentLine));
         if (_prog.DataBytes.Length > 0) Call("BAS_DATAINIT", new FDataTableArg(false), new FDataTableArg(true));
-        foreach (var name in _prog.Arrays.Keys)
-        {
-            Emit(new FAssignHidden(DimState(name), new HuNum(0, HuPos.None)));
-            if (_prog.Arrays2.TryGetValue(name, out var b2))
-            {
-                // 2 次元は DIM なしの上限 min(10, 置き場の上限) を初めから入れておく (2 つの次元のどちらを先に調べても同じになる)
-                Emit(new FAssignHidden(UpperBound(name), new HuNum(Math.Min(10, b2.Bound1), HuPos.None)));
-                Emit(new FAssignHidden(UpperBound2(name), new HuNum(Math.Min(10, b2.Bound2), HuPos.None)));
-            }
-            else
-                Emit(new FAssignHidden(UpperBound(name), new HuNum(_prog.Arrays[name], HuPos.None)));
-        }
+        InitArrayStates();
 
         foreach (var line in _prog.Lines)
         {
@@ -137,6 +136,43 @@ public sealed class HuLowerer
             if (_prog.Arrays2.ContainsKey(name)) hidden.Add(UpperBound2(name));
         }
         return new HuFlat(_ops, hidden);
+    }
+
+    /// <summary>配列の状態 (DIM を通ったか・上限) を始めの値にする (始めと MAXFILES)</summary>
+    private void InitArrayStates()
+    {
+        foreach (var name in _prog.Arrays.Keys)
+        {
+            Emit(new FAssignHidden(DimState(name), new HuNum(0, HuPos.None)));
+            if (_prog.Arrays2.TryGetValue(name, out var b2))
+            {
+                // 2 次元は DIM なしの上限 min(10, 置き場の上限) を初めから入れておく (2 つの次元のどちらを先に調べても同じになる)
+                Emit(new FAssignHidden(UpperBound(name), new HuNum(Math.Min(10, b2.Bound1), HuPos.None)));
+                Emit(new FAssignHidden(UpperBound2(name), new HuNum(Math.Min(10, b2.Bound2), HuPos.None)));
+            }
+            else
+                Emit(new FAssignHidden(UpperBound(name), new HuNum(_prog.Arrays[name], HuPos.None)));
+        }
+    }
+
+    /// <summary>
+    /// MAXFILES: すべての変数と配列を始めと同じ状態 (0・空) に戻す (本物の MAXFILES は変数を消す。実測)。
+    /// 配列は DIM を通る前の状態に戻る
+    /// </summary>
+    private void ClearVariables(HuPos pos)
+    {
+        foreach (var key in _prog.IntVars)
+            Emit(new FAssign(new HuVar(key, pos) { Type = HuType.Int }, new HuNum(0, pos)));
+        foreach (var key in _prog.FloatVars)
+            Emit(new FAssign(new HuVar(key, pos) { Type = HuType.Float }, new HuFloat(0, pos) { Type = HuType.Float }));
+        foreach (var key in _prog.StrVars)
+            Call("BAS_FCLR", E(new HuVar(key, pos) { Type = HuType.Str }), I(_prog.StringLen + 1));
+        foreach (var (key, bound) in _prog.Arrays)
+        {
+            int elem = HuProgram.KindOfKey(key) switch { HuVarKind.Int => 2, HuVarKind.Str => _prog.StringLen + 1, _ => 3 };
+            Call("BAS_FCLR", new FArrayArg(key), I((bound + 1) * elem));
+        }
+        InitArrayStates();
     }
 
     private void LowerStatements(IEnumerable<HuStmt> stmts)
@@ -268,6 +304,52 @@ public sealed class HuLowerer
                 break;
             case HuRestore rs:
                 Call("BAS_RESTORE", I(rs.Line ?? 0));
+                break;
+            case HuOpen op:
+                Call("BAS_FOPEN", E(op.Mode), E(op.Number), E(op.Name));
+                break;
+            case HuClose cl:
+                if (cl.Numbers.Count == 0) Call("BAS_FCLOSEA");
+                else foreach (var n in cl.Numbers) Call("BAS_FCLOSE", E(n));
+                break;
+            case HuKill k:
+                Call("BAS_FKILL", E(k.Name));
+                break;
+            case HuNameAs na:
+                Call("BAS_FNAME", E(na.Old), E(na.New));
+                break;
+            case HuMaxFiles mf:
+                Call("BAS_FMAXF", E(mf.Count));
+                ClearVariables(mf.Pos);
+                break;
+            case HuWrite wr:
+            {
+                // 出力先をファイルにして、項目を , で区切って書く (文字列は " で囲み、数は前後の空白なし)
+                Call("BAS_FOUT", E(wr.Number));
+                for (int i = 0; i < wr.Items.Count; i++)
+                {
+                    var item = wr.Items[i];
+                    if (i > 0) Call("BAS_FWSEP");
+                    if (item.Type == HuType.Str) Call("BAS_FWSTR", E(item));
+                    else if (item.Type == HuType.Float) Emit(new FCall("BAS_FWFLT", new FArg[] { new FFloatArg(item) }));
+                    else Call("BAS_FWINT", E(item));
+                    if (MakesTemps(item)) Call("BAS_STMP");
+                }
+                Call("BAS_PNL");
+                Call("BAS_FOUT0");
+                break;
+            }
+            case HuInputFile inf:
+                // 読むファイルを選んでから、項目を 1 つずつ読んで代入する (読み残しはファイルの位置そのもの)
+                Call("BAS_FIN", E(inf.Number));
+                foreach (var t in inf.Targets)
+                {
+                    if (t.Type == HuType.Str)
+                        SetStr(E(t), E(new HuCall(inf.Line ? FlatPseudo.FileLine : FlatPseudo.FileInputStr, Array.Empty<HuExpr>(), inf.Pos) { Type = HuType.Str }));
+                    else
+                        Emit(new FAssign(t, new HuCall(FlatPseudo.FileInputNum, Array.Empty<HuExpr>(), inf.Pos) { Type = HuType.Float }));
+                    Call("BAS_STMP");
+                }
                 break;
             case HuInput inp:
                 // 1 行を読んでから、項目を順に代入する (項目が足りなければ空・0、多すぎれば捨てる。HuBASIC の実測)
@@ -409,6 +491,7 @@ public sealed class HuLowerer
     private void LowerPrint(HuPrint p)
     {
         if (p.Channel == 0) Call("BAS_PRAW", I(1));
+        if (p.File != null) Call("BAS_FOUT", E(p.File));   // ファイルへ (実行のときに 0 なら PRINT#0 と同じ)
         if (p.Using != null)
         {
             Call("BAS_PUFMT", E(p.Using));
@@ -448,6 +531,7 @@ public sealed class HuLowerer
         }
         if (last is not HuPrintSep) Call("BAS_PNL");
         if (p.Channel == 0) Call("BAS_PRAW", I(0));
+        if (p.File != null) Call("BAS_FOUT0");
     }
 
     private void LowerCommand(HuCommand c)
@@ -527,7 +611,7 @@ public sealed class HuLowerer
     /// PRINT は項目ごとに戻すので常に戻す。READ は項目を一時文字列で読むので、前の文の一時文字列が残らないよう常に戻す。
     /// </summary>
     internal static bool NeedsTempReset(HuStmt s)
-        => s is HuPrint or HuRead or HuInput || (s is not HuWhile && StatementExprs(s).Any(MakesTemps));
+        => s is HuPrint or HuRead or HuInput or HuInputFile or HuWrite || (s is not HuWhile && StatementExprs(s).Any(MakesTemps));
 
     /// <summary>文が直接持つ式をすべて列挙する (IF の THEN 節・ELSE 節の中の文は含まない)</summary>
     internal static IEnumerable<HuExpr> StatementExprs(HuStmt s)
@@ -559,6 +643,7 @@ public sealed class HuLowerer
                 break;
             case HuSwap sw: yield return sw.A; yield return sw.B; break;
             case HuPrint p:
+                if (p.File != null) yield return p.File;
                 if (p.Using != null) yield return p.Using;
                 foreach (var item in p.Items)
                 {
@@ -580,6 +665,19 @@ public sealed class HuLowerer
                 break;
             case HuDefChr dc: yield return dc.Code; yield return dc.Pattern; break;
             case HuInput inp: foreach (var t in inp.Targets) yield return t; break;
+            case HuOpen op: yield return op.Mode; yield return op.Number; yield return op.Name; break;
+            case HuClose cl: foreach (var n in cl.Numbers) yield return n; break;
+            case HuWrite wr:
+                yield return wr.Number;
+                foreach (var item in wr.Items) yield return item;
+                break;
+            case HuInputFile inf:
+                yield return inf.Number;
+                foreach (var t in inf.Targets) yield return t;
+                break;
+            case HuKill k: yield return k.Name; break;
+            case HuNameAs na: yield return na.Old; yield return na.New; break;
+            case HuMaxFiles mf: yield return mf.Count; break;
             case HuMidSet ms:
                 yield return ms.Start;
                 if (ms.Length != null) yield return ms.Length;

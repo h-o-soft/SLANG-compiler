@@ -19,4 +19,6 @@ public interface IHuBackend
 }
 
 /// <param name="DiskMainName">頭のコメントに書く `// disk-main-name:` の名前 (slangbuild が IPL の起動名にする)。空なら書かない</param>
-public sealed record HuEmitOptions(string SourceName = "", bool LineComments = false, string DiskMainName = "");
+/// <param name="Hufs">x1native_hufs で組み立てる (ファイルを使う、か --env x1native_hufs)。ファイルの組の印 BAS_FABI_n を呼び、
+/// 3 本目から後ろのファイルの緩衝を取る</param>
+public sealed record HuEmitOptions(string SourceName = "", bool LineComments = false, string DiskMainName = "", bool Hufs = false);

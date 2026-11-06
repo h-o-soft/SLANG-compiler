@@ -354,7 +354,8 @@ public class HuBasicWebTests
             Assert.True(proc.ExitCode == 0, se.Result);
             var m = Parse(so.Result);
             Assert.Equal(SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.BasAbi, m.GetProperty("basAbi").GetInt32());
-            foreach (var name in new[] { "x1native", "x1native_slfs" })
+            Assert.Equal(SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.BasFileAbi, m.GetProperty("basFileAbi").GetInt32());
+            foreach (var name in new[] { "x1native", "x1native_slfs", "x1native_hufs" })
             {
                 var cfg = EnvironmentLoader.Load(Path.Combine(root, "runtime", "env", name + ".env"));
                 var e = m.GetProperty("envs").GetProperty(name);
@@ -370,6 +371,7 @@ public class HuBasicWebTests
                 Assert.Equal(cfg.Disk?.MainLoad, Num("diskMainLoad"));
                 Assert.Equal(cfg.Disk?.MainExec, Num("diskMainExec"));
                 Assert.Equal(cfg.Disk?.Volume, Str("diskVolume"));
+                Assert.Equal(cfg.Disk?.Tool is { Length: > 0 } t ? t : null, Str("diskTool"));
             }
         }
     }

@@ -95,7 +95,37 @@ public sealed record HuPrintExpr(HuExpr Expr) : HuPrintItem;
 public sealed record HuPrintSep(char Sep) : HuPrintItem;
 public sealed record HuPrintSpc(HuExpr Count, bool Tab = false) : HuPrintItem;
 
-public sealed record HuPrint(int? Channel, HuExpr? Using, IReadOnlyList<HuPrintItem> Items, HuPos Pos) : HuStmt(Pos);
+/// <summary>
+/// PRINT。Channel は PRINT#0 (数の字句の 0。画面への生の出力) のとき 0。File は PRINT#式 (ファイル。x1native_hufs) の番号の式
+/// (実行のときに 0 なら PRINT#0 と同じ)
+/// </summary>
+public sealed record HuPrint(int? Channel, HuExpr? Using, IReadOnlyList<HuPrintItem> Items, HuPos Pos) : HuStmt(Pos)
+{
+    public HuExpr? File { get; init; }
+}
+
+// ---------------------------------------------------------------- ファイル (x1native_hufs)
+
+/// <summary>OPEN モード, #番号, 名前 (モードは "O"・"I"・"A" の文字列の式)</summary>
+public sealed record HuOpen(HuExpr Mode, HuExpr Number, HuExpr Name, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>CLOSE [#番号, …] (番号なしは開いているものすべて)</summary>
+public sealed record HuClose(IReadOnlyList<HuExpr> Numbers, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>WRITE #番号, 式, … (文字列は " で囲み、, で区切る)</summary>
+public sealed record HuWrite(HuExpr Number, IReadOnlyList<HuExpr> Items, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>INPUT #番号, 変数, … / LINE INPUT #番号, 文字列の変数 (Line が真)</summary>
+public sealed record HuInputFile(HuExpr Number, IReadOnlyList<HuExpr> Targets, bool Line, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>KILL 名前</summary>
+public sealed record HuKill(HuExpr Name, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>NAME 古い名前 AS 新しい名前</summary>
+public sealed record HuNameAs(HuExpr Old, HuExpr New, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>MAXFILES 本数 (変数を消し、開いているファイルを閉じる)</summary>
+public sealed record HuMaxFiles(HuExpr Count, HuPos Pos) : HuStmt(Pos);
 
 /// <summary>引数を取る画面・音などの命令 (LOCATE, COLOR, CLS, WIDTH, CFLASH, CSIZE, CGEN,
 /// PLAY, TEMPO, BEEP, CLICK, PAUSE, KEY, REPEAT (ON/OFF), PALET, PRW, VSYNC)。省略された引数は null。</summary>

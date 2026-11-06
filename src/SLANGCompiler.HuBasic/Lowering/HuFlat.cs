@@ -54,6 +54,8 @@ public sealed record FAddrArg(HuExpr Var) : FArg;           // 数の単純変�
 public sealed record FFloatAddrArg(HuExpr Expr) : FArg;     // 浮動小数の値の番地 (式なら一時変数に入れて、その番地)
 public sealed record FHiddenAddrArg(string Hidden) : FArg;  // 隠し変数のアドレス
 public sealed record FDataTableArg(bool LineTable) : FArg;  // DATA の本体 (false) / 行の表 (true) の先頭
+public sealed record FFileBufArg(int Number) : FArg;        // ファイル番号 Number (3〜15) の緩衝 (FCB) の先頭
+public sealed record FArrayArg(string Key) : FArg;          // 配列 (変数の鍵) の置き場の先頭
 
 /// <summary>DATA を読むための疑似関数 (READ の展開で使う)</summary>
 public static class FlatPseudo
@@ -62,6 +64,9 @@ public static class FlatPseudo
     public const string ReadStr = "#READS";
     public const string InputNum = "#INPUTN";   // INPUT の次の項目を数として (浮動小数)
     public const string InputStr = "#INPUTS";   // INPUT の次の項目を文字列として
+    public const string FileInputNum = "#FINN";  // INPUT# の次の項目を数として (浮動小数)
+    public const string FileInputStr = "#FINS";  // INPUT# の次の項目を文字列として
+    public const string FileLine = "#FLINE";     // LINE INPUT# の 1 行
 }
 
 public sealed record HuFlat(IReadOnlyList<FlatOp> Ops, IReadOnlyList<string> HiddenVars);
