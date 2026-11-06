@@ -37,8 +37,12 @@ EXTRA_PROGRAMS = {
                '20 PRINT MAXFILES(1);WRITE#;WRITE#(1);DEVI$;DEVO$\n30 END\n',
     # PRINT#0 は数の字句 1 つだけを番号にする (PRINT#0+1 は画面に +1)
     "CV3.BAS": '10 PRINT#0,"A":PRINT#0 "B":PRINT#0+1:PRINT#0,-1:PRINT #0,"C";\n20 END\n',
+    # かっこで始まる GET・PUT (グラフィックの形) は、いままでどおり未対応 (段階 2)
+    "CV4.BAS": '10 GET (0,0)-(7,7),A\n20 PUT (0,0),A\n30 END\n',
     # ファイルの命令 (旧は失敗、新は x1native_hufs。期待の表に書く)
     "CF1.BAS": '10 OPEN "O",#1,"A.DAT":PRINT #1,"X":CLOSE\n20 END\n',
+    "CR1.BAS": '10 OPEN "R",#1,"R.DAT":FIELD #1,4 AS A$:LSET A$="X":PUT #1,1:GET #1,1\n'
+               '20 PRINT A$;LOC(1);LOF(1):CLOSE\n30 END\n',
 }
 EXTRA_BAS = None   # main で <作業フォルダ>/extra-bas にする
 OUT_EXTS = (".SL", ".bin", ".d88", ".tap")

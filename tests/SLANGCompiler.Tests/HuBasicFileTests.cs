@@ -9,7 +9,7 @@ using SkippableFactAttribute = Xunit.SkippableFactAttribute;
 namespace SLANGCompiler.Tests;
 
 /// <summary>
-/// hubasic2sl のファイルの命令 (x1native_hufs。段階 1b): 構文・解析・環境の選び方・出力・組み立て。
+/// hubasic2sl のファイルの命令 (x1native_hufs。段階 1b の順ファイルと、段階 2 のランダム): 構文・解析・環境の選び方・出力・組み立て。
 /// 本物の Hu-BASIC と同じ動きかは、エミュレータで本物と並べて確かめた (docs/HUFS.md)
 /// </summary>
 public class HuBasicFileTests
@@ -37,6 +37,15 @@ public class HuBasicFileTests
         20 OPEN "I",#1,"A.DAT":LINE INPUT #1,A$:INPUT #1,N,B$,F:PRINT EOF(1):CLOSE
         30 OPEN "A",#2,"A.DAT":PRINT #2,"Y":CLOSE:KILL "B.DAT":NAME "A.DAT" AS "C.DAT"
         40 MAXFILES 3:OPEN "O",#3,"D.DAT":PRINT #3,"Z":CLOSE
+        50 END
+        """;
+
+    /// <summary>ランダムの命令をひととおり使う小さなプログラム (自作)</summary>
+    private const string RandomProgram = """
+        10 OPEN "R",#1,"R.DAT":FIELD #1,4 AS A$,6 AS B$:FIELD 1,10 AS C$
+        20 LSET A$="X":RSET B$=STR$(12):PUT #1,0:PUT 1:GET #1,0:GET #1
+        30 PRINT LOC(1);LOF(1);ASC(MIRROR$(C$)):A$="Y":SWAP B$,D$:MID$(C$,2,1)="Z":LSET E$="W"
+        40 CLOSE
         50 END
         """;
 
@@ -105,8 +114,31 @@ public class HuBasicFileTests
         Assert.IsType<HuAssign>(Assert.Single(line.Statements));
     }
 
+    [Fact]
+    public void Parser_RandomStatements()
+    {
+        var line = Parse("10 FIELD #1,4 AS A$,N AS B$:LSET A$=\"X\":RSET B$=C$:GET #1,2:PUT 1:GET #N", out var diag);
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Items.Select(d => d.Message)));
+        var field = Assert.IsType<HuField>(line.Statements[0]);
+        Assert.Equal(2, field.Items.Count);
+        Assert.Equal("B$", Assert.IsType<HuVar>(field.Items[1].Var).Name);
+        Assert.IsType<HuVar>(field.Items[1].Width);
+        Assert.False(Assert.IsType<HuLset>(line.Statements[1]).Right);
+        Assert.True(Assert.IsType<HuLset>(line.Statements[2]).Right);
+        var get = Assert.IsType<HuGetPut>(line.Statements[3]);
+        Assert.False(get.Put);
+        Assert.NotNull(get.Record);
+        var put = Assert.IsType<HuGetPut>(line.Statements[4]);
+        Assert.True(put.Put);
+        Assert.Null(put.Record);
+        Assert.Null(Assert.IsType<HuGetPut>(line.Statements[5]).Record);
+    }
+
     [Theory]
     [InlineData("10 LINE INPUT A$", "HB0301")]      // キーボードからの LINE INPUT は未対応
+    [InlineData("10 FIELD #1,4 A$", "HB0203")]      // AS がない
+    [InlineData("10 FIELD #1", "HB0203")]
+    [InlineData("10 GET (0,0)-(7,7),A", "HB0301")]  // かっこで始まる GET・PUT (グラフィック) はいままでどおり未対応
     [InlineData("10 WRITE #1", "HB0301")]           // 項目のない WRITE#
     [InlineData("10 NAME \"A\" TO \"B\"", "HB0203")]
     [InlineData("10 MAXFILES", "HB0203")]
@@ -158,7 +190,12 @@ public class HuBasicFileTests
     [InlineData("10 CLOSE #0", "HB0316")]
     [InlineData("10 INPUT #0,A", "HB0316")]
     [InlineData("10 MAXFILES 16", "HB0316")]
-    [InlineData("10 OPEN \"R\",#1,\"A\"", "HB0301")]   // ランダムは段階 2
+    [InlineData("10 DIM A$(2):FIELD #1,4 AS A$(1)", "HB0301")]   // FIELD の配列の要素は未対応
+    [InlineData("10 FIELD #1,4 AS A", "HB0404")]
+    [InlineData("10 LSET A=\"X\"", "HB0404")]
+    [InlineData("10 RSET A$=1", "HB0404")]
+    [InlineData("10 GET #16", "HB0316")]
+    [InlineData("10 PRINT LOF(0)", "HB0316")]
     [InlineData("10 LINE INPUT #1,A", "HB0404")]
     [InlineData("10 OPEN 1,#1,\"A\"", "HB0404")]
     public void Analyzer_FileErrors(string text, string code)
@@ -166,6 +203,30 @@ public class HuBasicFileTests
         var diag = new HuDiagnosticBag();
         HuTranspiler.Analyze(text, diag);
         Assert.Contains(diag.Items, d => d.Code == code);
+    }
+
+    [Fact]
+    public void Analyzer_RandomBuffersAndFieldVars()
+    {
+        var diag = new HuDiagnosticBag();
+        var prog = HuTranspiler.Analyze(RandomProgram, diag)!;
+        Assert.True(prog.UsesFiles);
+        Assert.True(prog.UsesRandom);
+        Assert.Equal(1, prog.RecordBuffers);
+        // FIELD の変数と、それと SWAP する変数 (D$)。LSET だけの変数 (E$) は入らない
+        Assert.Equal(new[] { "A$", "B$", "C$", "D$" }, prog.FieldVars.OrderBy(kv => kv.Value).Select(kv => kv.Key));
+
+        // 順ファイルだけならランダムは使わない
+        prog = HuTranspiler.Analyze(FileProgram, new HuDiagnosticBag())!;
+        Assert.False(prog.UsesRandom);
+        Assert.Equal(0, prog.RecordBuffers);
+
+        // 定数の番号の最大だけ緩衝を取る。式のモードの OPEN の番号も数える。番号が式なら、ファイルの緩衝と同じ本数
+        prog = HuTranspiler.Analyze("10 MAXFILES 3:OPEN M$,#3,\"A\":OPEN \"O\",#2,\"B\"", new HuDiagnosticBag())!;
+        Assert.True(prog.UsesRandom);
+        Assert.Equal(3, prog.RecordBuffers);
+        prog = HuTranspiler.Analyze("10 N=2:GET #N", new HuDiagnosticBag())!;
+        Assert.Equal(15, prog.RecordBuffers);
     }
 
     // ------------------------------------------------------------ 環境と出力
@@ -194,6 +255,33 @@ public class HuBasicFileTests
             Assert.Contains(bad.Diagnostics.Items, d => d.Code == "HB0315");
         }
         Assert.NotNull(HuTranspiler.Transpile(FileProgram, new HuTranspileOptions(Env: "x1native_hufs")).Output);
+    }
+
+    [Fact]
+    public void Transpile_RandomProgram()
+    {
+        var r = HuTranspiler.Transpile(RandomProgram);
+        Assert.Equal("x1native_hufs", r.RequiredEnv);
+        var sl = r.Output!;
+        Assert.Contains("ARRAY BYTE H_RB[255];", sl);
+        Assert.Contains("ARRAY BYTE H_RFT[19];", sl);
+        Assert.Contains("BAS_RINIT(H_RB, H_RFT, 1025);", sl);
+        foreach (var call in new[] { "BAS_FOPENR(", "BAS_RFLD(1, 255);", "BAS_RFAS(0, S_A, 4);", "BAS_RFAS(2, S_C, 10);",
+                     "BAS_RLSET(S_A, K_", "BAS_RGP(1, 0, 3);", "BAS_RGP(1, 0, 2);", "BAS_RGP(1, 0, 1);", "BAS_RGP(1, 0, 0);",
+                     "BAS_FLOC(1)", "BAS_FLOF(1)", "BAS_RUNB(0);", "BAS_RSWAP(769, S_B, S_D);", "BAS_RSYNC(2);", "BAS_RMIRV(S_C, 2)" })
+            Assert.Contains(call, sl);
+        // RSET B$ は表の項目 1 (+1 して 2 倍、RSET で +1)。表にない E$ は 0 (+1 で RSET でない)
+        Assert.Contains("BAS_RLSET(S_B, ", sl);
+        Assert.Matches(@"BAS_RLSET\(S_B, [^;]*, 5\);", sl);
+        Assert.Matches(@"BAS_RLSET\(S_E, K_\d+, 0\);", sl);
+        // ふつうの代入は、右辺を計算して入れてから結びつきを外す (右辺の MIRROR$ が緩衝に届くように)
+        Assert.Matches(@"BAS_SSET\(S_A, K_\d+\);\s+BAS_RUNB\(0\);", sl);
+
+        // 順ファイルだけのプログラムには、ランダムのものは出ない (段階 1b と同じ出力)
+        var seq = HuTranspiler.Transpile(FileProgram).Output!;
+        Assert.DoesNotContain("BAS_R", seq);
+        Assert.DoesNotContain("BAS_FOPENR", seq);
+        Assert.DoesNotContain("H_RB", seq);
     }
 
     /// <summary>ファイルを使わないプログラムは、--env x1native_hufs のときだけ BAS_FINIT を呼ぶ (ほかは出力を変えない)</summary>
@@ -310,6 +398,13 @@ public class HuBasicFileTests
             var (code, output) = RunSlangbuild(root, dir, sl, asmPath, Path.Combine(dir, "F"), "x1native_hufs");
             Assert.True(code == 0, output);
             Assert.Contains("BAS_FENDHOOK", File.ReadAllText(Path.Combine(dir, "F.sym")));
+
+            // ランダム (段階 2)
+            var slr = Path.Combine(dir, "R.SL");
+            File.WriteAllText(slr, HuTranspiler.Transpile(RandomProgram).Output!);
+            (code, output) = RunSlangbuild(root, dir, slr, asmPath, Path.Combine(dir, "R"), "x1native_hufs");
+            Assert.True(code == 0, output);
+            Assert.Contains("BAS_RGP", File.ReadAllText(Path.Combine(dir, "R.sym")));
 
             const string plain = "10 PRINT \"A\";1,2;TAB(5);\"B\"\n20 END\n";
             var sl2 = Path.Combine(dir, "P.SL");

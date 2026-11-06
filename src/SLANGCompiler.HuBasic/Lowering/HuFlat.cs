@@ -56,6 +56,8 @@ public sealed record FHiddenAddrArg(string Hidden) : FArg;  // 隠し変数の�
 public sealed record FDataTableArg(bool LineTable) : FArg;  // DATA の本体 (false) / 行の表 (true) の先頭
 public sealed record FFileBufArg(int Number) : FArg;        // ファイル番号 Number (3〜15) の緩衝 (FCB) の先頭
 public sealed record FArrayArg(string Key) : FArg;          // 配列 (変数の鍵) の置き場の先頭
+public sealed record FRecordBufArg : FArg;                 // ランダムのレコードの緩衝 (番号 1 から 256 バイトずつ) の先頭
+public sealed record FFieldTableArg : FArg;                // FIELD の表の先頭
 
 /// <summary>DATA を読むための疑似関数 (READ の展開で使う)</summary>
 public static class FlatPseudo

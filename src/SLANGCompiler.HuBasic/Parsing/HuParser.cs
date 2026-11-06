@@ -26,7 +26,7 @@ public sealed class HuParser
         ["CINT"] = (1, 1), ["FRAC"] = (1, 1), ["CSNG"] = (1, 1), ["CDBL"] = (1, 1), ["PAI"] = (1, 1),
         ["RAD"] = (1, 1), ["LEN"] = (1, 1), ["INSTR"] = (2, 3), ["HEX$"] = (1, 1), ["BIN$"] = (1, 1), ["SPACE$"] = (1, 1),
         ["SCRN$"] = (3, 3), ["PEEK"] = (1, 1), ["PEEK@"] = (1, 1),
-        ["EOF"] = (1, 1),
+        ["EOF"] = (1, 1), ["LOC"] = (1, 1), ["LOF"] = (1, 1),
     };
 
 
@@ -343,6 +343,53 @@ public sealed class HuParser
             }
             case "KILL":
                 return new HuKill(ParseExpr(), pos);
+            case "FIELD":
+            {
+                // FIELD [#]番号, 幅 AS 文字列の変数, … (AS は予約語の表にないので、この位置の名前で見分ける)
+                AcceptSymbol("#");
+                var num = ParseExpr();
+                var items = new List<(HuExpr, HuExpr)>();
+                while (AcceptSymbol(","))
+                {
+                    var width = ParseExpr();
+                    if (Peek.Kind == HuTokenKind.Ident && Peek.Text == "AS") Next();
+                    else
+                    {
+                        Error("HB0203", $"FIELD の幅の後に AS が必要です ('{Peek}' があります)");
+                        SkipToStatementEnd();
+                        return null;
+                    }
+                    items.Add((width, ParseLValue()));
+                }
+                if (items.Count == 0)
+                {
+                    Error("HB0203", "FIELD に幅と変数が必要です");
+                    return null;
+                }
+                return new HuField(num, items, pos);
+            }
+            case "LSET":
+            case "RSET":
+            {
+                var target = ParseLValue();
+                ExpectSymbol("=");
+                return new HuLset(target, ParseExpr(), t.Text == "RSET", pos);
+            }
+            case "GET":
+            case "PUT":
+            {
+                // GET・PUT [#]番号[, レコード]。かっこで始まるもの (グラフィックの GET・PUT) はいままでどおり未対応
+                if (Peek.IsSymbol("("))
+                {
+                    _diag.Error("HB0301", $"未対応の命令 {t.Text}", pos);
+                    SkipToStatementEnd();
+                    return null;
+                }
+                AcceptSymbol("#");
+                var num = ParseExpr();
+                var rec = AcceptSymbol(",") ? ParseExpr() : null;
+                return new HuGetPut(num, rec, t.Text == "PUT", pos);
+            }
             case "NAME":
             {
                 // NAME 古い名前 AS 新しい名前 (AS は予約語の表にないので、この位置の名前で見分ける)

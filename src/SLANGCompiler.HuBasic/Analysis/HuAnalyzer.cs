@@ -23,6 +23,12 @@ public sealed class HuAnalyzer
     public const int MaxFiles = 15;
     /// <summary>ファイル 1 本の緩衝の大きさ (x1native_hufs の FSETBUF に渡す FCB)</summary>
     public const int FileBufferBytes = 272;
+    /// <summary>ランダムのレコードの緩衝 1 本の大きさ (Hu-BASIC のレコードは 256 バイト固定)</summary>
+    public const int RecordBufferBytes = 256;
+    /// <summary>FIELD の表の 1 項目の大きさ (番号・位置・幅・変数の番地。libx1_basic_file.asm の BAS_RFAS)</summary>
+    public const int FieldEntryBytes = 5;
+    /// <summary>FIELD の表の項目の数の上限 (BAS_RINIT・BAS_RSWAP に 1 バイトで渡す)</summary>
+    public const int MaxFieldVars = 255;
 
     private readonly HuDiagnosticBag _diag;
     private readonly int _dataBudget;
@@ -63,6 +69,15 @@ public sealed class HuAnalyzer
     /// <summary>ファイルの緩衝を取る本数 (定数のファイル番号と MAXFILES の最大。2 未満なら 2)。式があれば 15</summary>
     private int _fileCap = 2;
     private bool _fileCapDynamic;
+    /// <summary>ランダム (FIELD・GET・PUT・LSET・RSET か、OPEN のモードが "R" か式) を使うか</summary>
+    private bool _usesRandom;
+    /// <summary>レコードの緩衝を取る番号の上限 (ランダムに使う定数の番号の最大)。式があればファイルの緩衝の本数と同じ</summary>
+    private int _randCap;
+    private bool _randCapDynamic;
+    /// <summary>FIELD に出てくる単純な文字列の変数の鍵 (出てきた順)。SWAP の相手も足す (結びつきが移るので)</summary>
+    private readonly List<string> _fieldVars = new();
+    /// <summary>単純な文字列の変数どうしの SWAP の組 (FIELD の変数を、SWAP でつながる変数まで広げるため)</summary>
+    private readonly List<(string, string)> _strSwaps = new();
 
     private HuAnalyzer(HuDiagnosticBag diag, int dataBudget, bool assumeDefint, int stringLen)
     {
@@ -124,7 +139,12 @@ public sealed class HuAnalyzer
             UsesFiles = _usesFiles,
             FirstFilePos = _firstFilePos,
             FileCapacity = FileCapacity,
+            UsesRandom = _usesRandom,
+            RecordBuffers = RecordBuffers,
+            FieldVars = FieldVarIds(),
         };
+        if (program.FieldVars.Count > MaxFieldVars)
+            _diag.Error("HB0301", $"FIELD に使う文字列の変数 (SWAP の相手を含む) は {MaxFieldVars} 個までです ({program.FieldVars.Count} 個)", _firstFilePos);
         if (_usesFiles && _fileCapDynamic)
             _diag.Warning("HB0707", $"ファイル番号か MAXFILES に式があるので、ファイルの緩衝を {MaxFiles} 本分 " +
                                     $"({(MaxFiles - 2) * FileBufferBytes} バイト) 取ります (定数で書くと、使う本数だけになります)", _firstFilePos);
@@ -142,6 +162,37 @@ public sealed class HuAnalyzer
 
     /// <summary>ファイルの緩衝を取る本数 (ファイルを使わなければ 0)</summary>
     private int FileCapacity => !_usesFiles ? 0 : _fileCapDynamic ? MaxFiles : _fileCap;
+
+    /// <summary>レコードの緩衝 (256 バイト) を取る本数 (番号 1 から。ランダムを使わなければ 0)</summary>
+    private int RecordBuffers => !_usesRandom ? 0 : _randCapDynamic ? FileCapacity : _randCap;
+
+    /// <summary>FIELD の変数 (SWAP でつながる単純な文字列の変数まで広げたもの) → 表の項目の番号 (0 から)</summary>
+    private Dictionary<string, int> FieldVarIds()
+    {
+        var keys = new List<string>(_fieldVars);
+        for (bool grew = true; grew;)
+        {
+            grew = false;
+            foreach (var (a, b) in _strSwaps)
+            {
+                if (keys.Contains(a) && !keys.Contains(b)) { keys.Add(b); grew = true; }
+                else if (keys.Contains(b) && !keys.Contains(a)) { keys.Add(a); grew = true; }
+            }
+        }
+        var ids = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var k in keys) ids[k] = ids.Count;
+        return ids;
+    }
+
+    /// <summary>ランダムに使うファイル番号 (FIELD・GET・PUT と、"R" か式のモードの OPEN)。定数なら緩衝の本数に数える</summary>
+    private void UseRandom(HuExpr number)
+    {
+        _usesRandom = true;
+        if (HuAnalyzer.ConstValue(number) is long v && !ContainsFloat(number) && v >= 1 && v <= MaxFiles)
+            _randCap = Math.Max(_randCap, (int)v);
+        else
+            _randCapDynamic = true;
+    }
 
     private void UseFiles(HuPos pos)
     {
@@ -740,7 +791,9 @@ public sealed class HuAnalyzer
                 ExpectStr(a[0]);
                 return HuType.Int;
             case "EOF":
-                // EOF(番号): -1 (終わり) / 0
+            case "LOC":
+            case "LOF":
+                // EOF(番号): -1 (終わり) / 0。LOC(番号): 最後に使ったレコード。LOF(番号): 最後のレコードの番号
                 CheckFileNumber(a[0], c.Pos);
                 return HuType.Int;
             case "INSTR":
@@ -850,6 +903,8 @@ public sealed class HuAnalyzer
                 // 型の種類 (単精度と倍精度も別) が違えば、本物は Type mismatch
                 if (KindOfTarget(sw.A) != KindOfTarget(sw.B))
                     _diag.Error("HB0404", "SWAP の 2 つの変数の型が違います", sw.Pos);
+                else if (sw.A is HuVar sa && sw.B is HuVar sb && sa.Type == HuType.Str)
+                    _strSwaps.Add((Key(sa.Name), Key(sb.Name)));
                 break;
             }
             case HuPrint p:
@@ -916,9 +971,10 @@ public sealed class HuAnalyzer
             {
                 UseFiles(op.Pos);
                 ExpectStr(op.Mode);
-                // ランダム ("R") は段階 2。ほかの字は実行のときに Bad file mode (本物と同じ)
-                if (op.Mode is HuStr { Text.Length: > 0 } ms && char.ToUpperInvariant(ms.Text[0]) == 'R')
-                    _diag.Error("HB0301", "ランダムファイル (OPEN \"R\") は未対応です", op.Pos);
+                // "R" (ランダム) か、式で実行のときに決まるモードなら、その番号にレコードの緩衝を取る。
+                // ほかの字は実行のときに Bad file mode (本物と同じ)
+                if (op.Mode is not HuStr ms || (ms.Text.Length > 0 && char.ToUpperInvariant(ms.Text[0]) == 'R'))
+                    UseRandom(op.Number);
                 CheckFileNumber(op.Number, op.Pos);
                 ExpectStr(op.Name);
                 break;
@@ -945,6 +1001,37 @@ public sealed class HuAnalyzer
                 UseFiles(na.Pos);
                 ExpectStr(na.Old);
                 ExpectStr(na.New);
+                break;
+            case HuField fd:
+                CheckFileNumber(fd.Number, fd.Pos);
+                UseRandom(fd.Number);
+                foreach (var (width, target) in fd.Items)
+                {
+                    ExpectNum(width, intConv: true);
+                    CheckExpr(target, false);
+                    if (target.Type != HuType.Str)
+                        _diag.Error("HB0404", "FIELD の AS の後は文字列の変数にしてください", target.Pos);
+                    else if (target is HuVar fv)
+                    {
+                        var key = Key(fv.Name);
+                        if (!_fieldVars.Contains(key)) _fieldVars.Add(key);
+                    }
+                    else
+                        _diag.Error("HB0301", "FIELD の AS の後の配列の要素は未対応です (単純な文字列の変数にしてください)", target.Pos);
+                }
+                break;
+            case HuLset ls:
+                UseFiles(ls.Pos);
+                _usesRandom = true;
+                CheckExpr(ls.Target, false);
+                if (ls.Target.Type != HuType.Str)
+                    _diag.Error("HB0404", $"{(ls.Right ? "RSET" : "LSET")} の変数は文字列の変数にしてください", ls.Pos);
+                ExpectStr(ls.Value);
+                break;
+            case HuGetPut gp:
+                CheckFileNumber(gp.Number, gp.Pos);
+                UseRandom(gp.Number);
+                if (gp.Record != null) ExpectNum(gp.Record, intConv: true);
                 break;
             case HuMaxFiles mf:
                 UseFiles(mf.Pos);
@@ -1196,6 +1283,8 @@ public sealed class HuAnalyzer
         total += dataBytes + (dataLineCount + 1L) * 4;
         // ファイル番号 3 から後ろの緩衝 (1 と 2 はライブラリが持つ)
         if (FileCapacity > 2) total += (FileCapacity - 2L) * FileBufferBytes;
+        // ランダムのレコードの緩衝と FIELD の表
+        total += RecordBuffers * (long)RecordBufferBytes + FieldVarIds().Count * (long)FieldEntryBytes;
         return (int)Math.Min(total, int.MaxValue);
     }
 }

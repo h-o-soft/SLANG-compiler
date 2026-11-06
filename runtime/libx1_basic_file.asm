@@ -2,7 +2,8 @@
 ; SLANG x1native_hufs runtime — hubasic2sl のファイル命令 (BAS_F 接頭辞。docs/HUFS.md・docs/HUBASIC.md)
 ;
 ; x1native_hufs の env だけが持つ。ファイル API (libx1native_hufs.asm の FOPEN など) の上に、Hu-BASIC の
-; OPEN・CLOSE・PRINT#・WRITE#・INPUT#・LINE INPUT#・EOF・KILL・NAME・MAXFILES の意味を乗せる。
+; OPEN・CLOSE・PRINT#・WRITE#・INPUT#・LINE INPUT#・EOF・KILL・NAME・MAXFILES と、ランダムの FIELD・LSET・RSET・GET・PUT・
+; LOC・LOF の意味を乗せる。
 ;
 ; libx1_basic.asm の #if exists HUFS の中 (BAS_PCHR・BAS_PNL・BAS_PZONE・BAS_PRTAB・BAS_ERROR・BAS_END) が、
 ; 出力先 (BAS_FOUTN) と、ここの関数 (BAS_FPCHR など) を使う。それらの記号は、hubasic2sl の出力が始めに必ず呼ぶ
@@ -10,7 +11,7 @@
 ;
 ; ファイル番号 n (1〜15) は、ファイル API の番号 n-1 に写す (1・2 はライブラリの緩衝、3 から後ろは hubasic2sl が
 ; 静的に取って FSETBUF で渡す)。番号ごとの状態 (BAS_FST、2 バイト):
-;   +0 0 = 閉じている、1 = 書く ("O"・"A")、2 = 読む ("I")
+;   +0 0 = 閉じている、1 = 書く ("O"・"A")、2 = 読む ("I")、3 = ランダム ("R"。BAS_FOPENR が開く)
 ;   +1 PRINT# の桁 (書いた字で 1 ずつ進み、CR で 0。, の区切りは 8 桁ごと。Hu-BASIC の実測)
 ; 順ファイルの終わりは $1A (CLOSE で書く。読むときは $1A か物理の終わりで終わり)。
 ; エラーの番号と文は Hu-BASIC の実測 (ファイル API のエラーは BAS_FCHK で写す)。
@@ -891,6 +892,694 @@ LDIR
 RET
 
 
+; ============================================================ ランダム (OPEN "R"・FIELD・LSET・RSET・GET・PUT・LOC・LOF)
+;
+; hubasic2sl は、ランダムを使うプログラム (FIELD・GET・PUT・LSET・RSET か、OPEN のモードが "R" か式) だけ、始めと MAXFILES の
+; あとに BAS_RINIT を呼び、OPEN をすべて BAS_FOPENR にする (順ファイルだけのプログラムには、ここの関数は入らない)。
+; - レコードの緩衝: 番号 1〜R に 256 バイトずつ (hubasic2sl が静的に取る)。レコード r はファイルの頭から r×256 バイトの所
+;   (レコード 0 もある)。GET で読み、PUT でそのまま書く。どのモードでも OPEN で 0 で埋める (本物と同じ)
+; - FIELD の表: FIELD に出てくる変数 (と、それと SWAP する変数) ごとに 5 バイト (hubasic2sl が静的に取る)。
+;   +0 番号 (0 = 結びついていない)、+1 緩衝の中の位置、+2 幅、+3・+4 変数の番地 (FIELD のときに入れる)
+; - 本物の FIELD の変数は緩衝の一部そのものだが、こちらの文字列の変数は自分の置き場を持つ。そこで緩衝を正本にして、
+;   緩衝が変わるたび (OPEN・FIELD・GET・LSET・RSET・MID$ の文) に、その番号に結びついた変数すべてへ写し直す
+;   (重なった FIELD も本物と同じに見える)。ふつうの代入 (LET・INPUT など) は結びつきを外す (hubasic2sl が BAS_RUNB を出す)
+
+; @name BAS_RNDWK
+; @resident shared
+; @param_count 0
+; @works BAS_RBUF:2,BAS_RCNT:1,BAS_RFT:2,BAS_RFK:1,BAS_RLOC:30,BAS_RCUR:1,BAS_ROFF:2,BAS_RMAXW:1
+; BAS_RBUF: レコードの緩衝の頭、BAS_RCNT: 緩衝の数、BAS_RFT: FIELD の表の頭、BAS_RFK: 表の項目の数、
+; BAS_RLOC: 番号ごとの LOC (最後に GET・PUT したレコード。開いたら 0)、
+; BAS_RCUR・BAS_ROFF・BAS_RMAXW: いまの FIELD の文の番号・次の位置・幅の上限 (--string-len)
+RET
+
+
+; @name BAS_RINIT
+; @resident shared
+; @param_count 3
+; @calls BAS_RNDWK
+; HL = レコードの緩衝、DE = FIELD の表、C = 緩衝の数、B = 表の項目の数。表の結びつきをすべて外す (始めと MAXFILES)
+LD (BAS_RBUF), HL
+EX DE, HL
+LD (BAS_RFT), HL
+LD A, C
+LD (BAS_RCNT), A
+LD A, B
+LD (BAS_RFK), A
+OR A
+RET Z
+LD DE, 5
+.bri_loop
+LD (HL), 0
+ADD HL, DE
+DJNZ .bri_loop
+RET
+
+
+; @name BAS_RBP
+; @resident shared
+; @param_count 0
+; @calls BAS_RNDWK
+; A = 番号 (1〜15) → HL = その番号のレコードの緩衝。緩衝のない番号なら CY。B を壊す
+LD B, A
+LD A, (BAS_RCNT)
+CP B
+RET C
+LD A, B
+DEC A
+LD HL, (BAS_RBUF)
+ADD A, H
+LD H, A
+OR A
+RET
+
+
+; @name BAS_RENT
+; @resident shared
+; @param_count 1
+; @calls BAS_RNDWK
+; HL = FIELD の表の項目の番号 (0 から) → HL = その項目。DE を壊す
+LD D, H
+LD E, L
+ADD HL, HL
+ADD HL, HL
+ADD HL, DE
+LD DE, (BAS_RFT)
+ADD HL, DE
+RET
+
+
+; @name BAS_RLOCP
+; @resident shared
+; @param_count 0
+; @calls BAS_RNDWK
+; A = 番号 (1〜15) → HL = その番号の LOC の置き場。DE を壊す
+DEC A
+ADD A, A
+LD E, A
+LD D, 0
+LD HL, BAS_RLOC
+ADD HL, DE
+RET
+
+
+; @name BAS_RREF
+; @resident shared
+; @param_count 0
+; @calls BAS_RNDWK,BAS_RBP
+; A = 番号 → その番号に結びついた変数すべてに、レコードの緩衝の中身を写し直す (変数の長さは幅)
+LD C, A
+LD A, (BAS_RFK)
+OR A
+RET Z
+LD B, A
+LD HL, (BAS_RFT)
+.brr_loop
+LD A, (HL)
+CP C
+CALL Z, .brr_one
+LD DE, 5
+ADD HL, DE
+DJNZ .brr_loop
+RET
+.brr_one                ; HL = 項目 (HL・BC は戻す)
+PUSH BC
+PUSH HL
+PUSH HL
+LD A, C
+CALL BAS_RBP            ; 結びついている番号には緩衝がある (BAS_RFLD で確かめた)
+EX DE, HL
+POP HL
+INC HL
+LD A, (HL)              ; 位置
+ADD A, E
+LD E, A
+JP NC, .brr_nc
+INC D
+.brr_nc
+INC HL
+LD C, (HL)              ; 幅
+INC HL
+LD A, (HL)
+INC HL
+LD H, (HL)
+LD L, A                 ; 変数
+LD (HL), C
+INC HL
+EX DE, HL
+LD A, C
+OR A
+JP Z, .brr_done
+LD B, 0
+LDIR
+.brr_done
+POP HL
+POP BC
+RET
+
+
+; @name BAS_FOPENR
+; @resident shared
+; @param_count 3
+; @calls BAS_FILEWK,BAS_RNDWK,BAS_FOPEN,BAS_FNUM,BAS_FNAMEZ,BAS_FCHK,BAS_ERROR,BAS_RBP,BAS_RLOCP,BAS_RREF,FOPEN
+; ランダムを使うプログラムの OPEN: HL = モード、DE = 番号、BC = 名前。"R" はランダムで開く (読み書き。なければ作る。
+; 種類は Asc で大きさの欄は 0。本物と同じ)。ほかのモードは BAS_FOPEN。どのモードでも、開いたら LOC を 0 にし、
+; その番号のレコードの緩衝を 0 で埋めて、結びついた変数に写す (本物は閉じたあとも FIELD の変数が緩衝を指したままで、
+; 開き直すと 0 になる。実測)
+PUSH DE
+LD A, (HL)
+OR A
+JP Z, .bfr_seq
+INC HL
+LD A, (HL)
+DEC HL
+AND $DF                 ; 英字を大文字に
+CP 'R'
+JP Z, .bfr_rnd
+.bfr_seq
+CALL BAS_FOPEN
+JP .bfr_clr
+.bfr_rnd
+PUSH BC
+EX DE, HL
+CALL BAS_FNUM
+LD (.bfr_st), HL
+DEC A
+LD (.bfr_fn), A
+LD A, (HL)
+OR A
+LD HL, 54               ; Already open
+JP NZ, BAS_ERROR
+POP HL                  ; 名前
+LD DE, BAS_FNZ1
+CALL BAS_FNAMEZ
+LD A, (.bfr_fn)
+LD L, A
+LD H, 0
+LD DE, BAS_FNZ1
+LD BC, 1                ; 読み書き (なければ作る)
+CALL FOPEN
+CALL BAS_FCHK
+LD HL, (.bfr_st)
+LD (HL), 3
+INC HL
+LD (HL), 0
+.bfr_clr
+POP HL                  ; 番号 (BAS_FOPEN か上で確かめた)
+LD A, L
+PUSH AF
+CALL BAS_RLOCP
+XOR A
+LD (HL), A
+INC HL
+LD (HL), A
+POP AF
+PUSH AF
+CALL BAS_RBP
+JP C, .bfr_ret          ; 緩衝のない番号 (ランダムに使わない)
+LD (HL), 0
+LD D, H
+LD E, L
+INC DE
+LD BC, 255
+LDIR
+POP AF
+JP BAS_RREF
+.bfr_ret
+POP AF
+RET
+.bfr_fn DB 0
+.bfr_st DW 0
+
+
+; @name BAS_RFLD
+; @resident shared
+; @param_count 2
+; @calls BAS_FILEWK,BAS_RNDWK,BAS_FNUM,BAS_RBP,BAS_ERROR
+; FIELD #番号 の始め: HL = 番号 (開いていなければエラー 71。モードは問わない。本物と同じ)、E = 幅の上限 (--string-len)
+LD A, E
+LD (BAS_RMAXW), A
+CALL BAS_FNUM
+LD B, A
+LD A, (HL)
+OR A
+LD HL, 71               ; File not open
+JP Z, BAS_ERROR
+LD A, B
+LD (BAS_RCUR), A
+CALL BAS_RBP
+LD HL, 52               ; 緩衝のない番号 (hubasic2sl は FIELD に使う番号の緩衝を取るので、起きない)
+JP C, BAS_ERROR
+LD HL, 0
+LD (BAS_ROFF), HL
+RET
+
+
+; @name BAS_RFAS
+; @resident shared
+; @param_count 3
+; @calls BAS_RNDWK,BAS_RENT,BAS_RREF,BAS_ERROR
+; FIELD の 1 項目 (幅 AS 変数): HL = 表の項目の番号、DE = 変数、BC = 幅。幅が 0〜255 でなければエラー 5、
+; 合計が 256 を超えたらエラー 50 (本物と同じ)、幅の上限 (--string-len) を超えたらエラー 15。
+; 結びつけて (前の結びつきは外れる)、緩衝の中身を変数に写す
+LD A, B
+OR A
+JP NZ, .bra_5
+PUSH DE                 ; 変数
+PUSH BC                 ; 幅
+CALL BAS_RENT
+POP BC
+EX DE, HL               ; DE = 項目
+LD HL, (BAS_ROFF)
+PUSH HL                 ; この項目の位置
+ADD HL, BC
+LD A, H                 ; 256 まで
+DEC A
+JP M, .bra_ok
+OR L
+JP NZ, .bra_50
+.bra_ok
+LD A, (BAS_RMAXW)
+CP C
+JP C, .bra_15
+LD (BAS_ROFF), HL
+POP HL
+LD A, (BAS_RCUR)
+LD (DE), A
+INC DE
+LD A, L
+LD (DE), A
+INC DE
+LD A, C
+LD (DE), A
+INC DE
+POP HL                  ; 変数
+EX DE, HL
+LD (HL), E
+INC HL
+LD (HL), D
+LD A, (BAS_RCUR)
+JP BAS_RREF
+.bra_5
+LD HL, 5                ; Illegal function call
+JP BAS_ERROR
+.bra_50
+LD HL, 50               ; FIELD overflow
+JP BAS_ERROR
+.bra_15
+LD HL, 15               ; String too long
+JP BAS_ERROR
+
+
+; @name BAS_RLSET
+; @resident shared
+; @param_count 3
+; @calls BAS_RNDWK,BAS_RENT,BAS_RBP,BAS_RREF
+; LSET・RSET 変数 = 文字列: HL = 変数、DE = 文字列、C の bit 0 = RSET、BC >> 1 = FIELD の表の項目の番号 + 1 (0 = 表にない変数)。
+; 幅にそろえる (LSET は左に、RSET は右に寄せて空白で埋める。長ければ頭から幅だけ)。結びついた変数なら、レコードの緩衝に書いて、
+; その番号の変数すべてに写し直す (ディスクには書かない)。結びついていなければ、変数のいまの長さを幅にして変数に書く (本物と同じ)
+LD A, C
+AND 1
+LD (.brl_r), A
+SRL B
+RR C
+PUSH DE                 ; 文字列
+LD A, B
+OR C
+JP Z, .brl_plain
+DEC BC
+PUSH HL                 ; 変数
+LD H, B
+LD L, C
+CALL BAS_RENT
+LD A, (HL)
+OR A
+JP Z, .brl_unb
+POP DE                  ; (変数は使わない)
+LD (.brl_n), A
+INC HL
+LD E, (HL)              ; 位置
+INC HL
+LD C, (HL)              ; 幅
+PUSH BC
+PUSH DE
+CALL BAS_RBP
+POP DE
+POP BC
+LD D, 0
+ADD HL, DE              ; 書く所
+POP DE                  ; 文字列
+CALL .brl_put
+LD A, (.brl_n)
+JP BAS_RREF
+.brl_unb
+POP HL                  ; 変数
+.brl_plain
+LD C, (HL)              ; いまの長さ
+INC HL
+POP DE                  ; 文字列
+.brl_put                ; HL = 書く所、C = 幅、DE = 文字列 (長さ付き)
+LD A, (DE)
+INC DE
+CP C
+JP C, .brl_short
+LD A, C
+.brl_short
+LD B, A                 ; 写す字の数
+LD A, C
+SUB B
+LD C, A                 ; 空白の数
+LD A, (.brl_r)
+OR A
+JP Z, .brl_left
+CALL .brl_sp
+JP .brl_cp
+.brl_left
+CALL .brl_cp
+.brl_sp                 ; C 個の空白
+LD A, C
+OR A
+RET Z
+LD (HL), ' '
+INC HL
+DEC C
+JP .brl_sp
+.brl_cp                 ; DE から B 字 (変数そのものを LSET したときは同じ所に写すだけ)
+LD A, B
+OR A
+RET Z
+.brl_cpl
+LD A, (DE)
+LD (HL), A
+INC HL
+INC DE
+DJNZ .brl_cpl
+RET
+.brl_r DB 0
+.brl_n DB 0
+
+
+; @name BAS_RUNB
+; @resident shared
+; @param_count 1
+; @calls BAS_RENT
+; HL = FIELD の表の項目の番号 → 結びつきを外す (FIELD した変数へのふつうの代入のあと。本物は、変数が新しい値を指して
+; 緩衝と切れ、緩衝は変わらない。実測)
+CALL BAS_RENT
+LD (HL), 0
+RET
+
+
+; @name BAS_RSWAP
+; @resident shared
+; @param_count 3
+; @calls BAS_RENT
+; L・H = 2 つの変数の FIELD の表の項目の番号、DE・BC = その 2 つの変数 → 結びつき (番号・位置・幅) を入れ替える (SWAP のあと。
+; 本物は変数の指す所が入れ替わる。実測)。FIELD に出てこない変数 (SWAP の相手) にも結びつきが移るので、変数の番地も入れる
+LD A, H
+LD (.brs_k2), A
+LD H, 0
+PUSH BC                 ; 2 つめの変数
+PUSH DE                 ; 1 つめの変数
+CALL BAS_RENT
+POP DE
+CALL .brs_addr
+PUSH HL                 ; 1 つめの項目
+LD A, (.brs_k2)
+LD L, A
+LD H, 0
+CALL BAS_RENT
+POP DE                  ; 1 つめの項目
+POP BC                  ; 2 つめの変数
+PUSH DE
+LD D, B
+LD E, C
+CALL .brs_addr
+POP DE
+LD B, 3
+.brs_loop
+LD A, (DE)
+LD C, (HL)
+LD (HL), A
+LD A, C
+LD (DE), A
+INC HL
+INC DE
+DJNZ .brs_loop
+RET
+.brs_addr               ; HL = 項目、DE = 変数 → 項目の +3・+4 に番地を入れる (HL は戻す)
+PUSH HL
+INC HL
+INC HL
+INC HL
+LD (HL), E
+INC HL
+LD (HL), D
+POP HL
+RET
+.brs_k2 DB 0
+
+
+; @name BAS_RSYNC
+; @resident shared
+; @param_count 1
+; @calls BAS_RENT,BAS_RBP,BAS_RREF
+; HL = FIELD の表の項目の番号 → 結びついていれば、変数の中身を緩衝に書き、その番号の変数すべてに写し直す
+; (MID$ の文のあと。本物の MID$ の文は緩衝を直に書き換える。実測。長さは変わらないので幅のまま)
+CALL BAS_RENT
+LD A, (HL)
+OR A
+RET Z
+LD (.brsy_n), A
+INC HL
+LD E, (HL)              ; 位置
+INC HL
+LD C, (HL)              ; 幅
+INC HL
+LD A, (HL)
+INC HL
+LD H, (HL)
+LD L, A
+INC HL                  ; 変数の字
+PUSH HL
+PUSH BC
+PUSH DE
+LD A, (.brsy_n)
+CALL BAS_RBP
+POP DE
+LD D, 0
+ADD HL, DE
+EX DE, HL               ; DE = 緩衝の中
+POP BC
+LD B, 0
+POP HL
+LD A, C
+OR A
+JP Z, .brsy_ref
+LDIR
+.brsy_ref
+LD A, (.brsy_n)
+JP BAS_RREF
+.brsy_n DB 0
+
+
+; @name BAS_RMIRV
+; @resident shared
+; @param_count 2
+; @calls BAS_SMIRRORV,BAS_RSYNC
+; MIRROR$(FIELD の変数): HL = 変数、DE = その表の項目の番号 → その場で左右を逆にし (BAS_SMIRRORV)、結びついていれば緩衝にも書いて
+; その番号の変数すべてに写し直す (本物の MIRROR$ は変数の中身、つまり緩衝をその場で書き換える。実測)。HL = 変数 (結果)
+PUSH HL
+PUSH DE
+CALL BAS_SMIRRORV
+POP HL
+CALL BAS_RSYNC
+POP HL
+RET
+
+
+; @name BAS_RGP
+; @resident shared
+; @param_count 3
+; @calls BAS_FILEWK,BAS_RNDWK,BAS_FNUM,BAS_RBP,BAS_RLOCP,BAS_RREF,BAS_FCHK,BAS_ERROR,FSEEKREC,FREAD,FWRITE,FSIZEREC,FERR
+; GET・PUT #番号[,レコード]: HL = 番号、DE = レコード、C の bit 0 = レコードを書いた、bit 1 = PUT。レコードがなければ LOC + 1。
+; ランダムで開いていなければエラー 71・30。GET はレコードの緩衝に読んで、結びついた変数に写す (確保したレコードより後ろは
+; エラー 61。LOC も緩衝も変えない)。PUT は緩衝をそのまま書く (1280 以上はエラー 60。あいだのレコードの中身は決まらない)。
+; どちらも本物と同じ
+PUSH DE
+LD A, C
+LD (.brg_f), A
+CALL BAS_FNUM
+LD (.brg_n), A
+LD A, (HL)
+OR A
+LD HL, 71               ; File not open
+JP Z, BAS_ERROR
+CP 3
+LD HL, 30               ; Bad file mode
+JP NZ, BAS_ERROR
+POP DE
+LD A, (.brg_f)
+RRA
+JP C, .brg_rec
+LD A, (.brg_n)
+CALL BAS_RLOCP
+LD E, (HL)
+INC HL
+LD D, (HL)
+INC DE
+.brg_rec
+LD (.brg_r), DE
+LD A, (.brg_f)
+AND 2
+JP NZ, .brg_put
+CALL .brg_fn
+CALL FSIZEREC
+LD DE, (.brg_r)
+OR A
+SBC HL, DE
+JP C, .brg_61
+JP Z, .brg_61
+CALL .brg_seek
+CALL FREAD
+JP .brg_done
+.brg_put
+LD HL, (.brg_r)
+LD DE, 1280
+OR A
+SBC HL, DE
+LD HL, 60               ; Device full (ディスクより後ろ)
+JP NC, BAS_ERROR
+CALL .brg_seek
+CALL FWRITE
+.brg_done
+LD A, H                 ; 256 バイト読み書きできたか
+DEC A
+OR L
+JP Z, .brg_ok
+CALL .brg_fn
+CALL FERR
+CALL BAS_FCHK
+LD A, (.brg_f)
+AND 2
+LD HL, 61
+JP Z, BAS_ERROR
+LD HL, 60
+JP BAS_ERROR
+.brg_ok
+LD A, (.brg_n)
+CALL BAS_RLOCP
+LD DE, (.brg_r)
+LD (HL), E
+INC HL
+LD (HL), D
+LD A, (.brg_f)
+AND 2
+RET NZ
+LD A, (.brg_n)
+JP BAS_RREF
+.brg_61
+LD HL, 61               ; Input past end
+JP BAS_ERROR
+.brg_seek               ; レコードの頭に置いて、HL = API の番号、DE = 緩衝、BC = 256
+CALL .brg_fn
+LD DE, (.brg_r)
+CALL FSEEKREC
+CALL BAS_FCHK
+LD A, (.brg_n)
+CALL BAS_RBP
+LD DE, 52
+JP C, .brg_err
+EX DE, HL
+CALL .brg_fn
+LD BC, 256
+RET
+.brg_err
+EX DE, HL
+JP BAS_ERROR
+.brg_fn
+LD A, (.brg_n)
+DEC A
+LD L, A
+LD H, 0
+RET
+.brg_n DB 0
+.brg_f DB 0
+.brg_r DW 0
+
+
+; @name BAS_FLOC
+; @resident shared
+; @param_count 1
+; @calls BAS_FILEWK,BAS_RNDWK,BAS_FNUM,BAS_RLOCP,BAS_ERROR,FTELLREC,FSEEK
+; LOC(番号): HL = 番号 → ランダムは最後に GET・PUT したレコード (開いたら 0)。順ファイルは、書くものは今のレコード (位置 ÷ 256)、
+; 読むものは最後に読んだバイトのレコード (読む前は -1)。開いていなければエラー 71 (本物の実測)
+CALL BAS_FNUM
+LD B, A
+LD A, (HL)
+OR A
+LD HL, 71               ; File not open
+JP Z, BAS_ERROR
+CP 3
+JP Z, .bfl_rnd
+LD C, A
+LD A, B
+DEC A
+LD L, A
+LD H, 0
+LD (.bfl_fn), HL
+DEC C
+JP Z, FTELLREC          ; 書くもの
+LD DE, $FFFF            ; 読むもの: 1 バイト戻って、そのレコード (頭なら戻れないので -1)
+LD BC, 1
+CALL FSEEK
+LD A, H
+OR L
+LD HL, $FFFF
+RET NZ
+LD HL, (.bfl_fn)
+CALL FTELLREC
+PUSH HL
+LD HL, (.bfl_fn)
+LD DE, 1
+LD BC, 1
+CALL FSEEK
+POP HL
+RET
+.bfl_rnd
+LD A, B
+CALL BAS_RLOCP
+LD A, (HL)
+INC HL
+LD H, (HL)
+LD L, A
+RET
+.bfl_fn DW 0
+
+
+; @name BAS_FLOF
+; @resident shared
+; @param_count 1
+; @calls BAS_FILEWK,BAS_FNUM,BAS_ERROR,FSIZEREC
+; LOF(番号): HL = 番号 → 最後のレコードの番号 (確保したレコードの数 - 1。空なら 0)。開いていなければエラー 71 (本物の実測)
+CALL BAS_FNUM
+LD B, A
+LD A, (HL)
+OR A
+LD HL, 71               ; File not open
+JP Z, BAS_ERROR
+LD A, B
+DEC A
+LD L, A
+LD H, 0
+CALL FSIZEREC
+LD A, H
+OR L
+RET Z
+DEC HL
+RET
+
+
 ; ============================================================ エラーと終わり (libx1_basic.asm の #if exists HUFS から)
 
 ; @name BAS_FERRHOOK
@@ -930,6 +1619,7 @@ OR A
 RET
 .bfm_tab
 DB 30, "Bad file mode", 0
+DB 50, "FIELD overflow", 0
 DB 52, "Bad file number", 0
 DB 53, "File not found", 0
 DB 54, "Already open", 0

@@ -63,6 +63,10 @@ public sealed class SlangBackend : IHuBackend
         if (options.Hufs)
             for (int k = 3; k <= _prog.FileCapacity; k++)
                 head.AppendLine($"ARRAY BYTE {FileBufName(k)}[{HuAnalyzer.FileBufferBytes - 1}];");
+        if (_prog.RecordBuffers > 0)
+            head.AppendLine($"ARRAY BYTE {RecordBufName}[{_prog.RecordBuffers * HuAnalyzer.RecordBufferBytes - 1}];");
+        if (_prog.FieldVars.Count > 0)
+            head.AppendLine($"ARRAY BYTE {FieldTableName}[{_prog.FieldVars.Count * HuAnalyzer.FieldEntryBytes - 1}];");
         head.AppendLine();
         head.AppendLine("MAIN()");
         head.AppendLine("BEGIN");
@@ -99,6 +103,10 @@ public sealed class SlangBackend : IHuBackend
 
     /// <summary>ファイル番号 n (3〜15) の緩衝 (FCB) の名前</summary>
     public static string FileBufName(int n) => "H_FB" + n;
+
+    /// <summary>ランダムのレコードの緩衝 (番号 1 から 256 バイトずつ) と、FIELD の表の名前</summary>
+    public const string RecordBufName = "H_RB";
+    public const string FieldTableName = "H_RFT";
 
     /// <summary>配列の隠し変数の名前の後ろ (整数の配列は名前だけ、浮動小数は F_・D_、文字列は S_ を付けて見分ける)</summary>
     private static string ArrayTag(string key) => HuProgram.KindOfKey(key) switch
@@ -301,6 +309,8 @@ public sealed class SlangBackend : IHuBackend
         FHiddenAddrArg h => "&" + HiddenName(h.Hidden),
         FDataTableArg t => t.LineTable ? "H_DLINE" : "H_DATA",
         FFileBufArg fb => FileBufName(fb.Number),
+        FRecordBufArg => RecordBufName,
+        FFieldTableArg => FieldTableName,
         FArrayArg aa => ArrayName(aa.Key),
         _ => throw new InvalidOperationException(a.ToString()),
     };
@@ -494,6 +504,8 @@ public sealed class SlangBackend : IHuBackend
                     "CINT" => Int(c.Args[0]),
                     "LEN" => $"BAS_SLEN({Str(c.Args[0])})",
                     "EOF" => $"BAS_FEOF({Int(c.Args[0])})",
+                    "LOC" => $"BAS_FLOC({Int(c.Args[0])})",
+                    "LOF" => $"BAS_FLOF({Int(c.Args[0])})",
                     "INSTR" => c.Args.Count > 2
                         ? Call("BAS_SINSTR", (c.Args[0], K.Int), (c.Args[1], K.Str), (c.Args[2], K.Str))
                         : $"BAS_SINSTR(1, {string.Join(", ", Seq((c.Args[0], K.Str), (c.Args[1], K.Str)))})",
@@ -822,8 +834,11 @@ public sealed class SlangBackend : IHuBackend
                     "CHR$" => $"BAS_SCHR({Int(c.Args[0])})",
                     "HEXCHR$" => $"BAS_SHEX({Str(c.Args[0])})",
                     // 本物の MIRROR$ は、引数が変数・配列の要素ならその中身をその場で書き換え、結果もその中身になる
+                    // FIELD の変数なら、書き換えた中身をレコードの緩衝にも書く (本物は変数が緩衝そのもの。実測)
                     "MIRROR$" => IsInPlaceMirror(c)
-                        ? $"BAS_SMIRRORV({Str(c.Args[0])})"
+                        ? c.Args[0] is HuVar mv && _prog.FieldVars.TryGetValue(_prog.Key(mv.Name), out var mid)
+                            ? $"BAS_RMIRV({Str(c.Args[0])}, {mid})"
+                            : $"BAS_SMIRRORV({Str(c.Args[0])})"
                         : $"BAS_SMIRROR({Str(c.Args[0])})",
                     "CGPAT$" => $"BAS_SCGPAT({Int(c.Args[0])})",
                     "HEX$" => $"BAS_SHEXS({Int(c.Args[0])})",

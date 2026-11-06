@@ -255,6 +255,8 @@ LEN  INSTR([n,]a$,b$)  HEX$  BIN$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポ
 ```
 OPEN "O"|"I"|"A",#n,名前   CLOSE [#n,…]   PRINT #n,…   PRINT #n,USING …   WRITE #n,式,…
 INPUT #n,変数,…   LINE INPUT #n,文字列の変数   EOF(n)   KILL 名前   NAME 古い名前 AS 新しい名前   MAXFILES n
+OPEN "R",#n,名前   FIELD #n,幅 AS 文字列の変数,…   LSET 変数=文字列   RSET 変数=文字列   GET #n[,レコード]   PUT #n[,レコード]
+LOC(n)   LOF(n)
 ```
 
 ファイルの命令を使うプログラムは、`x1native_hufs` の環境 (Hu-BASIC (CZ-8FB01) と同じ形の 2D のディスク。[HUFS.md](HUFS.md)) で
@@ -277,6 +279,9 @@ INPUT #n,変数,…   LINE INPUT #n,文字列の変数   EOF(n)   KILL 名前   
 - ファイル番号 3 から後ろは、1 本 **272 バイト** ずつ増えます (緩衝を取る本数は、定数のファイル番号と `MAXFILES` の最大。
   番号か `MAXFILES` に式を書くと 15 本分取り、warning HB0707 が出ます)。
 - `INPUT#` で数を読むと、`VAL`・`READ`・`INPUT` (キー) で数を読んでいないプログラムでは、数を読む処理の分 約 **1.6 KB** 増えます。
+- ランダム (`OPEN "R"`・`FIELD`・`LSET`・`RSET`・`GET`・`PUT`) を使うと、さらに約 **0.8 KB** と、ランダムに使うファイル番号 1 本ごとに
+  **256 バイト** (レコードの緩衝)、`FIELD` に出てくる変数 1 つごとに 5 バイト増えます (緩衝を取る本数は、ランダムに使う定数の番号の最大。
+  番号に式を書くと、ファイルの緩衝と同じ本数)。順ファイルだけのプログラムは増えません。
 
 ### 本物と同じにしてあること (本物で測ったもの)
 
@@ -290,26 +295,53 @@ INPUT #n,変数,…   LINE INPUT #n,文字列の変数   EOF(n)   KILL 名前   
 - `EOF(n)` は次が `$1A` か物理の終わりなら -1。`$1A` の後ろを読むと Input past end。
 - `OPEN "A"` は、最後のレコードの最初の `$1A` の所から書き足します。ないファイルは File not found (作らない)。
 - `CLOSE #n` の n が開いていなければ何もしません。`NAME` は開いているファイルにも使えます。
-- エラーの番号と文: Bad file mode (30)・Bad file number (52)・File not found (53)・Already open (54)・Device I/O error (56)・
+- エラーの番号と文: Bad file mode (30)・FIELD overflow (50)・Bad file number (52)・File not found (53)・Already open (54)・Device I/O error (56)・
   File already exists (57)・Device full (60)・Input past end (61)・Bad allocation table (64)・Bad file descripter (65。本物の綴りのまま)・
   File not open (71)・Write protected (72)。
 
+### ランダムファイル (本物で測ったもの)
+
+- レコードは 256 バイト固定です。レコード r は、ファイルの頭から r×256 バイトの所です (レコード 0 もあります)。
+  ファイルの種類は Asc、大きさの欄は 0 です (本物と同じ)。
+- `GET #n`・`PUT #n` とレコードを書かないと、`LOC(n)` の次のレコードです (開いた直後は 1)。
+- `LOC(n)` は最後に `GET`・`PUT` したレコード (開いた直後は 0)、`LOF(n)` は最後のレコードの番号 (レコードの数 - 1。空なら 0) です。
+  順ファイルでは、`LOC` は、書くものは今のレコード (位置 ÷ 256)、読むものは最後に読んだバイトのレコード (読む前は -1) です。
+- `GET` で `LOF` より後ろを読むと Input past end です (`LOC` も緩衝も変わりません)。`PUT` で後ろへ飛ばして書くと、あいだのレコードの
+  中身は決まりません (本物も同じ)。1280 番から後ろ (ディスクより後ろ) への `PUT` は Device full です。
+- `FIELD` の幅は 0〜255 (外れると Illegal function call)、合計は 256 まで (超えると FIELD overflow)。`FIELD` のすぐあとから、変数は
+  緩衝の中身になります。同じ番号の `FIELD` を何度書いても前のものは生きていて、重なった所は互いに見えます。
+  同じ変数を `FIELD` し直すと、後のものに結びつきが移ります。
+- `LSET`・`RSET` は幅にそろえて (`LSET` は左、`RSET` は右に寄せて空白で埋め、長いものは頭から幅だけ) 緩衝に書きます。ディスクに書くのは
+  `PUT` のときだけです。`FIELD` していない変数への `LSET`・`RSET` は、その変数のいまの長さにそろえます。
+- `FIELD` した変数に、ふつうの代入 (`LET`・`INPUT`・`READ` など) をすると、変数はその値のまま緩衝と切れます (緩衝は変わらない)。
+  `MID$` の文と、変数を書き換える `MIRROR$` は緩衝も書き換えます。`SWAP` すると、結びつきも入れ替わります。
+- どのモードでも `OPEN` すると、その番号の緩衝は 0 で埋まります (`CLOSE` のあとも `FIELD` した変数は緩衝に結びついたままなので、
+  開き直すとその変数は 0 の字になります)。
+- ランダムのファイルへの `INPUT#`・`EOF` と、順ファイルへの `GET`・`PUT` は Bad file mode です。開いていない番号への `FIELD`・`GET`・
+  `PUT`・`LOC`・`LOF` は File not open です。
+
 ### 本物との違い
 
-- 同じファイルを 2 つの番号で開くとき、読む同士はよいですが、書くもの (`"O"`・`"A"`) があると Already open です (本物はエラーにしない)。
+- 同じファイルを 2 つの番号で開くとき、読む同士はよいですが、書くもの (`"O"`・`"A"`・`"R"`) があると Already open です (本物はエラーにしない)。
 - 本物は `END` だけがファイルを閉じ、エラーで止まったとき・プログラムの終わりを越えたとき・`MAXFILES` では書き出さずに捨てます。
   こちらは、どれでも閉じて書き出します。
 - `MAXFILES n` は、n が緩衝を取った本数を超えると Illegal function call です (定数なら超えることはありません)。
   `MAXFILES` は変数を消します (本物と同じ) が、`FOR`・`GOSUB` の途中の状態は消しません。
 - 作ったファイルの日付は 0 です。ドライブ 1〜3 は使えません。
-- ランダムファイル (`OPEN "R"`・`FIELD`・`GET`・`PUT`)・`LOC`・`LOF`・`FILES`・`DEVI$`/`DEVO$` はまだありません。
+- ランダムのファイルへの `PRINT#`・`WRITE#` は Bad file mode です (本物はレコードの緩衝に書く)。
+- `FIELD` で重なった変数どうしを、`MID$` の文や `LSET`・`RSET` の左と右に使うと、結果が違うことがあります。本物は緩衝の上で
+  1 バイトずつ写すので、写した字をまた写します (`FIELD #1,6 AS A$:FIELD #1,6 AS B$:LSET A$="ABCDEF":MID$(A$,2)=B$` は、本物は
+  `AAAAAA`、こちらは右の値を先に取るので `AABCDE`)。
+- `FIELD` の `AS` の後ろに配列の要素は書けません (error HB0301)。`FIELD` した変数と配列の要素を `SWAP` すると、結びつきは外れます
+  (本物は配列の要素に移る)。`--string-len` より広い幅の `FIELD` は String too long です。
+- `MKI$`・`CVI` などの数と文字列の変換 (error HB0302)・`FILES`・`DEVI$`/`DEVO$` はまだありません。
 
 ## まだないもの (変換のときの error)
 
 - 命令: `CIRCLE`・`PSET`・`POLY` などほかのグラフィックの命令、`LINE -(x,y)`・`STEP`、`DEF FN`、`ON ERROR`、`USR`、`ERASE`、
   `CLEAR`・`LOADM`・`RUN "ファイル"`、`TIME$`、キーボードからの `LINE INPUT`、
-  ランダムファイル (`OPEN "R"`・`FIELD`・`GET`・`PUT`)・`FILES`・`DEVI$`/`DEVO$`・`LOAD`/`SAVE` などのディスク・テープの命令 (error HB0301)
-- 関数: `OCT$`・`LOC`・`LOF` など (error HB0302)
+  `FILES`・`DEVI$`/`DEVO$`・`LOAD`/`SAVE` などのディスク・テープの命令 (error HB0301)
+- 関数: `OCT$`・`MKI$`・`CVI` など (error HB0302)
 - 3 次元以上の配列 (error HB0303。2 次元までにすると決めたもの)、`MID$` の文の配列の要素
 - `PAINT` の色の省略、タイルパターン (`PAINT`・`BF` の文字列)
 - 名前の飛び先の式 (`GOTO A$`)、`RESTORE "名前"`・`RETURN "名前"`

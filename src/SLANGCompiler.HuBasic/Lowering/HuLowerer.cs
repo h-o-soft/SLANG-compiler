@@ -97,6 +97,7 @@ public sealed class HuLowerer
             var cap = Math.Max(2, _prog.FileCapacity);
             Call("BAS_FINIT", I(cap));
             for (int k = 3; k <= cap; k++) Call("FSETBUF", I(k - 1), new FFileBufArg(k));
+            if (_prog.UsesRandom) RandomInit();
         }
         if (_opt.LineNumbers) Call("BAS_LNINIT", new FHiddenAddrArg(CurrentLine));
         if (_prog.DataBytes.Length > 0) Call("BAS_DATAINIT", new FDataTableArg(false), new FDataTableArg(true));
@@ -136,6 +137,26 @@ public sealed class HuLowerer
             if (_prog.Arrays2.ContainsKey(name)) hidden.Add(UpperBound2(name));
         }
         return new HuFlat(_ops, hidden);
+    }
+
+    /// <summary>ランダムの始め (始めと MAXFILES): レコードの緩衝と FIELD の表を渡し、FIELD の結びつきをすべて外す</summary>
+    private void RandomInit()
+    {
+        int r = _prog.RecordBuffers, k = _prog.FieldVars.Count;
+        Call("BAS_RINIT", r > 0 ? new FRecordBufArg() : I(0), k > 0 ? new FFieldTableArg() : I(0), I(r + 256 * k));
+    }
+
+    /// <summary>FIELD の変数なら、その表の項目の番号 (でなければ null)</summary>
+    private int? FieldVarId(HuExpr target)
+        => target is HuVar v && _prog.FieldVars.TryGetValue(_prog.Key(v.Name), out var id) ? id : null;
+
+    /// <summary>
+    /// FIELD の変数へのふつうの代入のあと: 緩衝との結びつきを外す (本物は、変数が新しい値を指して緩衝と切れ、緩衝は変わらない。実測)。
+    /// 右辺を計算してから外す (右辺の MIRROR$(変数) は、結びついたまま緩衝を書き換える)
+    /// </summary>
+    private void Unbind(HuExpr target)
+    {
+        if (FieldVarId(target) is int id) Call("BAS_RUNB", I(id));
     }
 
     /// <summary>配列の状態 (DIM を通ったか・上限) を始めの値にする (始めと MAXFILES)</summary>
@@ -186,7 +207,11 @@ public sealed class HuLowerer
         switch (s)
         {
             case HuAssign a:
-                if (a.Target.Type == HuType.Str) SetStr(E(a.Target), E(a.Value));
+                if (a.Target.Type == HuType.Str)
+                {
+                    SetStr(E(a.Target), E(a.Value));
+                    Unbind(a.Target);
+                }
                 else Emit(new FAssign(a.Target, a.Value));
                 break;
             case HuGoto g:
@@ -291,6 +316,7 @@ public sealed class HuLowerer
                     if (t.Type == HuType.Str)
                     {
                         SetStr(E(t), E(new HuCall(FlatPseudo.ReadStr, Array.Empty<HuExpr>(), rd.Pos) { Type = HuType.Str }));
+                        Unbind(t);
                         Call("BAS_STMP");
                     }
                     else
@@ -306,7 +332,21 @@ public sealed class HuLowerer
                 Call("BAS_RESTORE", I(rs.Line ?? 0));
                 break;
             case HuOpen op:
-                Call("BAS_FOPEN", E(op.Mode), E(op.Number), E(op.Name));
+                // ランダムを使うプログラムは、どのモードでも BAS_FOPENR ("R" を開き、開いた番号のレコードの緩衝を 0 にする)
+                Call(_prog.UsesRandom ? "BAS_FOPENR" : "BAS_FOPEN", E(op.Mode), E(op.Number), E(op.Name));
+                break;
+            case HuField fd:
+                Call("BAS_RFLD", E(fd.Number), I(_prog.StringLen));
+                foreach (var (width, target) in fd.Items)
+                    if (FieldVarId(target) is int id) Call("BAS_RFAS", I(id), E(target), E(width));
+                break;
+            case HuLset ls:
+                // 表にない変数 (配列の要素・FIELD に出てこない変数) は 0: 変数のいまの長さにそろえる
+                Call("BAS_RLSET", E(ls.Target), E(ls.Value), I(((FieldVarId(ls.Target) ?? -1) + 1) * 2 + (ls.Right ? 1 : 0)));
+                break;
+            case HuGetPut gp:
+                Call("BAS_RGP", E(gp.Number), gp.Record != null ? E(gp.Record) : I(0),
+                    I((gp.Record != null ? 1 : 0) | (gp.Put ? 2 : 0)));
                 break;
             case HuClose cl:
                 if (cl.Numbers.Count == 0) Call("BAS_FCLOSEA");
@@ -321,6 +361,7 @@ public sealed class HuLowerer
             case HuMaxFiles mf:
                 Call("BAS_FMAXF", E(mf.Count));
                 ClearVariables(mf.Pos);
+                if (_prog.UsesRandom) RandomInit();
                 break;
             case HuWrite wr:
             {
@@ -345,7 +386,10 @@ public sealed class HuLowerer
                 foreach (var t in inf.Targets)
                 {
                     if (t.Type == HuType.Str)
+                    {
                         SetStr(E(t), E(new HuCall(inf.Line ? FlatPseudo.FileLine : FlatPseudo.FileInputStr, Array.Empty<HuExpr>(), inf.Pos) { Type = HuType.Str }));
+                        Unbind(t);
+                    }
                     else
                         Emit(new FAssign(t, new HuCall(FlatPseudo.FileInputNum, Array.Empty<HuExpr>(), inf.Pos) { Type = HuType.Float }));
                     Call("BAS_STMP");
@@ -358,7 +402,10 @@ public sealed class HuLowerer
                 foreach (var t in inp.Targets)
                 {
                     if (t.Type == HuType.Str)
+                    {
                         SetStr(E(t), E(new HuCall(FlatPseudo.InputStr, Array.Empty<HuExpr>(), inp.Pos) { Type = HuType.Str }));
+                        Unbind(t);
+                    }
                     else
                         Emit(new FAssign(t, new HuCall(FlatPseudo.InputNum, Array.Empty<HuExpr>(), inp.Pos) { Type = HuType.Float }));
                     Call("BAS_STMP");
@@ -373,6 +420,13 @@ public sealed class HuLowerer
                 break;
             case HuSwap sw:
                 Emit(new FSwap(sw.A, sw.B));
+                // FIELD の変数: 本物は変数の指す所が入れ替わる (結びつきも入れ替わる。実測)。相手が配列の要素なら外す
+                if (FieldVarId(sw.A) is int fa && FieldVarId(sw.B) is int fb) Call("BAS_RSWAP", I(fa + 256 * fb), E(sw.A), E(sw.B));
+                else
+                {
+                    Unbind(sw.A);
+                    Unbind(sw.B);
+                }
                 break;
             case HuPrint p:
                 LowerPrint(p);
@@ -398,6 +452,8 @@ public sealed class HuLowerer
             case HuMidSet ms:
                 Call("BAS_SMIDSET", E(new HuVar(ms.Var, ms.Pos) { Type = HuType.Str }), E(ms.Start),
                     ms.Length != null ? E(ms.Length) : I(255), E(ms.Value));
+                // FIELD の変数: 本物の MID$ の文は緩衝を直に書き換える (実測)。変数の中身を緩衝に書き戻す
+                if (FieldVarId(new HuVar(ms.Var, ms.Pos)) is int mid) Call("BAS_RSYNC", I(mid));
                 break;
             case HuRem rem:
                 if (rem.Directive == "VSYNC" && _opt.Wait == HuWaitMode.Frame)
@@ -678,6 +734,19 @@ public sealed class HuLowerer
             case HuKill k: yield return k.Name; break;
             case HuNameAs na: yield return na.Old; yield return na.New; break;
             case HuMaxFiles mf: yield return mf.Count; break;
+            case HuField fd:
+                yield return fd.Number;
+                foreach (var (width, target) in fd.Items)
+                {
+                    yield return width;
+                    yield return target;
+                }
+                break;
+            case HuLset ls: yield return ls.Target; yield return ls.Value; break;
+            case HuGetPut gp:
+                yield return gp.Number;
+                if (gp.Record != null) yield return gp.Record;
+                break;
             case HuMidSet ms:
                 yield return ms.Start;
                 if (ms.Length != null) yield return ms.Length;

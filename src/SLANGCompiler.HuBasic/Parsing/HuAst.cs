@@ -127,6 +127,15 @@ public sealed record HuNameAs(HuExpr Old, HuExpr New, HuPos Pos) : HuStmt(Pos);
 /// <summary>MAXFILES 本数 (変数を消し、開いているファイルを閉じる)</summary>
 public sealed record HuMaxFiles(HuExpr Count, HuPos Pos) : HuStmt(Pos);
 
+/// <summary>FIELD #番号, 幅 AS 文字列の変数, … (変数をレコードの緩衝の一部に結びつける)</summary>
+public sealed record HuField(HuExpr Number, IReadOnlyList<(HuExpr Width, HuExpr Var)> Items, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>LSET・RSET 文字列の変数 = 文字列 (Right が真なら RSET)</summary>
+public sealed record HuLset(HuExpr Target, HuExpr Value, bool Right, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>GET・PUT #番号[, レコード] (Put が真なら PUT。レコードがなければ LOC の次)</summary>
+public sealed record HuGetPut(HuExpr Number, HuExpr? Record, bool Put, HuPos Pos) : HuStmt(Pos);
+
 /// <summary>引数を取る画面・音などの命令 (LOCATE, COLOR, CLS, WIDTH, CFLASH, CSIZE, CGEN,
 /// PLAY, TEMPO, BEEP, CLICK, PAUSE, KEY, REPEAT (ON/OFF), PALET, PRW, VSYNC)。省略された引数は null。</summary>
 public sealed record HuCommand(string Name, IReadOnlyList<HuExpr?> Args, HuPos Pos) : HuStmt(Pos);

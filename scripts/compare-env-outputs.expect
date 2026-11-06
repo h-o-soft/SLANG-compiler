@@ -11,3 +11,9 @@ bas	@CF1.BAS	convert	success
 bas	@CF1.BAS	disk	success
 bas	@CF1.BAS	wait	success
 bas	@CF1.BAS	tape	error HB0315
+#
+# 段階 2 (hubasic2sl のランダムファイル): OPEN "R"・FIELD・LSET・GET・PUT・LOC・LOF を使うプログラムも x1native_hufs で組み立てる
+bas	@CR1.BAS	convert	success
+bas	@CR1.BAS	disk	success
+bas	@CR1.BAS	wait	success
+bas	@CR1.BAS	tape	error HB0315
