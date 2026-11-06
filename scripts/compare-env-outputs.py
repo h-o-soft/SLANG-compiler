@@ -43,6 +43,7 @@ EXTRA_PROGRAMS = {
     "CF1.BAS": '10 OPEN "O",#1,"A.DAT":PRINT #1,"X":CLOSE\n20 END\n',
     "CR1.BAS": '10 OPEN "R",#1,"R.DAT":FIELD #1,4 AS A$:LSET A$="X":PUT #1,1:GET #1,1\n'
                '20 PRINT A$;LOC(1);LOF(1):CLOSE\n30 END\n',
+    "CD1.BAS": '10 FILES:FILES "0:"\n20 DEVI$ "0:",1000,A$,B$:DEVO$ "0:",1001,A$,B$\n30 END\n',
 }
 EXTRA_BAS = None   # main で <作業フォルダ>/extra-bas にする
 OUT_EXTS = (".SL", ".bin", ".d88", ".tap")

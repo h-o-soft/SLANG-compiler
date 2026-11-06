@@ -136,6 +136,15 @@ public sealed record HuLset(HuExpr Target, HuExpr Value, bool Right, HuPos Pos) 
 /// <summary>GET・PUT #番号[, レコード] (Put が真なら PUT。レコードがなければ LOC の次)</summary>
 public sealed record HuGetPut(HuExpr Number, HuExpr? Record, bool Put, HuPos Pos) : HuStmt(Pos);
 
+/// <summary>FILES [ファイルディスクリプタ] (ディスクのファイルの一覧を画面に出す。Descriptor は書かなければ null)</summary>
+public sealed record HuFiles(HuExpr? Descriptor, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>
+/// DEVI$ ディスクリプタ, レコード, 文字列の変数, 文字列の変数 / DEVO$ ディスクリプタ, レコード, 文字列, 文字列 (Out が真)。
+/// ディスクのレコード (256 バイト) を、ファイルの仕組みを通らずに 128 バイトずつ 2 つの文字列と読み書きする
+/// </summary>
+public sealed record HuDev(HuExpr Descriptor, HuExpr Record, HuExpr First, HuExpr Second, bool Out, HuPos Pos) : HuStmt(Pos);
+
 /// <summary>引数を取る画面・音などの命令 (LOCATE, COLOR, CLS, WIDTH, CFLASH, CSIZE, CGEN,
 /// PLAY, TEMPO, BEEP, CLICK, PAUSE, KEY, REPEAT (ON/OFF), PALET, PRW, VSYNC)。省略された引数は null。</summary>
 public sealed record HuCommand(string Name, IReadOnlyList<HuExpr?> Args, HuPos Pos) : HuStmt(Pos);

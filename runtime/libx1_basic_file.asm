@@ -3,7 +3,7 @@
 ;
 ; x1native_hufs の env だけが持つ。ファイル API (libx1native_hufs.asm の FOPEN など) の上に、Hu-BASIC の
 ; OPEN・CLOSE・PRINT#・WRITE#・INPUT#・LINE INPUT#・EOF・KILL・NAME・MAXFILES と、ランダムの FIELD・LSET・RSET・GET・PUT・
-; LOC・LOF の意味を乗せる。
+; LOC・LOF、FILES・DEVI$・DEVO$ の意味を乗せる。
 ;
 ; libx1_basic.asm の #if exists HUFS の中 (BAS_PCHR・BAS_PNL・BAS_PZONE・BAS_PRTAB・BAS_ERROR・BAS_END) が、
 ; 出力先 (BAS_FOUTN) と、ここの関数 (BAS_FPCHR など) を使う。それらの記号は、hubasic2sl の出力が始めに必ず呼ぶ
@@ -1580,6 +1580,288 @@ DEC HL
 RET
 
 
+; ============================================================ FILES・DEVI$・DEVO$
+
+; @name BAS_DEVCHK
+; @resident shared
+; @param_count 1
+; @calls BAS_ERROR
+; HL = ファイルディスクリプタ (長さ付きの文字列。0 なら書いていない) → ドライブ 0 でなければエラー 65。
+; ':' のないもの ("" も) はいまのドライブ (0)、"0:" で始まるものは 0 (後ろは見ない。本物と同じ)。
+; ほかのドライブ・装置 ("1:"・"CAS:" など) は、本物は Device offline (73) などだが、こちらは使えないので 65
+LD A, H
+OR L
+RET Z
+LD B, (HL)
+INC HL
+LD D, H
+LD E, L                 ; DE = 頭
+INC B
+.bdc_find
+DEC B
+RET Z                   ; ':' がない
+LD A, (HL)
+INC HL
+CP ':'
+JP NZ, .bdc_find
+OR A
+SBC HL, DE
+LD A, L
+CP 2                    ; ':' が 2 文字目
+JP NZ, .bdc_bad
+LD A, (DE)
+CP '0'
+RET Z
+.bdc_bad
+LD HL, 65
+JP BAS_ERROR
+
+
+; @name BAS_FILES
+; @resident shared
+; @param_count 1
+; @calls BAS_DEVCHK,BAS_FCHK,FFREE,FFIRST,FNEXT,BAS_UTOA,BAS_PSTRZ,BAS_PCHR,BAS_PNL,BAS_PZONE
+; @works BAS_FLENT:32
+; FILES [ディスクリプタ]: HL = ディスクリプタ (0 なら書いていない)。本物と同じ形で画面に出す (実測):
+;   "65 Clusters free" (空きクラスタの数)、続いて項目ごとに 1 行
+;   種類 (Dir・Bin・Bas・Asc)、書き込み禁止 ($40) なら '*'、$20 なら '#'、, の区切り、"0:名前.拡張子"、, の区切り、
+;   'YY/MM/DD 曜日 HH:MM (年・日・時・分は BCD の 2 桁を '0'+4 ビットずつ、月は上の 4 ビットを 10 進 2 桁、
+;   曜日は下の 3 ビットで SUN〜SAT・???)。隠し ($10) は出さない。名前の字は PRINT と同じに出す
+CALL BAS_DEVCHK
+CALL FFREE
+PUSH HL
+CALL BAS_FCHK
+POP HL
+CALL BAS_UTOA
+CALL BAS_PSTRZ
+LD HL, .bfl_free
+CALL BAS_PSTRZ
+CALL BAS_PNL
+LD HL, BAS_FLENT
+CALL FFIRST
+.bfl_loop
+LD A, H
+AND L
+INC A
+RET Z                   ; $FFFF もうない
+CALL BAS_FCHK
+LD A, (BAS_FLENT)
+BIT 4, A
+JP NZ, .bfl_next        ; 隠し
+LD HL, .bfl_dir
+BIT 7, A
+JP NZ, .bfl_type
+LD HL, .bfl_bin
+BIT 0, A
+JP NZ, .bfl_type
+LD HL, .bfl_bas
+BIT 1, A
+JP NZ, .bfl_type
+LD HL, .bfl_asc
+.bfl_type
+CALL BAS_PSTRZ
+LD A, (BAS_FLENT)
+BIT 6, A
+LD L, '*'
+CALL NZ, BAS_PCHR
+LD A, (BAS_FLENT)
+BIT 5, A
+LD L, '#'
+CALL NZ, BAS_PCHR
+CALL BAS_PZONE
+LD HL, .bfl_q0
+CALL BAS_PSTRZ
+LD HL, BAS_FLENT+1
+LD B, 13
+CALL .bfl_pn
+LD L, '.'
+CALL BAS_PCHR
+LD HL, BAS_FLENT+14
+LD B, 3
+CALL .bfl_pn
+LD L, '"'
+CALL BAS_PCHR
+CALL BAS_PZONE
+LD L, $27
+CALL BAS_PCHR
+LD A, (BAS_FLENT+$18)   ; 年
+CALL .bfl_bcd
+LD L, '/'
+CALL BAS_PCHR
+LD A, (BAS_FLENT+$19)   ; 月 (上の 4 ビット) と曜日 (下)
+RRCA
+RRCA
+RRCA
+RRCA
+AND 0Fh
+CP 10
+JP C, .bfl_mon
+ADD A, 6                ; 10〜15 を BCD に
+.bfl_mon
+CALL .bfl_bcd
+LD L, '/'
+CALL BAS_PCHR
+LD A, (BAS_FLENT+$1A)   ; 日
+CALL .bfl_bcd
+LD L, ' '
+CALL BAS_PCHR
+LD A, (BAS_FLENT+$19)
+AND 7
+LD C, A
+ADD A, A
+ADD A, C
+LD E, A
+LD D, 0
+LD HL, .bfl_wday
+ADD HL, DE
+LD B, 3
+CALL .bfl_pn
+LD L, ' '
+CALL BAS_PCHR
+LD A, (BAS_FLENT+$1B)   ; 時
+CALL .bfl_bcd
+LD L, ':'
+CALL BAS_PCHR
+LD A, (BAS_FLENT+$1C)   ; 分
+CALL .bfl_bcd
+CALL BAS_PNL
+.bfl_next
+LD HL, BAS_FLENT
+CALL FNEXT
+JP .bfl_loop
+; HL から B バイトを出す
+.bfl_pn
+LD A, (HL)
+PUSH HL
+PUSH BC
+LD L, A
+CALL BAS_PCHR
+POP BC
+POP HL
+INC HL
+DJNZ .bfl_pn
+RET
+; A の上と下の 4 ビットを '0'+ で 2 文字
+.bfl_bcd
+PUSH AF
+RRCA
+RRCA
+RRCA
+RRCA
+CALL .bfl_dig
+POP AF
+.bfl_dig
+AND 0Fh
+ADD A, '0'
+LD L, A
+JP BAS_PCHR
+.bfl_free
+DB " Clusters free", 0
+.bfl_dir
+DB "Dir", 0
+.bfl_bin
+DB "Bin", 0
+.bfl_bas
+DB "Bas", 0
+.bfl_asc
+DB "Asc", 0
+.bfl_q0
+DB $22, "0:", 0
+.bfl_wday
+DB "SUNMONTUEWEDTHUFRISAT???"
+
+
+; @name BAS_DEVWK
+; @resident shared
+; @param_count 0
+; @works BAS_DVBUF:258,BAS_DVREC:2
+; BAS_DVBUF: DEVI$ は [128][前の 128 バイト][128][後ろの 128 バイト] (2 つの文字列)、DEVO$ は 256 バイトの並び。
+; BAS_DVREC: BAS_DEVD で調べたレコード番号
+RET
+
+
+; @name BAS_DEVD
+; @resident shared
+; @param_count 2
+; @calls BAS_DEVWK,BAS_DEVCHK,BAS_ERROR
+; DEVI$・DEVO$ の頭: HL = ディスクリプタ、DE = レコード番号 (0〜1279。ほかはエラー 66 Bad record。本物と同じ) を調べて覚える
+PUSH DE
+CALL BAS_DEVCHK
+POP HL
+LD (BAS_DVREC), HL
+LD DE, 1280
+OR A
+SBC HL, DE
+RET C
+LD HL, 66
+JP BAS_ERROR
+
+
+; @name BAS_DEVI
+; @resident shared
+; @param_count 2
+; @calls BAS_DEVWK,BAS_DEVD,BAS_FCHK,FRAWREAD
+; DEVI$ ディスクリプタ, レコード, …: HL・DE は BAS_DEVD と同じ。レコードを読んで、BAS_DVBUF を 2 つの文字列にする
+; (変数への代入は hubasic2sl の出力が BAS_DEVS でする)
+CALL BAS_DEVD
+LD HL, (BAS_DVREC)
+LD DE, BAS_DVBUF+2
+CALL FRAWREAD
+CALL BAS_FCHK
+LD HL, BAS_DVBUF+2
+LD DE, BAS_DVBUF+1
+LD BC, 128
+LDIR
+LD A, 128
+LD (BAS_DVBUF), A
+LD (BAS_DVBUF+129), A
+RET
+
+
+; @name BAS_DEVS
+; @resident shared
+; @param_count 1
+; @calls BAS_DEVWK
+; HL = 0 → DEVI$ で読んだ前の 128 バイトの文字列、1 → 後ろの 128 バイトの文字列
+LD A, L
+OR A
+LD HL, BAS_DVBUF
+RET Z
+LD HL, BAS_DVBUF+129
+RET
+
+
+; @name BAS_DEVO
+; @resident shared
+; @param_count 2
+; @calls BAS_DEVWK,BAS_FCHK,BAS_ERROR,FRAWWRITE
+; DEVO$ …, 文字列, 文字列: HL・DE = 2 つの文字列 (どちらも 128 バイトでなければエラー 5。本物と同じ)。
+; 前に BAS_DEVD で調べたレコードに書く。開いているファイルがあるときにレコード 0〜31 (IPL・FAT・ディレクトリ) へ書くと
+; エラー 54 (ファイル API が止める。本物は書く)
+LD A, (HL)
+CP 128
+JP NZ, .bdo_bad
+LD A, (DE)
+CP 128
+JP NZ, .bdo_bad
+INC HL
+PUSH DE
+LD DE, BAS_DVBUF
+LD BC, 128
+LDIR
+POP HL
+INC HL
+LD BC, 128
+LDIR
+LD HL, (BAS_DVREC)
+LD DE, BAS_DVBUF
+CALL FRAWWRITE
+JP BAS_FCHK
+.bdo_bad
+LD HL, 5
+JP BAS_ERROR
+
+
 ; ============================================================ エラーと終わり (libx1_basic.asm の #if exists HUFS から)
 
 ; @name BAS_FERRHOOK
@@ -1629,6 +1911,7 @@ DB 60, "Device full", 0
 DB 61, "Input past end", 0
 DB 64, "Bad allocation table", 0
 DB 65, "Bad file descripter", 0
+DB 66, "Bad record", 0
 DB 71, "File not open", 0
 DB 72, "Write protected", 0
 DB 0

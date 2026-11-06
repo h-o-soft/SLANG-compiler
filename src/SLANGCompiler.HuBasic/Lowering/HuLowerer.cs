@@ -358,6 +358,22 @@ public sealed class HuLowerer
             case HuNameAs na:
                 Call("BAS_FNAME", E(na.Old), E(na.New));
                 break;
+            case HuFiles fl:
+                Call("BAS_FILES", fl.Descriptor != null ? E(fl.Descriptor) : I(0));
+                break;
+            case HuDev dv when dv.Out:
+                // ディスクリプタとレコードを調べて覚えてから、2 つの文字列 (128 バイトずつ) を書く
+                Call("BAS_DEVD", E(dv.Descriptor), E(dv.Record));
+                Call("BAS_DEVO", E(dv.First), E(dv.Second));
+                break;
+            case HuDev dv:
+                // レコードを読んでから、128 バイトずつ 2 つの変数に代入する (FIELD の変数なら、INPUT と同じく結びつきを外す)
+                Call("BAS_DEVI", E(dv.Descriptor), E(dv.Record));
+                SetStr(E(dv.First), E(new HuCall(FlatPseudo.DevFirst, Array.Empty<HuExpr>(), dv.Pos) { Type = HuType.Str }));
+                Unbind(dv.First);
+                SetStr(E(dv.Second), E(new HuCall(FlatPseudo.DevSecond, Array.Empty<HuExpr>(), dv.Pos) { Type = HuType.Str }));
+                Unbind(dv.Second);
+                break;
             case HuMaxFiles mf:
                 Call("BAS_FMAXF", E(mf.Count));
                 ClearVariables(mf.Pos);
@@ -733,6 +749,15 @@ public sealed class HuLowerer
                 break;
             case HuKill k: yield return k.Name; break;
             case HuNameAs na: yield return na.Old; yield return na.New; break;
+            case HuFiles fl:
+                if (fl.Descriptor != null) yield return fl.Descriptor;
+                break;
+            case HuDev dv:
+                yield return dv.Descriptor;
+                yield return dv.Record;
+                yield return dv.First;
+                yield return dv.Second;
+                break;
             case HuMaxFiles mf: yield return mf.Count; break;
             case HuField fd:
                 yield return fd.Number;

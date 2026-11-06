@@ -180,7 +180,7 @@ public sealed class HuParser
         }
         if (t.Kind == HuTokenKind.Ident)
         {
-            // MAXFILES・WRITE# は予約語の表にない (いま変数の名前として使える)。代入として読めないときだけ命令にする
+            // MAXFILES・WRITE#・DEVI$・DEVO$ は予約語の表にない (いま変数の名前として使える)。代入として読めないときだけ命令にする
             if (IsFileStatementName() && !LooksLikeAssignment())
                 return ParseFileStatementName(pos);
             return ParseAssignment(pos);
@@ -343,6 +343,9 @@ public sealed class HuParser
             }
             case "KILL":
                 return new HuKill(ParseExpr(), pos);
+            case "FILES":
+                // FILES [ファイルディスクリプタ] (LFILES はプリンタなので未対応のまま)
+                return new HuFiles(AtStatementEnd ? null : ParseExpr(), pos);
             case "FIELD":
             {
                 // FIELD [#]番号, 幅 AS 文字列の変数, … (AS は予約語の表にないので、この位置の名前で見分ける)
@@ -652,9 +655,9 @@ public sealed class HuParser
         return new HuRem(null, 0, pos);
     }
 
-    /// <summary>文の頭の名前が、ファイルの命令になりうる名前か (MAXFILES、WRITE#、WRITE の後に #)</summary>
+    /// <summary>文の頭の名前が、ファイルの命令になりうる名前か (MAXFILES、WRITE#、WRITE の後に #、DEVI$、DEVO$)</summary>
     private bool IsFileStatementName()
-        => Peek.Text is "MAXFILES" or "WRITE#" || (Peek.Text == "WRITE" && PeekAt(1).IsSymbol("#"));
+        => Peek.Text is "MAXFILES" or "WRITE#" or "DEVI$" or "DEVO$" || (Peek.Text == "WRITE" && PeekAt(1).IsSymbol("#"));
 
     /// <summary>
     /// 文の頭の名前から、いまの構文で代入として読めるか (名前 = …、名前(…) = …。対応するかっこの後の = まで見る)。
@@ -677,10 +680,21 @@ public sealed class HuParser
         return PeekAt(k).IsSymbol("=");
     }
 
-    /// <summary>MAXFILES 本数 / WRITE #番号, 式, … (字句解析で WRITE# は 1 つの名前になっている)</summary>
+    /// <summary>MAXFILES 本数 / WRITE #番号, 式, … (字句解析で WRITE# は 1 つの名前になっている) / DEVI$・DEVO$ (4 つの引数)</summary>
     private HuStmt? ParseFileStatementName(HuPos pos)
     {
         var t = Next();
+        if (t.Text is "DEVI$" or "DEVO$")
+        {
+            var desc = ParseExpr();
+            ExpectSymbol(",");
+            var rec = ParseExpr();
+            ExpectSymbol(",");
+            var first = t.Text == "DEVI$" ? ParseLValue() : ParseExpr();
+            ExpectSymbol(",");
+            var second = t.Text == "DEVI$" ? ParseLValue() : ParseExpr();
+            return new HuDev(desc, rec, first, second, t.Text == "DEVO$", pos);
+        }
         if (t.Text == "MAXFILES")
         {
             if (AtStatementEnd)

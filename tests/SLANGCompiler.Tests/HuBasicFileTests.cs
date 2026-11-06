@@ -49,6 +49,14 @@ public class HuBasicFileTests
         50 END
         """;
 
+    /// <summary>FILES・DEVI$・DEVO$ を使う小さなプログラム (自作)</summary>
+    private const string DiskProgram = """
+        10 FILES:FILES "0:"
+        20 DEVI$ "0:",1000,A$,B$:DEVO$ "0:",1001,A$,B$
+        30 OPEN "R",#1,"R.DAT":FIELD #1,4 AS F$:DEVI$ "0:",1000,F$,C$(1):CLOSE
+        40 END
+        """;
+
     // ------------------------------------------------------------ 構文
 
     [Fact]
@@ -105,6 +113,7 @@ public class HuBasicFileTests
     [InlineData("10 WRITE#=3")]
     [InlineData("10 WRITE#(1)=7")]
     [InlineData("10 DEVI$=\"A\"")]
+    [InlineData("10 DEVO$(1)=\"A\"")]
     [InlineData("10 AS=4")]
     [InlineData("10 MAXFILESX=1")]
     public void Parser_FileWordsStayAssignments(string text)
@@ -134,6 +143,23 @@ public class HuBasicFileTests
         Assert.Null(Assert.IsType<HuGetPut>(line.Statements[5]).Record);
     }
 
+    [Fact]
+    public void Parser_DiskStatements()
+    {
+        var line = Parse("10 FILES:FILES \"0:\":DEVI$ \"0:\",R,A$,B$(1):DEVO$\"0:\",1000,A$,STRING$(128,\"B\")", out var diag);
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Items.Select(d => d.Message)));
+        Assert.Null(Assert.IsType<HuFiles>(line.Statements[0]).Descriptor);
+        Assert.IsType<HuStr>(Assert.IsType<HuFiles>(line.Statements[1]).Descriptor);
+        var devi = Assert.IsType<HuDev>(line.Statements[2]);
+        Assert.False(devi.Out);
+        Assert.IsType<HuVar>(devi.Record);
+        Assert.Equal("A$", Assert.IsType<HuVar>(devi.First).Name);
+        Assert.IsType<HuIndex>(devi.Second);
+        var devo = Assert.IsType<HuDev>(line.Statements[3]);
+        Assert.True(devo.Out);
+        Assert.IsType<HuCall>(devo.Second);
+    }
+
     [Theory]
     [InlineData("10 LINE INPUT A$", "HB0301")]      // キーボードからの LINE INPUT は未対応
     [InlineData("10 FIELD #1,4 A$", "HB0203")]      // AS がない
@@ -142,6 +168,8 @@ public class HuBasicFileTests
     [InlineData("10 WRITE #1", "HB0301")]           // 項目のない WRITE#
     [InlineData("10 NAME \"A\" TO \"B\"", "HB0203")]
     [InlineData("10 MAXFILES", "HB0203")]
+    [InlineData("10 DEVI$ \"0:\",0,A$", "HB0203")]  // 変数が 1 つ (本物も Syntax error)
+    [InlineData("10 DEVI$ \"0:\",0,A$,\"B\"", "HB0205")]
     public void Parser_FileErrors(string text, string code)
     {
         var diag = new HuDiagnosticBag();
@@ -198,6 +226,10 @@ public class HuBasicFileTests
     [InlineData("10 PRINT LOF(0)", "HB0316")]
     [InlineData("10 LINE INPUT #1,A", "HB0404")]
     [InlineData("10 OPEN 1,#1,\"A\"", "HB0404")]
+    [InlineData("10 DEVI$ \"0:\",0,A,B$", "HB0404")]
+    [InlineData("10 DEVO$ \"0:\",0,A$,1", "HB0404")]
+    [InlineData("10 DEVO$ 0,0,A$,B$", "HB0404")]
+    [InlineData("10 FILES 1", "HB0404")]
     public void Analyzer_FileErrors(string text, string code)
     {
         var diag = new HuDiagnosticBag();
@@ -282,6 +314,24 @@ public class HuBasicFileTests
         Assert.DoesNotContain("BAS_R", seq);
         Assert.DoesNotContain("BAS_FOPENR", seq);
         Assert.DoesNotContain("H_RB", seq);
+    }
+
+    [Fact]
+    public void Transpile_DiskProgram()
+    {
+        var diag = new HuDiagnosticBag();
+        var prog = HuTranspiler.Analyze("10 FILES", diag)!;
+        Assert.True(prog.UsesFiles);
+        Assert.False(prog.UsesRandom);
+
+        var r = HuTranspiler.Transpile(DiskProgram);
+        Assert.Equal("x1native_hufs", r.RequiredEnv);
+        var sl = r.Output!;
+        foreach (var call in new[] { "BAS_FILES(0);", "BAS_FILES(K_", "BAS_DEVI(K_", "BAS_DEVD(K_", "BAS_DEVO(S_A, S_B);" })
+            Assert.Contains(call, sl);
+        // 読んだ 2 つの文字列を代入する。FIELD の変数 (F$) は、INPUT と同じく代入してから結びつきを外す
+        Assert.Matches(@"BAS_SSET\(S_A, BAS_DEVS\(0\)\);\s+BAS_SSET\(S_B, BAS_DEVS\(1\)\);", sl);
+        Assert.Matches(@"BAS_SSET\(S_F, BAS_DEVS\(0\)\);\s+BAS_RUNB\(0\);", sl);
     }
 
     /// <summary>ファイルを使わないプログラムは、--env x1native_hufs のときだけ BAS_FINIT を呼ぶ (ほかは出力を変えない)</summary>
@@ -405,6 +455,13 @@ public class HuBasicFileTests
             (code, output) = RunSlangbuild(root, dir, slr, asmPath, Path.Combine(dir, "R"), "x1native_hufs");
             Assert.True(code == 0, output);
             Assert.Contains("BAS_RGP", File.ReadAllText(Path.Combine(dir, "R.sym")));
+
+            // FILES・DEVI$・DEVO$ (段階 3)
+            var sld = Path.Combine(dir, "D.SL");
+            File.WriteAllText(sld, HuTranspiler.Transpile(DiskProgram).Output!);
+            (code, output) = RunSlangbuild(root, dir, sld, asmPath, Path.Combine(dir, "D"), "x1native_hufs");
+            Assert.True(code == 0, output);
+            Assert.Contains("BAS_FILES", File.ReadAllText(Path.Combine(dir, "D.sym")));
 
             const string plain = "10 PRINT \"A\";1,2;TAB(5);\"B\"\n20 END\n";
             var sl2 = Path.Combine(dir, "P.SL");

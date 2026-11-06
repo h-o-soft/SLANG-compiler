@@ -1002,6 +1002,29 @@ public sealed class HuAnalyzer
                 ExpectStr(na.Old);
                 ExpectStr(na.New);
                 break;
+            case HuFiles fl:
+                UseFiles(fl.Pos);
+                if (fl.Descriptor != null) ExpectStr(fl.Descriptor);
+                break;
+            case HuDev dv:
+                UseFiles(dv.Pos);
+                ExpectStr(dv.Descriptor);
+                ExpectNum(dv.Record, intConv: true);
+                if (dv.Out)
+                {
+                    ExpectStr(dv.First);
+                    ExpectStr(dv.Second);
+                }
+                else
+                {
+                    foreach (var t in new[] { dv.First, dv.Second })
+                    {
+                        CheckExpr(t, false);
+                        if (t.Type != HuType.Str)
+                            _diag.Error("HB0404", "DEVI$ の変数は文字列の変数にしてください", t.Pos);
+                    }
+                }
+                break;
             case HuField fd:
                 CheckFileNumber(fd.Number, fd.Pos);
                 UseRandom(fd.Number);

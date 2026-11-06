@@ -17,3 +17,9 @@ bas	@CR1.BAS	convert	success
 bas	@CR1.BAS	disk	success
 bas	@CR1.BAS	wait	success
 bas	@CR1.BAS	tape	error HB0315
+#
+# 段階 3 (hubasic2sl の FILES・DEVI$・DEVO$): これらを使うプログラムも x1native_hufs で組み立てる
+bas	@CD1.BAS	convert	success
+bas	@CD1.BAS	disk	success
+bas	@CD1.BAS	wait	success
+bas	@CD1.BAS	tape	error HB0315

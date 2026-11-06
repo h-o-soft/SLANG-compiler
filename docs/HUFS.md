@@ -10,7 +10,7 @@
 - SLANG から、 ファイルを名前で作る・読む・書く・伸ばす・消す・名前を変える・一覧を見る (`FOPEN` など。 [ファイル API](#ファイル-api))
 - SLANG から、 レコードを 1 つずつ直に読み書きする `FRAWREAD` / `FRAWWRITE`
 
-hubasic2sl のファイル命令 (`OPEN` / `PRINT#` / `INPUT#` / `FIELD` / `GET` / `PUT` など) は、 この環境で組み立てます ([HUBASIC.md の「ファイルの命令」](HUBASIC.md#ファイルの命令-x1native_hufs))。
+hubasic2sl のファイル命令 (`OPEN` / `PRINT#` / `INPUT#` / `FIELD` / `GET` / `PUT` / `FILES` / `DEVI$` / `DEVO$` など) は、 この環境で組み立てます ([HUBASIC.md の「ファイルの命令」](HUBASIC.md#ファイルの命令-x1native_hufs))。
 
 ## 使い方
 

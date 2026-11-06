@@ -828,6 +828,8 @@ public sealed class SlangBackend : IHuBackend
                     FlatPseudo.InputStr => "BAS_INFS()",
                     FlatPseudo.FileInputStr => "BAS_FINS()",
                     FlatPseudo.FileLine => "BAS_FLINE()",
+                    FlatPseudo.DevFirst => "BAS_DEVS(0)",
+                    FlatPseudo.DevSecond => "BAS_DEVS(1)",
                     // CHR$(a, b, …) は 1 文字ずつ作って左からつなげる
                     "CHR$" when c.Args.Count > 1 => ChrOfCodes(c),
                     "RIGHT$" => Call("BAS_SRIGHT", (c.Args[0], K.Str), (c.Args[1], K.Int)),

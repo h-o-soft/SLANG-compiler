@@ -69,6 +69,8 @@ public static class FlatPseudo
     public const string FileInputNum = "#FINN";  // INPUT# の次の項目を数として (浮動小数)
     public const string FileInputStr = "#FINS";  // INPUT# の次の項目を文字列として
     public const string FileLine = "#FLINE";     // LINE INPUT# の 1 行
+    public const string DevFirst = "#DEVI1";     // DEVI$ で読んだレコードの前の 128 バイト
+    public const string DevSecond = "#DEVI2";    // DEVI$ で読んだレコードの後ろの 128 バイト
 }
 
 public sealed record HuFlat(IReadOnlyList<FlatOp> Ops, IReadOnlyList<string> HiddenVars);
