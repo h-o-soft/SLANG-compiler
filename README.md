@@ -115,6 +115,12 @@ file I/O は linker error で reject されます (= 必要なら `lsx` / `sosx1
 
 ホスト側ツール `slfs-pack` を同梱、 asset を D88 に pack するほか `list` / `info` / `extract` / `extract-main` / `extract-save` subcommand に対応します。 詳細は [docs/SLFS.md](docs/SLFS.md) を参照してください。
 
+## x1native_hufs ( x1native + Hu-BASIC と同じ形のディスク )
+
+`x1native` 環境をベースに、 Hu-BASIC (CZ-8FB01) と同じ形の 2D D88 ディスクを使う環境です。 作ったディスクは本物の Hu-BASIC や HuDisk でも一覧・読み書きできます。
+
+いまはディスクの作り方 (`slfs-pack hu`、 `slangbuild --emit disk --hufs-add`) と、 レコードを直に読み書きする `FRAWREAD` / `FRAWWRITE` までです (ファイルを名前で読み書きする API は次の段階)。 詳細は [docs/HUFS.md](docs/HUFS.md) を参照してください。
+
 ## sos ( S-OS )
 
 機種非依存のS-OS環境です。S-OSの標準BIOSコールのみを使用し、特定の機種（X1等）のハードウェアには依存しません。

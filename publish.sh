@@ -44,6 +44,14 @@ createRelease() {
     cp ../../examples/X1NATIVE_SLFS/assets/*      examples/X1NATIVE_SLFS/assets/  2>/dev/null
   fi
 
+  # examples/X1NATIVE_HUFS: x1native_hufs (Hu-BASIC と同じ形のディスク) の例の SL と、
+  # --hufs-add で足すファイル (files/ を丸ごと)
+  if [ -d "../../examples/X1NATIVE_HUFS" ]; then
+    mkdir -p examples/X1NATIVE_HUFS/files
+    cp ../../examples/X1NATIVE_HUFS/*.SL          examples/X1NATIVE_HUFS/         2>/dev/null
+    cp ../../examples/X1NATIVE_HUFS/files/*       examples/X1NATIVE_HUFS/files/   2>/dev/null
+  fi
+
   # examples/zxn は ZX Spectrum Next 用 (= asset binary も配布対象)。
   # NextDAW Runtime Player (= NextDAW_RuntimePlayer_E000.bin) は
   # シェアウェアにつき配布不可、.gitignore で除外済 (whitelist 拡張子に

@@ -1,0 +1,6 @@
+# compare-env-outputs.py の期待の表。旧 (基準のコミット) で失敗していて、新で意図して変わってよいものだけを書く。
+# 1 行に「種類<TAB>入力<TAB>やり方<TAB>期待」。種類は sl か bas、入力は木の根からのパス (--bas-dir のものは絶対パス)、
+# やり方は compare-env-outputs.py の名前 (x1native-bin・convert・disk など)、期待は success か「error <メッセージの一部>」。
+# 旧で成功しているものは、この表に関係なく、全部が同じでなければならない。
+#
+# 段階 0 (x1native_hufs の枠と道具): 変わってよいものはない
