@@ -244,6 +244,7 @@ LD      A, B
 JR      Z, .frh_rchk
 AND     0FCh                    ; 書く: 書き込み禁止・書き込み失敗・RNF・CRC・lost・NR
 JR      Z, .frh_ok
+LD      D, A                    ; 書く命令の状態 (書き込み禁止でなければ、これでやり直すかを決める)
 ; 書き込み禁止か: 強制割り込みを出して、Type I の状態の bit 6 (ドライブの書き込み禁止) を見る
 ; (書き込みの命令の状態では、書き込み禁止を Write Fault ($20) で返すエミュレータがあるため)
 LD      BC, $0FF8
@@ -252,7 +253,8 @@ OUT     (C), A
 CALL    WAIT_HUFS1
 IN      A, (C)
 AND     40h
-JR      Z, .frh_err             ; A = 0: やり直す
+LD      A, D
+JR      Z, .frh_err
 LD      A, 1                    ; 書き込み禁止
 JR      .frh_fail
 .frh_rchk:
