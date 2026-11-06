@@ -100,6 +100,9 @@ internal class Program
                 case "--slfs-add" when i + 1 < args.Length:
                     opts.SlfsAddSpecs.Add(args[++i]);
                     break;
+                case "--hufs-add" when i + 1 < args.Length:
+                    opts.HufsAddSpecs.Add(args[++i]);
+                    break;
                 case "--disk-main-name" when i + 1 < args.Length:
                     opts.DiskMainName = args[++i];
                     break;
@@ -249,7 +252,8 @@ internal class Program
         Console.Error.WriteLine("  --tape-add <f[@load[:exec]]> Append raw binary as a tape stage (--emit tape only, repeatable;");
         Console.Error.WriteLine("                  load/exec optional = MTREAD reads to caller-specified addr)");
         Console.Error.WriteLine("  --slfs-add <name:path | dir> Add SLFS asset (--emit disk + tool=slfs-pack only, repeatable)");
-        Console.Error.WriteLine("  --disk-main-name <s> Override env's disk.main_name = IPL boot name (--emit disk + tool=slfs-pack only;");
+        Console.Error.WriteLine("  --hufs-add <[name=]path[,bin|,text]> Add a file to the Hu-BASIC format disk (--emit disk + tool=hufs-pack only, repeatable)");
+        Console.Error.WriteLine("  --disk-main-name <s> Override env's disk.main_name = IPL boot name (--emit disk + tool=slfs-pack / hufs-pack only;");
         Console.Error.WriteLine("                  ASCII printable 1..13 char)");
         Console.Error.WriteLine("  --keep-asm      Keep intermediate ASM / sym files");
         Console.Error.WriteLine("  --verbose       Show subprocess (slangc / AILZ80ASM) output");

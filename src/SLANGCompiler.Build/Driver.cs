@@ -77,6 +77,8 @@ public class Driver
         /// disk.tool == "slfs-pack" 時の asset list (= SLFS dir entry)。
         /// 各要素: (name, path)。 dir 指定なら BuildDisk 側で展開。</summary>
         public List<string> SlfsAddSpecs { get; } = new();
+        /// <summary>`--hufs-add [name=]path[,bin|,text]` (repeatable)。disk.tool == "hufs-pack" 時に、ディスクに足すファイル</summary>
+        public List<string> HufsAddSpecs { get; } = new();
         /// <summary>`--disk-main-name &lt;name&gt;`。env の disk.main_name (= SLFS の IPL 起動名) を
         /// CLI override。 disk.tool == "slfs-pack" 時のみ。</summary>
         public string? DiskMainName { get; set; }
@@ -173,14 +175,24 @@ public class Driver
         // SLFS の IPL 起動名: 引数 > 入力 SL 頭の `// disk-main-name:` > env > 既定。
         // 不正な名前は compile 前に reject (= silent truncate しない)
         string? slfsMainName = null;
+        if (_opts.HufsAddSpecs.Count > 0 && (_opts.EmitMode != "disk" || envConfig.Disk?.Tool != "hufs-pack"))
+        {
+            Console.Error.WriteLine("slangbuild: --hufs-add requires --emit disk + disk.tool: hufs-pack");
+            return 1;
+        }
+        if (_opts.EmitMode == "disk" && envConfig.Disk!.Tool == "hufs-pack" && _opts.SlfsAddSpecs.Count > 0)
+        {
+            Console.Error.WriteLine("slangbuild: --slfs-add can't be used with disk.tool: hufs-pack (use --hufs-add)");
+            return 1;
+        }
         if (_opts.EmitMode == "disk")
         {
-            if (envConfig.Disk!.Tool != "slfs-pack")
+            if (envConfig.Disk!.Tool != "slfs-pack" && envConfig.Disk.Tool != "hufs-pack")
             {
                 if (_opts.DiskMainName != null)
                 {
                     Console.Error.WriteLine(
-                        $"slangbuild: --disk-main-name requires disk.tool: slfs-pack (got: {envConfig.Disk.Tool})");
+                        $"slangbuild: --disk-main-name requires disk.tool: slfs-pack / hufs-pack (got: {envConfig.Disk.Tool})");
                     return 1;
                 }
             }
@@ -1095,10 +1107,11 @@ public class Driver
             && envConfig.Disk.Tool != "hudisk"
             && envConfig.Disk.Tool != "udostool"
             && envConfig.Disk.Tool != "mzd88"
-            && envConfig.Disk.Tool != "slfs-pack")
+            && envConfig.Disk.Tool != "slfs-pack"
+            && envConfig.Disk.Tool != "hufs-pack")
         {
             Console.Error.WriteLine(
-                $"slangbuild: only disk.tool: ndc / hudisk / udostool / mzd88 / slfs-pack supported "
+                $"slangbuild: only disk.tool: ndc / hudisk / udostool / mzd88 / slfs-pack / hufs-pack supported "
                 + $"(got: {envConfig.Disk.Tool})");
             return 1;
         }
@@ -1154,7 +1167,8 @@ public class Driver
             Console.Error.WriteLine($"slangbuild: disk template override: {templateOverride}");
 
         var builder = new DiskImageBuilder(envConfig.Disk, ndc, hudisk, udostool, mzd88,
-                                           _opts.Verbose, templateOverride, _opts.SlfsAddSpecs, slfsMainName);
+                                           _opts.Verbose, templateOverride, _opts.SlfsAddSpecs, slfsMainName,
+                                           _opts.HufsAddSpecs);
         return builder.Build(mainBin, overlayBins, diskOut);
     }
 

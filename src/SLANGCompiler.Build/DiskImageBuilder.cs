@@ -32,6 +32,7 @@ public class DiskImageBuilder
     private readonly bool _verbose;
     private readonly IList<string> _slfsAddSpecs;
     private readonly string? _slfsMainName;
+    private readonly IList<string> _hufsAddSpecs;
 
     // udostool は flag を大文字で受ける仕様 (= -IPL/-SUB/-SYS)。
     // Ordinal 比較で大文字固定、エラー文に "uppercase only" を明記して原因把握を助ける。
@@ -47,7 +48,8 @@ public class DiskImageBuilder
     /// <param name="mzd88">tool == "mzd88" 時の ResolvedTool (= native binary、MonoRun 不要)。それ以外は null 可</param>
     /// <param name="verbose">subprocess の I/O を stderr に流す</param>
     /// <param name="templateOverride">--disk-template による env.Disk.Template の上書き</param>
-    /// <param name="slfsMainName">tool == "slfs-pack" 時の main file 名 (= <see cref="SlfsMainName"/> で決定済み)。null なら env 値</param>
+    /// <param name="slfsMainName">tool == "slfs-pack" / "hufs-pack" 時の main file 名 (= <see cref="SlfsMainName"/> で決定済み)。null なら env 値</param>
+    /// <param name="hufsAddSpecs">tool == "hufs-pack" 時にディスクに足すファイル (`--hufs-add`)</param>
     public DiskImageBuilder(DiskConfig disk,
                             ResolvedTool? ndc = null,
                             ResolvedTool? hudisk = null,
@@ -56,7 +58,8 @@ public class DiskImageBuilder
                             bool verbose = false,
                             string? templateOverride = null,
                             IList<string>? slfsAddSpecs = null,
-                            string? slfsMainName = null)
+                            string? slfsMainName = null,
+                            IList<string>? hufsAddSpecs = null)
     {
         _disk = disk;
         _ndc = ndc;
@@ -67,6 +70,7 @@ public class DiskImageBuilder
         _templateOverride = templateOverride;
         _slfsAddSpecs = slfsAddSpecs ?? new List<string>();
         _slfsMainName = slfsMainName;
+        _hufsAddSpecs = hufsAddSpecs ?? new List<string>();
     }
 
     /// <summary>
@@ -83,6 +87,10 @@ public class DiskImageBuilder
         // template / staging dir 不要、 main + asset list を packer に渡して D88 直接生成。
         if (_disk.Tool == "slfs-pack")
             return BuildSlfsPack(mainBinPath, outputDiskPath);
+
+        // hufs-pack 経路も library を直接呼ぶ (= Hu-BASIC と同じ形のディスク。docs/HUFS.md)
+        if (_disk.Tool == "hufs-pack")
+            return BuildHufsPack(mainBinPath, outputDiskPath);
 
         // === 事前チェック ===
         var templatePath = !string.IsNullOrEmpty(_templateOverride)
@@ -595,4 +603,47 @@ public class DiskImageBuilder
         }
     }
 
+    // ========================================================================
+    // BuildHufsPack: Hu-BASIC と同じ形のディスク (x1native_hufs) 経路
+    // ========================================================================
+    // HuPack を直接呼ぶ。本体はクラスタ 2 から続けて置き、--hufs-add のファイルを名前の順に足す。
+    private int BuildHufsPack(string mainBinPath, string outputDiskPath)
+    {
+        if (!File.Exists(mainBinPath))
+        {
+            Console.Error.WriteLine($"slangbuild: main bin not found: {mainBinPath}");
+            return 1;
+        }
+
+        try
+        {
+            var mainBinary = File.ReadAllBytes(mainBinPath);
+            var adds = _hufsAddSpecs.Select(HuPack.ParseAddSpec).ToList();
+            var load = (ushort)(_disk.MainLoad ?? 0x1000);
+            var exec = (ushort)(_disk.MainExec ?? _disk.MainLoad ?? 0x1000);
+            var mainName = _slfsMainName ?? SlfsMainName.Resolve(null, null, _disk.MainName).Name;
+
+            if (_verbose)
+                Console.Error.WriteLine(
+                    $"slangbuild: hufs-pack: main={mainBinary.Length} byte, files={adds.Count}, " +
+                    $"load=${load:X4}, exec=${exec:X4}");
+
+            var d88 = HuPack.Build(mainBinary, mainName, load, exec, adds);
+
+            var outputDir = Path.GetDirectoryName(Path.GetFullPath(outputDiskPath));
+            if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
+                Directory.CreateDirectory(outputDir);
+            File.WriteAllBytes(outputDiskPath, d88);
+
+            if (_verbose)
+                Console.Error.WriteLine(
+                    $"slangbuild: hufs-pack: wrote {outputDiskPath} ({d88.Length} byte)");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"slangbuild: hufs-pack error: {ex.Message}");
+            return 1;
+        }
+    }
 }

@@ -22,6 +22,7 @@ public static class Program
                 "extract" => CmdExtract(rest),
                 "extract-main" => CmdExtractMain(rest),
                 "extract-save" => CmdExtractSave(rest),
+                "hu" => HuCommands.Run(rest),
                 _ => UnknownCommand(cmd),
             };
         }
@@ -270,6 +271,7 @@ public static class Program
         Console.Error.WriteLine("  slfs-pack extract <d88> <name|id> -o <out>                       # 個別 asset 抽出");
         Console.Error.WriteLine("  slfs-pack extract-main <d88> -o <out.bin>                        # main bin 抽出");
         Console.Error.WriteLine("  slfs-pack extract-save <d88> [--offset N] [--count N] -o <out>   # save area raw dump");
+        Console.Error.WriteLine("  slfs-pack hu <command> ...                                       # Hu-BASIC と同じ形のディスク (x1native_hufs)");
         Console.Error.WriteLine();
         Console.Error.WriteLine("pack options:");
         Console.Error.WriteLine("  --main-load <addr>          main program load address (default $1000)");
