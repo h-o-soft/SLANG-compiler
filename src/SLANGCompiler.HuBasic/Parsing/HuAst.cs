@@ -95,7 +95,55 @@ public sealed record HuPrintExpr(HuExpr Expr) : HuPrintItem;
 public sealed record HuPrintSep(char Sep) : HuPrintItem;
 public sealed record HuPrintSpc(HuExpr Count, bool Tab = false) : HuPrintItem;
 
-public sealed record HuPrint(int? Channel, HuExpr? Using, IReadOnlyList<HuPrintItem> Items, HuPos Pos) : HuStmt(Pos);
+/// <summary>
+/// PRINT。Channel は PRINT#0 (数の字句の 0。画面への生の出力) のとき 0。File は PRINT#式 (ファイル。x1native_hufs) の番号の式
+/// (実行のときに 0 なら PRINT#0 と同じ)
+/// </summary>
+public sealed record HuPrint(int? Channel, HuExpr? Using, IReadOnlyList<HuPrintItem> Items, HuPos Pos) : HuStmt(Pos)
+{
+    public HuExpr? File { get; init; }
+}
+
+// ---------------------------------------------------------------- ファイル (x1native_hufs)
+
+/// <summary>OPEN モード, #番号, 名前 (モードは "O"・"I"・"A" の文字列の式)</summary>
+public sealed record HuOpen(HuExpr Mode, HuExpr Number, HuExpr Name, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>CLOSE [#番号, …] (番号なしは開いているものすべて)</summary>
+public sealed record HuClose(IReadOnlyList<HuExpr> Numbers, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>WRITE #番号, 式, … (文字列は " で囲み、, で区切る)</summary>
+public sealed record HuWrite(HuExpr Number, IReadOnlyList<HuExpr> Items, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>INPUT #番号, 変数, … / LINE INPUT #番号, 文字列の変数 (Line が真)</summary>
+public sealed record HuInputFile(HuExpr Number, IReadOnlyList<HuExpr> Targets, bool Line, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>KILL 名前</summary>
+public sealed record HuKill(HuExpr Name, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>NAME 古い名前 AS 新しい名前</summary>
+public sealed record HuNameAs(HuExpr Old, HuExpr New, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>MAXFILES 本数 (変数を消し、開いているファイルを閉じる)</summary>
+public sealed record HuMaxFiles(HuExpr Count, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>FIELD #番号, 幅 AS 文字列の変数, … (変数をレコードの緩衝の一部に結びつける)</summary>
+public sealed record HuField(HuExpr Number, IReadOnlyList<(HuExpr Width, HuExpr Var)> Items, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>LSET・RSET 文字列の変数 = 文字列 (Right が真なら RSET)</summary>
+public sealed record HuLset(HuExpr Target, HuExpr Value, bool Right, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>GET・PUT #番号[, レコード] (Put が真なら PUT。レコードがなければ LOC の次)</summary>
+public sealed record HuGetPut(HuExpr Number, HuExpr? Record, bool Put, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>FILES [ファイルディスクリプタ] (ディスクのファイルの一覧を画面に出す。Descriptor は書かなければ null)</summary>
+public sealed record HuFiles(HuExpr? Descriptor, HuPos Pos) : HuStmt(Pos);
+
+/// <summary>
+/// DEVI$ ディスクリプタ, レコード, 文字列の変数, 文字列の変数 / DEVO$ ディスクリプタ, レコード, 文字列, 文字列 (Out が真)。
+/// ディスクのレコード (256 バイト) を、ファイルの仕組みを通らずに 128 バイトずつ 2 つの文字列と読み書きする
+/// </summary>
+public sealed record HuDev(HuExpr Descriptor, HuExpr Record, HuExpr First, HuExpr Second, bool Out, HuPos Pos) : HuStmt(Pos);
 
 /// <summary>引数を取る画面・音などの命令 (LOCATE, COLOR, CLS, WIDTH, CFLASH, CSIZE, CGEN,
 /// PLAY, TEMPO, BEEP, CLICK, PAUSE, KEY, REPEAT (ON/OFF), PALET, PRW, VSYNC)。省略された引数は null。</summary>

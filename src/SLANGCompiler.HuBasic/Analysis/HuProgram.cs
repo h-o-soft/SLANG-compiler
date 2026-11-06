@@ -75,6 +75,24 @@ public sealed class HuProgram
     /// <summary>静的に確保するデータの合計 (バイト)</summary>
     public int StaticDataBytes { get; init; }
 
+    /// <summary>ファイルの命令・関数 (OPEN・PRINT#n (n は数の字句の 0 でない)・EOF など) を使うか。使うなら x1native_hufs で組み立てる</summary>
+    public bool UsesFiles { get; init; }
+
+    /// <summary>最初にファイルの命令・関数を使った所 (環境が合わないときのエラーの位置)</summary>
+    public HuPos FirstFilePos { get; init; } = HuPos.None;
+
+    /// <summary>ファイルの緩衝を取る本数 (2〜15。ファイルを使わなければ 0)。3 本目から後ろは hubasic2sl が静的に取る</summary>
+    public int FileCapacity { get; init; }
+
+    /// <summary>ランダム (FIELD・GET・PUT・LSET・RSET か、OPEN のモードが "R" か式) を使うか。使うなら始めに BAS_RINIT を呼び、OPEN は BAS_FOPENR</summary>
+    public bool UsesRandom { get; init; }
+
+    /// <summary>レコードの緩衝 (256 バイト) を取る本数 (番号 1 から)</summary>
+    public int RecordBuffers { get; init; }
+
+    /// <summary>FIELD の変数 (と、それと SWAP する単純な文字列の変数) の鍵 → FIELD の表の項目の番号 (0 から)</summary>
+    public IReadOnlyDictionary<string, int> FieldVars { get; init; } = new Dictionary<string, int>();
+
     /// <summary>
     /// 変数の鍵: 名前に、型の種類を表す接尾辞 (% ! # $) を必ず付けたもの。接尾辞のない名前は頭文字の型の種類で補う
     /// (DEFINT A の下の A と A% は同じ鍵 "A%"、既定の A と A! は同じ鍵 "A!")。

@@ -3,7 +3,7 @@
 
 使い方 (python3 -I で動かす):
   hubasic-wasm-manifest.py envs   <repo>                      env の値と組の印の番号を JSON で stdout に出す (テストが使う)
-  hubasic-wasm-manifest.py copy   <repo> <out>                runtime/ (2 つの env の libraries の和集合の .asm) と env/ を写す
+  hubasic-wasm-manifest.py copy   <repo> <out>                runtime/ (3 つの env の libraries の和集合の .asm) と env/ を写す
   hubasic-wasm-manifest.py write  <repo> <out> <sha> <dirty> <version> <asm> <asm-version> <case,...>
                                                               束の全部のファイルを数えて <out>/manifest.json を書く
   hubasic-wasm-manifest.py verify <out>                       束と manifest が合っているかを確かめる
@@ -18,7 +18,7 @@ import re
 import shutil
 import sys
 
-ENVS = ["x1native_slfs", "x1native"]
+ENVS = ["x1native_slfs", "x1native", "x1native_hufs"]
 TESTDATA_ENV = "x1native_slfs"
 TESTDATA_EXTS = ["bas", "sl", "bin", "lst", "d88"]
 
@@ -107,6 +107,8 @@ def read_env(path):
         "diskMainLoad": number(disk["main_load"], f"{path} の disk.main_load") if "main_load" in disk else None,
         "diskMainExec": number(disk["main_exec"], f"{path} の disk.main_exec") if "main_exec" in disk else None,
         "diskVolume": scalar(disk["volume"]) if "volume" in disk else None,
+        # ディスクの形 (slfs-pack = SLFS、hufs-pack = Hu-BASIC と同じ形)。ブラウザの側がディスクを作るときに見分ける
+        "diskTool": scalar(disk["tool"]) if "tool" in disk else None,
     }
     return env
 
@@ -126,6 +128,15 @@ def read_bas_abi(repo):
         found = re.findall(r"^;\s*@name\s+BAS_ABI_(\d+)\s*$", f.read(), re.M)
     if len(found) != 1:
         fail(f"runtime/libx1_basic.asm の組の印 BAS_ABI_n がちょうど 1 つではありません ({len(found)} 個)")
+    return int(found[0])
+
+
+def read_bas_file_abi(repo):
+    """runtime/libx1_basic_file.asm の組の印 (; @name BAS_FABI_n) の番号 (x1native_hufs の出力だけが呼ぶ)"""
+    with open(os.path.join(repo, "runtime", "libx1_basic_file.asm"), encoding="utf-8") as f:
+        found = re.findall(r"^;\s*@name\s+BAS_FABI_(\d+)\s*$", f.read(), re.M)
+    if len(found) != 1:
+        fail(f"runtime/libx1_basic_file.asm の組の印 BAS_FABI_n がちょうど 1 つではありません ({len(found)} 個)")
     return int(found[0])
 
 
@@ -187,6 +198,7 @@ def cmd_write(repo, out, sha, dirty, version, asm, asm_version, cases):
         "dirty": dirty == "true",
         "hubasic2slVersion": version,
         "basAbi": read_bas_abi(repo),
+        "basFileAbi": read_bas_file_abi(repo),
         "loadAddress": 0x1000,
         "reservedStart": 0xFFE0,
         "envs": envs,
@@ -234,7 +246,8 @@ def cmd_verify(out):
 def main():
     args = sys.argv[1:]
     if args[:1] == ["envs"] and len(args) == 2:
-        json.dump({"envs": read_envs(args[1]), "basAbi": read_bas_abi(args[1])}, sys.stdout, indent=2, ensure_ascii=False)
+        json.dump({"envs": read_envs(args[1]), "basAbi": read_bas_abi(args[1]), "basFileAbi": read_bas_file_abi(args[1])},
+                  sys.stdout, indent=2, ensure_ascii=False)
         print()
     elif args[:1] == ["copy"] and len(args) == 3:
         cmd_copy(args[1], args[2])

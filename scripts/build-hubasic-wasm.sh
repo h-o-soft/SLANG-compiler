@@ -5,8 +5,9 @@
 #
 # できるもの:
 #   _framework/     src/SLANGCompiler.HuBasic.Wasm を browser-wasm で publish したもの
-#   runtime/        x1native と x1native_slfs の env の libraries に挙がる .asm (LSX 用は入れない)
-#   env/            x1native.env と x1native_slfs.env の写し
+#   runtime/        x1native・x1native_slfs・x1native_hufs の env の libraries に挙がる .asm (LSX 用は入れない)
+#   env/            x1native.env・x1native_slfs.env・x1native_hufs.env の写し (ファイルの命令を使うプログラムは x1native_hufs。
+#                   その env の disk.tool は hufs-pack (Hu-BASIC と同じ形のディスク。manifest の diskTool))
 #   testdata/       試験用のプログラム 4 本の .BAS・.SL・.bin・.LST・.d88 (この木の hubasic2sl・slangbuild・slangc で作る)
 #   manifest.json   組み立てた SHA、env ごとの値、アセンブラ、testdata、全部のファイルの sha256 (docs/HUBASIC.md)
 #

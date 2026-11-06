@@ -406,7 +406,6 @@ public class HuBasicFrontendTests
     [InlineData("10 A(1,2,3)=0", "HB0303")]
     [InlineData("10 PRINT A(1,2,3,4)", "HB0303")]
     [InlineData("10 LINE(0,0)-(1,1),\"A\",X", "HB0203")]   // B と BF のほかは書けない
-    [InlineData("10 PRINT#1,A", "HB0308")]
     public void Parser_ReportsUnsupported(string line, string code)
     {
         var diag = new HuDiagnosticBag();

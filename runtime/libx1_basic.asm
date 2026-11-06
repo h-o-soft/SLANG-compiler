@@ -173,6 +173,9 @@ RET
 ; @resident shared
 ; @param_count 0
 ; END 文: 画面はそのまま、割り込みを止めて止まる
+#if exists HUFS
+CALL BAS_FENDHOOK       ; x1native_hufs: 開いているファイルを閉じる (libx1_basic_file.asm。BAS_FINIT からたどれる)
+#endif
 DI
 .be_halt
 HALT
@@ -195,6 +198,9 @@ RET
 ; HL = エラー番号。HuBASIC と同じく、改行してから「<メッセージ> in <行番号>」、次の行に「Ok」を出して止まる
 ; (メッセージの綴りは HuBASIC の実測。表にない番号は「Error <番号>」、行番号が分からなければ in を出さない)
 PUSH HL
+#if exists HUFS
+CALL BAS_FERRHOOK       ; x1native_hufs: 出力を画面に戻す (libx1_basic_file.asm)
+#endif
 XOR A
 LD (BAS_RAW), A
 LD (BAS_CSZ), A
@@ -204,6 +210,10 @@ LD A, (BAS_CX)
 CP B
 CALL NZ, BAS_PNL
 POP DE              ; E = エラー番号
+#if exists HUFS
+CALL BAS_FERRMSG        ; x1native_hufs: ファイルのエラーの文の表 (libx1_basic_file.asm)。あれば HL = 番号のバイト
+JP NZ, .ber_found
+#endif
 LD HL, .ber_tab
 .ber_find
 LD A, (HL)
@@ -546,6 +556,11 @@ RET
 ; L = 文字コード。生出力 (PRINT#0) でなければ制御コード ($0D 改行、$0B HOME、$0C CLS、$0E 上へ詰める、$0F 下へ空ける、
 ; $1C-$1F カーソルの右・左・上・下) を解釈し、ほかの $00-$1F は出さない。生出力では CSIZE の拡大で書く。
 ; カーソルの動き・折り返し・スクロールはテキストの窓 (CONSOLE。ふだんは全画面) の中で行う
+#if exists HUFS
+LD A, (BAS_FOUTN)       ; x1native_hufs: PRINT#・WRITE# の出力先がファイルなら、そのまま書く (libx1_basic_file.asm)
+OR A
+JP NZ, BAS_FPCHR
+#endif
 LD A, (BAS_RAW)
 OR A
 LD A, L
@@ -757,6 +772,11 @@ JP BAS_PSTRZ
 ; @resident shared
 ; @param_count 0
 ; @calls BAS_NEWLINE
+#if exists HUFS
+LD A, (BAS_FOUTN)       ; x1native_hufs: ファイルには CR (libx1_basic_file.asm)
+OR A
+JP NZ, BAS_FNL
+#endif
 JP BAS_NEWLINE
 
 
@@ -791,6 +811,11 @@ RET
 ; @calls BAS_WORK,BAS_PCHR
 ; 次の 10 桁区切り (画面の絶対の桁) の位置まで空白。次の区切りが窓の右端を越えるなら、窓の右端まで空白を出して折り返し、
 ; 折り返した所 (窓の左端) が区切りでなければ、そこから次の区切りまで空白 (HuBASIC の実測。全画面では折り返した所が 0 なので、そこで終わり)
+#if exists HUFS
+LD A, (BAS_FOUTN)       ; x1native_hufs: ファイルは 8 桁ごと (libx1_basic_file.asm)
+OR A
+JP NZ, BAS_FZONE
+#endif
 CALL .bpz_next
 LD A, (BAS_WX1)
 CP C
@@ -6212,6 +6237,11 @@ RET
 ; @calls BAS_WORK,BAS_PSPC,BAS_ERROR
 ; HL = 桁 n (0〜255、それ以外はエラー 5) → いまの桁 (0 始まり) が n より小さければ、差の分だけ空白を出す
 ; (行の端では折り返す)。n 以上なら何もしない (PRINT の TAB)
+#if exists HUFS
+LD A, (BAS_FOUTN)       ; x1native_hufs: ファイルの桁で数える (libx1_basic_file.asm)
+OR A
+JP NZ, BAS_FPTAB
+#endif
 LD A, H
 OR A
 JP NZ, .btb_err

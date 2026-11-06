@@ -1685,8 +1685,9 @@ JP      HUFS_RETCY
 
 
 ; ========================================================================
-; FRENAME(old, new): 名前を変える。開いている・書き込み禁止・new がある、はエラー
+; FRENAME(old, new): 名前を変える。書き込み禁止・new がある、はエラー
 ; ========================================================================
+; 開いているファイルの名前も変えてよい (Hu-BASIC の NAME と同じ。開いているものは項目の番号で持つので、名前が変わっても困らない)
 
 ; @name FRENAME
 ; @resident shared
@@ -1716,10 +1717,6 @@ LD      (HUFS_FREEIDX), A
 BIT     6, (HL)
 LD      A, 0Bh
 JP      NZ, HUFS_RETERR
-LD      A, (HUFS_FREEIDX)
-LD      B, 1
-CALL    HUFS_INUSE
-JP      C, HUFS_RETERR
 LD      HL, HUFS_NAME2
 LD      DE, HUFS_NAME
 LD      BC, 16

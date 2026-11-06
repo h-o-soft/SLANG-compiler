@@ -26,6 +26,7 @@ public sealed class HuParser
         ["CINT"] = (1, 1), ["FRAC"] = (1, 1), ["CSNG"] = (1, 1), ["CDBL"] = (1, 1), ["PAI"] = (1, 1),
         ["RAD"] = (1, 1), ["LEN"] = (1, 1), ["INSTR"] = (2, 3), ["HEX$"] = (1, 1), ["BIN$"] = (1, 1), ["SPACE$"] = (1, 1),
         ["SCRN$"] = (3, 3), ["PEEK"] = (1, 1), ["PEEK@"] = (1, 1),
+        ["EOF"] = (1, 1), ["LOC"] = (1, 1), ["LOF"] = (1, 1),
     };
 
 
@@ -178,7 +179,12 @@ public sealed class HuParser
             return MakeRem(t.Text, pos);
         }
         if (t.Kind == HuTokenKind.Ident)
+        {
+            // MAXFILES・WRITE#・DEVI$・DEVO$ は予約語の表にない (いま変数の名前として使える)。代入として読めないときだけ命令にする
+            if (IsFileStatementName() && !LooksLikeAssignment())
+                return ParseFileStatementName(pos);
             return ParseAssignment(pos);
+        }
         if (t.Kind != HuTokenKind.Keyword)
         {
             Error("HB0204", $"文として解釈できません ('{t}')");
@@ -311,6 +317,90 @@ public sealed class HuParser
             }
             case "PRINT":
                 return ParsePrint(pos);
+            case "OPEN":
+            {
+                // OPEN モード, [#]番号, 名前
+                var mode = ParseExpr();
+                ExpectSymbol(",");
+                AcceptSymbol("#");
+                var num = ParseExpr();
+                ExpectSymbol(",");
+                return new HuOpen(mode, num, ParseExpr(), pos);
+            }
+            case "CLOSE":
+            {
+                // CLOSE [[#]番号, …]
+                var nums = new List<HuExpr>();
+                if (!AtStatementEnd)
+                {
+                    do
+                    {
+                        AcceptSymbol("#");
+                        nums.Add(ParseExpr());
+                    } while (AcceptSymbol(","));
+                }
+                return new HuClose(nums, pos);
+            }
+            case "KILL":
+                return new HuKill(ParseExpr(), pos);
+            case "FILES":
+                // FILES [ファイルディスクリプタ] (LFILES はプリンタなので未対応のまま)
+                return new HuFiles(AtStatementEnd ? null : ParseExpr(), pos);
+            case "FIELD":
+            {
+                // FIELD [#]番号, 幅 AS 文字列の変数, … (AS は予約語の表にないので、この位置の名前で見分ける)
+                AcceptSymbol("#");
+                var num = ParseExpr();
+                var items = new List<(HuExpr, HuExpr)>();
+                while (AcceptSymbol(","))
+                {
+                    var width = ParseExpr();
+                    if (Peek.Kind == HuTokenKind.Ident && Peek.Text == "AS") Next();
+                    else
+                    {
+                        Error("HB0203", $"FIELD の幅の後に AS が必要です ('{Peek}' があります)");
+                        SkipToStatementEnd();
+                        return null;
+                    }
+                    items.Add((width, ParseLValue()));
+                }
+                if (items.Count == 0)
+                {
+                    Error("HB0203", "FIELD に幅と変数が必要です");
+                    return null;
+                }
+                return new HuField(num, items, pos);
+            }
+            case "LSET":
+            case "RSET":
+            {
+                var target = ParseLValue();
+                ExpectSymbol("=");
+                return new HuLset(target, ParseExpr(), t.Text == "RSET", pos);
+            }
+            case "GET":
+            case "PUT":
+            {
+                // GET・PUT [#]番号[, レコード]。かっこで始まるもの (グラフィックの GET・PUT) はいままでどおり未対応
+                if (Peek.IsSymbol("("))
+                {
+                    _diag.Error("HB0301", $"未対応の命令 {t.Text}", pos);
+                    SkipToStatementEnd();
+                    return null;
+                }
+                AcceptSymbol("#");
+                var num = ParseExpr();
+                var rec = AcceptSymbol(",") ? ParseExpr() : null;
+                return new HuGetPut(num, rec, t.Text == "PUT", pos);
+            }
+            case "NAME":
+            {
+                // NAME 古い名前 AS 新しい名前 (AS は予約語の表にないので、この位置の名前で見分ける)
+                var old = ParseExpr();
+                if (Peek.Kind == HuTokenKind.Ident && Peek.Text == "AS") Next();
+                else Error("HB0203", $"NAME の後に AS が必要です ('{Peek}' があります)");
+                return new HuNameAs(old, ParseExpr(), pos);
+            }
             case "LOCATE":
             {
                 var x = ParseExpr();
@@ -443,6 +533,19 @@ public sealed class HuParser
                 return new HuCommand("CLICK", new HuExpr?[] { new HuNum(on ? 1 : 0, pos) }, pos);
             }
             case "LINE":
+                if (AcceptKeyword("INPUT"))
+                {
+                    // LINE INPUT #番号, 文字列の変数 (キーボードからの LINE INPUT は未対応)
+                    if (!AcceptSymbol("#"))
+                    {
+                        _diag.Error("HB0301", "未対応の命令 LINE INPUT (キーボードから)。ファイルからの LINE INPUT# だけに対応しています", pos);
+                        SkipToStatementEnd();
+                        return null;
+                    }
+                    var num = ParseExpr();
+                    ExpectSymbol(",");
+                    return new HuInputFile(num, new[] { ParseLValue() }, true, pos);
+                }
                 return ParseLine(pos);
             case "PAINT":
                 return ParsePaint(pos);
@@ -507,9 +610,20 @@ public sealed class HuParser
         return true;
     }
 
-    /// <summary>INPUT ["案内" ; または ,] 変数, …</summary>
+    /// <summary>INPUT ["案内" ; または ,] 変数, … / INPUT #番号, 変数, …</summary>
     private HuStmt ParseInput(HuPos pos)
     {
+        if (AcceptSymbol("#"))
+        {
+            var num = ParseExpr();
+            ExpectSymbol(",");
+            var fileTargets = new List<HuExpr>();
+            do
+            {
+                fileTargets.Add(ParseLValue());
+            } while (AcceptSymbol(","));
+            return new HuInputFile(num, fileTargets, false, pos);
+        }
         string? prompt = null;
         bool question = true;
         if (Peek.Is(HuTokenKind.String))
@@ -539,6 +653,73 @@ public sealed class HuParser
             return new HuRem("VSYNC", arg, pos);
         }
         return new HuRem(null, 0, pos);
+    }
+
+    /// <summary>文の頭の名前が、ファイルの命令になりうる名前か (MAXFILES、WRITE#、WRITE の後に #、DEVI$、DEVO$)</summary>
+    private bool IsFileStatementName()
+        => Peek.Text is "MAXFILES" or "WRITE#" or "DEVI$" or "DEVO$" || (Peek.Text == "WRITE" && PeekAt(1).IsSymbol("#"));
+
+    /// <summary>
+    /// 文の頭の名前から、いまの構文で代入として読めるか (名前 = …、名前(…) = …。対応するかっこの後の = まで見る)。
+    /// 読めるなら、いままでどおり代入にする (MAXFILES=2、WRITE#(1)=7 など)
+    /// </summary>
+    private bool LooksLikeAssignment()
+    {
+        int k = 1;
+        if (PeekAt(k).IsSymbol("("))
+        {
+            int depth = 0;
+            for (; !PeekAt(k).Is(HuTokenKind.End); k++)
+            {
+                if (PeekAt(k).IsSymbol("(")) depth++;
+                else if (PeekAt(k).IsSymbol(")") && --depth == 0) break;
+            }
+            if (PeekAt(k).Is(HuTokenKind.End)) return false;
+            k++;
+        }
+        return PeekAt(k).IsSymbol("=");
+    }
+
+    /// <summary>MAXFILES 本数 / WRITE #番号, 式, … (字句解析で WRITE# は 1 つの名前になっている) / DEVI$・DEVO$ (4 つの引数)</summary>
+    private HuStmt? ParseFileStatementName(HuPos pos)
+    {
+        var t = Next();
+        if (t.Text is "DEVI$" or "DEVO$")
+        {
+            var desc = ParseExpr();
+            ExpectSymbol(",");
+            var rec = ParseExpr();
+            ExpectSymbol(",");
+            var first = t.Text == "DEVI$" ? ParseLValue() : ParseExpr();
+            ExpectSymbol(",");
+            var second = t.Text == "DEVI$" ? ParseLValue() : ParseExpr();
+            return new HuDev(desc, rec, first, second, t.Text == "DEVO$", pos);
+        }
+        if (t.Text == "MAXFILES")
+        {
+            if (AtStatementEnd)
+            {
+                Error("HB0203", "MAXFILES に本数が必要です");
+                return null;
+            }
+            return new HuMaxFiles(ParseExpr(), pos);
+        }
+        if (t.Text == "WRITE") ExpectSymbol("#");
+        var num = ParseExpr();
+        var items = new List<HuExpr>();
+        if (AcceptSymbol(","))
+        {
+            do
+            {
+                items.Add(ParseExpr());
+            } while (AcceptSymbol(","));
+        }
+        if (items.Count == 0)
+        {
+            _diag.Error("HB0301", "項目のない WRITE# は未対応です", pos);
+            return null;
+        }
+        return new HuWrite(num, items, pos);
     }
 
     private HuStmt ParseAssignment(HuPos pos)
@@ -735,12 +916,14 @@ public sealed class HuParser
     private HuStmt ParsePrint(HuPos pos)
     {
         int? channel = null;
+        HuExpr? file = null;
         if (AcceptSymbol("#"))
         {
+            // #0 (数の字句の 0) は、いままでどおり字句 1 つだけを番号にする (PRINT#0+1 は画面に +1 を出す)。
+            // それ以外は式 (本物と同じく PRINT #N+1 は N+1 番。x1native_hufs のファイル)
             var ch = Peek;
-            if (ch.Kind == HuTokenKind.Number) { Next(); channel = ch.Value; }
-            else Error("HB0210", "PRINT# の後に番号が必要です");
-            if (channel != 0) _diag.Error("HB0308", "PRINT# は #0 だけに対応しています", pos);
+            if (ch.Kind == HuTokenKind.Number && ch.Value == 0) { Next(); channel = 0; }
+            else file = ParseExpr();
             AcceptSymbol(",");
         }
         HuExpr? usingFmt = null;
@@ -765,7 +948,7 @@ public sealed class HuParser
             }
             items.Add(new HuPrintExpr(ParseExpr()));
         }
-        return new HuPrint(channel, usingFmt, items, pos);
+        return new HuPrint(channel, usingFmt, items, pos) { File = file };
     }
 
     private HuStmt ParseLine(HuPos pos)

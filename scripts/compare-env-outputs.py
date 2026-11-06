@@ -10,6 +10,9 @@
   - examples/ の *.SL: x1native で --emit bin・--emit tape、x1native_slfs で --emit bin・--emit disk・
     --emit disk --disk-main-name、assets/ のある例は --emit disk --slfs-add assets/ も
   - examples/hubasic/*.BAS と --bas-dir の *.bas・*.BAS: 変換だけ・--emit disk・--emit tape・--wait line:480 --emit-line-comments
+  - この中に書いた BASIC (EXTRA_PROGRAMS。<作業フォルダ>/extra-bas に書き出して、旧と新に同じファイルを渡す): いま変換が通る
+    書き方が変わらないことを見るもの (MAXFILES・WRITE# などを変数に使う、PRINT#0 のいろいろな形) と、意図して変えたもの
+    (ファイルの命令。期待の表に書く)。期待の表での名前は @<名前>
 - 合格:
   - 旧で成功したものは、新でも成功して、出力 (.SL・.bin・.d88・.tap) がバイト単位で同じ
   - 旧で失敗したものは、新でも同じ失敗 (終了コードと、パスを除いたメッセージが同じ)。
@@ -26,6 +29,23 @@ import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# いまの木で足した入力 (BASIC のファイルは examples/hubasic/ のほかに置かないので、ここに書いて作業フォルダに書き出す)
+EXTRA_PROGRAMS = {
+    # MAXFILES・WRITE・AS などは予約語にしていない。いままでどおり変数の名前に使える (段階 1b)
+    "CV1.BAS": '10 MAXFILES=2:WRITE=3:AS=4:MAXFILESX=5\n20 PRINT MAXFILES;WRITE;AS;MAXFILESX\n30 END\n',
+    "CV2.BAS": '10 DIM MAXFILES(3):MAXFILES(1)=7:WRITE#=3:DIM WRITE#(2):WRITE#(1)=8:DEVI$="A":DEVO$="B"\n'
+               '20 PRINT MAXFILES(1);WRITE#;WRITE#(1);DEVI$;DEVO$\n30 END\n',
+    # PRINT#0 は数の字句 1 つだけを番号にする (PRINT#0+1 は画面に +1)
+    "CV3.BAS": '10 PRINT#0,"A":PRINT#0 "B":PRINT#0+1:PRINT#0,-1:PRINT #0,"C";\n20 END\n',
+    # かっこで始まる GET・PUT (グラフィックの形) は、いままでどおり未対応 (段階 2)
+    "CV4.BAS": '10 GET (0,0)-(7,7),A\n20 PUT (0,0),A\n30 END\n',
+    # ファイルの命令 (旧は失敗、新は x1native_hufs。期待の表に書く)
+    "CF1.BAS": '10 OPEN "O",#1,"A.DAT":PRINT #1,"X":CLOSE\n20 END\n',
+    "CR1.BAS": '10 OPEN "R",#1,"R.DAT":FIELD #1,4 AS A$:LSET A$="X":PUT #1,1:GET #1,1\n'
+               '20 PRINT A$;LOC(1);LOF(1):CLOSE\n30 END\n',
+    "CD1.BAS": '10 FILES:FILES "0:"\n20 DEVI$ "0:",1000,A$,B$:DEVO$ "0:",1001,A$,B$\n30 END\n',
+}
+EXTRA_BAS = None   # main で <作業フォルダ>/extra-bas にする
 OUT_EXTS = (".SL", ".bin", ".d88", ".tap")
 
 
@@ -83,13 +103,20 @@ def examples_jobs(tree):
 
 def bas_jobs(tree, bas_dirs):
     files = []
-    for d in [os.path.join(tree, "examples", "hubasic")] + bas_dirs:
+    for d in [os.path.join(tree, "examples", "hubasic")] + bas_dirs + [EXTRA_BAS]:
         for f in sorted(os.listdir(d)):
             if f.lower().endswith(".bas"):
                 files.append(os.path.join(d, f))
     jobs = []
     for path in files:
-        key = os.path.relpath(path, tree) if path.startswith(tree) else path
+        # 期待の表に書く名前: 旧の木のものは木の根から、EXTRA_PROGRAMS は @名前、ほかは絶対パス。入力のファイルは、
+        # 旧の木のものなら各々の木の同じ所、それ以外は同じファイルを旧と新に渡す (do_job)
+        if path.startswith(tree + os.sep):
+            key = os.path.relpath(path, tree)
+        elif path.startswith(EXTRA_BAS + os.sep):
+            key = "@" + os.path.basename(path)
+        else:
+            key = path
         for mode, args in (("convert", []), ("disk", ["--emit", "disk"]), ("tape", ["--emit", "tape"]),
                            ("wait", ["--wait", "line:480", "--emit-line-comments"])):
             jobs.append(("bas", key, mode, args))
@@ -102,7 +129,7 @@ def do_job(side, tree, bindir, outroot, job):
     odir = os.path.join(outroot, side, "out", kind, tag)
     shutil.rmtree(odir, ignore_errors=True)
     os.makedirs(odir)
-    src = inp if os.path.isabs(inp) else os.path.join(tree, inp)
+    src = os.path.join(EXTRA_BAS, inp[1:]) if inp.startswith("@") else inp if os.path.isabs(inp) else os.path.join(tree, inp)
     stem = os.path.join(odir, "P")
     if kind == "sl":
         cmd = [os.path.join(bindir, "slangbuild"), "--slangc", os.path.join(bindir, "slangc"),
@@ -133,6 +160,12 @@ def main():
 
     out = os.path.abspath(a.out)
     os.makedirs(out, exist_ok=True)
+    global EXTRA_BAS
+    EXTRA_BAS = os.path.join(out, "extra-bas")
+    os.makedirs(EXTRA_BAS, exist_ok=True)
+    for name, text in EXTRA_PROGRAMS.items():
+        with open(os.path.join(EXTRA_BAS, name), "w", encoding="utf-8") as f:
+            f.write(text)
     old_tree = os.path.join(out, "old-tree")
     base_sha = subprocess.run(["git", "rev-parse", a.base], cwd=REPO, capture_output=True, text=True, check=True).stdout.strip()
     if not a.skip_build:

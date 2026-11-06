@@ -15,9 +15,14 @@ public sealed record HuTranspileOptions(
     string SourceName = "",
     bool AssumeDefint = false,
     bool LineNumbers = true,
-    int StringLen = HuAnalyzer.MaxStringLen);
+    int StringLen = HuAnalyzer.MaxStringLen,
+    string? Env = null);
 
-public sealed record HuTranspileResult(string? Output, HuDiagnosticBag Diagnostics, HuProgram? Program, HuFlat? Flat);
+/// <param name="RequiredEnv">組み立てに要る環境: ファイルを使うなら x1native_hufs (使わなければ null。どの環境でもよい)</param>
+public sealed record HuTranspileResult(string? Output, HuDiagnosticBag Diagnostics, HuProgram? Program, HuFlat? Flat)
+{
+    public string? RequiredEnv { get; init; }
+}
 
 /// <summary>前段 (字句・構文・解析) → 共通の展開 → 後段 (SLANG) をつなぐ入口。</summary>
 public static class HuTranspiler
@@ -55,10 +60,20 @@ public static class HuTranspiler
         if (diag.HasErrors) return new HuTranspileResult(null, diag, null, null);
         var prog = HuAnalyzer.Analyze(ast, diag, options.DataBudget, options.AssumeDefint, options.StringLen);
         if (diag.HasErrors) return new HuTranspileResult(null, diag, prog, null);
-        var flat = HuLowerer.Lower(prog, new HuLowerOptions(options.Wait, options.WaitArg, options.LineComments, options.LineNumbers));
+        // ファイルの命令は x1native_hufs (Hu-BASIC と同じ形のディスク) だけ。PRINT#0 は数えない
+        var required = prog.UsesFiles ? HufsEnv : null;
+        if (prog.UsesFiles && options.Env is not (null or HufsEnv))
+        {
+            diag.Error("HB0315",
+                $"ファイルの命令 (OPEN・PRINT#・INPUT# など) は {HufsEnv} の環境だけで使えます (いまは {options.Env})。" +
+                $"--emit disk なら --env を書かないか --env {HufsEnv} にしてください (テープでは使えません)", prog.FirstFilePos);
+            return new HuTranspileResult(null, diag, prog, null) { RequiredEnv = required };
+        }
+        bool hufs = prog.UsesFiles || options.Env == HufsEnv;
+        var flat = HuLowerer.Lower(prog, new HuLowerOptions(options.Wait, options.WaitArg, options.LineComments, options.LineNumbers, hufs));
         IHuBackend backend = new SlangBackend();
         var output = backend.Emit(prog, flat,
-            new HuEmitOptions(options.SourceName, options.LineComments, DiskMainName(options.SourceName, diag)));
+            new HuEmitOptions(options.SourceName, options.LineComments, DiskMainName(options.SourceName, diag), hufs));
         // 後段が足した静的な領域 (浮動小数の定数の表と一時変数) も、静的なデータの上限に数える
         long total = (long)prog.StaticDataBytes + backend.ExtraStaticBytes;
         if (total > options.DataBudget)
@@ -67,10 +82,13 @@ public static class HuTranspiler
                 $"静的なデータの合計 {total} バイトが上限 {options.DataBudget} バイトを超えています " +
                 $"(そのうち浮動小数の定数と一時変数 {backend.ExtraStaticBytes} バイト)" +
                 HuAnalyzer.StringLenHint(total, options.DataBudget, prog.StringSlots, prog.StringLen, afterBackend: true), HuPos.None);
-            return new HuTranspileResult(null, diag, prog, flat);
+            return new HuTranspileResult(null, diag, prog, flat) { RequiredEnv = required };
         }
-        return new HuTranspileResult(output, diag, prog, flat);
+        return new HuTranspileResult(output, diag, prog, flat) { RequiredEnv = required };
     }
+
+    /// <summary>Hu-BASIC と同じ形のディスクの環境 (ファイルの命令を使うプログラムの組み立て先)</summary>
+    public const string HufsEnv = "x1native_hufs";
 
     /// <summary>
     /// ディスクイメージ (x1native_slfs) の IPL の起動名にする名前: 入力のファイル名から拡張子と前後の空白を除いたもの (大文字小文字はそのまま)。
