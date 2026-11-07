@@ -255,6 +255,19 @@ public class IntegrationTests : IDisposable
     }
 
     [Fact]
+    public void ZxnPrt_KeepsDeAndBc()
+    {
+        // PSTR (STR$・SPC$・TAB$) は回数を DE に持って PRT を呼ぶ。PRT は DE・BC を残し、どの出口でも戻す
+        var asm = CompileWithCli("MAIN() BEGIN PRINT(STR$(65, 3)); END;", "zxn");
+        var prt = asm.Split("\nPRT:")[1];
+        prt = prt[..prt.IndexOf("\nGETLOCADR:", StringComparison.Ordinal)];
+        Assert.Matches(@"^\s*PUSH\s+HL\s*\n(\s*;.*\n)?\s*PUSH\s+DE\s*\n\s*PUSH\s+BC", prt);
+        var rets = System.Text.RegularExpressions.Regex.Matches(prt, @"(?m)^\s*RET\s*$").Count;
+        Assert.Equal(2, rets);
+        Assert.Equal(rets, System.Text.RegularExpressions.Regex.Matches(prt, @"POP\s+BC\s*\n\s*POP\s+DE\s*\n\s*POP\s+HL\s*\n\s*RET").Count);
+    }
+
+    [Fact]
     public void Overlay_NoSLANGINIT()
     {
         var source = @"
