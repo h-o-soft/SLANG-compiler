@@ -709,7 +709,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             _diagnostics.Error("CONST with a code block is not supported in a function", node.Span);
             return;
         }
-        if (_symbols.CurrentScope.ResolveLocal(node.Name) != null)
+        // IR の局所変数の表は大文字小文字を区別しないので、ここも区別せずに調べる
+        if (_symbols.CurrentScope.Symbols.Keys.Any(k => string.Equals(k, node.Name, StringComparison.OrdinalIgnoreCase)))
         {
             _diagnostics.Error(
                 $"duplicate name '{node.Name}' in function '{func.Name}' (CONST conflicts with parameter or other declaration)",
@@ -755,8 +756,9 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     /// <summary>関数の中で、同じ名前の CONST がもう定義されていたらエラー (VAR・ARRAY を定義するとき)</summary>
     private void CheckNotLocalConstName(string name, SourceSpan span)
     {
-        if (_currentFunc != null && _currentFunc.LocalConstants.ContainsKey(name)
-            && _symbols.CurrentScope.ResolveLocal(name)?.Kind == SymbolKind.Constant)
+        // IR の局所変数の表は大文字小文字を区別しないので、ここも区別せずに調べる
+        if (_currentFunc != null
+            && _currentFunc.LocalConstants.Keys.Any(k => string.Equals(k, name, StringComparison.OrdinalIgnoreCase)))
             _diagnostics.Error(
                 $"duplicate name '{name}' in function '{_currentFunc.Name}' (declaration conflicts with CONST)", span);
     }
@@ -765,21 +767,35 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     private void CheckConstUsedBeforeDeclaration(Expression expr)
     {
         if (_pendingLocalConsts == null || _pendingLocalConsts.Count == 0) return;
-        switch (expr)
+        // 式の入れ物はすべてたどる (CODE の中身・++ の対象・呼び出しの引数なども)
+        void Walk(Expression? e)
         {
-            case IdentifierExpr id when _pendingLocalConsts.Contains(id.Name):
-                _diagnostics.Error($"CONST '{id.Name}' is used before its declaration", id.Span);
-                break;
-            case BinaryExpr b: CheckConstUsedBeforeDeclaration(b.Left); CheckConstUsedBeforeDeclaration(b.Right); break;
-            case UnaryExpr u: CheckConstUsedBeforeDeclaration(u.Operand); break;
-            case CastExpr c: CheckConstUsedBeforeDeclaration(c.Operand); break;
-            case HighLowExpr h: CheckConstUsedBeforeDeclaration(h.Operand); break;
-            case ConditionalExpr ce:
-                CheckConstUsedBeforeDeclaration(ce.Condition);
-                CheckConstUsedBeforeDeclaration(ce.TrueExpr);
-                CheckConstUsedBeforeDeclaration(ce.FalseExpr);
-                break;
+            switch (e)
+            {
+                case IdentifierExpr id when _pendingLocalConsts.Contains(id.Name):
+                    _diagnostics.Error($"CONST '{id.Name}' is used before its declaration", id.Span);
+                    break;
+                case CodeLabelRef lr when _pendingLocalConsts.Contains(lr.Label):
+                    _diagnostics.Error($"CONST '{lr.Label}' is used before its declaration", lr.Span);
+                    break;
+                case BinaryExpr b: Walk(b.Left); Walk(b.Right); break;
+                case CommaExpr c: Walk(c.Left); Walk(c.Right); break;
+                case AssignExpr a: Walk(a.Target); Walk(a.Value); break;
+                case CompoundAssignExpr ca: Walk(ca.Target); Walk(ca.Value); break;
+                case UnaryExpr u: Walk(u.Operand); break;
+                case IncrementExpr inc: Walk(inc.Operand); break;
+                case AddressOfExpr ad: Walk(ad.Operand); break;
+                case CastExpr c: Walk(c.Operand); break;
+                case HighLowExpr h: Walk(h.Operand); break;
+                case CodeEvalExpr ev: Walk(ev.Inner); break;
+                case ConditionalExpr ce: Walk(ce.Condition); Walk(ce.TrueExpr); Walk(ce.FalseExpr); break;
+                case CallExpr call: Walk(call.Function); foreach (var x in call.Arguments) Walk(x); break;
+                case ArrayAccessExpr ar: Walk(ar.Array); foreach (var x in ar.Indices) Walk(x); break;
+                case CodeExpr code: foreach (var x in code.Values) Walk(x); break;
+                case StringFuncExpr sf: foreach (var x in sf.Arguments) Walk(x); break;
+            }
         }
+        Walk(expr);
     }
 
     /// <summary>

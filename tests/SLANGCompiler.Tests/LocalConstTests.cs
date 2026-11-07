@@ -137,15 +137,17 @@ MAIN() BEGIN FN(); FN2(); END;");
         Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("CONST 'N' is used before its declaration"));
     }
 
-    [Fact]
-    public void CaseSensitive_DistinctNames()
+    [Theory]
+    // 大文字と小文字を区別する記号表でも、引数・局所変数・ほかの CONST と大文字小文字だけ違う CONST は受け付けない
+    // (IR の局所変数の表は大文字小文字を区別しないため)
+    [InlineData("FN(K) CONST k = 2; BEGIN RETURN k; END;")]
+    [InlineData("FN() VAR K; CONST k = 2; BEGIN RETURN k; END;")]
+    [InlineData("FN() CONST k = 2; BEGIN VAR K; RETURN k; END;")]
+    [InlineData("FN() CONST K = 1, k = 2; BEGIN RETURN k; END;")]   // 後の方が黙って上書きしないこと
+    public void CaseSensitive_ConstVsVariableDifferingInCase_Errors(string decls)
     {
-        // 大文字と小文字を区別する記号表では、K と k は別の CONST
-        var (asm, diag) = Compile("VAR X; FN() CONST K = 1, k = 2; BEGIN X = K; X = k; END; MAIN() BEGIN FN(); END;", caseSensitive: true);
-        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
-        var body = Body(asm!, "FN");
-        Assert.Contains("LD\tHL,$0001", body);
-        Assert.Contains("LD\tHL,$0002", body);
+        var (_, diag) = Compile(decls + " MAIN() BEGIN END;", caseSensitive: true);
+        Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("duplicate name"));
     }
 
     [Theory]
@@ -161,6 +163,8 @@ MAIN() BEGIN FN(); FN2(); END;");
     [InlineData("FN() ARRAY BYTE BUF[N]; CONST N = 1; BEGIN END;", "CONST 'N' is used before its declaration")]
     [InlineData("FN() ARRAY BYTE BUF[0]:BASE; CONST BASE = $C000; BEGIN END;", "CONST 'BASE' is used before its declaration")]
     [InlineData("FN() VAR W = V; CONST V = 3; BEGIN END;", "CONST 'V' is used before its declaration")]
+    [InlineData("FN() BEGIN VAR W = CODE(WORD, V); CONST V = 3; END;", "CONST 'V' is used before its declaration")]
+    [InlineData("FN() ARRAY BYTE BUF[N++]; CONST N = 3; BEGIN END;", "CONST 'N' is used before its declaration")]
     [InlineData("VAR K; FN() CONST K = 5; BEGIN END;", "has the same name as a global name")]
     [InlineData("FN() CONST K = 5; BEGIN END; VAR K;", "has the same name as a global name")]
     [InlineData("FN() CONST K = 5; BEGIN END; K() BEGIN END;", "has the same name as a global name")]
