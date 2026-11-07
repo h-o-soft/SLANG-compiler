@@ -280,6 +280,24 @@ OVLFUNC() BEGIN X=2; END;
     }
 
     [Fact]
+    public void Overlay_ReservedFunctionName_ExportAndImportMatch()
+    {
+        // overlay の中の予約語と同じ名前の関数: 定義・export・main からの呼び出し・import が同じ _F_ADD になる
+        var source = @"
+VAR X;
+MAIN() BEGIN X = ADD(1); END;
+#MODULE $8000
+ADD(P) BEGIN RETURN P + 1; END;
+";
+        var (mainAsm, overlays) = CompileWithOverlays(source);
+        Assert.Contains("CALL\t_F_ADD", mainAsm);
+        Assert.Contains("; EXTERN _F_ADD", mainAsm);
+        var ov = Assert.Single(overlays).Value;
+        Assert.Contains("\n_F_ADD:", ov);
+        Assert.Contains("; FUNC _F_ADD", ov);
+    }
+
+    [Fact]
     public void Overlay_OnlyOwnRuntime()
     {
         // メイン=BEEP, オーバーレイ=PRINT("X") で、ランタイムが分離されること

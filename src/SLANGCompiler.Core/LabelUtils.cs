@@ -90,6 +90,35 @@ internal static class LabelUtils
         return sb.ToString();
     }
 
+    // AILZ80ASM がラベルに使えない語 (Z80 の命令・レジスタ・条件・一部の疑似命令)。1 語ずつアセンブルして確かめた
+    private static readonly HashSet<string> AsmReservedWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ADC", "ADD", "AND", "BIT", "CALL", "CCF", "CP", "CPD", "CPDR", "CPI", "CPIR", "CPL", "DAA", "DEC", "DI",
+        "DJNZ", "EI", "EX", "EXX", "HALT", "IM", "IN", "INC", "IND", "INDR", "INI", "INIR", "JP", "JR", "LD", "LDD",
+        "LDDR", "LDI", "LDIR", "NEG", "NOP", "OR", "OTDR", "OTIR", "OUT", "OUTD", "OUTI", "POP", "PUSH", "RES",
+        "RET", "RETI", "RETN", "RL", "RLA", "RLC", "RLCA", "RLD", "RR", "RRA", "RRC", "RRCA", "RRD", "RST", "SBC",
+        "SCF", "SET", "SLA", "SLL", "SRA", "SRL", "SUB", "XOR",
+        "A", "B", "C", "D", "E", "H", "L", "F", "I", "R", "AF", "BC", "DE", "HL", "IX", "IY", "SP",
+        "IXH", "IXL", "IYH", "IYL",
+        "NZ", "Z", "NC", "PO", "PE", "P", "M",
+        "EQU", "NAME_SPACE_DEFAULT",
+    };
+
+    /// <summary>AILZ80ASM がラベルとして受け付けない名前か (予約語か、ABH のように 16 進数に読めるもの)</summary>
+    public static bool IsAsmReserved(string label)
+        => AsmReservedWords.Contains(label)
+           || System.Text.RegularExpressions.Regex.IsMatch(label, "^[A-F][0-9A-F]*H$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// 関数の入口のASMラベル。予約語と同じ名前 (ADD・F・H など) だけ <c>_F_</c> を前に付ける。
+    /// ほかの名前は <see cref="SanitizeLabel"/> と同じ
+    /// </summary>
+    public static string FunctionLabel(string name)
+    {
+        var label = SanitizeLabel(name);
+        return IsAsmReserved(label) ? "_F_" + label : label;
+    }
+
     /// <summary>ユーザー変数/配列のASMラベル</summary>
     public static string UserVarLabel(string name) => $"_V_{SanitizeLabel(name)}";
 
