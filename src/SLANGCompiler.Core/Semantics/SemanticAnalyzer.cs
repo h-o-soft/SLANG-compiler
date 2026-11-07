@@ -787,7 +787,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     }
 
     /// <summary>式の中の名前 (識別子と CODE のラベル参照) をすべて渡す。式の入れ物はすべてたどる</summary>
-    private static void ForEachName(Expression? expr, Action<string, SourceSpan> action)
+    internal static void ForEachName(Expression? expr, Action<string, SourceSpan> action)
     {
         void Walk(Expression? e)
         {

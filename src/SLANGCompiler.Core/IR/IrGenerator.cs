@@ -24,6 +24,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// <summary>関数の中の CONST も引く ConstEvaluator</summary>
     private ConstEvaluator NewConstEvaluator() => new(_globalSymbols, _localConsts);
 
+    // 式に関数の中の CONST の名前があるか (大域の名前と同じ名前は意味解析で拒否している)
+    private bool UsesLocalConst(Expression expr)
+    {
+        if (_localConsts == null) return false;
+        bool uses = false;
+        SemanticAnalyzer.ForEachName(expr, (name, _) => { if (_localConsts.ContainsKey(name)) uses = true; });
+        return uses;
+    }
+
     /// <summary>名前の記号: 関数の中の CONST を先に、なければ大域</summary>
     private Symbol? ResolveConstOrGlobal(string name)
         => _localConsts != null && _localConsts.TryGetValue(name, out var c) ? c : _globalSymbols?.Resolve(name);
@@ -333,8 +342,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             int? fixedAddr = null;
             if (node.Address is IntegerLiteral addrLit)
                 fixedAddr = (int)addrLit.Value;
-            else if (node.Address != null && _localConsts != null
-                     && new ConstEvaluator(_globalSymbols).Evaluate(node.Address) == null
+            else if (node.Address != null && UsesLocalConst(node.Address)
                      && NewConstEvaluator().Evaluate(node.Address) is int localAddr)
             {
                 // 関数の中の CONST を使ったアドレスの式 (VAR BYTE REG:BASE)。大域の名前だけの式は、

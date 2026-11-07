@@ -112,6 +112,21 @@ MAIN() BEGIN FN(); END;");
     }
 
     [Fact]
+    public void ScalarVarFixedAddress_LocalConstNotNeededForValue()
+    {
+        // 関数の中の CONST の名前を書いた式は、大域の名前だけで値が出ても (BASE を見ずに $D000) 固定アドレスにする
+        var asm = CompileOk(@"
+FN()
+CONST BASE = $C000;
+VAR BYTE REG:1 ? $D000 : BASE;
+BEGIN
+  REG = 1;
+END;
+MAIN() BEGIN FN(); END;");
+        Assert.Matches(@"_V_FN_REG\s+EQU\s+\$D000", asm);
+    }
+
+    [Fact]
     public void CodeListItem_SameAsGlobalConst()
     {
         // 関数の本体の CODE(名前) は、大域の CONST でも局所の CONST でも同じ (名前の式は実行時の式として HL に入れる)
