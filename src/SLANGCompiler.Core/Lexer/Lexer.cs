@@ -364,7 +364,8 @@ public class Lexer
         char c = Advance();
         return c switch
         {
-            'n' or '/' => '\r',
+            'n' or 'N' or '/' => '\r',
+            '0' => '\0',
             'c' or 'C' => '\f',
             'r' or 'R' => (char)0x1c,
             'l' or 'L' => (char)0x1d,
