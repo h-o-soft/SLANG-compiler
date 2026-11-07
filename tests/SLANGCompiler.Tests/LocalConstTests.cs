@@ -21,7 +21,7 @@ public class LocalConstTests
         var tokens = preprocessor.Process(new Lexer.Lexer(source).Tokenize(), ".");
         var ast = new Parser.Parser(tokens, diag).ParseCompilationUnit();
         if (diag.HasErrors) return (null, diag);
-        var analyzer = new SemanticAnalyzer(diag, caseSensitive) { ConstsUsedByPreprocessorIf = preprocessor.ConstsUsedByIf };
+        var analyzer = new SemanticAnalyzer(diag, caseSensitive) { IdentifiersUsedByPreprocessorIf = preprocessor.IdentifiersUsedByIf };
         analyzer.Analyze(ast);
         if (diag.HasErrors) return (null, diag);
         var ir = new IrGenerator(diag, analyzer.Symbols).Generate(ast);
@@ -109,13 +109,17 @@ MAIN() BEGIN FN1(); END;");
         Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("Undefined variable: J"));
     }
 
-    [Fact]
-    public void UsedInPreprocessorIf_Errors()
+    [Theory]
+    [InlineData("1")]
+    [InlineData("-1")]        // プリプロセッサが値を取らない (整数のリテラルでない) もの
+    [InlineData("2 + 3")]
+    [InlineData("TRUE")]      // ほかの定数の別名
+    public void UsedInPreprocessorIf_Errors(string value)
     {
         // #IF はファイル全体に効くので、関数の中の CONST をほかの関数の #IF で使わせない
         var (_, diag) = Compile(@"
 VAR X;
-FN() CONST FLAG = 1; BEGIN END;
+FN() CONST FLAG = " + value + @"; BEGIN END;
 FN2()
 BEGIN
 #IF FLAG==1

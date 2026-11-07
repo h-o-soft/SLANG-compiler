@@ -169,7 +169,7 @@ class Program
 
             // Phase 3: Semantic Analysis
             var analyzer = new Semantics.SemanticAnalyzer(diagnostics);
-            analyzer.ConstsUsedByPreprocessorIf = preprocessor.ConstsUsedByIf;
+            analyzer.IdentifiersUsedByPreprocessorIf = preprocessor.IdentifiersUsedByIf;
             analyzer.Analyze(ast);
 
             if (diagnostics.HasErrors)

@@ -25,8 +25,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     private HashSet<string>? _pendingLocalConsts;
     private bool _inMachineStatic;
 
-    /// <summary>プリプロセッサの #IF が値を使った CONST 宣言 (<see cref="Lexer.Preprocessor.ConstsUsedByIf"/>)</summary>
-    public IReadOnlySet<(Lexer.SourceLocation ConstAt, string Name)>? ConstsUsedByPreprocessorIf { get; set; }
+    /// <summary>プリプロセッサの #IF の条件に書かれた名前 (<see cref="Lexer.Preprocessor.IdentifiersUsedByIf"/>)</summary>
+    public IReadOnlySet<string>? IdentifiersUsedByPreprocessorIf { get; set; }
     private StringComparer NameComparer => _caseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
     // #MODULE 処理中のオーバーレイインデックス。null = メイン側。VAR/ARRAY はこれで
     // overlay scope の private シンボル化 + AsmLabel を `_V_M<idx>_<name>` に切替える。
@@ -720,7 +720,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
                 node.Span);
             return;
         }
-        if (ConstsUsedByPreprocessorIf?.Contains((node.Span.Start, node.Name.ToUpperInvariant())) == true)
+        // (関数の中の CONST は大域の名前と同じ名前にできないので、#IF のその名前は、この局所の CONST か未定義のどちらか)
+        if (IdentifiersUsedByPreprocessorIf?.Contains(node.Name) == true)
         {
             // #IF はファイル全体に効くので、関数の中の CONST がほかの関数の #IF を変えてしまう
             _diagnostics.Error($"CONST '{node.Name}' in a function cannot be used in #IF (use a global CONST)", node.Span);

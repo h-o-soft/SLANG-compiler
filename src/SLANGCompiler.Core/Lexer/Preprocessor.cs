@@ -12,14 +12,12 @@ public class Preprocessor
     private readonly int _maxIncludeDepth;
     // #IF 条件式で参照するCONST値（Process中にCONSTトークンから抽出）
     private readonly Dictionary<string, int> _constValues = new(StringComparer.OrdinalIgnoreCase);
-    // CONST から取った値の出どころ (名前 → その CONST の位置)
-    private readonly Dictionary<string, SourceLocation> _constSources = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// #IF の条件で値を使った CONST 宣言 (CONST の位置, 大文字の名前)。プリプロセッサは関数の中かどうかを
-    /// 知らないので、関数の中の CONST がここにあれば、意味解析がエラーにする (#IF はファイル全体に効くため)
+    /// #IF の条件に書かれた名前 (値があったかどうかによらない)。プリプロセッサは関数の中かどうかを知らないので、
+    /// 関数の中の CONST の名前がここにあれば、意味解析がエラーにする (#IF はファイル全体に効くため)
     /// </summary>
-    public HashSet<(SourceLocation ConstAt, string Name)> ConstsUsedByIf { get; } = new();
+    public HashSet<string> IdentifiersUsedByIf { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     public Preprocessor(DiagnosticBag diagnostics, List<string>? includePaths = null, int maxIncludeDepth = 8)
     {
@@ -99,7 +97,6 @@ public class Preprocessor
                 && tokens[i + 2].Kind == TokenKind.IntegerLiteral)
             {
                 _constValues[tokens[i].StringValue] = Convert.ToInt32(tokens[i + 2].Value);
-                _constSources[tokens[i].StringValue] = tokens[constIndex].Span.Start;
                 i += 3;
                 // カンマで続く場合
                 if (i < tokens.Count && tokens[i].Kind == TokenKind.Comma)
@@ -387,12 +384,9 @@ public class Preprocessor
         if (token.Kind == TokenKind.Identifier)
         {
             pos++;
+            IdentifiersUsedByIf.Add(token.StringValue);
             if (_constValues.TryGetValue(token.StringValue, out int constVal))
-            {
-                if (_constSources.TryGetValue(token.StringValue, out var at))
-                    ConstsUsedByIf.Add((at, token.StringValue.ToUpperInvariant()));
                 return constVal;
-            }
             // 未定義の識別子 → 0として扱う（旧コンパイラ互換）
             return 0;
         }
