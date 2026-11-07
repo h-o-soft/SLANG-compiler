@@ -92,7 +92,7 @@ public class CodeGenTests
         // ユーザー関数呼び出し: IY+$70に引数
         Assert.Contains("(IY+$70)", asm);
         Assert.Contains("(IY+$72)", asm);
-        Assert.Contains("CALL\tADD", asm);
+        Assert.Contains("CALL\t_F_ADD", asm);   // ADD は Z80 の命令名なので _F_ を付ける
     }
 
     [Fact]
@@ -659,12 +659,20 @@ public class CodeGenTests
 
     [Theory]
     [InlineData("ADD() BEGIN END; _F_ADD() BEGIN END; MAIN() BEGIN ADD(); _F_ADD(); END;")]
-    [InlineData("ADD() BEGIN END; MACHINE F_ADD(0):$1234; MAIN() BEGIN ADD(); END;")]
+    [InlineData("ADD() BEGIN END; MACHINE F_ADD(0); F_ADD(0)[CODE($C9);] MAIN() BEGIN ADD(); F_ADD(); END;")]
     [InlineData("CONST ASM _F_ADD = 1; ADD() BEGIN END; MAIN() BEGIN ADD(); END;")]
     public void ReservedFunctionName_LabelCollision_Errors(string source)
     {
         var diag = IrDiagnostics(source);
         Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("becomes label '_F_ADD'"));
+    }
+
+    [Fact]
+    public void ReservedFunctionName_AddressOnlyMachine_NoCollision()
+    {
+        // アドレスだけの MACHINE はラベルを出さないので、_F_ADD とぶつからない
+        var diag = IrDiagnostics("ADD() BEGIN END; MACHINE F_ADD(0):$1234; MAIN() BEGIN ADD(); F_ADD(); END;");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
     }
 
     [Fact]

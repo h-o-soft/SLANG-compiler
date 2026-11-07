@@ -192,9 +192,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
             foreach (var o in symbols)
             {
                 if (ReferenceEquals(o, f)) continue;
+                // MACHINE はラベルを出すのは CODE 本体のあるものだけ (アドレスだけのものは $xxxx を呼ぶ)
                 string? other = o.Kind switch
                 {
-                    SymbolKind.Function or SymbolKind.MachineFunction => o.AsmLabel,
+                    SymbolKind.Function => o.AsmLabel,
+                    SymbolKind.MachineFunction when o.HasCodeBody => o.AsmLabel,
                     SymbolKind.Constant when o.IsAsmEqu => o.Name,
                     _ => null,
                 };

@@ -346,6 +346,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             : _symbols.Define(node.Name, SymbolKind.MachineFunction, funcType);
         sym.IsGlobal = true;
         sym.AsmLabel = $"_{LabelUtils.SanitizeLabel(node.Name)}";
+        sym.HasCodeBody = node.CodeBody != null;
         if (node.Address != null)
             sym.AddressAst = node.Address;  // AST保持、文字列化はIR段階で
 
