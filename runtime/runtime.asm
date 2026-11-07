@@ -163,7 +163,7 @@ RET
 
 ; @name NOTHL
 ; @resident shared
-; @calls OPEQHLDE
+; @calls OPEQHL
 
 ; @name OPEQHL
 ; @resident shared

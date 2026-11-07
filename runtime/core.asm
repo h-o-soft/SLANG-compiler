@@ -154,7 +154,7 @@ RET
 
 
 ; @name NOTHL
-; @calls OPEQHLDE
+; @calls OPEQHL
 
 ; @name OPEQHL
 LD A, H
