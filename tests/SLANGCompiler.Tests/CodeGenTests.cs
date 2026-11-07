@@ -160,6 +160,19 @@ public class CodeGenTests
         Assert.DoesNotContain("CALL\tPSTR", asm);
     }
 
+    [Theory]
+    [InlineData("PRINT(\"Hello\");", "DB\t\"Hello\",0")]
+    [InlineData("PRINT(\"A\\\\B\");", "DB\t\"A\",$5C,\"B\",0")]      // "A\\B": \ は文字列に入れない
+    [InlineData("PRINT(\"C\\\\\");", "DB\t\"C\",$5C,0")]              // \ で終わる文字列
+    [InlineData("PRINT(\"\\\\0\");", "DB\t$5C,\"0\",0")]              // \ と 0 の 2 字 (AILZ80ASM の \0 にしない)
+    [InlineData("PRINT(\"ソ\");", "DB\t$83,$5C,0")]                   // シフト JIS の 2 バイト目の $5C
+    [InlineData("X = \"\\\\\\\\\";", "DB\t$5C,$5C,0")]                // 式の中の文字列 (\ が 2 つ)
+    public void StringData_BackslashAsByte(string stmt, string expected)
+    {
+        var asm = Compile($"VAR X; MAIN() BEGIN {stmt} END;");
+        Assert.Contains(expected, asm);
+    }
+
     [Fact]
     public void PrintNumber_CallsP10()
     {
