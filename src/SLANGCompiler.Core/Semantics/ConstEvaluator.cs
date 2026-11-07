@@ -12,6 +12,8 @@ public class ConstEvaluator
     // true なら、値がまだ決まっていない CONST (後ろで決まる定数を参照していた CONST) の式もたどる
     private readonly bool _followConstAst;
     private readonly HashSet<Symbol> _following = new();
+    // たどり終えた CONST の値 (null も覚える)。同じ定数を何度も参照する式で、たどり直さないため
+    private readonly Dictionary<Symbol, int?> _followed = new();
 
     public ConstEvaluator(SymbolTable? symbols = null, bool followConstAst = false)
     {
@@ -52,9 +54,11 @@ public class ConstEvaluator
             return val;
 
         // 後ろで決まる定数をたどる (循環していたら null)
-        if (_followConstAst && sym?.Kind == SymbolKind.Constant && sym.ConstAst != null && _following.Add(sym))
+        if (_followConstAst && sym?.Kind == SymbolKind.Constant && sym.ConstAst != null)
         {
-            try { return Evaluate(sym.ConstAst); }
+            if (_followed.TryGetValue(sym, out var done)) return done;
+            if (!_following.Add(sym)) return null;
+            try { return _followed[sym] = Evaluate(sym.ConstAst); }
             finally { _following.Remove(sym); }
         }
 

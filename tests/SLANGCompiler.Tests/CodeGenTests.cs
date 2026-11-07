@@ -591,6 +591,19 @@ public class CodeGenTests
     }
 
     [Fact]
+    public void ConstForwardChain_SharedDependencies_DoesNotExplode()
+    {
+        // N0 = N1 * N1, N1 = N2 * N2, ... のように同じ定数を 2 度ずつ参照する鎖。
+        // たどり終えた値を覚えないと 2^40 回たどることになる
+        var sb = new System.Text.StringBuilder("CONST A = N0 * 2;");
+        for (int i = 0; i < 40; i++) sb.Append($" CONST N{i} = N{i + 1} * N{i + 1};");
+        sb.Append(" CONST N40 = 1; VAR X; MAIN() BEGIN X = A; END;");
+        var task = System.Threading.Tasks.Task.Run(() => Compile(sb.ToString()));
+        Assert.True(task.Wait(TimeSpan.FromSeconds(30)), "compile did not finish");
+        Assert.Contains("LD\tHL,$0002", task.Result);
+    }
+
+    [Fact]
     public void ConstForwardChain_Cycle_Errors()
     {
         // 循環している定数は、たどりきれずにいままでどおりエラー (止まらなくならない)
