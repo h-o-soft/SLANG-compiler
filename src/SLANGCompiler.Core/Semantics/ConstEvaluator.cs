@@ -9,17 +9,26 @@ namespace SLANGCompiler.Semantics;
 public class ConstEvaluator
 {
     private readonly SymbolTable? _symbols;
+    // 関数の中の CONST (名前 → 記号)。大域より先に引く (大域の名前と同じ名前は意味解析で拒否している)
+    private readonly IReadOnlyDictionary<string, Symbol>? _localConstants;
     // true なら、値がまだ決まっていない CONST (後ろで決まる定数を参照していた CONST) の式もたどる
     private readonly bool _followConstAst;
     private readonly HashSet<Symbol> _following = new();
     // たどり終えた CONST の値 (null も覚える)。同じ定数を何度も参照する式で、たどり直さないため
     private readonly Dictionary<Symbol, int?> _followed = new();
 
-    public ConstEvaluator(SymbolTable? symbols = null, bool followConstAst = false)
+    public ConstEvaluator(SymbolTable? symbols = null, IReadOnlyDictionary<string, Symbol>? localConstants = null,
+        bool followConstAst = false)
     {
         _symbols = symbols;
+        _localConstants = localConstants;
         _followConstAst = followConstAst;
     }
+
+    // 大域の CONST の式をたどっている間は、大域の名前だけを引く (大域の CONST は大域だけで解決する)
+    private Symbol? ResolveName(string name)
+        => _localConstants != null && _following.Count == 0 && _localConstants.TryGetValue(name, out var local)
+            ? local : _symbols?.Resolve(name);
 
     /// <summary>
     /// 式を評価し、定数であれば値を返す。定数でなければnull。
@@ -49,7 +58,7 @@ public class ConstEvaluator
         if (id.Name.Equals("FALSE", StringComparison.OrdinalIgnoreCase)) return 0;
 
         // シンボルテーブルから定数を検索
-        var sym = _symbols?.Resolve(id.Name);
+        var sym = ResolveName(id.Name);
         if (sym?.Kind == SymbolKind.Constant && sym.ConstValue is int val)
             return val;
 
@@ -128,7 +137,7 @@ public class ConstEvaluator
         return expr switch
         {
             FloatLiteral => true,
-            IdentifierExpr id => _symbols?.Resolve(id.Name) is { Kind: SymbolKind.Constant, ConstFloatValue: not null },
+            IdentifierExpr id => ResolveName(id.Name) is { Kind: SymbolKind.Constant, ConstFloatValue: not null },
             CastExpr cast => cast.TargetSize == DataSize.Float || InvolvesFloat(cast.Operand),
             UnaryExpr unary => InvolvesFloat(unary.Operand),
             BinaryExpr binary => InvolvesFloat(binary.Left) || InvolvesFloat(binary.Right),
@@ -197,7 +206,7 @@ public class ConstEvaluator
                     v = flt.Value;
                     break;
                 case IdentifierExpr id:
-                    v = _symbols?.Resolve(id.Name)?.ConstFloatValue;
+                    v = ResolveName(id.Name)?.ConstFloatValue;
                     break;
                 case UnaryExpr { Op: UnaryOp.Negate } u:
                     v = -EvaluateFloatArithmetic(u.Operand, ref exact);
@@ -274,7 +283,7 @@ public class ConstEvaluator
 
     private double? EvaluateFloatIdentifier(IdentifierExpr id)
     {
-        var sym = _symbols?.Resolve(id.Name);
+        var sym = ResolveName(id.Name);
         if (sym?.Kind == SymbolKind.Constant)
         {
             if (sym.ConstFloatValue.HasValue) return sym.ConstFloatValue.Value;

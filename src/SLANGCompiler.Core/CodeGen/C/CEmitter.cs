@@ -695,6 +695,12 @@ public class CEmitter : IAstVisitor<EmitResult>
 
     public EmitResult VisitConstDecl(ConstDecl node)
     {
+        if (_currentFuncName != null)
+        {
+            // 関数の中の CONST は、名前を引く所が大域しか見ず、#define が関数の後ろまで効くので、受け付けない
+            Error($"CONST '{node.Name}' in a function is not supported by oscar_c backend", node.Span);
+            return new("", null);
+        }
         if (node.IsAsmEqu)
         {
             Error("`CONST ASM` is not supported by oscar_c backend in v1", node.Span);

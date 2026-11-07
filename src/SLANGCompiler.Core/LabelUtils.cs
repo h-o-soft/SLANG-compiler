@@ -167,7 +167,8 @@ internal static class LabelUtils
     /// 戻り値のDepsはランタイム依存解決に使う基底ラベル名リスト。
     /// </summary>
     public static (string Expr, List<string> Deps)? ExprToAsmString(
-        Parser.Ast.Expression expr, Semantics.SymbolTable? symbols, DiagnosticBag? diag = null)
+        Parser.Ast.Expression expr, Semantics.SymbolTable? symbols, DiagnosticBag? diag = null,
+        IReadOnlyDictionary<string, Semantics.Symbol>? localConstants = null)
     {
         var deps = new List<string>();
 
@@ -177,6 +178,13 @@ internal static class LabelUtils
             {
                 case Parser.Ast.IntegerLiteral lit:
                     return $"${lit.Value:X4}";
+
+                // 関数の中の CONST (値が決まっている)。この式に直接書いた名前だけ。大域の CONST の式をたどる所
+                // (下の ConstAst の再帰) には渡さない
+                case Parser.Ast.IdentifierExpr lid when localConstants != null && localConstants.TryGetValue(lid.Name, out var lc):
+                    if (lc.ConstValue is int lv) return $"${lv & 0xFFFF:X4}";
+                    diag?.Error($"'{lid.Name}' cannot be used in MACHINE/CONST address expression", e.Span);
+                    return null;
 
                 case Parser.Ast.IdentifierExpr id:
                     var sym = symbols?.Resolve(id.Name);
@@ -224,7 +232,8 @@ internal static class LabelUtils
                 case Parser.Ast.BinaryExpr bin2:
                     // Mul等の定数演算: ConstEvaluatorで評価してリテラルに変換
                     // (後ろで決まる定数を何段たどっても値が出るように、CONST の式もたどる)
-                    var constEval = symbols != null ? new Semantics.ConstEvaluator(symbols, followConstAst: true) : null;
+                    var constEval = symbols != null
+                        ? new Semantics.ConstEvaluator(symbols, localConstants, followConstAst: true) : null;
                     var constVal = constEval?.Evaluate(bin2);
                     if (constVal.HasValue)
                         return $"${constVal.Value & 0xFFFF:X4}";

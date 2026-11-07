@@ -19,6 +19,15 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     private bool _inStaticDecl;
     private string? _currentFuncName;
     private FuncInfo? _currentFunc;
+    // 関数の中の CONST (大域の名前とのぶつかりを、すべての大域の名前が分かった最後に調べる)
+    private readonly List<(string Func, ConstDecl Decl)> _localConstDecls = new();
+    // 関数の中で、後ろで宣言する CONST の名前 (配列の大きさで宣言より前に使ったらエラーにする)
+    private HashSet<string>? _pendingLocalConsts;
+    private bool _inMachineStatic;
+
+    /// <summary>プリプロセッサの #IF の条件に書かれた名前 (<see cref="Lexer.Preprocessor.IdentifiersUsedByIf"/>)</summary>
+    public IReadOnlySet<string>? IdentifiersUsedByPreprocessorIf { get; set; }
+    private StringComparer NameComparer => _caseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
     // #MODULE 処理中のオーバーレイインデックス。null = メイン側。VAR/ARRAY はこれで
     // overlay scope の private シンボル化 + AsmLabel を `_V_M<idx>_<name>` に切替える。
     private int? _currentOverlayIndex;
@@ -40,6 +49,21 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     public void Analyze(CompilationUnit unit)
     {
         unit.Accept(this);
+        CheckLocalConstGlobalNames();
+    }
+
+    /// <summary>
+    /// 関数の中の CONST が大域の名前と同じならエラー。局所の定数が大域の名前を隠すと、名前を引く所の
+    /// すべてで局所を先に見ないと黙って大域を使ってしまうので、隠すこと自体を受け付けない (仕様書の CONST の節)
+    /// </summary>
+    private void CheckLocalConstGlobalNames()
+    {
+        foreach (var (func, decl) in _localConstDecls)
+        {
+            if (_symbols.GlobalScope.ResolveLocal(decl.Name) != null)
+                _diagnostics.Error(
+                    $"CONST '{decl.Name}' in function '{func}' has the same name as a global name", decl.Span);
+        }
     }
 
     // ==== ビルトイン登録 ====
@@ -130,6 +154,9 @@ public class SemanticAnalyzer : IAstVisitor<object?>
 
     public object? VisitVarDecl(VarDecl node)
     {
+        CheckNotLocalConstName(node.Name, node.Span);
+        CheckDeclUsesPendingConsts(node.Address, node.InitialValue, node.InitialCode);
+        CheckDeclAddress(node.Address, scalarVar: true, node.Span);
         var type = DataSizeToType(node.Size);
         var sym = _symbols.Define(node.Name, SymbolKind.Variable, type);
 
@@ -181,6 +208,9 @@ public class SemanticAnalyzer : IAstVisitor<object?>
 
     public object? VisitArrayDecl(ArrayDecl node)
     {
+        CheckNotLocalConstName(node.Name, node.Span);
+        CheckDeclUsesPendingConsts(node.Address, node.InitialValue, node.InitialCode);
+        CheckDeclAddress(node.Address, scalarVar: false, node.Span);
         var elemType = DataSizeToType(node.Size);
         var dims = new List<int>();
         foreach (var dim in node.Dimensions)
@@ -191,7 +221,10 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             }
             else
             {
+                // 関数の中に CONST があるときは、大きさの式も CONST への書き込みなどを調べる
+                if (_currentFunc?.LocalConstants.Count > 0) dim.Accept(this);
                 var val = _constEval.Evaluate(dim);
+                if (!val.HasValue) CheckConstUsedBeforeDeclaration(dim);
                 dims.Add(val.HasValue ? val.Value + 1 : 1); // 仕様: 定数式+1個分確保
             }
         }
@@ -255,6 +288,16 @@ public class SemanticAnalyzer : IAstVisitor<object?>
 
     public object? VisitConstDecl(ConstDecl node)
     {
+        if (_inMachineStatic)
+        {
+            _diagnostics.Error("CONST is not allowed in a MACHINE declaration", node.Span);
+            return null;
+        }
+        if (_currentFunc != null)
+        {
+            DefineLocalConst(node);
+            return null;
+        }
         if (node.Value is CodeExpr)
         {
             // CODEブロック型CONST: ラベル付きデータブロック（参照時はアドレスが渡される）
@@ -355,8 +398,10 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         {
             _currentFuncName = node.Name;
             _inStaticDecl = true;
+            _inMachineStatic = true;
             foreach (var decl in node.StaticDeclarations)
                 decl.Accept(this);
+            _inMachineStatic = false;
             _inStaticDecl = false;
             _currentFuncName = null;
         }
@@ -378,7 +423,9 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         // 関数スコープ開始
         _symbols.PushScope(node.Name);
         var prevFunc = _currentFunc;
-        _currentFunc = new FuncInfo(node.Name);
+        _currentFunc = new FuncInfo(node.Name, NameComparer);
+        var prevPending = _pendingLocalConsts;
+        _pendingLocalConsts = CollectConstNames(node.StaticDeclarations.Concat(node.LocalDeclarations));
 
         // 関数スコープ内で定義された名前を追跡し、重複をエラー化する。
         // SymbolTable.Scope.Define は後勝ち上書きで silent overwrite するため、
@@ -425,11 +472,14 @@ public class SemanticAnalyzer : IAstVisitor<object?>
 
         // 本体
         node.Body.Accept(this);
+        // END(式) の式も、関数の中の CONST への書き込みなどを調べる (CONST のない関数ではいままでどおり走査しない)
+        if (_currentFunc.LocalConstants.Count > 0) node.ReturnValue?.Accept(this);
 
         // 関数情報を保存
         funcSym.ConstValue = _currentFunc; // FuncInfoを紐付け
 
         _currentFunc = prevFunc;
+        _pendingLocalConsts = prevPending;
         _symbols.PopScope();
         return null;
     }
@@ -461,6 +511,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     public object? VisitLoopStmt(LoopStmt node) { node.Body.Accept(this); return null; }
     public object? VisitForStmt(ForStmt node)
     {
+        if (IsLocalConst(node.Variable))
+            _diagnostics.Error($"cannot use CONST '{node.Variable}' as a FOR variable", node.Span);
         node.From.Accept(this);
         node.To.Accept(this);
         node.Body.Accept(this);
@@ -537,6 +589,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     /// </summary>
     private void CheckNotArrayAssignment(Expression target, string opName, SourceSpan span)
     {
+        CheckNotLocalConstWrite(target, opName, span);
         if (target is IdentifierExpr id)
         {
             var sym = _symbols.Resolve(id.Name);
@@ -558,6 +611,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     }
     public object? VisitArrayAccessExpr(ArrayAccessExpr node)
     {
+        if (node.Array is IdentifierExpr aid && IsLocalConst(aid.Name))
+            _diagnostics.Error($"CONST '{aid.Name}' is not an array", node.Span);
         node.Array.Accept(this);
         foreach (var idx in node.Indices) idx.Accept(this);
         return null;
@@ -568,7 +623,13 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         return null;
     }
     public object? VisitCommaExpr(CommaExpr node) { node.Left.Accept(this); node.Right.Accept(this); return null; }
-    public object? VisitAddressOfExpr(AddressOfExpr node) { node.Operand.Accept(this); return null; }
+    public object? VisitAddressOfExpr(AddressOfExpr node)
+    {
+        if (node.Operand is IdentifierExpr id && IsLocalConst(id.Name))
+            _diagnostics.Error($"cannot take the address of CONST '{id.Name}'", node.Span);
+        node.Operand.Accept(this);
+        return null;
+    }
     public object? VisitHighLowExpr(HighLowExpr node) { node.Operand.Accept(this); return null; }
     public object? VisitCodeExpr(CodeExpr node) { foreach (var v in node.Values) v.Accept(this); return null; }
     public object? VisitCastExpr(CastExpr node) { node.Operand.Accept(this); return null; }
@@ -639,6 +700,164 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     };
 
     /// <summary>
+    /// 関数の中の CONST。宣言したその場で値が決まる整数か FLOAT の定数だけを受け付け、関数のスコープに定義する
+    /// (#MODULE の中の関数でも大域には出さない)
+    /// </summary>
+    private void DefineLocalConst(ConstDecl node)
+    {
+        var func = _currentFunc!;
+        if (node.IsAsmEqu)
+        {
+            _diagnostics.Error("CONST ASM is only allowed at global scope", node.Span);
+            return;
+        }
+        if (node.Value is CodeExpr)
+        {
+            _diagnostics.Error("CONST with a code block is not supported in a function", node.Span);
+            return;
+        }
+        // IR の局所変数の表は大文字小文字を区別しないので、ここも区別せずに調べる
+        if (_symbols.CurrentScope.Symbols.Keys.Any(k => string.Equals(k, node.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            _diagnostics.Error(
+                $"duplicate name '{node.Name}' in function '{func.Name}' (CONST conflicts with parameter or other declaration)",
+                node.Span);
+            return;
+        }
+        // (関数の中の CONST は大域の名前と同じ名前にできないので、#IF のその名前は、この局所の CONST か未定義のどちらか)
+        if (IdentifiersUsedByPreprocessorIf?.Contains(node.Name) == true)
+        {
+            // #IF はファイル全体に効くので、関数の中の CONST がほかの関数の #IF を変えてしまう
+            _diagnostics.Error($"CONST '{node.Name}' in a function cannot be used in #IF (use a global CONST)", node.Span);
+            return;
+        }
+        var val = _constEval.Evaluate(node.Value);
+        var floatVal = val.HasValue ? null : _constEval.EvaluateFloat(node.Value);
+        if (!val.HasValue && !floatVal.HasValue)
+        {
+            CheckConstUsedBeforeDeclaration(node.Value);
+            _diagnostics.Error(
+                $"CONST '{node.Name}' in a function must be a compile-time integer or FLOAT constant", node.Span);
+            return;
+        }
+        var sym = _symbols.Define(node.Name, SymbolKind.Constant, SlangType.Word);
+        sym.IsGlobal = false;
+        if (val.HasValue)
+            sym.ConstValue = val.Value;
+        else
+        {
+            sym.ConstFloatValue = floatVal!.Value;
+            sym.Type = SlangType.Float;
+        }
+        func.LocalConstants[node.Name] = sym;
+        _pendingLocalConsts?.Remove(node.Name);
+        _localConstDecls.Add((func.Name, node));
+    }
+
+    /// <summary>宣言の並び (カンマ並びの Block を含む) の中の CONST の名前</summary>
+    private HashSet<string>? CollectConstNames(IEnumerable<AstNode> decls)
+    {
+        HashSet<string>? names = null;
+        void Walk(AstNode d)
+        {
+            if (d is ConstDecl c) (names ??= new(NameComparer)).Add(c.Name);
+            else if (d is Block b) foreach (var x in b.Statements) Walk(x);
+        }
+        foreach (var d in decls) Walk(d);
+        return names;
+    }
+
+    /// <summary>関数の中で、同じ名前の CONST がもう定義されていたらエラー (VAR・ARRAY を定義するとき)</summary>
+    private void CheckNotLocalConstName(string name, SourceSpan span)
+    {
+        // IR の局所変数の表は大文字小文字を区別しないので、ここも区別せずに調べる
+        if (_currentFunc != null
+            && _currentFunc.LocalConstants.Keys.Any(k => string.Equals(k, name, StringComparison.OrdinalIgnoreCase)))
+            _diagnostics.Error(
+                $"duplicate name '{name}' in function '{_currentFunc.Name}' (declaration conflicts with CONST)", span);
+    }
+
+    /// <summary>式の中に、この関数で後ろに宣言する CONST の名前があればエラー (宣言より前では使えない)</summary>
+    private void CheckConstUsedBeforeDeclaration(Expression expr)
+    {
+        if (_pendingLocalConsts == null || _pendingLocalConsts.Count == 0) return;
+        ForEachName(expr, (name, span) =>
+        {
+            if (_pendingLocalConsts.Contains(name))
+                _diagnostics.Error($"CONST '{name}' is used before its declaration", span);
+        });
+    }
+
+    /// <summary>式の中の名前 (識別子と CODE のラベル参照) をすべて渡す。式の入れ物はすべてたどる</summary>
+    internal static void ForEachName(Expression? expr, Action<string, SourceSpan> action)
+    {
+        void Walk(Expression? e)
+        {
+            switch (e)
+            {
+                case IdentifierExpr id: action(id.Name, id.Span); break;
+                case CodeLabelRef lr: action(lr.Label, lr.Span); break;
+                case BinaryExpr b: Walk(b.Left); Walk(b.Right); break;
+                case CommaExpr c: Walk(c.Left); Walk(c.Right); break;
+                case AssignExpr a: Walk(a.Target); Walk(a.Value); break;
+                case CompoundAssignExpr ca: Walk(ca.Target); Walk(ca.Value); break;
+                case UnaryExpr u: Walk(u.Operand); break;
+                case IncrementExpr inc: Walk(inc.Operand); break;
+                case AddressOfExpr ad: Walk(ad.Operand); break;
+                case CastExpr c: Walk(c.Operand); break;
+                case HighLowExpr h: Walk(h.Operand); break;
+                case CodeEvalExpr ev: Walk(ev.Inner); break;
+                case ConditionalExpr ce: Walk(ce.Condition); Walk(ce.TrueExpr); Walk(ce.FalseExpr); break;
+                case CallExpr call: Walk(call.Function); foreach (var x in call.Arguments) Walk(x); break;
+                case ArrayAccessExpr ar: Walk(ar.Array); foreach (var x in ar.Indices) Walk(x); break;
+                case CodeExpr code: foreach (var x in code.Values) Walk(x); break;
+                case StringFuncExpr sf: foreach (var x in sf.Arguments) Walk(x); break;
+            }
+        }
+        Walk(expr);
+    }
+
+    /// <summary>
+    /// 関数の中に CONST があるとき、宣言の固定アドレスの式も、CONST への書き込みなどを調べる。
+    /// VAR の固定アドレスは整数の値でしか置けないので、局所の CONST を使っていて値が決まらなければエラー
+    /// (そのままだと黙って __WORK__ に置かれる)
+    /// </summary>
+    private void CheckDeclAddress(Expression? address, bool scalarVar, SourceSpan span)
+    {
+        if (address == null || !(_currentFunc?.LocalConstants.Count > 0)) return;
+        int errorsBefore = _diagnostics.ErrorCount;
+        address.Accept(this);
+        if (!scalarVar || address is IntegerLiteral || _diagnostics.ErrorCount > errorsBefore) return;
+        bool usesLocal = false;
+        ForEachName(address, (name, _) => { if (IsLocalConst(name)) usesLocal = true; });
+        if (usesLocal && _constEval.Evaluate(address) == null)
+            _diagnostics.Error("fixed address using CONST in a function must be a compile-time constant", span);
+    }
+
+    /// <summary>
+    /// 宣言の固定アドレス・初期値に、この関数で後ろに宣言する CONST の名前があればエラー
+    /// (そのままだと外のラベルとして扱われ、アセンブルできない ASM になる)
+    /// </summary>
+    private void CheckDeclUsesPendingConsts(Expression? address, Expression? init, List<Expression>? code)
+    {
+        if (_pendingLocalConsts == null || _pendingLocalConsts.Count == 0) return;
+        if (address != null) CheckConstUsedBeforeDeclaration(address);
+        if (init != null) CheckConstUsedBeforeDeclaration(init);
+        if (code != null) foreach (var e in code) CheckConstUsedBeforeDeclaration(e);
+    }
+
+    /// <summary>関数の中の CONST の記号か (書き込み・アドレス・添字を拒否するため)</summary>
+    private bool IsLocalConst(string name)
+        => _currentFunc != null && _currentFunc.LocalConstants.TryGetValue(name, out var c)
+           && ReferenceEquals(_symbols.Resolve(name), c);
+
+    private void CheckNotLocalConstWrite(Expression target, string opName, SourceSpan span)
+    {
+        if (target is IdentifierExpr id && IsLocalConst(id.Name))
+            _diagnostics.Error($"cannot {opName} CONST '{id.Name}'", span);
+    }
+
+    /// <summary>
     /// 仮引数 (ParamDecl) を semantic 型に変換する。
     /// 配列引数 (BYTE T[] など) は PointerType wrap、それ以外は基本型そのまま。
     /// IR 側 MakeParamLocalVarInfo と対応する形で IsArray を扱う。
@@ -660,7 +879,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         {
             VarDecl v => v.Name,
             ArrayDecl a => a.Name,
-            ConstDecl c => c.Name,
+            // ConstDecl は DefineLocalConst で調べる (VAR・ARRAY が後ろにあっても見つけるため)
             _ => null,
         };
         if (name == null) return;
@@ -681,7 +900,14 @@ public class FuncInfo
     public string Name { get; }
     public int LocalSize { get; private set; }
 
-    public FuncInfo(string name) { Name = name; }
+    public FuncInfo(string name, StringComparer? nameComparer = null)
+    {
+        Name = name;
+        LocalConstants = new(nameComparer ?? StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>関数の中の CONST (名前 → 記号)。値はどれも宣言したその場で決まっている。名前の比べ方は記号表と同じ</summary>
+    public Dictionary<string, Symbol> LocalConstants { get; }
 
     /// <summary>
     /// ローカル変数のオフセットを割り当てる。
