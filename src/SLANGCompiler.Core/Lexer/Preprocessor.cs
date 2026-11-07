@@ -13,6 +13,12 @@ public class Preprocessor
     // #IF 条件式で参照するCONST値（Process中にCONSTトークンから抽出）
     private readonly Dictionary<string, int> _constValues = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// #IF の条件に書かれた名前 (値があったかどうかによらない)。プリプロセッサは関数の中かどうかを知らないので、
+    /// 関数の中の CONST の名前がここにあれば、意味解析がエラーにする (#IF はファイル全体に効くため)
+    /// </summary>
+    public HashSet<string> IdentifiersUsedByIf { get; } = new(StringComparer.OrdinalIgnoreCase);
+
     public Preprocessor(DiagnosticBag diagnostics, List<string>? includePaths = null, int maxIncludeDepth = 8)
     {
         _diagnostics = diagnostics;
@@ -378,6 +384,7 @@ public class Preprocessor
         if (token.Kind == TokenKind.Identifier)
         {
             pos++;
+            IdentifiersUsedByIf.Add(token.StringValue);
             if (_constValues.TryGetValue(token.StringValue, out int constVal))
                 return constVal;
             // 未定義の識別子 → 0として扱う（旧コンパイラ互換）
