@@ -35,6 +35,8 @@ public class Symbol
     public double? ConstFloatValue { get; set; }  // FLOAT定数値
     public bool IsGlobal { get; set; }
     public bool IsCodeBlock { get; set; }    // CODEブロック定数（アドレス参照）
+    public bool IsAsmEqu { get; set; }       // CONST ASM (名前がそのままアセンブラの EQU になる)
+    public bool HasCodeBody { get; set; }    // CODE 本体のある MACHINE (AsmLabel のラベルを出す)
     public string? AsmLabel { get; set; }    // アセンブリラベル名
     public string? CName { get; set; }       // CFUNC 宣言由来の C 側 ident (case preserve、Kind==CFunction で使用)
     public bool IsArrayDecl { get; set; }   // ARRAY宣言由来（PointerTypeでもアドレス参照）
