@@ -579,6 +579,31 @@ public class CodeGenTests
         Assert.DoesNotContain("LD\tE,(HL)\n\tINC\tHL\n\tLD\tD,(HL)", body);
     }
 
+    [Theory]
+    // 後ろで決まる定数を 2 段以上たどり、途中に + - 以外の演算があるもの
+    [InlineData("CONST A = B * 2; CONST B = C + 1; CONST C = 10;", "LD\tHL,$0016")]
+    [InlineData("CONST A = B + 1; CONST B = C * 2; CONST C = D + 1; CONST D = 10;", "LD\tHL,$0016+$0001")]
+    [InlineData("CONST A = B * 3; CONST B = C - 1; CONST C = D << 2; CONST D = E + 1; CONST E = 4;", "LD\tHL,$0039")]
+    public void ConstForwardChain_NonAddOperator(string consts, string expected)
+    {
+        var asm = Compile($"{consts} VAR X; MAIN() BEGIN X = A; END;");
+        Assert.Contains(expected, asm);
+    }
+
+    [Fact]
+    public void ConstForwardChain_Cycle_Errors()
+    {
+        // 循環している定数は、たどりきれずにいままでどおりエラー (止まらなくならない)
+        var diag = new DiagnosticBag();
+        var tokens = new Preprocessor(diag).Process(
+            new Lexer.Lexer("CONST A = B * 2; CONST B = A * 2; VAR X; MAIN() BEGIN X = A; END;").Tokenize(), ".");
+        var ast = new Parser.Parser(tokens, diag).ParseCompilationUnit();
+        var analyzer = new SemanticAnalyzer(diag);
+        analyzer.Analyze(ast);
+        new IrGenerator(diag, analyzer.Symbols).Generate(ast);
+        Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("Unsupported expression in MACHINE/CONST address"));
+    }
+
     private (string asm, DiagnosticBag diag) TryCompile(string source)
     {
         var diag = new DiagnosticBag();

@@ -9,10 +9,14 @@ namespace SLANGCompiler.Semantics;
 public class ConstEvaluator
 {
     private readonly SymbolTable? _symbols;
+    // true なら、値がまだ決まっていない CONST (後ろで決まる定数を参照していた CONST) の式もたどる
+    private readonly bool _followConstAst;
+    private readonly HashSet<Symbol> _following = new();
 
-    public ConstEvaluator(SymbolTable? symbols = null)
+    public ConstEvaluator(SymbolTable? symbols = null, bool followConstAst = false)
     {
         _symbols = symbols;
+        _followConstAst = followConstAst;
     }
 
     /// <summary>
@@ -46,6 +50,13 @@ public class ConstEvaluator
         var sym = _symbols?.Resolve(id.Name);
         if (sym?.Kind == SymbolKind.Constant && sym.ConstValue is int val)
             return val;
+
+        // 後ろで決まる定数をたどる (循環していたら null)
+        if (_followConstAst && sym?.Kind == SymbolKind.Constant && sym.ConstAst != null && _following.Add(sym))
+        {
+            try { return Evaluate(sym.ConstAst); }
+            finally { _following.Remove(sym); }
+        }
 
         return null;
     }
