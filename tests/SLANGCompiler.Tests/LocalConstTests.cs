@@ -112,6 +112,23 @@ MAIN() BEGIN FN(); END;");
     }
 
     [Fact]
+    public void CodeListItem_SameAsGlobalConst()
+    {
+        // 関数の本体の CODE(名前) は、大域の CONST でも局所の CONST でも同じ (名前の式は実行時の式として HL に入れる)
+        var asm = CompileOk(@"
+CONST OP = $C9;
+VAR X;
+FG() BEGIN X = 1; CODE(OP); END;
+FL() CONST LOP = $C9; BEGIN X = 1; CODE(LOP); END;
+MAIN() BEGIN FG(); FL(); END;");
+        foreach (var f in new[] { "FG", "FL" })
+        {
+            Assert.Contains("LD\tHL,$00C9", Body(asm, f));
+            Assert.DoesNotContain("DB", Body(asm, f));
+        }
+    }
+
+    [Fact]
     public void NotVisibleFromOtherFunctions()
     {
         var (_, diag) = Compile("FN() CONST K = 5; BEGIN RETURN K; END; FN2() BEGIN RETURN K; END; MAIN() BEGIN FN(); FN2(); END;");
@@ -224,6 +241,9 @@ MAIN() BEGIN FN(); FN2(); END;");
     [InlineData("FN() VAR W = V; CONST V = 3; BEGIN END;", "CONST 'V' is used before its declaration")]
     [InlineData("FN() BEGIN VAR W = CODE(WORD, V); CONST V = 3; END;", "CONST 'V' is used before its declaration")]
     [InlineData("FN() ARRAY BYTE BUF[N++]; CONST N = 3; BEGIN END;", "CONST 'N' is used before its declaration")]
+    [InlineData("FN() CONST K = 5; VAR BYTE REG:K++; BEGIN END;", "cannot increment CONST 'K'")]
+    [InlineData("FN() CONST K = 5; ARRAY BYTE BUF[0]:K++; BEGIN END;", "cannot increment CONST 'K'")]
+    [InlineData("VAR X; FN() CONST K = 5; VAR BYTE REG:X + K; BEGIN END;", "fixed address using CONST in a function must be a compile-time constant")]
     [InlineData("VAR K; FN() CONST K = 5; BEGIN END;", "has the same name as a global name")]
     [InlineData("FN() CONST K = 5; BEGIN END; VAR K;", "has the same name as a global name")]
     [InlineData("FN() CONST K = 5; BEGIN END; K() BEGIN END;", "has the same name as a global name")]

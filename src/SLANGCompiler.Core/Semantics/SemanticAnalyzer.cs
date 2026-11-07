@@ -156,6 +156,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     {
         CheckNotLocalConstName(node.Name, node.Span);
         CheckDeclUsesPendingConsts(node.Address, node.InitialValue, node.InitialCode);
+        CheckDeclAddress(node.Address, scalarVar: true, node.Span);
         var type = DataSizeToType(node.Size);
         var sym = _symbols.Define(node.Name, SymbolKind.Variable, type);
 
@@ -209,6 +210,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     {
         CheckNotLocalConstName(node.Name, node.Span);
         CheckDeclUsesPendingConsts(node.Address, node.InitialValue, node.InitialCode);
+        CheckDeclAddress(node.Address, scalarVar: false, node.Span);
         var elemType = DataSizeToType(node.Size);
         var dims = new List<int>();
         foreach (var dim in node.Dimensions)
@@ -777,17 +779,22 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     private void CheckConstUsedBeforeDeclaration(Expression expr)
     {
         if (_pendingLocalConsts == null || _pendingLocalConsts.Count == 0) return;
-        // 式の入れ物はすべてたどる (CODE の中身・++ の対象・呼び出しの引数なども)
+        ForEachName(expr, (name, span) =>
+        {
+            if (_pendingLocalConsts.Contains(name))
+                _diagnostics.Error($"CONST '{name}' is used before its declaration", span);
+        });
+    }
+
+    /// <summary>式の中の名前 (識別子と CODE のラベル参照) をすべて渡す。式の入れ物はすべてたどる</summary>
+    private static void ForEachName(Expression? expr, Action<string, SourceSpan> action)
+    {
         void Walk(Expression? e)
         {
             switch (e)
             {
-                case IdentifierExpr id when _pendingLocalConsts.Contains(id.Name):
-                    _diagnostics.Error($"CONST '{id.Name}' is used before its declaration", id.Span);
-                    break;
-                case CodeLabelRef lr when _pendingLocalConsts.Contains(lr.Label):
-                    _diagnostics.Error($"CONST '{lr.Label}' is used before its declaration", lr.Span);
-                    break;
+                case IdentifierExpr id: action(id.Name, id.Span); break;
+                case CodeLabelRef lr: action(lr.Label, lr.Span); break;
                 case BinaryExpr b: Walk(b.Left); Walk(b.Right); break;
                 case CommaExpr c: Walk(c.Left); Walk(c.Right); break;
                 case AssignExpr a: Walk(a.Target); Walk(a.Value); break;
@@ -806,6 +813,23 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             }
         }
         Walk(expr);
+    }
+
+    /// <summary>
+    /// 関数の中に CONST があるとき、宣言の固定アドレスの式も、CONST への書き込みなどを調べる。
+    /// VAR の固定アドレスは整数の値でしか置けないので、局所の CONST を使っていて値が決まらなければエラー
+    /// (そのままだと黙って __WORK__ に置かれる)
+    /// </summary>
+    private void CheckDeclAddress(Expression? address, bool scalarVar, SourceSpan span)
+    {
+        if (address == null || !(_currentFunc?.LocalConstants.Count > 0)) return;
+        int errorsBefore = _diagnostics.ErrorCount;
+        address.Accept(this);
+        if (!scalarVar || address is IntegerLiteral || _diagnostics.ErrorCount > errorsBefore) return;
+        bool usesLocal = false;
+        ForEachName(address, (name, _) => { if (IsLocalConst(name)) usesLocal = true; });
+        if (usesLocal && _constEval.Evaluate(address) == null)
+            _diagnostics.Error("fixed address using CONST in a function must be a compile-time constant", span);
     }
 
     /// <summary>
