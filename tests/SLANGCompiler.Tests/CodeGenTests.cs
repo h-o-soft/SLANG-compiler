@@ -592,6 +592,44 @@ public class CodeGenTests
         Assert.DoesNotContain("LD\tE,(HL)\n\tINC\tHL\n\tLD\tD,(HL)", body);
     }
 
+    [Theory]
+    // 後ろで決まる定数を 2 段以上たどり、途中に + - 以外の演算があるもの
+    [InlineData("CONST A = B * 2; CONST B = C + 1; CONST C = 10;", "LD\tHL,$0016")]
+    [InlineData("CONST A = B + 1; CONST B = C * 2; CONST C = D + 1; CONST D = 10;", "LD\tHL,$0016+$0001")]
+    [InlineData("CONST A = B * 3; CONST B = C - 1; CONST C = D << 2; CONST D = E + 1; CONST E = 4;", "LD\tHL,$0039")]
+    public void ConstForwardChain_NonAddOperator(string consts, string expected)
+    {
+        var asm = Compile($"{consts} VAR X; MAIN() BEGIN X = A; END;");
+        Assert.Contains(expected, asm);
+    }
+
+    [Fact]
+    public void ConstForwardChain_SharedDependencies_DoesNotExplode()
+    {
+        // N0 = N1 * N1, N1 = N2 * N2, ... のように同じ定数を 2 度ずつ参照する鎖。
+        // たどり終えた値を覚えないと 2^40 回たどることになる
+        var sb = new System.Text.StringBuilder("CONST A = N0 * 2;");
+        for (int i = 0; i < 40; i++) sb.Append($" CONST N{i} = N{i + 1} * N{i + 1};");
+        sb.Append(" CONST N40 = 1; VAR X; MAIN() BEGIN X = A; END;");
+        var task = System.Threading.Tasks.Task.Run(() => Compile(sb.ToString()));
+        Assert.True(task.Wait(TimeSpan.FromSeconds(30)), "compile did not finish");
+        Assert.Contains("LD\tHL,$0002", task.Result);
+    }
+
+    [Fact]
+    public void ConstForwardChain_Cycle_Errors()
+    {
+        // 循環している定数は、たどりきれずにいままでどおりエラー (止まらなくならない)
+        var diag = new DiagnosticBag();
+        var tokens = new Preprocessor(diag).Process(
+            new Lexer.Lexer("CONST A = B * 2; CONST B = A * 2; VAR X; MAIN() BEGIN X = A; END;").Tokenize(), ".");
+        var ast = new Parser.Parser(tokens, diag).ParseCompilationUnit();
+        var analyzer = new SemanticAnalyzer(diag);
+        analyzer.Analyze(ast);
+        new IrGenerator(diag, analyzer.Symbols).Generate(ast);
+        Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("Unsupported expression in MACHINE/CONST address"));
+    }
+
     private (string asm, DiagnosticBag diag) TryCompile(string source)
     {
         var diag = new DiagnosticBag();

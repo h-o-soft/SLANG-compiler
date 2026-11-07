@@ -194,7 +194,8 @@ internal static class LabelUtils
 
                 case Parser.Ast.BinaryExpr bin2:
                     // Mul等の定数演算: ConstEvaluatorで評価してリテラルに変換
-                    var constEval = symbols != null ? new Semantics.ConstEvaluator(symbols) : null;
+                    // (後ろで決まる定数を何段たどっても値が出るように、CONST の式もたどる)
+                    var constEval = symbols != null ? new Semantics.ConstEvaluator(symbols, followConstAst: true) : null;
                     var constVal = constEval?.Evaluate(bin2);
                     if (constVal.HasValue)
                         return $"${constVal.Value & 0xFFFF:X4}";
