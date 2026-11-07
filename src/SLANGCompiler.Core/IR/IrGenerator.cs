@@ -17,6 +17,16 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private int _labelCount;
     private bool _inStaticDecl;
     private string? _currentFuncName;
+    // 関数の中の CONST (名前 → 記号)。宣言の順に入れる。関数の外では null
+    private Dictionary<string, Symbol>? _localConsts;
+    private FuncInfo? _currentFuncInfo;
+
+    /// <summary>関数の中の CONST も引く ConstEvaluator</summary>
+    private ConstEvaluator NewConstEvaluator() => new(_globalSymbols, _localConsts);
+
+    /// <summary>名前の記号: 関数の中の CONST を先に、なければ大域</summary>
+    private Symbol? ResolveConstOrGlobal(string name)
+        => _localConsts != null && _localConsts.TryGetValue(name, out var c) ? c : _globalSymbols?.Resolve(name);
     private bool _emitToGlobalData;
     private int _currentReturnDataSize = 2;  // 現在処理中の関数の戻り値型 (RETURN/END(expr) で参照)
 
@@ -399,7 +409,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 dimSize = 0; // 間接配列
             else
             {
-                var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+                var constEval = _globalSymbols != null ? NewConstEvaluator() : null;
                 var val = constEval?.Evaluate(dim);
                 dimSize = val.HasValue ? val.Value + 1 : 1;
             }
@@ -439,7 +449,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else if (node.Address != null)
             {
                 // ラベルベースのアドレス (例: ARRAY X[]:LABEL)
-                var asmResult = LabelUtils.ExprToAsmString(node.Address, _globalSymbols, _diagnostics);
+                var asmResult = LabelUtils.ExprToAsmString(node.Address, _globalSymbols, _diagnostics, _localConsts);
                 if (asmResult.HasValue)
                 {
                     fixedAddrLabel = asmResult.Value.Expr;
@@ -457,7 +467,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 if (node.Size == DataSize.Float)
                 {
                     // FLOAT配列専用パス: 全要素3バイトf24で展開
-                    var constEval = new ConstEvaluator(_globalSymbols);
+                    var constEval = NewConstEvaluator();
                     foreach (var expr in node.InitialCode)
                     {
                         // トップレベル要素として CastExpr (%X 等) を置くのは禁止。
@@ -493,7 +503,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         }
 
                         // 定数式の評価を試みる（BinaryExpr, CONST参照なども含む）
-                        var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+                        var constEval = _globalSymbols != null ? NewConstEvaluator() : null;
                         var constVal = constEval?.Evaluate(initExpr);
                         if (initExpr is IntegerLiteral ilit)
                             constVal = (int)ilit.Value; // IntegerLiteralは直接使用
@@ -524,7 +534,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         else
                         {
                             // 非定数式: ExprToAsmStringでアセンブラ式に変換
-                            var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics);
+                            var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics, _localConsts);
                             if (asmResult.HasValue && itemSize == 2)
                             {
                                 initItems.Add(InitItem.Word(asmResult.Value.Expr));
@@ -593,6 +603,14 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitConstDecl(ConstDecl node)
     {
+        // 関数の中の CONST: 意味解析で値が決まっている。宣言の順に見えるようにする
+        if (_localConsts != null && _currentFuncInfo != null)
+        {
+            if (_currentFuncInfo.LocalConstants.TryGetValue(node.Name, out var local))
+                _localConsts[node.Name] = local;
+            Emit(IrOp.Comment, IrOperand.Asm($"CONST {node.Name}"));
+            return IrOperand.None;
+        }
         // CODEブロック型CONST: CONST X = [...] → ラベル+DBデータとしてコード領域に配置
         if (node.Value is CodeExpr codeExpr)
         {
@@ -711,7 +729,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 itemSize = cast.TargetSize == DataSize.Byte ? 1 : cast.TargetSize == DataSize.Float ? 3 : 2;
             }
             // 定数式の評価を試みる（BinaryExpr, CONST参照なども含む）
-            var constEval2 = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+            var constEval2 = _globalSymbols != null ? NewConstEvaluator() : null;
             var constVal2 = constEval2?.Evaluate(initExpr);
             if (initExpr is IntegerLiteral ilit2)
                 constVal2 = (int)ilit2.Value;
@@ -735,7 +753,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else
             {
                 // 非定数式: アセンブラ式に変換（ラベル参照等）
-                var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics);
+                var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics, _localConsts);
                 if (asmResult.HasValue)
                 {
                     // ラベル参照は常にWORD（アドレス）
@@ -761,6 +779,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         _currentFunction = new IrFunction { Name = LabelUtils.SanitizeLabel(node.Name) };
         _tempDataSize.Clear();
+        var prevLocalConsts = _localConsts;
+        var prevFuncInfo = _currentFuncInfo;
+        _currentFuncInfo = _globalSymbols?.Resolve(node.Name)?.ConstValue as FuncInfo;
+        _localConsts = _currentFuncInfo?.LocalConstants.Count > 0
+            ? new Dictionary<string, Symbol>(StringComparer.OrdinalIgnoreCase) : null;
 
         // 関数の戻り値型を保存 (ネスト関数定義に備えて prev/restore 形式)
         int prevReturnDs = _currentReturnDataSize;
@@ -840,6 +863,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _staticVarKinds = prevStaticVarKinds;
         _localOffset = prevOffset;
         _currentReturnDataSize = prevReturnDs;
+        _localConsts = prevLocalConsts;
+        _currentFuncInfo = prevFuncInfo;
         return IrOperand.None;
     }
 
@@ -892,7 +917,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitIfStmt(IfStmt node)
     {
         var endLabel = NewLabel();
-        var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+        var constEval = _globalSymbols != null ? NewConstEvaluator() : null;
 
         for (int i = 0; i < node.Branches.Count; i++)
         {
@@ -951,7 +976,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         PushLoop(startLabel, endLabel);
 
         // 定数TRUE条件: 条件チェック省略（無限ループ = LOOP相当）
-        var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+        var constEval = _globalSymbols != null ? NewConstEvaluator() : null;
         var constCond = constEval?.Evaluate(node.Condition);
 
         Emit(IrOp.Label, IrOperand.Lbl(startLabel));
@@ -1387,8 +1412,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
             return t;
         }
 
-        // 2. グローバルシンボルテーブルを検索
-        var sym = _globalSymbols?.Resolve(node.Name);
+        // 2. 関数の中の CONST、なければグローバルシンボルテーブルを検索
+        var sym = ResolveConstOrGlobal(node.Name);
         if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstValue is int constVal)
         {
             Emit(IrOp.LoadConst, t, IrOperand.Imm(constVal));
@@ -1444,7 +1469,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // 定数畳み込み: 両辺が定数ならコンパイル時に計算
         if (_globalSymbols != null)
         {
-            var constEval = new ConstEvaluator(_globalSymbols);
+            var constEval = NewConstEvaluator();
             // 代入する値の中の FLOAT が関わる四則演算は、整数としてではなく正しい値で畳み込む (A=5.0/2.0 は FLOAT の 2.5)。
             // f24 で正確に表せないものは畳み込まず実行時に計算する。代入の値の外 (条件・添字・引数など) は今までどおり
             bool marked = _floatFoldNodes.Contains(node);
@@ -1676,7 +1701,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     /// <summary>局所変数に隠されていない、大域の FLOAT のスカラー変数か (A*A → f24sqr などの特殊処理の条件)</summary>
     private bool IsGlobalFloatScalar(IdentifierExpr id)
-        => !(_localVars?.ContainsKey(id.Name) ?? false) && _globalSymbols?.Resolve(id.Name)?.Type?.ByteSize == 3
+        => !(_localVars?.ContainsKey(id.Name) ?? false) && ResolveConstOrGlobal(id.Name)?.Type?.ByteSize == 3
            && IdentifierIsFloat(id);
 
     /// <summary>VisitIdentifier の結果が FLOAT になるか (同じ順に解決する: 局所変数 → 定数 → コードブロック → 変数)</summary>
@@ -1684,7 +1709,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         if (_localVars != null && _localVars.TryGetValue(id.Name, out var li))
             return li.Kind == VarKind.Scalar && li.ByteSize == 3;   // 配列はアドレス、ポインタは 2 バイト
-        var sym = _globalSymbols?.Resolve(id.Name);
+        var sym = ResolveConstOrGlobal(id.Name);
         if (sym is { Kind: SymbolKind.Constant }) return sym.ConstValue is not int && sym.ConstFloatValue.HasValue;
         if (sym is { IsCodeBlock: true }) return false;
         var vi = ResolveVarInfo(id.Name);
@@ -1773,7 +1798,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         if (_globalSymbols != null)
         {
-            var ce = new ConstEvaluator(_globalSymbols);
+            var ce = NewConstEvaluator();
             bool marked = _floatFoldNodes.Contains(b);
             var fold = marked || _intFoldNodes.Contains(b) ? ce.FoldFloatArithmetic(b) : null;
             if (!marked && fold is { Kind: not ConstEvaluator.FloatFoldKind.Int }) fold = null;
@@ -2333,7 +2358,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else if (v is CastExpr cast)
             {
                 // 型,定数式 → BYTE: 1バイト, WORD: 2バイト
-                var constVal = _globalSymbols != null ? new ConstEvaluator(_globalSymbols).Evaluate(cast.Operand) : null;
+                var constVal = _globalSymbols != null ? NewConstEvaluator().Evaluate(cast.Operand) : null;
                 if (constVal.HasValue)
                 {
                     if (cast.TargetSize == DataSize.Byte)
@@ -2344,7 +2369,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 else if (cast.TargetSize == DataSize.Word)
                 {
                     // 非定数WORD: ラベル式としてDWで埋め込みを試みる
-                    var asmResult = LabelUtils.ExprToAsmString(cast.Operand, _globalSymbols, _diagnostics);
+                    var asmResult = LabelUtils.ExprToAsmString(cast.Operand, _globalSymbols, _diagnostics, _localConsts);
                     if (asmResult.HasValue)
                     {
                         Emit(IrOp.DefWord, IrOperand.Lbl(asmResult.Value.Expr));
@@ -2419,7 +2444,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         if (expr is IntegerLiteral lit) return (int)lit.Value;
         if (_globalSymbols == null) return null;
-        var ce = new ConstEvaluator(_globalSymbols);
+        var ce = NewConstEvaluator();
         return ce.Evaluate(expr);
     }
 
@@ -2768,7 +2793,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private int? TryComputeLocalArrayOffset(
         LocalVarInfo localInfo, List<Expression> indices, List<int> strides, int elemSize)
     {
-        var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+        var constEval = _globalSymbols != null ? NewConstEvaluator() : null;
         if (constEval == null) return null;
 
         int totalOffset = localInfo.Offset;
@@ -2793,7 +2818,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private int? TryComputeConstArrayOffset(
         List<Expression> indices, List<int> strides)
     {
-        var constEval = _globalSymbols != null ? new ConstEvaluator(_globalSymbols) : null;
+        var constEval = _globalSymbols != null ? NewConstEvaluator() : null;
         if (constEval == null) return null;
 
         int totalOffset = 0;

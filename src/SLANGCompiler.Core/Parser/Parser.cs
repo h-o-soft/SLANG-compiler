@@ -544,8 +544,8 @@ public class Parser
                 machineStaticDecls.Add(ParseLocalDecl());
                 if (_diagnostics.ErrorCount > errorsBefore)
                     SynchronizeDeclaration();
-                else if (_pos == before)
-                    Advance();
+                if (_pos == before)
+                    Advance();   // 読めない宣言の始まりで止まったまま同じエラーを繰り返さない
             }
 
             CodeExpr? codeBody = null;
@@ -600,8 +600,8 @@ public class Parser
             staticDecls.Add(ParseLocalDecl());
             if (_diagnostics.ErrorCount > errorsBefore)
                 SynchronizeDeclaration();
-            else if (_pos == before)
-                Advance();
+            if (_pos == before)
+                Advance();   // 読めない宣言の始まりで止まったまま同じエラーを繰り返さない
         }
 
         // BEGIN
@@ -616,8 +616,8 @@ public class Parser
             localDecls.Add(ParseLocalDecl());
             if (_diagnostics.ErrorCount > errorsBefore)
                 SynchronizeDeclaration();
-            else if (_pos == before)
-                Advance();
+            if (_pos == before)
+                Advance();   // 読めない宣言の始まりで止まったまま同じエラーを繰り返さない
         }
 
         // Statements
@@ -641,6 +641,15 @@ public class Parser
     private AstNode ParseLocalDecl()
     {
         if (Check(TokenKind.Array)) return ParseArrayDeclList();
+        if (Check(TokenKind.Const)) return ParseConstDecl();   // 関数の中の CONST (局所的な記号定数)
+        if (Check(TokenKind.Machine))
+        {
+            // MACHINE は大域宣言のみ (仕様書)。エラーを 1 回出して ; まで読み飛ばす
+            var span = Current.Span;
+            _diagnostics.Error("MACHINE is only allowed at global scope", span);
+            while (!Check(TokenKind.EOF) && !Match(TokenKind.Semicolon)) Advance();
+            return new Block(new List<AstNode>(), span);
+        }
         return ParseVarDeclList(); // handles VAR, BYTE, WORD, FLOAT
     }
 
