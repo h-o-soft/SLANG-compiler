@@ -978,16 +978,9 @@ public class CodeGenerator
 
     private void EmitStringData(string text)
     {
-        // StringEncoderで統一的にShift-JIS変換
-        if (text.All(ch => ch >= 0x20 && ch < 0x7F && ch != '"'))
-        {
-            _e.Raw($"\tDB\t\"{text}\",0");
-        }
-        else
-        {
-            var dbArgs = StringEncoder.ToAsmDbArgs(text, _diagnostics);
-            _e.Raw($"\tDB\t{dbArgs},0");
-        }
+        // StringEncoderで統一的にShift-JIS変換 (" と \ はバイトで出す)
+        var dbArgs = StringEncoder.ToAsmDbArgs(text, _diagnostics);
+        _e.Raw($"\tDB\t{dbArgs},0");
     }
 
     private void EmitGlobalData(IrInstruction inst)

@@ -30,8 +30,9 @@ public static class StringEncoder
     /// <summary>文字列をShift-JISバイト列のDB引数形式に変換（0終端なし）</summary>
     public static string ToAsmDbArgs(string text, DiagnosticBag? diagnostics = null)
     {
-        // ASCII文字のみ → そのまま
-        if (text.All(ch => ch >= 0x20 && ch < 0x7F && ch != '"'))
+        // ASCII文字のみ → そのまま。" と \ は AILZ80ASM の文字列の中で特別な意味を持つので、
+        // 文字列に入れずバイト ($22・$5C) で出す (シフト JIS の 2 バイト目の $5C も同じ)
+        if (text.All(IsPlainAsmChar))
             return $"\"{text}\"";
 
         var bytes = ToShiftJisBytes(text, diagnostics);
@@ -39,7 +40,7 @@ public static class StringEncoder
         var strBuf = new StringBuilder();
         foreach (var b in bytes)
         {
-            if (b >= 0x20 && b < 0x7F && b != (byte)'"')
+            if (IsPlainAsmChar((char)b))
                 strBuf.Append((char)b);
             else
             {
@@ -50,6 +51,9 @@ public static class StringEncoder
         if (strBuf.Length > 0) parts.Add($"\"{strBuf}\"");
         return string.Join(",", parts);
     }
+
+    /// <summary>DB の "..." の中にそのまま書ける字か</summary>
+    private static bool IsPlainAsmChar(char ch) => ch >= 0x20 && ch < 0x7F && ch != '"' && ch != '\\';
 }
 
 /// <summary>
