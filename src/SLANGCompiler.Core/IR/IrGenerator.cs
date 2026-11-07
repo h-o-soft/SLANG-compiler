@@ -171,8 +171,39 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrModule Generate(CompilationUnit unit)
     {
+        CheckFunctionLabelCollisions();
         unit.Accept(this);
         return _module;
+    }
+
+    /// <summary>
+    /// 予約語と同じ名前の関数は、ラベルに <c>_F_</c> を付ける (<see cref="LabelUtils.FunctionLabel"/>)。
+    /// その付け替えたラベルが、ほかの関数・MACHINE のラベルや CONST ASM の名前と同じならエラーにする
+    /// (アセンブラのラベルの重複になるため。Z80 の出力だけの話なので、IR を作る所で見る)
+    /// </summary>
+    private void CheckFunctionLabelCollisions()
+    {
+        if (_globalSymbols == null) return;
+        var symbols = _globalSymbols.GlobalScope.Symbols.Values;
+        foreach (var f in symbols)
+        {
+            if (f.Kind != SymbolKind.Function || f.AsmLabel == null) continue;
+            if (f.AsmLabel == LabelUtils.SanitizeLabel(f.Name)) continue;   // 付け替えていない
+            foreach (var o in symbols)
+            {
+                if (ReferenceEquals(o, f)) continue;
+                string? other = o.Kind switch
+                {
+                    SymbolKind.Function or SymbolKind.MachineFunction => o.AsmLabel,
+                    SymbolKind.Constant when o.IsAsmEqu => o.Name,
+                    _ => null,
+                };
+                if (other != null && string.Equals(other, f.AsmLabel, StringComparison.OrdinalIgnoreCase))
+                    _diagnostics.Error(
+                        $"function '{f.Name}' becomes label '{f.AsmLabel}' (the name is reserved by the assembler), "
+                        + $"which is already used by '{o.Name}'", default);
+            }
+        }
     }
 
     private int AllocTemp() => _currentFunction?.AllocTemp() ?? 0;
@@ -619,7 +650,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // CONST ASM NAME = expr; → アセンブラの EQU として出力
             // 値は SemanticAnalyzer で評価済み
             var sym = _globalSymbols?.Resolve(node.Name);
-            if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstValue is int constVal)
+            if (LabelUtils.IsAsmReserved(LabelUtils.SanitizeLabel(node.Name)))
+            {
+                // 名前がそのまま EQU の名前になるので、関数のように付け替えられない
+                _diagnostics.Error($"CONST ASM name '{node.Name}' is reserved by the assembler", node.Span);
+            }
+            else if (sym != null && sym.Kind == SymbolKind.Constant && sym.ConstValue is int constVal)
             {
                 Emit(IrOp.InlineAsm, IrOperand.Asm($"{node.Name} EQU ${constVal:X4}"));
             }
@@ -759,7 +795,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitFuncDef(FuncDef node)
     {
-        _currentFunction = new IrFunction { Name = LabelUtils.SanitizeLabel(node.Name) };
+        _currentFunction = new IrFunction { Name = LabelUtils.FunctionLabel(node.Name) };
         _tempDataSize.Clear();
 
         // 関数の戻り値型を保存 (ネスト関数定義に備えて prev/restore 形式)
@@ -792,7 +828,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             paramSizes.Add(info.ByteSize);
         }
 
-        Emit(IrOp.FuncBegin, IrOperand.Sym(LabelUtils.SanitizeLabel(node.Name)));
+        Emit(IrOp.FuncBegin, IrOperand.Sym(LabelUtils.FunctionLabel(node.Name)));
 
         // Static declarations → グローバルメモリ(__WORK__)、Local declarations → 動的(IY)
         _currentFuncName = LabelUtils.SanitizeLabel(node.Name);
@@ -1940,14 +1976,14 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         funcSym.AddressExprDeps = result.Value.Deps;
                     }
                 }
-                asmName = funcSym.AddressExpr ?? funcSym.AsmLabel ?? LabelUtils.SanitizeLabel(funcName!);
+                asmName = funcSym.AddressExpr ?? funcSym.AsmLabel ?? LabelUtils.FunctionLabel(funcName!);
                 if (funcSym.AddressExprDeps != null)
                     foreach (var dep in funcSym.AddressExprDeps)
                         _module.AddressSymbolDeps.Add(dep);
             }
             else
             {
-                asmName = funcSym?.AsmLabel ?? LabelUtils.SanitizeLabel(funcName!);
+                asmName = funcSym?.AsmLabel ?? LabelUtils.FunctionLabel(funcName!);
             }
             // ランタイム関数のFLOAT戻り値: DataSizeを3に設定（CodeGeneratorがPUSH AF+PUSH HLを生成するため）
             int resultDs = 2;
@@ -2006,7 +2042,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
 
             var dest = IrOperand.Temp(AllocTemp());
-            var asmName = funcSym?.AsmLabel ?? LabelUtils.SanitizeLabel(funcName ?? "__indirect_call");
+            var asmName = funcSym?.AsmLabel ?? LabelUtils.FunctionLabel(funcName ?? "__indirect_call");
             // 負の引数数 = ユーザー関数のIY渡し（0は引数なしで共通）
             // ArgSizes はユーザー関数 (callArgMode<0) のみ設定
             var callInst = new IrInstruction(IrOp.Call, dest, IrOperand.Sym(asmName),

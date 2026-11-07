@@ -273,6 +273,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             var sym = _currentOverlayIndex.HasValue
                 ? _symbols.DefineInGlobal(node.Name, SymbolKind.Constant, SlangType.Word)
                 : _symbols.Define(node.Name, SymbolKind.Constant, SlangType.Word);
+            sym.IsAsmEqu = node.IsAsmEqu;
             var val = _constEval.Evaluate(node.Value);
             if (val.HasValue)
             {
@@ -371,7 +372,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             ? _symbols.DefineInGlobal(node.Name, SymbolKind.Function, funcType)
             : _symbols.Define(node.Name, SymbolKind.Function, funcType);
         funcSym.IsGlobal = true;
-        funcSym.AsmLabel = LabelUtils.SanitizeLabel(node.Name);
+        funcSym.AsmLabel = LabelUtils.FunctionLabel(node.Name);
 
         // 関数スコープ開始
         _symbols.PushScope(node.Name);

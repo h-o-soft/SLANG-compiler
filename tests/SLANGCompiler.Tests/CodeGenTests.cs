@@ -630,6 +630,62 @@ public class CodeGenTests
         Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("Unsupported expression in MACHINE/CONST address"));
     }
 
+    [Theory]
+    // アセンブラの予約語と同じ名前の関数は、ラベルに _F_ を付ける (定義・呼び出し・アドレスとも)
+    [InlineData("ADD", "_F_ADD")]
+    [InlineData("F", "_F_F")]
+    [InlineData("h", "_F_h")]
+    [InlineData("NZ", "_F_NZ")]
+    [InlineData("EQU", "_F_EQU")]
+    [InlineData("ABH", "_F_ABH")]
+    [InlineData("ADDX", "ADDX")]       // 予約語でない名前は変わらない
+    [InlineData("TEXT", "TEXT")]       // AILZ80ASM がラベルとして受け付ける語も変わらない
+    public void ReservedFunctionName_LabelPrefixed(string name, string label)
+    {
+        var asm = Compile($"VAR X; {name}(P) BEGIN RETURN P; END; MAIN() BEGIN X = {name}(1); X = &{name}; END;");
+        Assert.Contains($"\n{label}:", asm);
+        Assert.Contains($"CALL\t{label}\n", asm);
+        Assert.Contains($"LD\tHL,{label}\n", asm);
+    }
+
+    [Fact]
+    public void ReservedFunctionName_StaticVarLabelUnchanged()
+    {
+        // 静的変数のラベルは _V_<関数>_<名前> のまま (_V_ が付くので予約語とぶつからない)
+        var asm = Compile("VAR X; ADD() VAR S; BEGIN S = 1; RETURN S; END; MAIN() BEGIN X = ADD(); END;");
+        Assert.Contains("_V_ADD_S", asm);
+        Assert.DoesNotContain("_V__F_ADD", asm);
+    }
+
+    [Theory]
+    [InlineData("ADD() BEGIN END; _F_ADD() BEGIN END; MAIN() BEGIN ADD(); _F_ADD(); END;")]
+    [InlineData("ADD() BEGIN END; MACHINE F_ADD(0):$1234; MAIN() BEGIN ADD(); END;")]
+    [InlineData("CONST ASM _F_ADD = 1; ADD() BEGIN END; MAIN() BEGIN ADD(); END;")]
+    public void ReservedFunctionName_LabelCollision_Errors(string source)
+    {
+        var diag = IrDiagnostics(source);
+        Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("becomes label '_F_ADD'"));
+    }
+
+    [Fact]
+    public void ConstAsm_ReservedName_Errors()
+    {
+        var diag = IrDiagnostics("CONST ASM H = 1; MAIN() BEGIN END;");
+        Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("CONST ASM name 'H' is reserved by the assembler"));
+    }
+
+    /// <summary>IR まで作って診断を返す (エラーがあっても止めない)</summary>
+    private static DiagnosticBag IrDiagnostics(string source)
+    {
+        var diag = new DiagnosticBag();
+        var tokens = new Preprocessor(diag).Process(new Lexer.Lexer(source).Tokenize(), ".");
+        var ast = new Parser.Parser(tokens, diag).ParseCompilationUnit();
+        var analyzer = new SemanticAnalyzer(diag);
+        analyzer.Analyze(ast);
+        new IrGenerator(diag, analyzer.Symbols).Generate(ast);
+        return diag;
+    }
+
     private (string asm, DiagnosticBag diag) TryCompile(string source)
     {
         var diag = new DiagnosticBag();
