@@ -243,6 +243,17 @@ public class IntegrationTests : IDisposable
         Assert.Matches(@"NOTHL:\s*\n\s*OPEQHL:", asm);
     }
 
+    [Theory]
+    [InlineData("x1")]
+    [InlineData("x1native")]
+    public void SetPaintBuf_LinksPaint1(string env)
+    {
+        // SET_PAINTBUF が書く BUFADR は PAINT1 の中にある。SET_PAINTBUF だけを使っても PAINT1 が付くこと
+        var asm = CompileWithCli("MAIN() BEGIN SET_PAINTBUF($C000); END;", env);
+        Assert.Contains("PAINT1:", asm);
+        Assert.Matches(@"(?m)^BUFADR:", asm);
+    }
+
     [Fact]
     public void Overlay_NoSLANGINIT()
     {

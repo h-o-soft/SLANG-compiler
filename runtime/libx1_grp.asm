@@ -1517,7 +1517,7 @@ JP X1PAINT.GPAINT_TOP
 
 ; @name SET_PAINTBUF
 ; @resident shared
-; @calls PAINTSLOW
+; @calls PAINT1
 ; @lib X1PAINT
 ; INPUT:
 ;	HL = 1kのバッファの先頭アドレス
