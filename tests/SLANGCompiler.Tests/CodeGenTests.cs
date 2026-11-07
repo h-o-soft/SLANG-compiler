@@ -656,6 +656,18 @@ public class CodeGenTests
         Assert.DoesNotContain("CALL", body);
     }
 
+    [Theory]
+    // FLOAT が関わる比較は 16 ビットに切らない (65536.0 と 0.0 は違う)
+    [InlineData("65536.0 == 0.0", "$0000")]
+    [InlineData("65536.0 <> 0.0", "$0001")]
+    [InlineData("-1.0 == 65535.0", "$0000")]
+    public void ConstFold_FloatEqualityNotTruncated(string expr, string expected)
+    {
+        var asm = Compile($"VAR X; MAIN() BEGIN X = {expr}; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Contains($"LD\tHL,{expected}", body);
+    }
+
     [Fact]
     public void ConstFold_ConstDeclMatchesRuntime()
     {

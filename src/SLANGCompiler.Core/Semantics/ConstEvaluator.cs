@@ -87,9 +87,11 @@ public class ConstEvaluator
         if (left == null || right == null) return null;
 
         int l = left.Value, r = right.Value;
-        // / MOD >> と = <> は、実行時と同じく 16 ビットに切ってから符号なしで計算する
-        // (負の定数は -1 のように負の int で来る)。シフトの回数は実行時と同じく下 4 ビットだけを見る
-        int ul = l & 0xFFFF, ur = r & 0xFFFF;
+        // 整数だけの式の / MOD >> と == <> は、実行時と同じく 16 ビットに切ってから符号なしで計算する
+        // (負の定数は -1 のように負の int で来る)。シフトの回数は実行時と同じく下 4 ビットだけを見る。
+        // FLOAT が関わる式 (小数部のない FloatLiteral も整数として来る) は、いままでどおり切らない
+        bool int16 = !InvolvesFloat(expr);
+        int ul = int16 ? l & 0xFFFF : l, ur = int16 ? r & 0xFFFF : r;
         return expr.Op switch
         {
             BinaryOp.Add => (l + r) & 0xFFFF,
@@ -100,8 +102,8 @@ public class ConstEvaluator
             BinaryOp.And => l & r,
             BinaryOp.Or => l | r,
             BinaryOp.Xor => l ^ r,
-            BinaryOp.Shl => (ul << (ur & 15)) & 0xFFFF,
-            BinaryOp.Shr => ul >> (ur & 15),
+            BinaryOp.Shl => int16 ? (ul << (ur & 15)) & 0xFFFF : (l << r) & 0xFFFF,
+            BinaryOp.Shr => int16 ? ul >> (ur & 15) : (l >> r) & 0xFFFF,
             BinaryOp.Eq => ul == ur ? 1 : 0,
             BinaryOp.Neq => ul != ur ? 1 : 0,
             BinaryOp.Lt => (ushort)l < (ushort)r ? 1 : 0,
