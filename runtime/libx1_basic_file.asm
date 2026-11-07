@@ -404,7 +404,9 @@ RET
 ; @resident shared
 ; @param_count 1
 ; @calls BAS_FILEWK,BAS_FSTP,BAS_FCHK,FPUTC
-; L = 文字を、出力先のファイル (BAS_FOUTN) にそのまま書く (BAS_PCHR から。制御コードもそのまま)。桁を進める (CR で 0)
+; L = 文字を、出力先のファイル (BAS_FOUTN) にそのまま書く (BAS_PCHR から。制御コードもそのまま)。桁を 1 進める
+; (文字列の中の CR も 1 字に数える。Hu-BASIC の実測。桁を 0 にするのは文の終わりの改行 BAS_FNL だけ)。
+; 戻ると HL = 桁の場所、DE = 書いた字 (D = 0)
 LD E, L
 PUSH DE
 LD A, (BAS_FOUTN)
@@ -418,13 +420,7 @@ LD A, (BAS_FOUTN)
 CALL BAS_FSTP           ; DE を壊すので、書いた字はスタックから取り直す
 POP DE
 INC HL
-LD A, E
-CP $0D
-JP Z, .bfp_cr
 INC (HL)
-RET
-.bfp_cr
-LD (HL), 0
 RET
 
 
@@ -432,9 +428,11 @@ RET
 ; @resident shared
 ; @param_count 0
 ; @calls BAS_FPCHR
-; 改行 (ファイルには CR だけ。BAS_PNL から)
+; 改行 (ファイルには CR だけ。BAS_PNL から)。桁を 0 にする
 LD L, $0D
-JP BAS_FPCHR
+CALL BAS_FPCHR
+LD (HL), 0
+RET
 
 
 ; @name BAS_FZONE
