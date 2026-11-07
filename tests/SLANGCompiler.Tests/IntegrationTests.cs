@@ -233,6 +233,16 @@ public class IntegrationTests : IDisposable
         Assert.Contains("VTOS:", asm);   // 数値→文字列変換
     }
 
+    [Theory]
+    [InlineData("lsx")]
+    [InlineData("zxn")]
+    public void NotHl_FallsThroughToOpEqHl(string env)
+    {
+        // NOTHL は中身がなく OPEQHL に落ちる。NOTHL だけを呼んでも OPEQHL が直後に付くこと
+        var asm = CompileWithCli("VAR X; MAIN() BEGIN X = NOTHL(5); END;", env);
+        Assert.Matches(@"NOTHL:\s*\n\s*OPEQHL:", asm);
+    }
+
     [Fact]
     public void Overlay_NoSLANGINIT()
     {
