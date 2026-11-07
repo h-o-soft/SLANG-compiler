@@ -12,6 +12,7 @@
 ;     転送中の DRQ の待ちは元のままの短い輪にする (数えると 1 バイトの間に合わず Lost Data になる)。
 ;     転送の命令は FDC が自分で終わらせる (Not Ready なら始めない、セクタがなければ RNF) ので、そこには上限が要らない
 ;   - 書き込み禁止 (状態の bit 6) を、ほかの書き込みエラーと分けて返す
+;   - 同じシリンダならシークしない。失敗したら 1 回だけシークし直してやり直す (FDC_RWREC_HUFS)
 ;
 ; 2D 固定。ドライブ 0 固定 (試験のために、SLANG の CONST ASM HUFS_DRIVE でドライブを変えられる)。
 ;
@@ -89,7 +90,7 @@ JP      WAIT_FDC_BUSY_HUFS
 ; FDC_SEEK_HUFS: トラックへシーク
 ; ========================================================================
 ; パラメータ A = トラック番号 (シリンダ)
-; 戻り値 NZ = エラー (時間切れも NZ)
+; 戻り値 NZ = エラー (時間切れも NZ)。DE・HL は壊さない
 
 ; @name FDC_SEEK_HUFS
 ; @resident shared
@@ -182,13 +183,22 @@ RET
 ;   Cy = 0 成功
 ;   Cy = 1 失敗。A = 1 書き込み禁止、A = 2 そのほか (FDC のエラー・時間切れ・ディスクなし)
 ; 割り込みは、呼ぶ側で止めておくこと
+;
+; シリンダが FDC のトラックのレジスタ (最後にシークしたシリンダ) と同じなら、シークしない
+; (verify つきのシークは、ヘッドを下ろす待ちのあいだに次のセクタを逃がして、ほぼ 1 周待つため)。
+; 失敗したら 1 回だけ、ヘッドを 0 トラックに戻して (restore。verify つき) からシークし直して、やり直す
+; (Not Ready・時間切れと書き込み禁止はやり直さない)。
 
 ; @name FDC_RWREC_HUFS
 ; @resident shared
 ; @param_count 0
-; @calls FDC_SEEK_HUFS,FDC_XFER_HUFS,WAIT_HUFS1
+; @calls FDC_CMD_HUFS,FDC_SEEK_HUFS,FDC_XFER_HUFS,WAIT_HUFS1
 ; @works HUFS_SEC:1
+PUSH    HL                      ; 緩衝
+PUSH    DE                      ; レコード番号
+OR      A                       ; 退避する F の Cy を、やり直しの印に使う (0 = 1 回目)
 PUSH    AF                      ; 命令
+.frh_try:
 LD      A, E
 AND     0Fh
 LD      (HUFS_SEC), A           ; セクタ (0 から)
@@ -212,23 +222,29 @@ SRL     D
 RRA
 SRL     D
 RRA
-PUSH    HL
+LD      D, A                    ; D = シリンダ
+LD      BC, $0FF9
+IN      A, (C)                  ; トラックのレジスタ
+CP      D
+JR      Z, .frh_xfer            ; 同じシリンダ: シークしない
+LD      A, D
 CALL    FDC_SEEK_HUFS
-POP     HL
-JR      NZ, .frh_err_pop
+JR      NZ, .frh_err
+.frh_xfer:
 POP     AF
+PUSH    AF
 LD      E, A                    ; E = 命令
 LD      A, (HUFS_SEC)
-PUSH    DE
 CALL    FDC_XFER_HUFS
-POP     DE
 LD      B, A                    ; 状態
-LD      A, E
+POP     AF
+PUSH    AF
 CP      80h
 LD      A, B
 JR      Z, .frh_rchk
 AND     0FCh                    ; 書く: 書き込み禁止・書き込み失敗・RNF・CRC・lost・NR
 JR      Z, .frh_ok
+LD      D, A                    ; 書く命令の状態 (書き込み禁止でなければ、これでやり直すかを決める)
 ; 書き込み禁止か: 強制割り込みを出して、Type I の状態の bit 6 (ドライブの書き込み禁止) を見る
 ; (書き込みの命令の状態では、書き込み禁止を Write Fault ($20) で返すエミュレータがあるため)
 LD      BC, $0FF8
@@ -237,31 +253,45 @@ OUT     (C), A
 CALL    WAIT_HUFS1
 IN      A, (C)
 AND     40h
+LD      A, D
 JR      Z, .frh_err
 LD      A, 1                    ; 書き込み禁止
 JR      .frh_fail
 .frh_rchk:
 AND     9Ch                     ; 読む: NR・RNF・CRC・lost
 JR      Z, .frh_ok
-JR      .frh_err
-.frh_err_pop:
-POP     AF
-.frh_err:
+.frh_err:                       ; A = 状態
+LD      B, A
+POP     AF                      ; 命令。Cy = 1 ならやり直しも失敗した
+JR      C, .frh_err2
+BIT     7, B
+JR      NZ, .frh_err2           ; Not Ready・時間切れ
+POP     DE                      ; レコード番号
+POP     HL                      ; 緩衝
+PUSH    HL
+PUSH    DE
+SCF                             ; やり直しの印
+PUSH    AF
+LD      A, 0Eh                  ; restore + verify + head load (トラックのレジスタを 0 に合わせ直す。失敗は後で分かる)
+CALL    FDC_CMD_HUFS
+JR      .frh_try
+.frh_err2:
+PUSH    AF
 LD      A, 2
 .frh_fail:
-PUSH    AF
-CALL    .frh_motor_off
-POP     AF
 SCF
-RET
+JR      .frh_end
 .frh_ok:
-CALL    .frh_motor_off
-OR      A                       ; Cy = 0
-RET
-.frh_motor_off:
-LD      A, 0
+XOR     A                       ; Cy = 0
+.frh_end:
+POP     DE                      ; 退避した命令・レコード番号・緩衝を捨てる
+POP     DE
+POP     DE
+PUSH    AF
+XOR     A                       ; モーター OFF
 LD      BC, $0FFC
 OUT     (C), A
+POP     AF
 RET
 
 
