@@ -198,6 +198,35 @@ MAIN() BEGIN FN(); FN2(); END;");
     }
 
     [Fact]
+    public void FixedAddress_FollowsGlobalForwardConst()
+    {
+        // 固定アドレスの式の中で、後ろで決まる大域の CONST の式もたどる (5 * (7 * 2) = 70)
+        var asm = CompileOk(@"
+CONST G = H * 2;
+CONST H = 7;
+FN()
+CONST K = 5;
+ARRAY BYTE T[1]:K * G;
+BEGIN T[0] = 1; END;
+MAIN() BEGIN FN(); END;");
+        Assert.Contains("_V_FN_T\tEQU\t$0046", asm);
+    }
+
+    [Fact]
+    public void FixedAddress_FollowedGlobalConstDoesNotSeeLocalConst()
+    {
+        // 大域の CONST の式は大域だけで解決する。たどった先の K は、関数の中の K ではない
+        var (_, diag) = Compile(@"
+CONST G = K * 2;
+FN()
+CONST K = 5;
+ARRAY BYTE T[1]:K * G;
+BEGIN T[0] = 1; END;
+MAIN() BEGIN FN(); END;");
+        Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("Unsupported expression in MACHINE/CONST address"));
+    }
+
+    [Fact]
     public void UsedBeforeDeclaration_InInitializerItem()
     {
         // 初期値の要素に後ろの CONST (要素が定数でないというエラーも続けて出る)
