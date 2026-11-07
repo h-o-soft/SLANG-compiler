@@ -17,10 +17,11 @@ public class LocalConstTests
     private static (string? Asm, DiagnosticBag Diag) Compile(string source, bool caseSensitive = false)
     {
         var diag = new DiagnosticBag();
-        var tokens = new Preprocessor(diag).Process(new Lexer.Lexer(source).Tokenize(), ".");
+        var preprocessor = new Preprocessor(diag);
+        var tokens = preprocessor.Process(new Lexer.Lexer(source).Tokenize(), ".");
         var ast = new Parser.Parser(tokens, diag).ParseCompilationUnit();
         if (diag.HasErrors) return (null, diag);
-        var analyzer = new SemanticAnalyzer(diag, caseSensitive);
+        var analyzer = new SemanticAnalyzer(diag, caseSensitive) { ConstsUsedByPreprocessorIf = preprocessor.ConstsUsedByIf };
         analyzer.Analyze(ast);
         if (diag.HasErrors) return (null, diag);
         var ir = new IrGenerator(diag, analyzer.Symbols).Generate(ast);
@@ -106,6 +107,43 @@ MAIN() BEGIN FN1(); END;");
         // #MODULE の中の関数の CONST も、大域には出ない
         var (_, diag) = Compile("VAR X; MAIN() BEGIN X = SUB1() + J; END;\n#MODULE $8000\nSUB1() CONST J = 5; BEGIN RETURN J; END;");
         Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("Undefined variable: J"));
+    }
+
+    [Fact]
+    public void UsedInPreprocessorIf_Errors()
+    {
+        // #IF はファイル全体に効くので、関数の中の CONST をほかの関数の #IF で使わせない
+        var (_, diag) = Compile(@"
+VAR X;
+FN() CONST FLAG = 1; BEGIN END;
+FN2()
+BEGIN
+#IF FLAG==1
+  X = 1;
+#ELSE
+  X = 2;
+#ENDIF
+END;
+MAIN() BEGIN FN(); FN2(); END;");
+        Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("CONST 'FLAG' in a function cannot be used in #IF"));
+    }
+
+    [Fact]
+    public void NotUsedInPreprocessorIf_Ok()
+    {
+        // #IF で使わなければ通る (#IF の名前が別の大域の CONST なら、その値)
+        var asm = CompileOk(@"
+CONST GFLAG = 1;
+VAR X;
+FN() CONST FLAG = 1; BEGIN X = FLAG; END;
+FN2()
+BEGIN
+#IF GFLAG==1
+  X = 3;
+#ENDIF
+END;
+MAIN() BEGIN FN(); FN2(); END;");
+        Assert.Contains("LD\tHL,$0003", Body(asm, "FN2"));
     }
 
     [Fact]

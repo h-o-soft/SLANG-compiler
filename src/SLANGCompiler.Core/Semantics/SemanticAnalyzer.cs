@@ -24,6 +24,9 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     // 関数の中で、後ろで宣言する CONST の名前 (配列の大きさで宣言より前に使ったらエラーにする)
     private HashSet<string>? _pendingLocalConsts;
     private bool _inMachineStatic;
+
+    /// <summary>プリプロセッサの #IF が値を使った CONST 宣言 (<see cref="Lexer.Preprocessor.ConstsUsedByIf"/>)</summary>
+    public IReadOnlySet<(Lexer.SourceLocation ConstAt, string Name)>? ConstsUsedByPreprocessorIf { get; set; }
     private StringComparer NameComparer => _caseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
     // #MODULE 処理中のオーバーレイインデックス。null = メイン側。VAR/ARRAY はこれで
     // overlay scope の private シンボル化 + AsmLabel を `_V_M<idx>_<name>` に切替える。
@@ -715,6 +718,12 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             _diagnostics.Error(
                 $"duplicate name '{node.Name}' in function '{func.Name}' (CONST conflicts with parameter or other declaration)",
                 node.Span);
+            return;
+        }
+        if (ConstsUsedByPreprocessorIf?.Contains((node.Span.Start, node.Name.ToUpperInvariant())) == true)
+        {
+            // #IF はファイル全体に効くので、関数の中の CONST がほかの関数の #IF を変えてしまう
+            _diagnostics.Error($"CONST '{node.Name}' in a function cannot be used in #IF (use a global CONST)", node.Span);
             return;
         }
         var val = _constEval.Evaluate(node.Value);
