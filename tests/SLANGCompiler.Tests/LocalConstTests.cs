@@ -14,13 +14,13 @@ namespace SLANGCompiler.Tests;
 public class LocalConstTests
 {
     /// <summary>ASM まで作る。エラーがあれば (null, 診断)</summary>
-    private static (string? Asm, DiagnosticBag Diag) Compile(string source)
+    private static (string? Asm, DiagnosticBag Diag) Compile(string source, bool caseSensitive = false)
     {
         var diag = new DiagnosticBag();
         var tokens = new Preprocessor(diag).Process(new Lexer.Lexer(source).Tokenize(), ".");
         var ast = new Parser.Parser(tokens, diag).ParseCompilationUnit();
         if (diag.HasErrors) return (null, diag);
-        var analyzer = new SemanticAnalyzer(diag);
+        var analyzer = new SemanticAnalyzer(diag, caseSensitive);
         analyzer.Analyze(ast);
         if (diag.HasErrors) return (null, diag);
         var ir = new IrGenerator(diag, analyzer.Symbols).Generate(ast);
@@ -122,11 +122,30 @@ MAIN() BEGIN FN(); FN2(); END;");
     }
 
     [Fact]
+    public void UsedBeforeDeclaration_InInitializerItem()
+    {
+        // 初期値の要素に後ろの CONST (要素が定数でないというエラーも続けて出る)
+        var (_, diag) = Compile("FN() ARRAY BYTE T[1] = {V, 1}; CONST V = 3; BEGIN END; MAIN() BEGIN END;");
+        Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("CONST 'V' is used before its declaration"));
+    }
+
+    [Fact]
     public void UsedBeforeDeclaration_WithInitializer()
     {
         // 初期値のある配列でも、1 要素で通らずにエラーになる (大きさが決まらないので、容量のエラーも続けて出る)
         var (_, diag) = Compile("FN() ARRAY BYTE BUF[N] = {1, 2}; CONST N = 1; BEGIN END; MAIN() BEGIN END;");
         Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("CONST 'N' is used before its declaration"));
+    }
+
+    [Fact]
+    public void CaseSensitive_DistinctNames()
+    {
+        // 大文字と小文字を区別する記号表では、K と k は別の CONST
+        var (asm, diag) = Compile("VAR X; FN() CONST K = 1, k = 2; BEGIN X = K; X = k; END; MAIN() BEGIN FN(); END;", caseSensitive: true);
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        var body = Body(asm!, "FN");
+        Assert.Contains("LD\tHL,$0001", body);
+        Assert.Contains("LD\tHL,$0002", body);
     }
 
     [Theory]
@@ -140,6 +159,8 @@ MAIN() BEGIN FN(); FN2(); END;");
     [InlineData("VAR X; FN() CONST K = 5; BEGIN END(K = 7);", "cannot assign to CONST 'K'")]
     [InlineData("FN() CONST K = 5; ARRAY BYTE BUF[K++]; BEGIN END;", "cannot increment CONST 'K'")]
     [InlineData("FN() ARRAY BYTE BUF[N]; CONST N = 1; BEGIN END;", "CONST 'N' is used before its declaration")]
+    [InlineData("FN() ARRAY BYTE BUF[0]:BASE; CONST BASE = $C000; BEGIN END;", "CONST 'BASE' is used before its declaration")]
+    [InlineData("FN() VAR W = V; CONST V = 3; BEGIN END;", "CONST 'V' is used before its declaration")]
     [InlineData("VAR K; FN() CONST K = 5; BEGIN END;", "has the same name as a global name")]
     [InlineData("FN() CONST K = 5; BEGIN END; VAR K;", "has the same name as a global name")]
     [InlineData("FN() CONST K = 5; BEGIN END; K() BEGIN END;", "has the same name as a global name")]

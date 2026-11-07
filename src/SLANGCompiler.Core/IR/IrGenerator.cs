@@ -783,7 +783,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var prevFuncInfo = _currentFuncInfo;
         _currentFuncInfo = _globalSymbols?.Resolve(node.Name)?.ConstValue as FuncInfo;
         _localConsts = _currentFuncInfo?.LocalConstants.Count > 0
-            ? new Dictionary<string, Symbol>(StringComparer.OrdinalIgnoreCase) : null;
+            ? new Dictionary<string, Symbol>(_currentFuncInfo.LocalConstants.Comparer) : null;
 
         // 関数の戻り値型を保存 (ネスト関数定義に備えて prev/restore 形式)
         int prevReturnDs = _currentReturnDataSize;

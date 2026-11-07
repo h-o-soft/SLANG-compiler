@@ -24,6 +24,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     // 関数の中で、後ろで宣言する CONST の名前 (配列の大きさで宣言より前に使ったらエラーにする)
     private HashSet<string>? _pendingLocalConsts;
     private bool _inMachineStatic;
+    private StringComparer NameComparer => _caseSensitive ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
     // #MODULE 処理中のオーバーレイインデックス。null = メイン側。VAR/ARRAY はこれで
     // overlay scope の private シンボル化 + AsmLabel を `_V_M<idx>_<name>` に切替える。
     private int? _currentOverlayIndex;
@@ -151,6 +152,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     public object? VisitVarDecl(VarDecl node)
     {
         CheckNotLocalConstName(node.Name, node.Span);
+        CheckDeclUsesPendingConsts(node.Address, node.InitialValue, node.InitialCode);
         var type = DataSizeToType(node.Size);
         var sym = _symbols.Define(node.Name, SymbolKind.Variable, type);
 
@@ -203,6 +205,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     public object? VisitArrayDecl(ArrayDecl node)
     {
         CheckNotLocalConstName(node.Name, node.Span);
+        CheckDeclUsesPendingConsts(node.Address, node.InitialValue, node.InitialCode);
         var elemType = DataSizeToType(node.Size);
         var dims = new List<int>();
         foreach (var dim in node.Dimensions)
@@ -413,7 +416,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         // 関数スコープ開始
         _symbols.PushScope(node.Name);
         var prevFunc = _currentFunc;
-        _currentFunc = new FuncInfo(node.Name);
+        _currentFunc = new FuncInfo(node.Name, NameComparer);
         var prevPending = _pendingLocalConsts;
         _pendingLocalConsts = CollectConstNames(node.StaticDeclarations.Concat(node.LocalDeclarations));
 
@@ -742,7 +745,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         HashSet<string>? names = null;
         void Walk(AstNode d)
         {
-            if (d is ConstDecl c) (names ??= new(StringComparer.OrdinalIgnoreCase)).Add(c.Name);
+            if (d is ConstDecl c) (names ??= new(NameComparer)).Add(c.Name);
             else if (d is Block b) foreach (var x in b.Statements) Walk(x);
         }
         foreach (var d in decls) Walk(d);
@@ -777,6 +780,18 @@ public class SemanticAnalyzer : IAstVisitor<object?>
                 CheckConstUsedBeforeDeclaration(ce.FalseExpr);
                 break;
         }
+    }
+
+    /// <summary>
+    /// 宣言の固定アドレス・初期値に、この関数で後ろに宣言する CONST の名前があればエラー
+    /// (そのままだと外のラベルとして扱われ、アセンブルできない ASM になる)
+    /// </summary>
+    private void CheckDeclUsesPendingConsts(Expression? address, Expression? init, List<Expression>? code)
+    {
+        if (_pendingLocalConsts == null || _pendingLocalConsts.Count == 0) return;
+        if (address != null) CheckConstUsedBeforeDeclaration(address);
+        if (init != null) CheckConstUsedBeforeDeclaration(init);
+        if (code != null) foreach (var e in code) CheckConstUsedBeforeDeclaration(e);
     }
 
     /// <summary>関数の中の CONST の記号か (書き込み・アドレス・添字を拒否するため)</summary>
@@ -833,10 +848,14 @@ public class FuncInfo
     public string Name { get; }
     public int LocalSize { get; private set; }
 
-    public FuncInfo(string name) { Name = name; }
+    public FuncInfo(string name, StringComparer? nameComparer = null)
+    {
+        Name = name;
+        LocalConstants = new(nameComparer ?? StringComparer.OrdinalIgnoreCase);
+    }
 
-    /// <summary>関数の中の CONST (名前 → 記号)。値はどれも宣言したその場で決まっている</summary>
-    public Dictionary<string, Symbol> LocalConstants { get; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>関数の中の CONST (名前 → 記号)。値はどれも宣言したその場で決まっている。名前の比べ方は記号表と同じ</summary>
+    public Dictionary<string, Symbol> LocalConstants { get; }
 
     /// <summary>
     /// ローカル変数のオフセットを割り当てる。
