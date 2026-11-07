@@ -74,6 +74,30 @@ public class LexerTests
         Assert.Equal("Hello\r", tokens[0].StringValue); // \n → $0D
     }
 
+    [Theory]
+    // 仕様書のエスケープ文字の表 (\N と \0 は大文字・数字で書かれている)
+    [InlineData("\"A\\NB\"", "A\rB")]
+    [InlineData("\"A\\nB\"", "A\rB")]
+    [InlineData("\"A\\0B\"", "A\0B")]
+    [InlineData("\"\\/\\C\\R\\L\\U\\D\"", "\r\f\x1c\x1d\x1e\x1f")]
+    [InlineData("\"\\\\\\\"\\'\"", "\\\"'")]
+    public void StringLiteral_EscapeTable(string source, string expected)
+    {
+        var tokens = Tokenize(source);
+        Assert.Equal(TokenKind.StringLiteral, tokens[0].Kind);
+        Assert.Equal(expected, tokens[0].StringValue);
+    }
+
+    [Theory]
+    [InlineData("'\\N'", 0x0D)]
+    [InlineData("'\\0'", 0x00)]
+    public void CharLiteral_EscapeTable(string source, int expected)
+    {
+        var tokens = Tokenize(source);
+        Assert.Equal(TokenKind.CharLiteral, tokens[0].Kind);
+        Assert.Equal(expected, tokens[0].IntValue);
+    }
+
     [Fact]
     public void ArrayBracketContext()
     {
