@@ -87,20 +87,23 @@ public class ConstEvaluator
         if (left == null || right == null) return null;
 
         int l = left.Value, r = right.Value;
+        // / MOD >> と = <> は、実行時と同じく 16 ビットに切ってから符号なしで計算する
+        // (負の定数は -1 のように負の int で来る)。シフトの回数は実行時と同じく下 4 ビットだけを見る
+        int ul = l & 0xFFFF, ur = r & 0xFFFF;
         return expr.Op switch
         {
             BinaryOp.Add => (l + r) & 0xFFFF,
             BinaryOp.Sub => (l - r) & 0xFFFF,
             BinaryOp.Mul => (l * r) & 0xFFFF,
-            BinaryOp.Div => r != 0 ? l / r : null,
-            BinaryOp.Mod => r != 0 ? l % r : null,
+            BinaryOp.Div => ur != 0 ? ul / ur : null,
+            BinaryOp.Mod => ur != 0 ? ul % ur : null,
             BinaryOp.And => l & r,
             BinaryOp.Or => l | r,
             BinaryOp.Xor => l ^ r,
-            BinaryOp.Shl => (l << r) & 0xFFFF,
-            BinaryOp.Shr => (l >> r) & 0xFFFF,
-            BinaryOp.Eq => l == r ? 1 : 0,
-            BinaryOp.Neq => l != r ? 1 : 0,
+            BinaryOp.Shl => (ul << (ur & 15)) & 0xFFFF,
+            BinaryOp.Shr => ul >> (ur & 15),
+            BinaryOp.Eq => ul == ur ? 1 : 0,
+            BinaryOp.Neq => ul != ur ? 1 : 0,
             BinaryOp.Lt => (ushort)l < (ushort)r ? 1 : 0,
             BinaryOp.Gt => (ushort)l > (ushort)r ? 1 : 0,
             BinaryOp.Le => (ushort)l <= (ushort)r ? 1 : 0,
