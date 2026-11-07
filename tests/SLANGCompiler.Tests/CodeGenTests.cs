@@ -630,6 +630,54 @@ public class CodeGenTests
         Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("Unsupported expression in MACHINE/CONST address"));
     }
 
+    [Theory]
+    // 定数の畳み込みは実行時 (LSHIFTHLDE・RSHIFTHLDE・DIVHLDE・MODHLDE) と同じ値にする:
+    // シフトの回数は下 4 ビット、/ MOD >> は 16 ビットに切ってから符号なし
+    [InlineData("1 << 16", "$0001")]
+    [InlineData("1 << 17", "$0002")]
+    [InlineData("1 << 32", "$0001")]
+    [InlineData("$8000 >> 16", "$8000")]
+    [InlineData("$8000 >> 17", "$4000")]
+    [InlineData("1 << 15", "$8000")]
+    [InlineData("-2 >> 1", "$7FFF")]
+    [InlineData("-7 / 2", "$7FFC")]
+    [InlineData("-7 MOD 2", "$0001")]
+    [InlineData("7 / -1", "$0000")]
+    [InlineData("-1 == $FFFF", "$0001")]
+    [InlineData("-1 <> $FFFF", "$0000")]
+    [InlineData("M >> 1", "$7FFF")]
+    [InlineData("M / 2", "$7FFF")]
+    [InlineData("100 / 7", "$000E")]
+    public void ConstFold_MatchesRuntime(string expr, string expected)
+    {
+        var asm = Compile($"CONST M = -2; VAR X; MAIN() BEGIN X = {expr}; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Contains($"LD\tHL,{expected}", body);
+        Assert.DoesNotContain("CALL", body);
+    }
+
+    [Theory]
+    // FLOAT が関わる比較は 16 ビットに切らない (65536.0 と 0.0 は違う)
+    [InlineData("65536.0 == 0.0", "$0000")]
+    [InlineData("65536.0 <> 0.0", "$0001")]
+    [InlineData("-1.0 == 65535.0", "$0000")]
+    public void ConstFold_FloatEqualityNotTruncated(string expr, string expected)
+    {
+        var asm = Compile($"VAR X; MAIN() BEGIN X = {expr}; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Contains($"LD\tHL,{expected}", body);
+    }
+
+    [Fact]
+    public void ConstFold_ConstDeclMatchesRuntime()
+    {
+        // CONST の値 (意味解析の評価) も同じ規則
+        var asm = Compile("CONST S = 1 << 16, D = -7 / 2; VAR X, Y; MAIN() BEGIN X = S; Y = D; END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Contains("LD\tHL,$0001", body);
+        Assert.Contains("LD\tHL,$7FFC", body);
+    }
+
     private (string asm, DiagnosticBag diag) TryCompile(string source)
     {
         var diag = new DiagnosticBag();

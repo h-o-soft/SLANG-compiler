@@ -1264,8 +1264,8 @@ public class CodeGenerator
                         IrOp.And => v1 & v2,
                         IrOp.Or => v1 | v2,
                         IrOp.Xor => v1 ^ v2,
-                        IrOp.Shl => (v1 << v2) & 0xFFFF,
-                        IrOp.Shr => (v1 >> v2) & 0xFFFF,
+                        IrOp.Shl => (v1 << (v2 & 15)) & 0xFFFF,   // 回数は実行時 (LSHIFTHLDE) と同じく下 4 ビット
+                        IrOp.Shr => v1 >> (v2 & 15),
                         _ => null,
                     };
                     if (result.HasValue)
