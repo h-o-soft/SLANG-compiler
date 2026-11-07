@@ -333,6 +333,14 @@ public class IrGenerator : IAstVisitor<IrOperand>
             int? fixedAddr = null;
             if (node.Address is IntegerLiteral addrLit)
                 fixedAddr = (int)addrLit.Value;
+            else if (node.Address != null && _localConsts != null
+                     && new ConstEvaluator(_globalSymbols).Evaluate(node.Address) == null
+                     && NewConstEvaluator().Evaluate(node.Address) is int localAddr)
+            {
+                // 関数の中の CONST を使ったアドレスの式 (VAR BYTE REG:BASE)。大域の名前だけの式は、
+                // いままでどおり (整数のリテラルしか固定アドレスにならない。前からの制限で、ここでは変えない)
+                fixedAddr = localAddr & 0xFFFF;
+            }
 
             // ラベル: 関数内静的は __{FuncName}_{VarName}、トップレベルは __{VarName}
             var label = (_inStaticDecl && _currentFuncName != null)

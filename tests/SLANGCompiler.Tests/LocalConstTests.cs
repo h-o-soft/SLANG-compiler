@@ -95,6 +95,23 @@ MAIN() BEGIN FN1(); END;");
     }
 
     [Fact]
+    public void ScalarVarFixedAddress()
+    {
+        // 静的な VAR の固定アドレスに関数の中の CONST (と、それを使った式)
+        var asm = CompileOk(@"
+FN()
+CONST BASE = $C000;
+VAR BYTE REG:BASE, REG2:BASE + 2;
+BEGIN
+  REG = 1;
+  REG2 = 2;
+END;
+MAIN() BEGIN FN(); END;");
+        Assert.Matches(@"_V_FN_REG\s+EQU\s+\$C000", asm);
+        Assert.Matches(@"_V_FN_REG2\s+EQU\s+\$C002", asm);
+    }
+
+    [Fact]
     public void NotVisibleFromOtherFunctions()
     {
         var (_, diag) = Compile("FN() CONST K = 5; BEGIN RETURN K; END; FN2() BEGIN RETURN K; END; MAIN() BEGIN FN(); FN2(); END;");
