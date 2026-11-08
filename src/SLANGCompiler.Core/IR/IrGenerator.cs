@@ -3028,8 +3028,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 case ArrayAccessExpr a: Walk(a.Array); foreach (var x in a.Indices) Walk(x); break;
             }
         }
-        Walk(arr.Array);
         foreach (var x in arr.Indices) Walk(x);
+        // 配列の要素に書くのは、添字が読む配列のときだけ代入先を変える (T[0] += (T[1] = 2) は T[0] のまま)
+        var indexNames = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
+        Walk(arr.Array);
         if (sideEffect)
         {
             _diagnostics.Error("Side effects (++, --, assignments, function calls, PORT reads) are not allowed in the index of "
@@ -3055,17 +3057,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 case CommaExpr c: WalkValue(c.Left); WalkValue(c.Right); break;
                 case ArrayAccessExpr a: WalkValue(a.Array); foreach (var x in a.Indices) WalkValue(x); break;
                 case CallExpr call: foreach (var x in call.Arguments) WalkValue(x); break;
+                case CodeExpr code: foreach (var x in code.Values) WalkValue(x); break;
+                case CodeEvalExpr ce: WalkValue(ce.Inner); break;
             }
         }
         void CheckWrite(Expression t)
         {
-            var root = t switch
-            {
-                IdentifierExpr id => id.Name,
-                ArrayAccessExpr { Array: IdentifierExpr an } => an.Name,
-                _ => null,
-            };
-            if (root != null && names.Contains(root)) writesTargetName = true;
+            if (t is IdentifierExpr id ? names.Contains(id.Name)
+                : t is ArrayAccessExpr { Array: IdentifierExpr an } && indexNames.Contains(an.Name))
+                writesTargetName = true;
         }
         WalkValue(value);
         if (writesTargetName)

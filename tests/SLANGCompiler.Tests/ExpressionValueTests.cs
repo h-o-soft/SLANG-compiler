@@ -281,6 +281,7 @@ public class ExpressionValueTests
     [InlineData("T[I]++;")]
     [InlineData("T[I + 1] += 2;")]
     [InlineData("T[I++] = 5;")]
+    [InlineData("T[0] += (T[1] = 2);")]     // ほかの要素に書いても、代入先 T[0] は変わらない
     public void TargetWithoutSideEffect_Ok(string stmt)
     {
         var (_, diag) = Compile($"{Decls} MAIN() BEGIN {stmt} END;");
@@ -434,6 +435,8 @@ public class ExpressionValueTests
     [Theory]
     [InlineData("T[I] += (I = I + 1);")]
     [InlineData("T[I] -= I++;")]
+    [InlineData("T[I] += CODE([I = I + 1]);")]   // CODE の中の代入も
+    [InlineData("T[T[0]] += (T[0] = 1);")]       // 添字が読む配列の要素に書く
     [InlineData("T[PORT[I]]++;")]
     public void TargetChangedByRightSideOrPort_Errors(string stmt)
     {
