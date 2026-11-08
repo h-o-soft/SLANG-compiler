@@ -860,6 +860,12 @@ public class CEmitter : IAstVisitor<EmitResult>
         // C の関数内 `static` 変数として出す。識別子は funcName_varName で衝突回避。
         if (decl is VarDecl vd)
         {
+            // 固定アドレスは、大域と同じく未サポート (番地を黙って捨てて、ふつうの static 変数にしない)
+            if (vd.Address != null)
+            {
+                Error($"VAR `{vd.Name}:address` (固定アドレス変数) は oscar_c backend では未サポート (v1)。MEM[$addr] 経由でアクセスしてください", vd.Span);
+                return "";
+            }
             var slangType = TypeOfDataSize(vd.Size);
             var cType = CTypeMapper.MapDeclType(slangType);
             var ident = StaticVarIdent(_currentFuncName!, vd.Name);
@@ -876,6 +882,11 @@ public class CEmitter : IAstVisitor<EmitResult>
         if (decl is ArrayDecl ad)
         {
             // 関数内 static / 関数内 local の VAR/ARRAY 宣言。
+            if (ad.Address != null && ad.InitialValue != null)
+            {
+                Error($"VAR `{ad.Name}[]:address = ...` (固定アドレスの間接変数の初期値) は oscar_c backend では未サポート", ad.Span);
+                return "";
+            }
             var slangType = TypeOfDataSize(ad.Size);
             var cType = CTypeMapper.MapDeclType(slangType);
             var ident = StaticVarIdent(_currentFuncName!, ad.Name);

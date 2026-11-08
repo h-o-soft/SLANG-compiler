@@ -450,7 +450,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 // その場で値が決まる式はその値、そうでなければアセンブラの式 (ラベル。ARRAY と同じ)。
                 // いままでは整数のリテラル以外を黙って __WORK__ に置いていた。番地は整数なので FLOAT の式はエラー
                 // (途中の小数を整数で畳み込んで、黙って違う番地にしない)
-                if (ContainsFloat(node.Address))
+                if (ContainsFloat(node.Address, namesAreLabels: true))
                     _diagnostics.Error($"Address of VAR '{node.Name}' must be an integer expression, not FLOAT", node.Address.Span);
                 else if (NewConstEvaluator().Evaluate(node.Address) is int constAddr)
                     fixedAddr = constAddr & 0xFFFF;
@@ -830,17 +830,22 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// MightBeFloat は、整数に畳み込める式 ((1.0/2.0)*4096.0) を整数と推定するので、番地の式の検査には使わない。
     /// 比較・条件の中の FLOAT も見る (その場で決める値は整数で畳み込むので、FLOAT の比較を誤る)
     /// </summary>
-    private bool ContainsFloat(Expression? e) => e switch
+    /// namesAreLabels: 番地の式 (VAR X:式) では、変数の名前はその番地 (整数のラベル) なので、FLOAT の変数でも FLOAT と見ない
+    /// (FLOAT の CONST は値なので見る)
+    private bool ContainsFloat(Expression? e, bool namesAreLabels = false) => e switch
     {
         FloatLiteral => true,
-        IdentifierExpr id => IdentifierIsFloat(id),
-        CastExpr c => c.TargetSize == DataSize.Float || ContainsFloat(c.Operand),
-        BinaryExpr b => ContainsFloat(b.Left) || ContainsFloat(b.Right),
-        UnaryExpr u => ContainsFloat(u.Operand),
-        ConditionalExpr c => ContainsFloat(c.Condition) || ContainsFloat(c.TrueExpr) || ContainsFloat(c.FalseExpr),
-        CommaExpr c => ContainsFloat(c.Right),
+        IdentifierExpr id => namesAreLabels
+            ? _globalSymbols?.Resolve(id.Name) is { Kind: SymbolKind.Constant, ConstFloatValue: not null }
+            : IdentifierIsFloat(id),
+        CastExpr c => c.TargetSize == DataSize.Float || ContainsFloat(c.Operand, namesAreLabels),
+        BinaryExpr b => ContainsFloat(b.Left, namesAreLabels) || ContainsFloat(b.Right, namesAreLabels),
+        UnaryExpr u => ContainsFloat(u.Operand, namesAreLabels),
+        ConditionalExpr c => ContainsFloat(c.Condition, namesAreLabels) || ContainsFloat(c.TrueExpr, namesAreLabels)
+            || ContainsFloat(c.FalseExpr, namesAreLabels),
+        CommaExpr c => ContainsFloat(c.Right, namesAreLabels),
         null => false,
-        _ => MightBeFloat(e),
+        _ => !namesAreLabels && MightBeFloat(e),
     };
 
     private bool CheckPointerInitializer(ArrayDecl node, bool isPointer)

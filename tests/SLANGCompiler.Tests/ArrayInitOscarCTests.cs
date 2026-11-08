@@ -958,6 +958,17 @@ public class ArrayInitOscarCTests
             d => d.Message.Contains("Expected", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    // 関数の中の静的宣言 (BEGIN の前) の固定アドレスも、大域と同じく未サポート (番地を黙って捨てない)
+    [InlineData("MAIN() VAR BYTE X:$3000 = 7; BEGIN X = 1; END;", "固定アドレス変数")]
+    [InlineData("MAIN() VAR BYTE X:$3000; BEGIN X = 1; END;", "固定アドレス変数")]
+    [InlineData("MAIN() VAR BYTE P[]:$3000 = $C000; BEGIN P[0] = 1; END;", "固定アドレスの間接変数の初期値")]
+    public void StaticDeclWithFixedAddress_Rejected(string source, string message)
+    {
+        TranspileWithEnv(source + "\n", MakeC64Env(), out var diag);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains(message));
+    }
+
     [Fact]
     public void PointerWithFixedAddressAndInitializer_Rejected()
     {

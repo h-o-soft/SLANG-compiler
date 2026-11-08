@@ -219,4 +219,12 @@ public class VarDeclTests
         var (_, diag) = Compile($"{decl} MAIN() BEGIN X = 1; END;");
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("must be an integer expression, not FLOAT"));
     }
+
+    [Fact]
+    public void VarAddress_FloatVariableLabel_Ok()
+    {
+        // 番地の式の FLOAT の変数の名前は、その番地 (整数のラベル)。FLOAT の式としてエラーにしない
+        var asm = CompileOk("VAR FLOAT VALUE; VAR X:VALUE; MAIN() BEGIN X = 1; END;");
+        Assert.Contains("_V_X\tEQU\t_V_VALUE\n", asm);
+    }
 }
