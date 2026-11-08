@@ -393,4 +393,20 @@ public class FloatTypeTests
         var asm = Asm("VAR FLOAT H = 1.5; VAR X = 3; MAIN() BEGIN END;");
         Assert.Contains(Lines("LD\tHL,$0003", "LD\t(_V_X),HL"), asm);
     }
+
+    // ==== C5: 引数の大きさの上限 ====
+
+    [Fact]
+    public void Parameters_UpTo16Bytes_Accepted()
+    {
+        Assert.Empty(Errors("FX(FLOAT A, FLOAT B, FLOAT C, FLOAT D, E, F) BEGIN END; MAIN() BEGIN END;"));
+    }
+
+    [Theory]
+    [InlineData("FX(FLOAT A, FLOAT B, FLOAT C, FLOAT D, FLOAT E, F) BEGIN END;")]
+    [InlineData("FX(A, B, C, D, E, F, G, H, I) BEGIN END;")]
+    public void Parameters_Over16Bytes_AreErrors(string func)
+    {
+        Assert.Contains(Errors($"{func} MAIN() BEGIN END;"), m => m.Contains("at most 16 bytes"));
+    }
 }

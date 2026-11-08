@@ -1170,6 +1170,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
             paramNames.Add(p.Name);
             paramSizes.Add(info.ByteSize);
         }
+        // 呼ぶ側は引数を (IY+$70) から順に書き、(IY+$7F) までしか書けない ($80 は -128 になる)
+        if (paramSizes.Sum() > 16)
+            _diagnostics.Error($"The parameters of '{node.Name}' take {paramSizes.Sum()} bytes; at most 16 bytes are allowed "
+                + "(BYTE/WORD/array 2 bytes, FLOAT 3 bytes)", node.Span);
 
         Emit(IrOp.FuncBegin, IrOperand.Sym(LabelUtils.FunctionLabel(node.Name)));
 
