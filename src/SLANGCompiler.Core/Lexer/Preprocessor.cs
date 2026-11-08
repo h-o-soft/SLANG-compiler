@@ -40,6 +40,10 @@ public class Preprocessor
 
     // #IF の CONST の値を、式で決めるための記号 (_constValues と同じ中身)
     private readonly Dictionary<string, Semantics.Symbol> _constSymbols = new(StringComparer.OrdinalIgnoreCase);
+    // 右辺の終わりが分からず (続きが #IF の外・取り込んだ側にあるかもしれない)、値の分からない CONST。#IF で使ったらエラー
+    private readonly HashSet<string> _unknownConsts = new(StringComparer.OrdinalIgnoreCase);
+    // CONST の右辺の式が使った名前 (たどった先も)
+    private readonly Dictionary<string, HashSet<string>> _constDeps = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// トークン列を処理し、#INCLUDEを展開、#IF/#ELSE/#ENDIFを評価する。
@@ -144,7 +148,7 @@ public class Preprocessor
             if (start < tokens.Count && IsDirective(tokens[start].Kind))
             {
                 // 右辺が #IF などで始まる: 値は #IF を処理した後で決まるので、ここでは覚えない
-                WarnConstValueUnknown(name, tokens[i].Span);
+                _unknownConsts.Add(name);
                 break;
             }
             if (start < tokens.Count && IsBlockOpen(tokens[start].Kind))
@@ -158,11 +162,12 @@ public class Preprocessor
                 bool literal = expr != null && end == start + 1 && tokens[start].Kind == TokenKind.IntegerLiteral;
                 // 式の後ろが #IF・#INCLUDE などか、字句の列の終わり (#IF の中・取り込んだファイルの終わり。主のファイルの
                 // 終わりには EOF がある) なら、右辺がそこで終わるとは限らない (続きが #IF の外や取り込んだ側にあるかもしれない)。
-                // 整数のリテラル 1 つはいままでどおり覚え (; を省いて #IF が続く形)、式は覚えずに warning を出して止める
+                // 整数のリテラル 1 つはいままでどおり覚え (; を省いて #IF が続く形)、式は値が分からないとして止める
+                // (#IF で使ったらエラー)
                 bool mayContinue = end >= tokens.Count || IsDirective(tokens[end].Kind);
                 if (mayContinue && !literal)
                 {
-                    if (expr != null) WarnConstValueUnknown(name, tokens[i].Span);
+                    _unknownConsts.Add(name);
                     break;
                 }
                 if (expr == null)
@@ -179,9 +184,23 @@ public class Preprocessor
                     SetConst(name, Convert.ToInt32(tokens[start].Value));
                 else
                 {
-                    var eval = new Semantics.ConstEvaluator(null, _constSymbols);
-                    if (!eval.InvolvesFloat(expr) && eval.Evaluate(expr) is int value)
-                        SetConst(name, value);
+                    // 使った名前 (とその名前が使った名前) を覚える。#IF で name を使ったら、それらも使ったことにする
+                    // (関数の中の CONST を、大域の CONST を通して #IF に使うのを、意味解析が見つけられるように)
+                    var deps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    Semantics.SemanticAnalyzer.ForEachName(expr, (n, _) =>
+                    {
+                        deps.Add(n);
+                        if (_constDeps.TryGetValue(n, out var nd)) deps.UnionWith(nd);
+                    });
+                    _constDeps[name] = deps;
+                    if (deps.Any(_unknownConsts.Contains))
+                        _unknownConsts.Add(name);   // 値の分からない CONST を使う CONST も、値が分からない
+                    else
+                    {
+                        var eval = new Semantics.ConstEvaluator(null, _constSymbols);
+                        if (!eval.InvolvesFloat(expr) && eval.Evaluate(expr) is int value)
+                            SetConst(name, value);
+                    }
                 }
             }
 
@@ -193,8 +212,6 @@ public class Preprocessor
         }
     }
 
-    private void WarnConstValueUnknown(string name, SourceSpan span)
-        => _diagnostics.Warning($"The value of CONST '{name}' is not known to #IF (its expression continues past a preprocessor directive or block end); #IF uses 0", span);
 
     private static bool IsDirective(TokenKind k)
         => k is TokenKind.PreprocIf or TokenKind.PreprocElse or TokenKind.PreprocEnd
@@ -520,6 +537,14 @@ public class Preprocessor
         {
             pos++;
             IdentifiersUsedByIf.Add(token.StringValue);
+            if (_constDeps.TryGetValue(token.StringValue, out var deps))
+                IdentifiersUsedByIf.UnionWith(deps);
+            if (_unknownConsts.Contains(token.StringValue))
+            {
+                _diagnostics.Error($"#IF uses CONST '{token.StringValue}', whose value is not known here "
+                    + "(its declaration continues past a preprocessor directive or the end of a block/file)", token.Span);
+                return 0;
+            }
             if (_constValues.TryGetValue(token.StringValue, out int constVal))
                 return constVal;
             // 未定義の識別子 → 0として扱う（旧コンパイラ互換）

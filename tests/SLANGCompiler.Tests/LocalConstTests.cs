@@ -158,6 +158,26 @@ MAIN() BEGIN FG(); FL(); END;");
         Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("Undefined variable: J"));
     }
 
+    [Fact]
+    public void UsedInPreprocessorIfThroughGlobalConst_Errors()
+    {
+        // 大域の CONST を通して、関数の中の CONST を #IF に使う形も見つける (プリプロセッサが右辺の式の名前を覚える)
+        var (_, diag) = Compile(@"
+VAR X;
+FN() CONST LOCAL = 1; BEGIN END;
+CONST FLAG = LOCAL;
+FN2()
+BEGIN
+#IF FLAG
+  X = 1;
+#ELSE
+  X = 2;
+#ENDIF
+END;
+MAIN() BEGIN FN(); FN2(); END;");
+        Assert.Contains(diag.Diagnostics, d => d.ToString().Contains("CONST 'LOCAL' in a function cannot be used in #IF"));
+    }
+
     [Theory]
     [InlineData("1")]
     [InlineData("-1")]        // プリプロセッサが値を取らない (整数のリテラルでない) もの

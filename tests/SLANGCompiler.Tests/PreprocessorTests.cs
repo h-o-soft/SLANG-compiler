@@ -71,26 +71,25 @@ public class PreprocessorTests : IDisposable
         Assert.Contains($"YES_{cond.Split(' ')[0]}", names);
     }
 
-    [Fact]
-    public void ConstSpanningIf_NotRecorded()
-    {
-        // 右辺の途中に #IF があるものは、プリプロセッサでは値を覚えない (誤った値を覚えない)。
-        // 構文解析は #IF を処理した後の字句を読むので、CONST そのものは通る
-        var (names, diag) = Run("CONST K =\n#IF 1\n2\n#ELSE\n3\n#END\n;" + IfMark("K == 0"));
-        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
-        Assert.Contains("YES_K", names);
-    }
-
     [Theory]
-    // 式の後ろが #IF か、#IF の中の字句の列の終わり: 読めた所まで (2) を覚えず、warning を出す
+    // 右辺の終わりが分からない CONST (#IF で始まる・式の後ろが #IF・#IF の中の字句の列の終わり) を #IF で使うとエラー
+    // (値を 0 として黙って違う分岐を選ばない)
+    [InlineData("CONST K =\n#IF 1\n2\n#ELSE\n3\n#END\n;")]
     [InlineData("CONST K = 1 + 1\n#IF 1\n+ 1\n#END\n;")]
     [InlineData("#IF 1\nCONST K = 1 + 1\n#END\n- 1;")]
-    public void ConstCutByDirective_NotRecorded(string decl)
+    [InlineData("#IF 1\nCONST K = 1 + 1\n#END\n- 1; CONST J = K + 1;")]
+    public void ConstValueUnknown_UsedInIf_Errors(string decl)
     {
-        var (names, diag) = Run(decl + IfMark("K == 0"));
-        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
-        Assert.Contains("YES_K", names);
-        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("The value of CONST 'K' is not known to #IF"));
+        var key = decl.Contains("CONST J") ? "J" : "K";
+        var (_, diag) = Run(decl + IfMark($"{key} == 1"));
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains($"#IF uses CONST '{key}', whose value is not known here"));
+    }
+
+    [Fact]
+    public void ConstValueUnknown_NotUsedInIf_NoDiagnostic()
+    {
+        var (_, diag) = Run("#IF 1\nCONST K = 1 + 1\n#END\n- 1;");
+        Assert.Empty(diag.Diagnostics);
     }
 
     [Fact]
@@ -108,6 +107,19 @@ public class PreprocessorTests : IDisposable
         // 右辺が #IF で始まるとき、#IF の中 (選ばれないかもしれない) の , の後ろの J を覚えない
         var (names, _) = Run("CONST K =\n#IF 0\n2, J = 3\n#ELSE\n4\n#END\n;" + IfMark("J == 0"));
         Assert.Contains("YES_J", names);
+    }
+
+    [Fact]
+    public void ConstThroughOtherConst_ReportsAllNamesUsedByIf()
+    {
+        // #IF FLAG の FLAG が LOCAL (関数の中の CONST かもしれない) から決まるとき、LOCAL も #IF で使った名前にする
+        // (意味解析が、関数の中の CONST を #IF に使ったことを見つけられるように)
+        var diag = new DiagnosticBag();
+        var pre = new Preprocessor(diag);
+        pre.Process(new Lexer.Lexer("CONST LOCAL = 1; CONST MID = LOCAL + 1; CONST FLAG = MID;\n#IF FLAG\n#END\n").Tokenize(), _tempDir);
+        Assert.Contains("FLAG", pre.IdentifiersUsedByIf);
+        Assert.Contains("MID", pre.IdentifiersUsedByIf);
+        Assert.Contains("LOCAL", pre.IdentifiersUsedByIf);
     }
 
     // ==== #CHAIN (件 13) ====
