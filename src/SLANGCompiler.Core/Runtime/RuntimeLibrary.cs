@@ -48,6 +48,7 @@ public class RuntimeFunction
     public bool CalleeCleanup { get; set; }                    // @stack_cleanup callee
     public List<string> Aliases { get; set; } = new();          // @alias (元の名前)
     public string? ResultType { get; set; }                      // @result_type (float等)
+    public List<string>? ParamTypes { get; set; }                // @param_types (float,int をカンマで。引数の型を変える)
     public RuntimeResidency Residency { get; set; } = RuntimeResidency.Local; // @resident shared|local
 }
 
@@ -315,6 +316,12 @@ public static class RuntimeParser
                     case "alias":
                         if (current != null && !string.IsNullOrEmpty(value))
                             current.Aliases.Add(value);
+                        break;
+
+                    case "param_types":
+                        if (current != null && !string.IsNullOrEmpty(value))
+                            current.ParamTypes = value.ToLowerInvariant()
+                                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
                         break;
 
                     case "result_type":

@@ -1192,7 +1192,7 @@ public class CodeGenerator
         for (int i = 0; i < insts.Count; i++)
         {
             var inst = insts[i];
-            if (inst.Op != IrOp.Call || inst.Src2.Kind != IrOperandKind.Immediate) continue;
+            if (inst.Op != IrOp.Call || inst.Src2.Kind != IrOperandKind.Immediate || inst.ArgSizes != null) continue;
             int argCount = (int)inst.Src2.ImmediateValue;
             if (argCount < 1 || argCount > 3) continue;
 
@@ -3253,6 +3253,14 @@ public class CodeGenerator
             {
                 case 1:
                     _e.Instruction("POP", "HL");
+                    break;
+                case 2 when inst.ArgSizes is [3, 3]:
+                    // FLOAT の引数 2 つ (FPOW・FLOGY): 積んだ順 (PUSH AF; PUSH HL) の逆に、y を CDE、x を AHL に戻す
+                    _e.Instruction("POP", "DE");
+                    _e.Instruction("POP", "AF");
+                    _e.Instruction("LD", "C,A");
+                    _e.Instruction("POP", "HL");
+                    _e.Instruction("POP", "AF");
                     break;
                 case 2:
                     _e.Instruction("POP", "DE");

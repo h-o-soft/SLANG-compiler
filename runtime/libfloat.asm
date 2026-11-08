@@ -629,6 +629,7 @@ ret
 
 
 ; @name i16tof24
+; @param_types int
 ; @resident shared
 ; @alias ITOF
 ; @result_type float
@@ -652,6 +653,7 @@ db $11     ;start of `ld de,**`, eats the next two bytes
 
 
 ; @name u16tof24
+; @param_types int
 ; @resident shared
 ; @alias UTOF
 ; @result_type float
@@ -674,6 +676,7 @@ ret
 
 
 ; @name FTOI
+; @param_types float
 ; @resident shared
 f24toi16:
 ;AHL to a 16-bit signed integer
@@ -1672,6 +1675,7 @@ jp f24mul_significand
 
 
 ; @name FABS
+; @param_types float
 ; @resident shared
 ; @result_type float
 ;abs(AHL) ==> AHL
@@ -1680,6 +1684,7 @@ ret
 
 
 ; @name FACOSH
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls FLOG,f24sqr,f24add
@@ -1708,6 +1713,7 @@ jp f24log
 
 
 ; @name FACOS
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls f24sub,f24bg,f24sqr
@@ -1819,6 +1825,7 @@ jp f24add
 
 
 ; @name FASINH
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls FLOG,f24sqr,f24add
@@ -1847,6 +1854,7 @@ jp f24log
 
 
 ; @name FASIN
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls f24sub,f24bg,f24sqr
@@ -1890,6 +1898,7 @@ jp f24mul
 
 
 ; @name FATANH
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls f24sub,f24div,FLOG
@@ -1928,6 +1937,7 @@ jp f24div2
 
 
 ; @name FATAN
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls f24sub,f24bg,f24sqr,f24mul,f24inv
@@ -2056,6 +2066,7 @@ jp f24div
 
 
 ; @name FCOSH
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls FEXP,f24amean
@@ -2085,6 +2096,7 @@ jp f24amean
 
 
 ; @name FCOS
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls FSIN,f24sqr,f24mod1,f24sub
@@ -2221,6 +2233,7 @@ ret
 
 
 ; @name FEXP
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls f24mul,f24add,f24inv
@@ -2398,6 +2411,7 @@ jp f24sqrt
 
 
 ; @name FLOG10
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls FLOG,f24mul
@@ -2411,6 +2425,7 @@ jp f24mul
 
 
 ; @name FLOG2
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls FLOG,f24mul
@@ -2424,6 +2439,7 @@ jp f24mul
 
 
 ; @name FLOGY
+; @param_types float,float
 ; @resident shared
 ; @result_type float
 ; @calls FLOG,f24div
@@ -2451,9 +2467,11 @@ call f24log
 pop bc
 pop de
 ld c,b
+jp f24div
 
 
 ; @name FLOG
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls f24bg
@@ -2635,6 +2653,7 @@ jp f24rsub
 
 
 ; @name FPOW10
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls FEXP,f24mul
@@ -2648,6 +2667,7 @@ jp f24exp
 
 
 ; @name FPOW2
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls FEXP,f24mul
@@ -2661,6 +2681,7 @@ jp f24exp
 
 
 ; @name FPOW
+; @param_types float,float
 ; @resident shared
 ; @result_type float
 ; @calls FEXP,FLOG,f24mul
@@ -2792,6 +2813,7 @@ ret
 
 
 ; @name FSINH
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls FEXP,f24amean
@@ -2822,6 +2844,7 @@ jp f24amean
 
 
 ; @name FSIN
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls FCOS,f24sqr,f24div,f24mod1
@@ -3015,6 +3038,7 @@ ret           ; 10 /
 
 
 ; @name FSQRT
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls sqrt16
@@ -3226,6 +3250,7 @@ ret
 
 
 ; @name FTANH
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls FEXP,f24mul2,f24div
@@ -3253,6 +3278,7 @@ jp f24add
 
 
 ; @name FTAN
+; @param_types float
 ; @resident shared
 ; @result_type float
 ; @calls FCOS,f24div

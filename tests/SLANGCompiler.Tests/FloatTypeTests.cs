@@ -159,4 +159,129 @@ public class FloatTypeTests
         var (diag, _) = Generate("VAR Y; VAR X = 1 ? 2 : (Y = 1); MAIN() BEGIN END;");
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("must be an integer constant"));
     }
+
+    private static IEnumerable<string> Errors(string source)
+        => Generate(source).Diag.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.Message);
+
+    // ==== C2: ランタイムの関数の引数の型 ====
+
+    [Fact]
+    public void RuntimeFloatParameter_ConvertsInteger()
+    {
+        // FSIN(1) は整数の 1 を FLOAT に変えて渡す (今までは HL の 1 をそのまま AHL として渡していた)
+        var asm = MainAsm("FLOAT F; MAIN() BEGIN F = FSIN(1); END;");
+        Assert.Contains(Lines("LD\tHL,$0001", "CALL\ti16tof24", "CALL\tFSIN"), asm);
+    }
+
+    [Fact]
+    public void RuntimeFloatParameter_FloatValueUnchanged()
+    {
+        var asm = MainAsm("FLOAT F; FLOAT G; MAIN() BEGIN F = FSIN(G); END;");
+        Assert.Contains(Lines("LD\tHL,(_V_G)", "LD\tA,(_V_G+2)", "CALL\tFSIN"), asm);
+        Assert.DoesNotContain("i16tof24", asm);
+    }
+
+    [Theory]
+    [InlineData("FPOW")]
+    [InlineData("FLOGY")]
+    public void RuntimeTwoFloatParameters_PassXInAhlAndYInCde(string func)
+    {
+        var asm = MainAsm($"FLOAT F; FLOAT G; MAIN() BEGIN F = {func}(G, 2); END;");
+        Assert.Contains(Lines("LD\tHL,(_V_G)", "LD\tA,(_V_G+2)", "PUSH\tAF", "PUSH\tHL",
+            "LD\tHL,$0002", "CALL\ti16tof24", "PUSH\tAF", "PUSH\tHL",
+            "POP\tDE", "POP\tAF", "LD\tC,A", "POP\tHL", "POP\tAF", $"CALL\t{func}"), asm);
+    }
+
+    [Fact]
+    public void Flogy_DividesLogXByLogY()
+    {
+        // FLOGY は log(x)/log(y)。今までは最後の割り算がなく、次の FLOG に落ちていた
+        var flogy = Rt.Functions["FLOGY"].Code;
+        Assert.EndsWith("ld c,b\njp f24div", flogy.Replace("\r", "").TrimEnd());
+    }
+
+    [Theory]
+    [InlineData("F = FSIN(1, 2);", "expects 1 arguments, got 2")]
+    [InlineData("F = FPOW(F);", "expects 2 arguments, got 1")]
+    [InlineData("F = ITOF(1.0);", "Cannot pass FLOAT value to non-FLOAT parameter")]
+    [InlineData("F = UTOF(F);", "Cannot pass FLOAT value to non-FLOAT parameter")]
+    public void RuntimeParameter_Errors(string body, string message)
+    {
+        Assert.Contains(Errors($"FLOAT F; MAIN() BEGIN {body} END;"), m => m.Contains(message));
+    }
+
+    [Fact]
+    public void UserMachineWithRuntimeName_KeepsItsOwnConvention()
+    {
+        // 同じ名前の MACHINE を宣言していれば、ランタイムの注釈 (引数・戻り値の FLOAT) を使わない
+        var asm = MainAsm("MACHINE FSIN(1); FSIN(1)[CODE($AF,$C9);] MAIN() BEGIN VAR I = FSIN(5); PRINT(I, FSIN(5)); END;");
+        Assert.DoesNotContain("i16tof24", asm);
+        Assert.DoesNotContain("FTOI", asm);
+        Assert.Contains(Lines("LD\tHL,$0005", "CALL\t_FSIN"), asm);
+    }
+
+    [Theory]
+    [InlineData("F = FSIN(5.0 / 2.0);", "LD\tHL,$4000", "LD\tA,$40", "CALL\tFSIN")]                 // 2.5
+    [InlineData("F = FSQRT(20000.0 * 2.0);", "LD\tHL,$3880", "LD\tA,$4E", "CALL\tFSQRT")]          // 40000.0
+    [InlineData("F = 20000.0 * 2.0;", "LD\tHL,$3880", "LD\tA,$4E", "LD\t(_V_F),HL")]             // 40000.0 (今までは -25536)
+    [InlineData("F = FX(5.0 / 2.0);", "LD\tHL,$4000", "LD\tA,$40", "PUSH\tAF")]                   // ユーザーの関数の FLOAT の引数
+    [InlineData("PRINT(FL$(5.0 / 2.0));", "LD\tHL,$4000", "LD\tA,$40", "CALL\tPFLOAT")]
+    public void FloatValueContext_FoldsLikeAssignment(string body, params string[] lines)
+    {
+        var asm = MainAsm($"FLOAT F; FX:FLOAT(FLOAT A) BEGIN RETURN A; END; MAIN() BEGIN {body} END;");
+        Assert.Contains(Lines(lines), asm);
+    }
+
+    [Fact]
+    public void PrintFl_ConvertsInteger()
+    {
+        var asm = MainAsm("MAIN() BEGIN PRINT(FL$(5)); END;");
+        Assert.Contains(Lines("LD\tHL,$0005", "CALL\ti16tof24", "CALL\tPFLOAT"), asm);
+    }
+
+    [Theory]
+    [InlineData("FX:FLOAT() BEGIN RETURN 5.0 / 2.0; END;")]
+    [InlineData("FX:FLOAT() BEGIN END(5.0 / 2.0);")]
+    public void FloatReturnValue_FoldsLikeAssignment(string func)
+    {
+        var asm = Asm($"{func} MAIN() BEGIN END;");
+        Assert.Contains(Lines("LD\tHL,$4000", "LD\tA,$40"), asm.Split("FX:")[1]);
+    }
+
+    [Theory]
+    [InlineData("F = G + (1.0 / 2.0);", "f24add")]   // 右を整数の 0 と見て消さない
+    [InlineData("F = G + (1.0 / 3.0);", "f24div")]   // f24 で正確に表せない辺は実行時に計算する
+    public void FloatValueContext_NormalizationKeepsFloatSide(string body, string call)
+    {
+        var asm = MainAsm($"FLOAT F; FLOAT G; MAIN() BEGIN {body} END;");
+        Assert.Contains($"CALL\t{call}", asm);
+        Assert.Contains("CALL\tf24add", asm);
+    }
+
+    [Theory]
+    [InlineData("F = G * (1.0 == 1.0);")]   // 比較の辺は今までどおり整数の 1 と見る
+    [InlineData("F = G + (2.0 - 2.0);")]    // 整数として正しい辺 (0) は今までどおり消す
+    public void FloatValueContext_NormalizationUnchanged(string body)
+    {
+        var asm = MainAsm($"FLOAT F; FLOAT G; MAIN() BEGIN {body} END;");
+        Assert.Contains(Lines("LD\tHL,(_V_G)", "LD\tA,(_V_G+2)", "LD\t(_V_F),HL"), asm);
+    }
+
+    [Theory]
+    [InlineData("F = 2.0 - 3.0;", "LD\tHL,$FFFF", "CALL\ti16tof24")]           // 整数の -1 を FLOAT に (今までどおり)
+    [InlineData("I = 20000.0 * 2.0;", "LD\tHL,$9C40", "LD\t(_V_I),HL")]        // 整数の代入先は今までどおり 40000
+    public void IntegralFold_Unchanged(string body, params string[] lines)
+    {
+        var asm = MainAsm($"VAR I; FLOAT F; MAIN() BEGIN {body} END;");
+        Assert.Contains(Lines(lines), asm);
+    }
+
+    [Fact]
+    public void WholeRuntimeFold_StaysRuntime()
+    {
+        // 262145.0 は f24 で 262144 になるので、実行時に計算して 0 (畳み込んで 2.0 にしない)
+        var asm = MainAsm("FLOAT F; MAIN() BEGIN F = 2.0 * (262145.0 - 262144.0); END;");
+        Assert.Contains("CALL\tf24sub", asm);
+        Assert.Contains("CALL\tf24mul", asm);
+    }
 }

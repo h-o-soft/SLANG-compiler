@@ -1135,6 +1135,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // Return value from END(expr)
         if (node.ReturnValue != null)
         {
+            if (_currentReturnDataSize == 3) MarkFloatFold(node.ReturnValue, true);
             var retVal = node.ReturnValue.Accept(this);
             retVal = ConvertReturnValue(retVal, node.ReturnValue.Span);
             Emit(IrOp.Return, retVal, dataSize: _currentReturnDataSize);
@@ -1533,6 +1534,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         if (node.Value != null)
         {
+            if (_currentReturnDataSize == 3) MarkFloatFold(node.Value, true);   // FLOAT の関数の戻り値は FLOAT の値が要る所
             var val = node.Value.Accept(this);
             val = ConvertReturnValue(val, node.Value.Span);
             Emit(IrOp.Return, val, dataSize: _currentReturnDataSize);
@@ -1638,7 +1640,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PTAB"));
                         break;
                     case "FL$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        // 値は FLOAT の値が要る所 (整数は FLOAT に変える)
+                        if (sf.Arguments.Count > 0)
+                        {
+                            MarkFloatFold(sf.Arguments[0], true);
+                            EmitTypeConversionExpand(sf.Arguments[0].Accept(this), 3);
+                        }
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PFLOAT"));
                         break;
                     default:
@@ -1792,8 +1799,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // 代入先が FLOAT でないときは、整数の値を正すだけ (FLOAT の値・実行時の計算は作らず、今までどおり)
             if (!marked && floatFold is { Kind: not ConstEvaluator.FloatFoldKind.Int }) floatFold = null;
             if (floatFold is { Kind: ConstEvaluator.FloatFoldKind.Float } ff) return EmitLoadFloatConst(ff.FloatValue);
-            // FLOAT が要る位置 (実行時に計算する FLOAT の演算の辺) では、整数の結果も FLOAT の定数にする
-            if (floatFold is { Kind: ConstEvaluator.FloatFoldKind.Int } fr && _floatRequiredNodes.Contains(node))
+            // FLOAT が要る位置 (実行時に計算する FLOAT の演算の辺) では、整数の結果も FLOAT の定数にする。
+            // FLOAT の値が要る所で、整数の結果を符号付きで FLOAT に戻すと違う値になるとき (20000.0*2.0 の 40000 は -25536) も
+            if (floatFold is { Kind: ConstEvaluator.FloatFoldKind.Int } fr
+                && (_floatRequiredNodes.Contains(node) || marked && (short)fr.IntValue != fr.FloatValue))
                 return EmitLoadFloatConst(fr.FloatValue);
             // 実行時に計算するときは、辺の FLOAT の定数の演算を FLOAT のまま作る (整数に畳み込むと親が整数の演算になる)
             if (floatFold is { Kind: ConstEvaluator.FloatFoldKind.Runtime })
@@ -1814,25 +1823,26 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // no-op算術のIR正規化: CodeGeneratorのスタック整合バグ回避
             // Add(x,0)/Sub(x,0) → x, Mul(x,1)/Div(x,1) → x
             // 実行時に計算する定数の演算 (Runtime) では、FLOAT が関わる辺を整数の評価で 0・1 と見ない
-            // (1.0+1.0/3.0 の 1.0/3.0 を 0 と見て消さない)。それ以外は今までどおり
+            // (1.0+1.0/3.0 の 1.0/3.0 を 0 と見て消さない)。FLOAT の値が要る所でも、FLOAT が関わる辺は正しい値で見る
+            // (F=G+(1.0/2.0) の右を 0 と見て消さない)。それ以外は今までどおり
             bool runtimeFold = floatFold is { Kind: ConstEvaluator.FloatFoldKind.Runtime };
             if (node.Op is BinaryOp.Add or BinaryOp.Sub)
             {
-                var rc = NormalizationConst(constEval, node.Right, runtimeFold);
+                var rc = NormalizationConst(constEval, node.Right, runtimeFold, marked);
                 if (rc.HasValue && rc.Value == 0) return node.Left.Accept(this);
                 if (node.Op == BinaryOp.Add)
                 {
-                    var lc = NormalizationConst(constEval, node.Left, runtimeFold);
+                    var lc = NormalizationConst(constEval, node.Left, runtimeFold, marked);
                     if (lc.HasValue && lc.Value == 0) return node.Right.Accept(this);
                 }
             }
             if (node.Op is BinaryOp.Mul or BinaryOp.SMul or BinaryOp.Div or BinaryOp.SDiv)
             {
-                var rc = NormalizationConst(constEval, node.Right, runtimeFold);
+                var rc = NormalizationConst(constEval, node.Right, runtimeFold, marked);
                 if (rc.HasValue && rc.Value == 1) return node.Left.Accept(this);
                 if (node.Op is BinaryOp.Mul or BinaryOp.SMul)
                 {
-                    var lc = NormalizationConst(constEval, node.Left, runtimeFold);
+                    var lc = NormalizationConst(constEval, node.Left, runtimeFold, marked);
                     if (lc.HasValue && lc.Value == 1) return node.Right.Accept(this);
                 }
             }
@@ -2058,9 +2068,19 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
     }
 
-    /// <summary>何もしない演算の正規化で見る辺の整数の値。実行時に計算する定数の演算で FLOAT が関わる辺は見ない (null)</summary>
-    private static int? NormalizationConst(ConstEvaluator ce, Expression side, bool runtimeFold)
-        => runtimeFold && ce.InvolvesFloat(side) ? null : ce.Evaluate(side);
+    /// <summary>
+    /// 何もしない演算の正規化で見る辺の整数の値。実行時に計算する定数の演算で FLOAT が関わる辺は見ない (null)。
+    /// FLOAT の値が要る所 (floatValue) で FLOAT が関わる辺は、整数として正しく、符号付きで FLOAT に戻しても同じ値のときだけ見る
+    /// (小数の値・f24 で正確に表せない値 (実行時に計算する) の辺は見ない)
+    /// </summary>
+    private static int? NormalizationConst(ConstEvaluator ce, Expression side, bool runtimeFold, bool floatValue)
+    {
+        if (!ce.InvolvesFloat(side)) return ce.Evaluate(side);
+        if (runtimeFold) return null;
+        if (!floatValue) return ce.Evaluate(side);
+        if (ce.FoldFloatArithmetic(side) is not { } fold) return ce.Evaluate(side);   // 四則でない辺 (比較など) は今までどおり
+        return fold.Kind == ConstEvaluator.FloatFoldKind.Int && (short)fold.IntValue == fold.FloatValue ? fold.IntValue : null;
+    }
 
     public IrOperand VisitUnaryExpr(UnaryExpr node)
     {
@@ -2234,12 +2254,30 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
         if (isMachine && machineParamCount.HasValue)
         {
+            // ランタイムの関数そのものへの呼び出し (記号表にない名前) だけ、ランタイムの注釈 (引数の型・戻り値の型) を使う。
+            // 同じ名前の MACHINE を宣言していれば、その宣言の取り決めのまま
+            Runtime.RuntimeFunction? rtFunc = funcSym == null && funcName != null
+                && _runtimeManager?.Functions.TryGetValue(funcName, out var rf) == true ? rf : null;
+            var paramTypes = rtFunc?.ParamTypes;
+            if (paramTypes != null && paramTypes.Count != node.Arguments.Count)
+                _diagnostics.Error($"Function '{funcName}' expects {paramTypes.Count} arguments, got {node.Arguments.Count}",
+                    node.Span);
+            // FLOAT の引数 2 つ (FPOW・FLOGY): x を AHL、y を CDE で渡す。どちらも 3 バイトで積む
+            bool twoFloats = paramTypes is ["float", "float"] && node.Arguments.Count == 2;
+
             // MACHINE関数: レジスタ渡し (0:CALL, 1:HL, 2:HL+DE, 3:HL+DE+BC)
             // 各引数を評価した直後にPushArgしてスタックに退避
             for (int i = 0; i < node.Arguments.Count; i++)
             {
+                string? paramType = paramTypes != null && i < paramTypes.Count ? paramTypes[i] : null;
+                if (paramType == "float") MarkFloatFold(node.Arguments[i], true);
                 var argVal = node.Arguments[i].Accept(this);
-                Emit(IrOp.PushArg, argVal, IrOperand.Imm(i));
+                if (paramType == "float")
+                    argVal = EmitTypeConversionExpand(argVal, 3);
+                else if (paramType != null && TempDataSize(argVal) == 3)
+                    _diagnostics.Error("Cannot pass FLOAT value to non-FLOAT parameter (use FTOI for explicit conversion)",
+                        node.Arguments[i].Span);
+                Emit(IrOp.PushArg, argVal, IrOperand.Imm(i), dataSize: twoFloats ? 3 : 2);
             }
 
             var dest = IrOperand.Temp(AllocTemp());
@@ -2267,13 +2305,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 asmName = funcSym?.AsmLabel ?? LabelUtils.FunctionLabel(funcName!);
             }
             // ランタイム関数のFLOAT戻り値: DataSizeを3に設定（CodeGeneratorがPUSH AF+PUSH HLを生成するため）
-            int resultDs = 2;
-            if (funcName != null && _runtimeManager?.Functions.TryGetValue(funcName, out var rtFunc) == true
-                && rtFunc.ResultType == "float")
-            {
-                resultDs = 3;
-            }
+            int resultDs = rtFunc?.ResultType == "float" ? 3 : 2;
             Emit(IrOp.Call, dest, IrOperand.Sym(asmName), IrOperand.Imm(machineParamCount.Value), dataSize: resultDs);
+            if (twoFloats) CurrentInstructionList()[^1].ArgSizes = [3, 3];
             if (resultDs == 3)
                 _tempDataSize[dest.TempIndex] = 3;
             return dest;
@@ -2305,6 +2339,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     && paramTypes[i] is PrimitiveType ppt && ppt.Kind == PrimitiveKind.Float)
                     targetDs = 3;
 
+                // FLOAT の引数の値は、代入の値と同じく FLOAT の定数の演算を正しい値で畳み込む
+                if (targetDs == 3) MarkFloatFold(node.Arguments[i], true);
                 var argVal = node.Arguments[i].Accept(this);
                 int valueDs = argVal.Kind == IrOperandKind.Temp
                     && _tempDataSize.TryGetValue(argVal.TempIndex, out int vds) ? vds : 2;
@@ -2325,7 +2361,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             var dest = IrOperand.Temp(AllocTemp());
             var asmName = funcSym?.AsmLabel ?? LabelUtils.FunctionLabel(funcName ?? "__indirect_call");
             // 負の引数数 = ユーザー関数のIY渡し（0は引数なしで共通）
-            // ArgSizes はユーザー関数 (callArgMode<0) のみ設定
+            // ArgSizes はユーザー関数 (callArgMode<0) と、MACHINE の FLOAT 2 つの呼び出しに設定
             var callInst = new IrInstruction(IrOp.Call, dest, IrOperand.Sym(asmName),
                 IrOperand.Imm(node.Arguments.Count > 0 ? -node.Arguments.Count : 0))
             {
