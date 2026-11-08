@@ -531,8 +531,17 @@ public class CodeGenerator
             }
             else if (inst.Op == IrOp.StoreVar && pendingConstVal.HasValue)
             {
-                _e.Instruction("LD", $"HL,${pendingConstVal.Value:X4}");
-                _e.Instruction("LD", $"({AsmLabel(inst.Dest.Name!)}),HL");
+                if (inst.DataSize == 1)
+                {
+                    // BYTE は 1 バイトだけ書く (2 バイト書くと、隣 (固定アドレスならその番地の次) を壊す)
+                    _e.Instruction("LD", $"A,${pendingConstVal.Value & 0xFF:X2}");
+                    _e.Instruction("LD", $"({AsmLabel(inst.Dest.Name!)}),A");
+                }
+                else
+                {
+                    _e.Instruction("LD", $"HL,${pendingConstVal.Value:X4}");
+                    _e.Instruction("LD", $"({AsmLabel(inst.Dest.Name!)}),HL");
+                }
                 pendingConstVal = null;
             }
             else

@@ -97,4 +97,31 @@ public class VarDeclTests
         var (_, diag) = Compile($"{decl} MAIN() BEGIN END;");
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains(message));
     }
+
+    [Fact]
+    public void AsmAddress_ConstExpansionKeepsGrouping()
+    {
+        // 右が CONST の名前で、その中身が OTHER+2 (ラベルの式) のときも括弧でくくる
+        var asm = CompileOk("CONST DELTA = OTHER + 2; VAR X:BASE-DELTA; MAIN() BEGIN X = 1; END;\n"
+            + "#ASM\nBASE: DB 0\nOTHER: DB 0\n#END\n");
+        Assert.Contains("_V_X\tEQU\tBASE-(OTHER+$0002)\n", asm);
+    }
+
+    [Theory]
+    // BYTE の初期値は 1 バイトだけ書く (2 バイト書くと、隣を壊す)
+    [InlineData("VAR BYTE B = 9;", "_V_B", "$09")]
+    [InlineData("VAR BYTE B:BYTECOUNTER = 7;", "_V_B", "$07")]
+    public void ByteInitializer_WritesOneByte(string decl, string label, string value)
+    {
+        var asm = CompileOk($"{decl} MAIN() BEGIN B = 1; END;\n{Asm}");
+        Assert.Matches($@"LD\tA,\{value}\s*\n\s*LD\t\({label}\),A", asm);
+    }
+
+    [Fact]
+    public void PointerInitializer_NonConstant_Warns()
+    {
+        // 起動時の代入は定数だけ (単純変数と同じ警告)
+        var (_, diag) = Compile("VAR Y; VAR P[] = &Y; MAIN() BEGIN P[0] = 1; END;");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("Non-constant initializer for static/global variable 'P'"));
+    }
 }

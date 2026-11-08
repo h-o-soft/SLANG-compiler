@@ -227,9 +227,9 @@ internal static class LabelUtils
                     var left = Convert(bin.Left);
                     var right = Convert(bin.Right);
                     if (left == null || right == null) return null;
-                    // A-(B+C) の右は括弧でくくる (並べると A-B+C になる)
-                    if (bin.Op == Parser.Ast.BinaryOp.Sub
-                        && bin.Right is Parser.Ast.BinaryExpr { Op: Parser.Ast.BinaryOp.Add or Parser.Ast.BinaryOp.Sub })
+                    // A-(B+C) の右は括弧でくくる (並べると A-B+C になる)。右が CONST の名前で、その中身が
+                    // B+C のときも同じ (文字列で見る)
+                    if (bin.Op == Parser.Ast.BinaryOp.Sub && (right.Contains('+') || right.Contains('-')))
                         right = $"({right})";
                     return $"{left}{(bin.Op == Parser.Ast.BinaryOp.Add ? "+" : "-")}{right}";
 

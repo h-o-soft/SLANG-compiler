@@ -264,6 +264,15 @@ public class SemanticAnalyzer : IAstVisitor<object?>
                 sym.AsmLabel = LabelUtils.UserVarLabel(node.Name);
         }
 
+        // 間接変数の初期値 (VAR P[] = 番地): 大域・静的は、単純変数と同じく定数でなければ起動時に入らない
+        if (node.InitialValue != null && sym.IsGlobal && node.InitialValue is not IntegerLiteral
+            && _constEval.Evaluate(node.InitialValue) == null)
+        {
+            _diagnostics.Report(DiagnosticSeverity.Warning,
+                $"Non-constant initializer for static/global variable '{node.Name}' may not be initialized at runtime",
+                node.InitialValue.Span);
+        }
+
         // Issue #190: ARRAY initializer 容量超過 check (= 全 backend 共通)。
         // SLANG 仕様: 「添字省略時はチェックしない」 — 全次元 null (= PointerType)
         // と多次元の一部 null (= 例 `ARRAY BYTE A[][3]`) のどちらも容量判定 skip。
