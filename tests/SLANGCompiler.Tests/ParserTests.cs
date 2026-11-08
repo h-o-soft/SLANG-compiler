@@ -96,6 +96,20 @@ public class ParserTests
         Assert.False(forStmt.IsDownTo);
     }
 
+    [Theory]
+    // DO の後ろも、ブロックか 1 つの文 (仕様書: FOR 変数名 = 式1 TO 式2 [DO] 文 [NEXT;])
+    [InlineData("FOR I=0 TO 10 DO PRINT(I); X=1;")]
+    [InlineData("FOR I=0 TO 10 DO PRINT(I); NEXT; X=1;")]
+    [InlineData("FOR I=0 TO 10 DO [ PRINT(I); ] X=1;")]
+    public void ForLoop_DoSingleStatement(string stmts)
+    {
+        var ast = Parse($"MAIN() BEGIN {stmts} END;");
+        var func = Assert.IsType<FuncDef>(ast.Definitions[0]);
+        Assert.Equal(2, func.Body.Statements.Count);   // FOR と X=1 (X=1 は FOR の本体でない)
+        var forStmt = Assert.IsType<ForStmt>(func.Body.Statements[0]);
+        Assert.Equal("I", forStmt.Variable);
+    }
+
     [Fact]
     public void CaseStatement()
     {
@@ -112,6 +126,21 @@ public class ParserTests
         var machine = Assert.IsType<MachineDecl>(ast.Definitions[0]);
         Assert.Equal("MSUB", machine.Name);
         Assert.Equal(2, machine.ParamCount);
+    }
+
+    [Theory]
+    // NAME:番地(n); の形の MACHINE 関数。番地の後ろの ( は呼び出しでなく引数の数
+    [InlineData("BEEP:$03B5(2);", 2)]
+    [InlineData("BEEP:BEEPER(1);", 1)]
+    [InlineData("BEEP:(BASE + 4)(0);", 0)]
+    public void MachineAddressForm(string source, int paramCount)
+    {
+        var ast = Parse(source);
+        var machine = Assert.IsType<MachineDecl>(ast.Definitions[0]);
+        Assert.Equal("BEEP", machine.Name);
+        Assert.Equal(paramCount, machine.ParamCount);
+        Assert.NotNull(machine.Address);
+        Assert.IsNotType<CallExpr>(machine.Address);
     }
 
     [Fact]

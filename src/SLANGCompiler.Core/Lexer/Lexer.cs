@@ -558,6 +558,8 @@ public class Lexer
             case '?':
                 return MakeToken(TokenKind.Question, "?", start);
             case '(':
+                // ( と , の直後の [ は添字ではない (CODE([式], …) の [式])
+                _nextBraceIsArray = false;
                 return MakeToken(TokenKind.LParen, "(", start);
             case ')':
                 _nextBraceIsArray = false;
@@ -578,6 +580,7 @@ public class Lexer
             case '\uff63': // ｣
                 return MakeToken(TokenKind.RAngleBracket, "｣", start);
             case ',':
+                _nextBraceIsArray = false;
                 return MakeToken(TokenKind.Comma, ",", start);
             case ':':
                 _nextBraceIsArray = false;

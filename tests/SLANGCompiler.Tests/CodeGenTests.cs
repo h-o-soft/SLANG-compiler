@@ -742,6 +742,25 @@ public class CodeGenTests
         Assert.Contains("LD\tHL,$7FFC", body);
     }
 
+    [Fact]
+    public void MachineAddressForm_CallsAddress()
+    {
+        // NAME:番地(n); は MACHINE NAME(n):番地; と同じ
+        var asm = Compile("BEEP:$03B5(2); MAIN() BEGIN BEEP(1, 2); END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Contains("CALL\t$03B5", body);
+    }
+
+    [Fact]
+    public void CodeEvalItem_AfterParenAndComma()
+    {
+        // CODE([式], …) と CODE(…, [式]) の [式] は、式の値を HL に入れるコード
+        var asm = Compile("CONST K = 3; VAR X; MAIN() BEGIN X = 1; CODE([K], $00); CODE($01, [X + 1]); END;");
+        var body = asm.Split("MAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Matches(@"LD\tHL,\$0003\s*\n\s*DB\t\$00", body);
+        Assert.Matches(@"DB\t\$01\s*\n\s*LD\tHL,\(_V_X\)\s*\n\s*INC\tHL", body);
+    }
+
     private (string asm, DiagnosticBag diag) TryCompile(string source)
     {
         var diag = new DiagnosticBag();
