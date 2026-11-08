@@ -247,4 +247,21 @@ public class PreprocessorTests : IDisposable
         Assert.Equal(new[] { "MAIN_A", "PART2_A" }, names);
         Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
     }
+
+    [Fact]
+    public void SliceEndLiteral_CompletedBySemicolon_IsFinal()
+    {
+        // #IF の中で切れた CONST K = 1 が、#END の後ろの ; で終わる: K も別名の FLAG も 1 (エラーにしない)
+        var (names, diag) = Run("#IF 1\nCONST K = 1\n#END\n;\nCONST FLAG = K;" + IfMark("FLAG == 1"));
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        Assert.Contains("YES_FLAG", names);
+    }
+
+    [Fact]
+    public void SliceEndLiteral_ContinuedAfterEnd_IsUnknown()
+    {
+        // #IF の中で切れた CONST K = 1 の続き (+ 1) が #END の後ろにある: K の値は分からない (#IF で使うとエラー)
+        var (_, diag) = Run("#IF 1\nCONST K = 1\n#END\n+ 1;" + IfMark("K == 1"));
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("#IF uses CONST 'K', whose value is not known here"));
+    }
 }

@@ -47,6 +47,10 @@ public class Preprocessor
     private readonly HashSet<string> _unknownConsts = new(StringComparer.OrdinalIgnoreCase);
     // 右辺の終わりが分からないが、整数のリテラル 1 つなので値を覚えた CONST (これを使う CONST は値が分からない)
     private readonly HashSet<string> _provisionalConsts = new(StringComparer.OrdinalIgnoreCase);
+    // 字句の列の終わりで切れた、整数のリテラル 1 つの CONST。外の列の次の字句 (指示でないもの) で決める:
+    // ; か , なら宣言はそこで終わっていた (仮の値でなくなる)。ほかなら式が続いていた (値が分からない)
+    private readonly List<string> _sliceEndConsts = new();
+    private List<Token>? _sliceEndList;   // _sliceEndConsts を覚えた字句の列 (その列の残りの字句では決めない)
     // CONST の右辺の式が使った名前 (たどった先も)
     private readonly Dictionary<string, HashSet<string>> _constDeps = new(StringComparer.OrdinalIgnoreCase);
 
@@ -72,6 +76,9 @@ public class Preprocessor
                 return;
             }
             var token = tokens[i];
+            if (_sliceEndConsts.Count > 0 && !ReferenceEquals(tokens, _sliceEndList)
+                && !IsDirective(token.Kind) && token.Kind != TokenKind.EOF)
+                SettleSliceEndConsts(token.Kind is TokenKind.Semicolon or TokenKind.Comma);
 
             switch (token.Kind)
             {
@@ -193,7 +200,16 @@ public class Preprocessor
                     SetConst(name, Convert.ToInt32(tokens[start].Value));
                     // 右辺の終わりが分からない整数のリテラル 1 つは、#IF で直接使うときはいままでどおりの値。
                     // 続きがあるかもしれないので、これを使う CONST の値は分からないとする (誤った値を別名に広げない)
-                    if (mayContinue) _provisionalConsts.Add(name);
+                    if (mayContinue)
+                    {
+                        _provisionalConsts.Add(name);
+                        // 字句の列 (#IF の中・取り込んだファイル) の終わりで切れたもの: 外の列の次の字句で決める
+                        if (end >= tokens.Count)
+                        {
+                            _sliceEndConsts.Add(name);
+                            _sliceEndList = tokens;
+                        }
+                    }
                 }
                 else
                 {
@@ -225,6 +241,19 @@ public class Preprocessor
         }
     }
 
+
+    private void SettleSliceEndConsts(bool completed)
+    {
+        foreach (var n in _sliceEndConsts)
+        {
+            _provisionalConsts.Remove(n);
+            if (completed) continue;
+            _constValues.Remove(n);
+            _constSymbols.Remove(n);
+            _unknownConsts.Add(n);
+        }
+        _sliceEndConsts.Clear();
+    }
 
     private static bool IsDirective(TokenKind k)
         => k is TokenKind.PreprocIf or TokenKind.PreprocElse or TokenKind.PreprocEnd
