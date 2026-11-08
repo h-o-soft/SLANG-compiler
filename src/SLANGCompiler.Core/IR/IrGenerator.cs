@@ -841,6 +841,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         CastExpr c => c.TargetSize == DataSize.Float || ContainsFloat(c.Operand, namesAreLabels),
         BinaryExpr b => ContainsFloat(b.Left, namesAreLabels) || ContainsFloat(b.Right, namesAreLabels),
         UnaryExpr u => ContainsFloat(u.Operand, namesAreLabels),
+        HighLowExpr h => ContainsFloat(h.Operand, namesAreLabels),
         ConditionalExpr c => ContainsFloat(c.Condition, namesAreLabels) || ContainsFloat(c.TrueExpr, namesAreLabels)
             || ContainsFloat(c.FalseExpr, namesAreLabels),
         CommaExpr c => ContainsFloat(c.Right, namesAreLabels),

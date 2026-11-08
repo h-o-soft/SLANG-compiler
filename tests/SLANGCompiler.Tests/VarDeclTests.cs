@@ -214,6 +214,7 @@ public class VarDeclTests
     [InlineData("VAR BYTE X:(1.0/2.0)*4096.0;")]
     [InlineData("VAR BYTE X:((1.0/2.0) > 0.0) ? $C000 : $D000;")]   // 条件の中の FLOAT の比較も
     [InlineData("VAR X:1024.0;")]
+    [InlineData("VAR X:$C000 + HIGH((1.0/2.0)*4096.0);")]   // HIGH・LOW の中の FLOAT も
     public void VarAddress_Float_Errors(string decl)
     {
         var (_, diag) = Compile($"{decl} MAIN() BEGIN X = 1; END;");
