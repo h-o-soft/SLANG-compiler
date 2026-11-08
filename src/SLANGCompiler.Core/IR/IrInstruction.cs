@@ -102,6 +102,8 @@ public enum IrOp
 
     // -- Special --
     Nop,
+    JoinValue,          // dest = 分岐の合流で、値はすでに HL (FLOAT は AHL) にある (?: の値。何も出さない)
+    StoredValue,        // dest = 直前の書き込みで書いた値 (src1)。メモリへの書き込みの後は EX DE,HL、ほかは何も出さない
     Comment,
 
     // -- Data definition --
@@ -158,6 +160,7 @@ public class IrInstruction
     public IrOperand Src2 { get; set; }
     public int DataSize { get; set; } = 2;   // 1=byte, 2=word, 3=float
     public int[]? ArgSizes { get; set; }     // IrOp.Call のユーザー関数引数の各サイズ。null=全WORD互換
+    public IrOperand ImplicitSrc { get; set; } // HL を暗に読む命令 (型の変換の呼び出し) が読む値
 
     public IrInstruction(IrOp op, IrOperand dest = default, IrOperand src1 = default, IrOperand src2 = default)
     {
