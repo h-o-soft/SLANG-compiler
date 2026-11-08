@@ -1789,7 +1789,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// </summary>
     private bool MightBeFloat(Expression e) => e switch
     {
-        ConditionalExpr c => MightBeFloat(c.TrueExpr) || MightBeFloat(c.FalseExpr),
+        ConditionalExpr c => ConditionalSideIsFloat(c.TrueExpr) || ConditionalSideIsFloat(c.FalseExpr),
         CompoundAssignExpr ca => IsFloatTarget(ca.Target) && ca.Op is CompoundAssignOp.AddAssign
             or CompoundAssignOp.SubAssign or CompoundAssignOp.MulAssign or CompoundAssignOp.DivAssign,
         IncrementExpr { IsPrefix: true } pre => IsFloatTarget(pre.Operand),
@@ -1872,6 +1872,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             case CommaExpr c: MarkFloatFold(c.Right, floatTarget); break;
             case AssignExpr a: MarkFloatFold(a.Value, floatTarget && IsFloatTarget(a.Target)); break;
             case CodeEvalExpr ce: MarkFloatFold(ce.Inner, floatTarget); break;
+            case ConditionalExpr c: MarkFloatFold(c.TrueExpr, floatTarget); MarkFloatFold(c.FalseExpr, floatTarget); break;   // ?: の両側の値 (条件は除く)
         }
     }
 
@@ -1908,6 +1909,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             case UnaryExpr { Op: UnaryOp.Negate or UnaryOp.Plus } u: RequireFloat(u.Operand); break;
             case CastExpr c: RequireFloat(c.Operand); break;
             case CommaExpr c: RequireFloat(c.Right); break;
+            case ConditionalExpr c: RequireFloat(c.TrueExpr); RequireFloat(c.FalseExpr); break;
             case CodeEvalExpr ce: RequireFloat(ce.Inner); break;
         }
     }
@@ -2430,7 +2432,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // 「結果は HL にある」とし、積むかどうかはその 1 か所で決める (側ごとに決めると食い違う)
         var falseLabel = NewLabel();
         var endLabel = NewLabel();
-        int ds = MightBeFloat(node.TrueExpr) || MightBeFloat(node.FalseExpr) ? 3 : 2;
+        int ds = ConditionalSideIsFloat(node.TrueExpr) || ConditionalSideIsFloat(node.FalseExpr) ? 3 : 2;
 
         var cond = node.Condition.Accept(this);
         Emit(IrOp.JumpIfZero, IrOperand.Lbl(falseLabel), cond);
@@ -2451,6 +2453,24 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     private static bool IsComparisonOp(BinaryOp op) => op is BinaryOp.Eq or BinaryOp.Neq or BinaryOp.Lt or BinaryOp.Gt
         or BinaryOp.Le or BinaryOp.Ge or BinaryOp.SLt or BinaryOp.SGt or BinaryOp.SLe or BinaryOp.SGe;
+
+    /// <summary>
+    /// ?: の片側が FLOAT の値か。MightBeFloat に、FLOAT の配列の要素と FLOAT を返す関数の呼び出しを足したもの
+    /// (MightBeFloat はこの 2 つを扱わない。?: の結果の大きさは、両側の値の大きさに合わせる必要がある)
+    /// </summary>
+    private bool ConditionalSideIsFloat(Expression e) => e switch
+    {
+        ArrayAccessExpr a => IsFloatTarget(a),
+        CallExpr { Function: IdentifierExpr fn } => CallReturnsFloat(fn.Name),
+        _ => MightBeFloat(e),
+    };
+
+    private bool CallReturnsFloat(string name)
+    {
+        var sym = _globalSymbols?.Resolve(name);
+        if (sym?.Type is FunctionType { ReturnType: PrimitiveType { Kind: PrimitiveKind.Float } }) return true;
+        return sym == null && _runtimeManager?.Functions.TryGetValue(name, out var rt) == true && rt.ResultType == "float";
+    }
 
     /// <summary>?: の片側の値を、結果の大きさ (FLOAT なら 3) にそろえて作る</summary>
     private IrOperand ConditionalBranchValue(Expression e, int ds)

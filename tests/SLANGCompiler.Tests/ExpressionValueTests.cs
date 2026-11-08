@@ -362,4 +362,31 @@ public class ExpressionValueTests
         var body = asm!.Split("\n_F_R:")[1].Split("__F_R_EXIT")[0];
         Assert.Matches(Seq(@"LD\tHL,\$0005", @"LD\t\(IY\+\$\w\w\),L", @"LD\t\(IY\+\$\w\w\),H", @"CALL\ti16tof24"), body);
     }
+
+    // ==== 実装レビューで見つかった形 ====
+
+    [Theory]
+    // FLOAT の配列の要素・FLOAT を返す関数も、?: の FLOAT の側 (結果を FLOAT にする)
+    [InlineData("F = FLAG ? FA[0] : FA[1];")]
+    [InlineData("F = FLAG ? FA[0] : 2;")]
+    [InlineData("F = FLAG ? FG2() : 1;")]
+    public void Conditional_FloatArrayAndFunctionSides(string stmt)
+    {
+        var (asm, diag) = Compile($"{Decls} FG2:FLOAT() BEGIN RETURN 1.5; END; MAIN() BEGIN {stmt} END;");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        var body = asm!.Split("\nMAIN:")[1].Split("_MAIN_EXIT")[0];
+        Assert.Matches(Seq(@"LD\t\(_V_F\),HL", @"LD\t\(_V_F\+2\),A"), body);
+        Assert.DoesNotContain("FTOI", body);
+    }
+
+    [Fact]
+    public void Conditional_FloatConstantArithmeticInSide()
+    {
+        // ?: の側の FLOAT の定数の四則演算も、代入の文と同じく正しい値で畳み込む (5.0/2.0 は 2.5)
+        var body = MainBody("F = FLAG ? 5.0/2.0 : 1.5;");
+        var direct = MainBody("F = 5.0/2.0;");
+        var load25 = System.Text.RegularExpressions.Regex.Match(direct, @"LD\tHL,\$\w{4}\s*\n\s*LD\tA,\$\w\w").Value;
+        Assert.False(string.IsNullOrEmpty(load25));
+        Assert.Contains(load25, body);
+    }
 }
