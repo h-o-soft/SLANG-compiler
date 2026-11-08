@@ -146,6 +146,7 @@ public enum TokenKind
 
     // -- Preprocessor --
     PreprocInclude,     // #INCLUDE
+    PreprocChain,       // #CHAIN (続きのソースへ移って戻らない)
     PreprocIf,          // #IF
     PreprocElse,        // #ELSE
     PreprocEnd,         // #END / #ENDIF

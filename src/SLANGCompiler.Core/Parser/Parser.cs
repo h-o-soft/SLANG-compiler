@@ -74,6 +74,7 @@ public class Parser
             case TokenKind.PreprocElse: Advance(); return null;
             case TokenKind.PreprocEnd: Advance(); return null;
             case TokenKind.PreprocInclude: Advance(); return null; // preprocessorが処理済み
+            case TokenKind.PreprocChain: Advance(); return null;   // preprocessorが処理済み
             case TokenKind.Const: return ParseConstDecl();
             case TokenKind.Var: return ParseVarDeclList();
             case TokenKind.Array: return ParseArrayDeclList();
@@ -1031,6 +1032,19 @@ public class Parser
 
     /// <summary>ParseNcExpr: no-comma expression (used in most places)</summary>
     private Expression ParseNcExpr() => ParseAssign();
+
+    /// <summary>
+    /// プリプロセッサの CONST の右辺: tokens[start] から式を 1 つ読み、読み終えた位置を end に返す。
+    /// 読めなければ null
+    /// </summary>
+    internal static Expression? ParseExpressionAt(List<Token> tokens, int start, out int end)
+    {
+        var diag = new DiagnosticBag();
+        var p = new Parser(tokens, diag) { _pos = start };
+        var e = p.ParseNcExpr();
+        end = p._pos;
+        return diag.HasErrors ? null : e;
+    }
 
     private Expression ParseAssign()
     {

@@ -611,6 +611,15 @@ public class Lexer
             string path = _source[fnStart.._pos].Trim().Trim('"');
             return MakeToken(TokenKind.PreprocInclude, path, start, path);
         }
+        if (directive.Equals("CHAIN", StringComparison.OrdinalIgnoreCase))
+        {
+            // #INCLUDE と同じくファイル名を持つ
+            SkipSpaces();
+            int fnStart = _pos;
+            while (!IsAtEnd && Peek() != '\n') Advance();
+            string path = _source[fnStart.._pos].Trim().Trim('"');
+            return MakeToken(TokenKind.PreprocChain, path, start, path);
+        }
         if (directive.Equals("IF", StringComparison.OrdinalIgnoreCase))
         {
             SkipSpaces();
