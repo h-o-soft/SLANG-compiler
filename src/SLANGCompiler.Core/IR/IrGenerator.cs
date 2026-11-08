@@ -282,16 +282,61 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
     }
 
-    private int AllocTemp() => _currentFunction?.AllocTemp() ?? 0;
+    private int AllocTemp()
+    {
+        if (_currentFunction != null) return _currentFunction.AllocTemp();
+        _tempDataSize.Remove(0);   // 関数の外の一時値は番号がいつも 0。前の値の FLOAT の記録を残さない
+        return 0;
+    }
     private string NewLabel() => $"_L{_labelCount++}";
 
     private void Emit(IrOp op, IrOperand dest = default, IrOperand src1 = default, IrOperand src2 = default, int dataSize = 2)
     {
         var inst = new IrInstruction(op, dest, src1, src2) { DataSize = dataSize };
+        CheckFloatOperands(inst);
         if (_emitToGlobalData || _currentFunction == null)
             _module.GlobalData.Add(inst);
         else
             _currentFunction.Instructions.Add(inst);
+    }
+
+    // いま作っている文の場所 (Emit の FLOAT の検査のエラーの場所)
+    private SourceSpan _stmtSpan;
+
+    /// <summary>
+    /// 命令が読む値の型を見る。値として読むオペランドは、命令の大きさが 3 (FLOAT) かと、値が FLOAT かが同じであること
+    /// (違えば変換が抜けている)。番地・添字として読むオペランドは整数であること。FLOAT を扱えない命令 (MOD・ビット演算・
+    /// シフト・符号付きの比較・条件など) は FLOAT の値を読まないこと。書き込みの番地は Dest にある
+    /// </summary>
+    private void CheckFloatOperands(IrInstruction inst)
+    {
+        bool fl = inst.DataSize == 3;
+        bool bad = false;
+        void Value(IrOperand o) { if (o.Kind == IrOperandKind.Temp && (TempDataSize(o) == 3) != fl) bad = true; }
+        void Int(IrOperand o) { if (o.Kind == IrOperandKind.Temp && TempDataSize(o) == 3) bad = true; }
+        switch (inst.Op)
+        {
+            case IrOp.StoreVar or IrOp.StoreLocal: Value(inst.Src1); break;
+            case IrOp.ArrayStore: Value(inst.Src1); Int(inst.Dest); Int(inst.Src2); break;
+            case IrOp.IndirStore or IrOp.MemStore or IrOp.PortOut: Value(inst.Src1); Int(inst.Dest); break;
+            case IrOp.ArrayLoad: Int(inst.Src1); Int(inst.Src2); break;
+            case IrOp.IndirLoad or IrOp.MemLoad or IrOp.PortIn or IrOp.LoadIndirect: Int(inst.Src1); break;
+            case IrOp.Add or IrOp.Sub or IrOp.Mul or IrOp.Div or IrOp.SMul or IrOp.SDiv or IrOp.Neg
+                or IrOp.CmpEq or IrOp.CmpNeq or IrOp.CmpLt or IrOp.CmpGt or IrOp.CmpLe or IrOp.CmpGe
+                or IrOp.JoinValue or IrOp.StoredValue:
+                Value(inst.Src1); Value(inst.Src2); break;
+            case IrOp.Mod or IrOp.SMod or IrOp.And or IrOp.Or or IrOp.Xor or IrOp.Not or IrOp.Shl or IrOp.Shr
+                or IrOp.SShl or IrOp.SShr or IrOp.CmpSLt or IrOp.CmpSGt or IrOp.CmpSLe or IrOp.CmpSGe
+                or IrOp.High or IrOp.Low or IrOp.LogAnd or IrOp.LogOr or IrOp.LogNot
+                or IrOp.JumpIfZero or IrOp.JumpIfNonZero:
+                bad = fl;
+                Int(inst.Src1); Int(inst.Src2);
+                break;
+        }
+        if (!bad) return;
+        _diagnostics.Error(inst.Op is IrOp.JumpIfZero or IrOp.JumpIfNonZero or IrOp.LogAnd or IrOp.LogOr or IrOp.LogNot
+            ? "A FLOAT value cannot be used as a condition (compare it, e.g. F <> 0.0)"
+            : "A FLOAT value cannot be used in this operation, index or address (use FTOI to make it an integer)", _stmtSpan);
     }
 
     /// <summary>HL の値 (input) を変える呼び出し (i16tof24・FTOI)。読む値を ImplicitSrc に覚える (コード生成が「後で読むか」を判断するため)</summary>
@@ -404,8 +449,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitBlock(Block node)
     {
+        var prevSpan = _stmtSpan;
         foreach (var stmt in node.Statements)
+        {
+            _stmtSpan = stmt.Span;
             stmt.Accept(this);
+        }
+        _stmtSpan = prevSpan;
         return IrOperand.None;
     }
 
@@ -498,17 +548,27 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (node.InitialValue != null)
             {
                 _emitToGlobalData = true;
+                _stmtSpan = node.Span;
                 try
                 {
-                    // 起動時の代入は LoadConst と StoreVar の組だけを書く (EmitGlobalInit)。整数の変数の初期値は、その場で
-                    // 決まる整数の定数だけ (?: なども値にしてから積む)。FLOAT を使う式・定数にならない式・FLOAT の変数の
-                    // 初期値は、黙って書かれなかったのでエラー (FLOAT は整数で畳み込むと違う値になりうる)
-                    int? cv = ds <= 2 && !ContainsFloat(node.InitialValue) ? NewConstEvaluator().Evaluate(node.InitialValue) : null;
+                    // 起動時の代入は LoadConst (FLOAT は LoadFloatConst) と StoreVar の組だけを書く (EmitGlobalInit)。
+                    // 整数の変数の初期値は、その場で決まる整数の定数だけ (?: なども値にしてから積む)。FLOAT を使う式・
+                    // 定数にならない式は、黙って書かれなかったのでエラー (FLOAT は整数で畳み込むと違う値になりうる)。
+                    // FLOAT の変数の初期値は GlobalFloatInitialValue の形だけ
+                    if (ds == 3)
+                    {
+                        double? fv = GlobalFloatInitialValue(node.InitialValue);
+                        if (fv == null)
+                            _diagnostics.Error($"The initializer of FLOAT variable '{node.Name}' must be a FLOAT literal, "
+                                + "a FLOAT CONST or a constant expression (assign other values at the start of MAIN)",
+                                node.InitialValue.Span);
+                        Emit(IrOp.StoreVar, IrOperand.Sym(label), EmitLoadFloatConst(fv ?? 0), dataSize: 3);
+                        return IrOperand.None;
+                    }
+                    int? cv = !ContainsFloat(node.InitialValue) ? NewConstEvaluator().Evaluate(node.InitialValue) : null;
                     if (cv == null)
-                        _diagnostics.Error(ds > 2
-                            ? $"FLOAT variable '{node.Name}' cannot have an initializer here yet (assign it at the start of MAIN)"
-                            : $"The initializer of global/static variable '{node.Name}' must be an integer constant "
-                              + "(FLOAT and non-constant expressions are not written at startup)", node.InitialValue.Span);
+                        _diagnostics.Error($"The initializer of global/static variable '{node.Name}' must be an integer constant "
+                            + "(FLOAT and non-constant expressions are not written at startup)", node.InitialValue.Span);
                     var val = IrOperand.Temp(AllocTemp());
                     Emit(IrOp.LoadConst, val, IrOperand.Imm((cv ?? 0) & (ds == 1 ? 0xFF : 0xFFFF)));
                     Emit(IrOp.StoreVar, IrOperand.Sym(label), val, dataSize: ds);
@@ -527,15 +587,37 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (node.InitialValue != null)
             {
                 var name = node.Name;
+                // 代入と同じく、変数の型に変えて、割り当てた大きさ (BYTE・WORD は 2) で書く。FLOAT の変数の値だけ、
+                // 代入の文の値と同じく FLOAT の定数の演算を正しい値で畳み込む (整数の変数の値はいままでどおり)
+                if (ds == 3) MarkFloatFold(node.InitialValue, true);
                 EmitLocalInit(() =>
                 {
                     var val = node.InitialValue.Accept(this);
                     var info = _localVars![name];
-                    Emit(IrOp.StoreLocal, IrOperand.Imm(info.Offset), val, dataSize: ds);
+                    val = EmitTypeConversion(val, info.ByteSize);
+                    Emit(IrOp.StoreLocal, IrOperand.Imm(info.Offset), val, dataSize: info.ByteSize);
                 });
             }
         }
         return IrOperand.None;
+    }
+
+    /// <summary>
+    /// 大域・静的の FLOAT の変数の初期値として通す形の値: FLOAT のリテラル (前に - が 1 つあってもよい)・FLOAT の CONST・
+    /// FLOAT を含まない整数の定数の式 (代入と同じく符号付きで FLOAT にする)・FLOAT が関わる定数の四則演算で値が決まるもの。
+    /// ほかは null (エラー。変数 (CONST を隠す引数・局所変数も) を使う式も)
+    /// </summary>
+    private double? GlobalFloatInitialValue(Expression e)
+    {
+        if (UsesVariableName(e)) return null;
+        if (e is FloatLiteral fl) return fl.Value;
+        if (e is UnaryExpr { Op: UnaryOp.Negate, Operand: FloatLiteral nfl }) return -nfl.Value;
+        if (e is IdentifierExpr id && ResolveConstOrGlobal(id.Name) is { Kind: SymbolKind.Constant, ConstFloatValue: double cf })
+            return cf;
+        if (_globalSymbols == null) return null;
+        var ce = NewConstEvaluator();
+        if (!ce.InvolvesFloat(e)) return ce.Evaluate(e) is int iv ? (short)iv : null;
+        return ce.FoldFloatArithmetic(e) is { Kind: not ConstEvaluator.FloatFoldKind.Runtime } f ? f.FloatValue : null;
     }
 
     public IrOperand VisitArrayDecl(ArrayDecl node)
@@ -808,18 +890,24 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// </summary>
     private IrOperand PointerInitialValue(Expression init)
     {
-        bool usesVariable = false;
-        SemanticAnalyzer.ForEachName(init, (n, _) =>
-        {
-            if (_localVars?.ContainsKey(n) == true || _staticVarSizes?.ContainsKey(n) == true) usesVariable = true;
-        });
-        int? v = _globalSymbols != null && !usesVariable && !ContainsFloat(init) ? NewConstEvaluator().Evaluate(init) : null;
+        int? v = _globalSymbols != null && !UsesVariableName(init) && !ContainsFloat(init) ? NewConstEvaluator().Evaluate(init) : null;
         if (v == null)
             _diagnostics.Error("The initializer of an indirect variable must be an integer constant "
                 + "(a literal, a CONST, or an expression of them); FLOAT, variables and labels are not allowed", init.Span);
         var t = IrOperand.Temp(AllocTemp());
         Emit(IrOp.LoadConst, t, IrOperand.Imm((v ?? 0) & 0xFFFF));
         return t;
+    }
+
+    /// <summary>式に変数 (局所変数・引数・静的変数) の名前があるか (同じ名前の CONST を隠すので、定数として読まない)</summary>
+    private bool UsesVariableName(Expression e)
+    {
+        bool uses = false;
+        SemanticAnalyzer.ForEachName(e, (n, _) =>
+        {
+            if (_localVars?.ContainsKey(n) == true || _staticVarSizes?.ContainsKey(n) == true) uses = true;
+        });
+        return uses;
     }
 
     /// <summary>式の中の CONST の名前の式 (後ろで決まる・ラベルを含む CONST の、まだ値でない式) に FLOAT があるか (たどる)</summary>
@@ -838,7 +926,6 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     /// <summary>
     /// 値の式に FLOAT (FLOAT のリテラル・FLOAT の名前 (局所変数が隠すものは見ない)・FLOAT へのキャスト) があるか。
-    /// MightBeFloat は、整数に畳み込める式 ((1.0/2.0)*4096.0) を整数と推定するので、番地の式の検査には使わない。
     /// 比較・条件の中の FLOAT も見る (その場で決める値は整数で畳み込むので、FLOAT の比較を誤る)
     /// </summary>
     /// namesAreLabels: 番地の式 (VAR X:式) では、変数の名前はその番地 (整数のラベル) なので、FLOAT の変数でも FLOAT と見ない
@@ -856,8 +943,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
         ConditionalExpr c => ContainsFloat(c.Condition, namesAreLabels) || ContainsFloat(c.TrueExpr, namesAreLabels)
             || ContainsFloat(c.FalseExpr, namesAreLabels),
         CommaExpr c => ContainsFloat(c.Right, namesAreLabels),
+        IntegerLiteral => false,
         null => false,
-        _ => !namesAreLabels && MightBeFloat(e),
+        _ => !namesAreLabels,   // ほかの形 (関数の呼び出し・配列の要素・代入など) は FLOAT かもしれない
     };
 
     /// <summary>
@@ -1093,6 +1181,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
             paramNames.Add(p.Name);
             paramSizes.Add(info.ByteSize);
         }
+        // 呼ぶ側は引数を (IY+$70) から順に書き、(IY+$7F) までしか書けない ($80 は -128 になる)
+        if (paramSizes.Sum() > 16)
+            _diagnostics.Error($"The parameters of '{node.Name}' take {paramSizes.Sum()} bytes; at most 16 bytes are allowed "
+                + "(BYTE/WORD/array 2 bytes, FLOAT 3 bytes)", node.Span);
 
         Emit(IrOp.FuncBegin, IrOperand.Sym(LabelUtils.FunctionLabel(node.Name)));
 
@@ -1131,6 +1223,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // Return value from END(expr)
         if (node.ReturnValue != null)
         {
+            _stmtSpan = node.ReturnValue.Span;
+            if (_currentReturnDataSize == 3) MarkFloatFold(node.ReturnValue, true);
             var retVal = node.ReturnValue.Accept(this);
             retVal = ConvertReturnValue(retVal, node.ReturnValue.Span);
             Emit(IrOp.Return, retVal, dataSize: _currentReturnDataSize);
@@ -1337,9 +1431,16 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var forVarInfo = forVi.Local;
         bool forVarIsLocal = forVarInfo != null;
         int forVarDs = forVi.VarDataSize;
+        if (forVarDs == 3 && forVi.Kind == VarKind.Scalar)
+        {
+            _diagnostics.Error("The FOR variable must not be FLOAT (use an integer variable)", node.Span);
+            return IrOperand.None;
+        }
 
         // Initialize: var = from
         var fromVal = node.From.Accept(this);
+        if (TempDataSize(fromVal) == 3)
+            _diagnostics.Error("The start of FOR must not be FLOAT (use FTOI)", node.From.Span);
         if (forVarIsLocal)
             Emit(IrOp.StoreLocal, IrOperand.Imm(forVarInfo!.Offset), fromVal, dataSize: forVarDs);
         else
@@ -1374,6 +1475,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // FOR TO: unsigned比較（旧コンパイラ互換、コンパクト）
         // FOR DOWNTO: 符号付き比較（0を跨ぐオーバーフロー対策）
         var limit = node.To.Accept(this);
+        if (TempDataSize(limit) == 3)
+            _diagnostics.Error("The end of FOR must not be FLOAT (use FTOI)", node.To.Span);
         var cmp = IrOperand.Temp(AllocTemp());
         Emit(node.IsDownTo ? IrOp.CmpSGe : IrOp.CmpLe, cmp, newVal, limit);
         Emit(IrOp.JumpIfNonZero, IrOperand.Lbl(startLabel), cmp);
@@ -1529,6 +1632,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         if (node.Value != null)
         {
+            if (_currentReturnDataSize == 3) MarkFloatFold(node.Value, true);   // FLOAT の関数の戻り値は FLOAT の値が要る所
             var val = node.Value.Accept(this);
             val = ConvertReturnValue(val, node.Value.Span);
             Emit(IrOp.Return, val, dataSize: _currentReturnDataSize);
@@ -1572,73 +1676,78 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PCRONE"));
                         break;
                     case "HEX2$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PHEX2"));
                         break;
                     case "HEX4$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PHEX4"));
                         break;
                     case "FORM$":
                         // FORM$(value, n): HL=value, DE=n桁 → MACHINE(2)として呼ぶ
                         if (sf.Arguments.Count >= 2)
                         {
-                            sf.Arguments[0].Accept(this);
+                            PrintValue(sf.Arguments[0]);
                             Emit(IrOp.PushArg, IrOperand.None);
-                            sf.Arguments[1].Accept(this);
+                            PrintValue(sf.Arguments[1]);
                             Emit(IrOp.PushArg, IrOperand.None);
                         }
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10toN"), IrOperand.Imm(2));
                         break;
                     case "DECI$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10to5"));
                         break;
                     case "%" or "PN$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSIGN"));
                         break;
                     case "MSG$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PMSG"));
                         break;
                     case "!" or "MSX$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PMSX"));
                         break;
                     case "STR$":
                         // STR$(char, n): HL=char, DE=n → MACHINE(2)として呼ぶ
                         if (sf.Arguments.Count >= 2)
                         {
-                            sf.Arguments[0].Accept(this);
+                            PrintValue(sf.Arguments[0]);
                             Emit(IrOp.PushArg, IrOperand.None);
-                            sf.Arguments[1].Accept(this);
+                            PrintValue(sf.Arguments[1]);
                             Emit(IrOp.PushArg, IrOperand.None);
                         }
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSTR"), IrOperand.Imm(2));
                         break;
                     case "CHR$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PCHR"));
                         break;
                     case "SPC$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSPC"));
                         break;
                     case "CR$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PCR"));
                         break;
                     case "TAB$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PTAB"));
                         break;
                     case "FL$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        // 値は FLOAT の値が要る所 (整数は FLOAT に変える)
+                        if (sf.Arguments.Count > 0)
+                        {
+                            MarkFloatFold(sf.Arguments[0], true);
+                            EmitTypeConversionExpand(sf.Arguments[0].Accept(this), 3);
+                        }
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PFLOAT"));
                         break;
                     default:
-                        foreach (var a in sf.Arguments) a.Accept(this);
+                        foreach (var a in sf.Arguments) PrintValue(a);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym($"PRINT_{sf.FuncName}"));
                         break;
                 }
@@ -1651,12 +1760,19 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
             else
             {
-                var val = arg.Accept(this);
+                PrintValue(arg);
                 // P10: HL=数値を10進文字列に変換して出力
                 Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10"));
             }
         }
         return IrOperand.None;
+    }
+
+    /// <summary>PRINT の項の値 (FL$ のほか)。FLOAT の値はそのまま出せない</summary>
+    private void PrintValue(Expression e)
+    {
+        if (TempDataSize(e.Accept(this)) == 3)
+            _diagnostics.Error("A FLOAT value cannot be printed directly (use FL$(x))", e.Span);
     }
 
     // ==== Expressions ====
@@ -1788,8 +1904,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // 代入先が FLOAT でないときは、整数の値を正すだけ (FLOAT の値・実行時の計算は作らず、今までどおり)
             if (!marked && floatFold is { Kind: not ConstEvaluator.FloatFoldKind.Int }) floatFold = null;
             if (floatFold is { Kind: ConstEvaluator.FloatFoldKind.Float } ff) return EmitLoadFloatConst(ff.FloatValue);
-            // FLOAT が要る位置 (実行時に計算する FLOAT の演算の辺) では、整数の結果も FLOAT の定数にする
-            if (floatFold is { Kind: ConstEvaluator.FloatFoldKind.Int } fr && _floatRequiredNodes.Contains(node))
+            // FLOAT が要る位置 (実行時に計算する FLOAT の演算の辺) では、整数の結果も FLOAT の定数にする。
+            // FLOAT の値が要る所で、整数の結果を符号付きで FLOAT に戻すと違う値になるとき (20000.0*2.0 の 40000 は -25536) も
+            if (floatFold is { Kind: ConstEvaluator.FloatFoldKind.Int } fr
+                && (_floatRequiredNodes.Contains(node) || marked && (short)fr.IntValue != fr.FloatValue))
                 return EmitLoadFloatConst(fr.FloatValue);
             // 実行時に計算するときは、辺の FLOAT の定数の演算を FLOAT のまま作る (整数に畳み込むと親が整数の演算になる)
             if (floatFold is { Kind: ConstEvaluator.FloatFoldKind.Runtime })
@@ -1810,25 +1928,26 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // no-op算術のIR正規化: CodeGeneratorのスタック整合バグ回避
             // Add(x,0)/Sub(x,0) → x, Mul(x,1)/Div(x,1) → x
             // 実行時に計算する定数の演算 (Runtime) では、FLOAT が関わる辺を整数の評価で 0・1 と見ない
-            // (1.0+1.0/3.0 の 1.0/3.0 を 0 と見て消さない)。それ以外は今までどおり
+            // (1.0+1.0/3.0 の 1.0/3.0 を 0 と見て消さない)。FLOAT の値が要る所でも、FLOAT が関わる辺は正しい値で見る
+            // (F=G+(1.0/2.0) の右を 0 と見て消さない)。それ以外は今までどおり
             bool runtimeFold = floatFold is { Kind: ConstEvaluator.FloatFoldKind.Runtime };
             if (node.Op is BinaryOp.Add or BinaryOp.Sub)
             {
-                var rc = NormalizationConst(constEval, node.Right, runtimeFold);
+                var rc = NormalizationConst(constEval, node.Right, runtimeFold, marked);
                 if (rc.HasValue && rc.Value == 0) return node.Left.Accept(this);
                 if (node.Op == BinaryOp.Add)
                 {
-                    var lc = NormalizationConst(constEval, node.Left, runtimeFold);
+                    var lc = NormalizationConst(constEval, node.Left, runtimeFold, marked);
                     if (lc.HasValue && lc.Value == 0) return node.Right.Accept(this);
                 }
             }
             if (node.Op is BinaryOp.Mul or BinaryOp.SMul or BinaryOp.Div or BinaryOp.SDiv)
             {
-                var rc = NormalizationConst(constEval, node.Right, runtimeFold);
+                var rc = NormalizationConst(constEval, node.Right, runtimeFold, marked);
                 if (rc.HasValue && rc.Value == 1) return node.Left.Accept(this);
                 if (node.Op is BinaryOp.Mul or BinaryOp.SMul)
                 {
-                    var lc = NormalizationConst(constEval, node.Left, runtimeFold);
+                    var lc = NormalizationConst(constEval, node.Left, runtimeFold, marked);
                     if (lc.HasValue && lc.Value == 1) return node.Right.Accept(this);
                 }
             }
@@ -1906,23 +2025,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
         }
 
-        // left/rightの型を先にAcceptし、FLOATの場合はleft変換→right Acceptの順にする
+        // 左を作り終えた位置を覚える。右が FLOAT なら、左の変換を右を作った後でこの位置に差し込む (左の値を積む前に
+        // 変える。?: の真の側と同じ)
         var left = node.Left.Accept(this);
         int leftDs = left.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(left.TempIndex, out int lds) ? lds : 2;
-
-        // rightがFLOATかどうかを事前推定（AcceptしないとtempDataSizeは不明だが、
-        // FloatLiteralやFLOAT変数、それらを含む四則演算は先に型が分かる）
-        bool rightMightBeFloat = MightBeFloat(node.Right);
-
-        // leftが整数でrightがFLOATの場合、leftの変換をright Accept前に行う
-        if (leftDs != 3 && rightMightBeFloat)
-        {
-            var conv = IrOperand.Temp(AllocTemp());
-            EmitConversionCall(conv, "i16tof24", left, dataSize: 3);
-            _tempDataSize[conv.TempIndex] = 3;
-            left = conv;
-            leftDs = 3;
-        }
+        var list = CurrentInstructionList();
+        int leftEnd = list.Count;
 
         var right = node.Right.Accept(this);
         var dest = IrOperand.Temp(AllocTemp());
@@ -1952,9 +2060,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
         {
             if (leftDs != 3)
             {
-                // leftの変換: このケースはrightMightBeFloat判定で漏れた場合のフォールバック
                 var conv = IrOperand.Temp(AllocTemp());
-                Emit(IrOp.Call, conv, IrOperand.Sym("i16tof24"), IrOperand.Imm(0), dataSize: 3);
+                list.Insert(leftEnd, new IrInstruction(IrOp.Call, conv, IrOperand.Sym("i16tof24"), IrOperand.Imm(0))
+                    { DataSize = 3, ImplicitSrc = left });
                 _tempDataSize[conv.TempIndex] = 3;
                 left = conv;
             }
@@ -1971,50 +2079,6 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // 比較の命令の大きさは辺の大きさ (FLOAT の比較)、値は 0/1 の整数
         _tempDataSize[dest.TempIndex] = IsComparisonOp(node.Op) ? 2 : resultDs;
         return dest;
-    }
-
-    /// <summary>
-    /// 式を Accept した結果が FLOAT (DataSize 3) になるか。二項演算で、右辺を Accept する前に左辺を FLOAT に変換するための
-    /// 事前推定。偽なのに FLOAT だと、後からの左辺の変換が右辺の値に対して行われ、真なのに整数だと、周りの演算の型が
-    /// 変わる。どちらも誤りなので、Accept の規則 (定数の畳み込み・何もしない演算の正規化・結果の型) をそのままなぞる。
-    /// FLOAT を返す関数・FLOAT の配列の要素は扱わない (偽。今までどおり。今回の畳み込みで新しく FLOAT になる経路ではない)。
-    /// 条件式は、どちらかの側が FLOAT と推定できれば FLOAT (VisitConditionalExpr は両側の実際の大きさで決めるので、
-    /// FLOAT の配列の要素・FLOAT を返す関数だけの側は、推定では整数になる。ほかの式と同じ前からの制限)。
-    /// FLOAT の変数・要素への複合代入 (+= -= *= /=) と前置の増減は、F = F op 値 と同じ式で作るので FLOAT
-    /// </summary>
-    private bool MightBeFloat(Expression e) => e switch
-    {
-        ConditionalExpr c => MightBeFloat(c.TrueExpr) || MightBeFloat(c.FalseExpr),
-        CompoundAssignExpr ca => IsFloatTarget(ca.Target) && ca.Op is CompoundAssignOp.AddAssign
-            or CompoundAssignOp.SubAssign or CompoundAssignOp.MulAssign or CompoundAssignOp.DivAssign,
-        IncrementExpr { IsPrefix: true } pre => IsFloatTarget(pre.Operand),
-        FloatLiteral => true,
-        IdentifierExpr id => IdentifierIsFloat(id),
-        CastExpr c => MightBeFloat(c.Operand),                 // VisitCastExpr は中身をそのまま返す
-        CommaExpr c => MightBeFloat(c.Right),                  // VisitCommaExpr は右の値を返す
-        AssignExpr a => IsFloatTarget(a.Target),               // VisitAssignExpr は書いた値 (代入先の型) を返す
-        CodeEvalExpr ce => MightBeFloat(ce.Inner),             // 中身をそのまま Accept する
-        UnaryExpr { Op: UnaryOp.Negate or UnaryOp.Plus } u => MightBeFloat(u.Operand),
-        IncrementExpr { IsPrefix: false } inc => MightBeFloat(inc.Operand), // 後置は元の値を返す (前置は型なしの結果)
-        AddressOfExpr a => AddressOfIsFloat(a),
-        BinaryExpr b => BinaryResultIsFloat(b),
-        _ => false,
-    };
-
-    /// <summary>VisitAddressOfExpr の結果が FLOAT になるか (&MEM[x]・&PORT[x] と、変数・配列以外の &(式) は中身の値を返す)</summary>
-    private bool AddressOfIsFloat(AddressOfExpr a)
-    {
-        if (a.Operand is IdentifierExpr) return false;
-        if (a.Operand is ArrayAccessExpr arr)
-        {
-            var arrName = (arr.Array as IdentifierExpr)?.Name;
-            if (arrName != null && (_globalSymbols?.Resolve(arrName)?.Type is MemoryArrayType
-                    || arrName.Equals("PORT", StringComparison.OrdinalIgnoreCase)
-                    || arrName.Equals("PORTW", StringComparison.OrdinalIgnoreCase)))
-                return MightBeFloat(arr.Indices[0]);
-            return false;                                      // 配列・ポインタの要素のアドレス
-        }
-        return MightBeFloat(a.Operand);
     }
 
     /// <summary>局所変数に隠されていない、大域の FLOAT のスカラー変数か (A*A → f24sqr などの特殊処理の条件)</summary>
@@ -2109,38 +2173,18 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
     }
 
-    /// <summary>何もしない演算の正規化で見る辺の整数の値。実行時に計算する定数の演算で FLOAT が関わる辺は見ない (null)</summary>
-    private static int? NormalizationConst(ConstEvaluator ce, Expression side, bool runtimeFold)
-        => runtimeFold && ce.InvolvesFloat(side) ? null : ce.Evaluate(side);
-
-    /// <summary>VisitBinaryExpr の結果が FLOAT になるか (MightBeFloat 用。VisitBinaryExpr と同じ順に判定する)</summary>
-    private bool BinaryResultIsFloat(BinaryExpr b)
+    /// <summary>
+    /// 何もしない演算の正規化で見る辺の整数の値。実行時に計算する定数の演算で FLOAT が関わる辺は見ない (null)。
+    /// FLOAT の値が要る所 (floatValue) で FLOAT が関わる辺は、整数として正しく、符号付きで FLOAT に戻しても同じ値のときだけ見る
+    /// (小数の値・f24 で正確に表せない値 (実行時に計算する) の辺は見ない)
+    /// </summary>
+    private static int? NormalizationConst(ConstEvaluator ce, Expression side, bool runtimeFold, bool floatValue)
     {
-        if (IsComparisonOp(b.Op)) return false;   // 比較は、辺が FLOAT でも 0/1 の整数
-        if (_globalSymbols != null)
-        {
-            var ce = NewConstEvaluator();
-            bool marked = _floatFoldNodes.Contains(b);
-            var fold = marked || _intFoldNodes.Contains(b) ? ce.FoldFloatArithmetic(b) : null;
-            if (!marked && fold is { Kind: not ConstEvaluator.FloatFoldKind.Int }) fold = null;
-            if (fold is { Kind: ConstEvaluator.FloatFoldKind.Float }) return true;
-            if (fold is { Kind: ConstEvaluator.FloatFoldKind.Int }) return _floatRequiredNodes.Contains(b);
-            if (fold is { Kind: ConstEvaluator.FloatFoldKind.Runtime }) return true;  // 辺を FLOAT のまま実行時に計算する
-            if (ce.Evaluate(b) != null) return false;                    // 整数の即値に畳み込まれる
-            // 何もしない演算の正規化 (残る側の型になる)
-            if (b.Op is BinaryOp.Add or BinaryOp.Sub)
-            {
-                if (ce.Evaluate(b.Right) == 0) return MightBeFloat(b.Left);
-                if (b.Op == BinaryOp.Add && ce.Evaluate(b.Left) == 0) return MightBeFloat(b.Right);
-            }
-            if (b.Op is BinaryOp.Mul or BinaryOp.SMul or BinaryOp.Div or BinaryOp.SDiv)
-            {
-                if (ce.Evaluate(b.Right) == 1) return MightBeFloat(b.Left);
-                if (b.Op is BinaryOp.Mul or BinaryOp.SMul && ce.Evaluate(b.Left) == 1) return MightBeFloat(b.Right);
-            }
-        }
-        if (b.Op is BinaryOp.LogAnd or BinaryOp.LogOr) return false;  // 短絡評価は 0/1 の整数
-        return MightBeFloat(b.Left) || MightBeFloat(b.Right);         // どちらかが FLOAT なら結果も FLOAT
+        if (!ce.InvolvesFloat(side)) return ce.Evaluate(side);
+        if (runtimeFold) return null;
+        if (!floatValue) return ce.Evaluate(side);
+        if (ce.FoldFloatArithmetic(side) is not { } fold) return ce.Evaluate(side);   // 四則でない辺 (比較など) は今までどおり
+        return fold.Kind == ConstEvaluator.FloatFoldKind.Int && (short)fold.IntValue == fold.FloatValue ? fold.IntValue : null;
     }
 
     public IrOperand VisitUnaryExpr(UnaryExpr node)
@@ -2315,12 +2359,36 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
         if (isMachine && machineParamCount.HasValue)
         {
+            // ランタイムの関数そのものへの呼び出し (記号表にない名前) だけ、ランタイムの注釈 (引数の型・戻り値の型) を使う。
+            // 同じ名前の MACHINE を宣言していれば、その宣言の取り決めのまま
+            Runtime.RuntimeFunction? rtFunc = funcSym == null && funcName != null
+                && _runtimeManager?.Functions.TryGetValue(funcName, out var rf) == true ? rf : null;
+            var paramTypes = rtFunc?.ParamTypes;
+            if (paramTypes != null && paramTypes.Count != node.Arguments.Count)
+                _diagnostics.Error($"Function '{funcName}' expects {paramTypes.Count} arguments, got {node.Arguments.Count}",
+                    node.Span);
+            // FLOAT の引数 2 つ (FPOW・FLOGY): x を AHL、y を CDE で渡す。どちらも 3 バイトで積む
+            bool twoFloats = paramTypes is ["float", "float"] && node.Arguments.Count == 2;
+
             // MACHINE関数: レジスタ渡し (0:CALL, 1:HL, 2:HL+DE, 3:HL+DE+BC)
             // 各引数を評価した直後にPushArgしてスタックに退避
             for (int i = 0; i < node.Arguments.Count; i++)
             {
+                string? paramType = paramTypes != null && i < paramTypes.Count ? paramTypes[i] : null;
+                if (paramType == "float") MarkFloatFold(node.Arguments[i], true);
                 var argVal = node.Arguments[i].Accept(this);
-                Emit(IrOp.PushArg, argVal, IrOperand.Imm(i));
+                if (paramType == "float")
+                    argVal = EmitTypeConversionExpand(argVal, 3);
+                else if (paramType != null && TempDataSize(argVal) == 3)
+                    _diagnostics.Error("Cannot pass FLOAT value to non-FLOAT parameter (use FTOI for explicit conversion)",
+                        node.Arguments[i].Span);
+                // 注釈のない MACHINE・ランタイムの関数に FLOAT を渡せるのは、ただ 1 つの引数 (AHL のまま渡る) のときだけ
+                // (2 つ目からは A が壊れる。積む数と取り出す数 (宣言の引数の数) がどちらも 1 のとき)
+                else if (paramType == null && TempDataSize(argVal) == 3
+                         && (node.Arguments.Count != 1 || machineParamCount.Value != 1))
+                    _diagnostics.Error($"A FLOAT value can be passed to MACHINE '{funcName}' only as its single argument "
+                        + "(use FTOI to make it an integer)", node.Arguments[i].Span);
+                Emit(IrOp.PushArg, argVal, IrOperand.Imm(i), dataSize: twoFloats ? 3 : 2);
             }
 
             var dest = IrOperand.Temp(AllocTemp());
@@ -2348,13 +2416,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 asmName = funcSym?.AsmLabel ?? LabelUtils.FunctionLabel(funcName!);
             }
             // ランタイム関数のFLOAT戻り値: DataSizeを3に設定（CodeGeneratorがPUSH AF+PUSH HLを生成するため）
-            int resultDs = 2;
-            if (funcName != null && _runtimeManager?.Functions.TryGetValue(funcName, out var rtFunc) == true
-                && rtFunc.ResultType == "float")
-            {
-                resultDs = 3;
-            }
+            int resultDs = rtFunc?.ResultType == "float" ? 3 : 2;
             Emit(IrOp.Call, dest, IrOperand.Sym(asmName), IrOperand.Imm(machineParamCount.Value), dataSize: resultDs);
+            if (twoFloats) CurrentInstructionList()[^1].ArgSizes = [3, 3];
             if (resultDs == 3)
                 _tempDataSize[dest.TempIndex] = 3;
             return dest;
@@ -2386,6 +2450,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     && paramTypes[i] is PrimitiveType ppt && ppt.Kind == PrimitiveKind.Float)
                     targetDs = 3;
 
+                // FLOAT の引数の値は、代入の値と同じく FLOAT の定数の演算を正しい値で畳み込む
+                if (targetDs == 3) MarkFloatFold(node.Arguments[i], true);
                 var argVal = node.Arguments[i].Accept(this);
                 int valueDs = argVal.Kind == IrOperandKind.Temp
                     && _tempDataSize.TryGetValue(argVal.TempIndex, out int vds) ? vds : 2;
@@ -2406,7 +2472,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             var dest = IrOperand.Temp(AllocTemp());
             var asmName = funcSym?.AsmLabel ?? LabelUtils.FunctionLabel(funcName ?? "__indirect_call");
             // 負の引数数 = ユーザー関数のIY渡し（0は引数なしで共通）
-            // ArgSizes はユーザー関数 (callArgMode<0) のみ設定
+            // ArgSizes はユーザー関数 (callArgMode<0) と、MACHINE の FLOAT 2 つの呼び出しに設定
             var callInst = new IrInstruction(IrOp.Call, dest, IrOperand.Sym(asmName),
                 IrOperand.Imm(node.Arguments.Count > 0 ? -node.Arguments.Count : 0))
             {
@@ -2688,6 +2754,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
         return node.Right.Accept(this);
     }
 
+    /// <summary>&MEM[x]・&PORT[x] の x (命令を作らずにそのまま番地になるので、ここで FLOAT を止める)</summary>
+    private IrOperand IntegerAddress(Expression e)
+    {
+        var v = e.Accept(this);
+        if (TempDataSize(v) == 3)
+            _diagnostics.Error("A FLOAT value cannot be used as an address (use FTOI to make it an integer)", e.Span);
+        return v;
+    }
+
     public IrOperand VisitAddressOfExpr(AddressOfExpr node)
     {
         if (node.Operand is IdentifierExpr id)
@@ -2711,12 +2786,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
             // &MEM[x] / &SOS[x] → アドレスxそのもの
             if (arrSym?.Type is MemoryArrayType)
-                return arr.Indices[0].Accept(this);
+                return IntegerAddress(arr.Indices[0]);
 
             // &PORT[x] → 意味がないがアドレスxを返す
             if (arrName != null && (arrName.Equals("PORT", StringComparison.OrdinalIgnoreCase)
                 || arrName.Equals("PORTW", StringComparison.OrdinalIgnoreCase)))
-                return arr.Indices[0].Accept(this);
+                return IntegerAddress(arr.Indices[0]);
 
             // 間接変数: &p[i] → p + i*elemSize のアドレス
             var addrVi = arrName != null ? CheckDefined(arrName, arr.Span) : default;
@@ -2744,6 +2819,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
         return dest;
     }
 
+    /// <summary>CODE の中で実行時に作る値。FLOAT は扱えない (CODE の値は HL の整数として使われる)</summary>
+    private void CodeValue(Expression e)
+    {
+        if (TempDataSize(e.Accept(this)) == 3)
+            _diagnostics.Error("A FLOAT value cannot be used in CODE (use FTOI to make it an integer)", e.Span);
+    }
+
     public IrOperand VisitCodeExpr(CodeExpr node)
     {
         // CODE関数: データを直接オブジェクトに埋め込む。
@@ -2758,7 +2840,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else if (v is CodeEvalExpr eval)
             {
                 // [式] → 式を評価してHLに代入するコードを埋め込み
-                eval.Inner.Accept(this);
+                CodeValue(eval.Inner);
             }
             else if (v is CodeLabelRef labelRef)
             {
@@ -2788,12 +2870,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     }
                     else
                     {
-                        cast.Operand.Accept(this); // フォールバック: 実行時コード
+                        CodeValue(cast.Operand); // フォールバック: 実行時コード
                     }
                 }
                 else
                 {
-                    cast.Operand.Accept(this); // 非定数BYTE→実行時コード
+                    CodeValue(cast.Operand); // 非定数BYTE→実行時コード
                 }
             }
             else if (v is IntegerLiteral ilit)
@@ -2804,7 +2886,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else
             {
                 // その他の式 → 実行時コード
-                v.Accept(this);
+                CodeValue(v);
             }
         }
 
@@ -2816,7 +2898,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitCastExpr(CastExpr node)
     {
         _valueDiscarded = TakeDiscard() && TakesDiscard(node.Operand);   // 値をそのまま返すので、値を使わない印を中へ渡す
-        return node.Operand.Accept(this);
+        var v = node.Operand.Accept(this);
+        if (TempDataSize(v) == 3)   // キャストは値を変えない (FLOAT の値を整数にしない)
+            _diagnostics.Error("A type cast does not convert a FLOAT value (use FTOI or an assignment)", node.Span);
+        return v;
     }
 
     public IrOperand VisitStringFuncExpr(StringFuncExpr node)

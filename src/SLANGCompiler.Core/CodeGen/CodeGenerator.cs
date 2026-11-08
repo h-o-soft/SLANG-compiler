@@ -523,11 +523,27 @@ public class CodeGenerator
     private void EmitGlobalInit()
     {
         int? pendingConstVal = null;
+        (int Mantissa, int Exponent)? pendingFloat = null;
         foreach (var inst in _module.GlobalData)
         {
             if (inst.Op == IrOp.LoadConst && inst.Src1.Kind == IrOperandKind.Immediate)
             {
                 pendingConstVal = (int)(inst.Src1.ImmediateValue & 0xFFFF);
+                pendingFloat = null;
+            }
+            else if (inst.Op == IrOp.LoadFloatConst)
+            {
+                pendingFloat = ((int)inst.Src1.ImmediateValue & 0xFFFF, (int)inst.Src2.ImmediateValue & 0xFF);
+                pendingConstVal = null;
+            }
+            else if (inst.Op == IrOp.StoreVar && inst.DataSize == 3 && pendingFloat is var (m, e))
+            {
+                // FLOAT: 仮数を HL、指数を A で書く
+                _e.Instruction("LD", $"HL,${m:X4}");
+                _e.Instruction("LD", $"({AsmLabel(inst.Dest.Name!)}),HL");
+                _e.Instruction("LD", $"A,${e:X2}");
+                _e.Instruction("LD", $"({AsmLabel(inst.Dest.Name!)}+2),A");
+                pendingFloat = null;
             }
             else if (inst.Op == IrOp.StoreVar && pendingConstVal.HasValue)
             {
@@ -547,6 +563,7 @@ public class CodeGenerator
             else
             {
                 pendingConstVal = null;
+                pendingFloat = null;
             }
         }
     }
@@ -1192,7 +1209,7 @@ public class CodeGenerator
         for (int i = 0; i < insts.Count; i++)
         {
             var inst = insts[i];
-            if (inst.Op != IrOp.Call || inst.Src2.Kind != IrOperandKind.Immediate) continue;
+            if (inst.Op != IrOp.Call || inst.Src2.Kind != IrOperandKind.Immediate || inst.ArgSizes != null) continue;
             int argCount = (int)inst.Src2.ImmediateValue;
             if (argCount < 1 || argCount > 3) continue;
 
@@ -3253,6 +3270,14 @@ public class CodeGenerator
             {
                 case 1:
                     _e.Instruction("POP", "HL");
+                    break;
+                case 2 when inst.ArgSizes is [3, 3]:
+                    // FLOAT の引数 2 つ (FPOW・FLOGY): 積んだ順 (PUSH AF; PUSH HL) の逆に、y を CDE、x を AHL に戻す
+                    _e.Instruction("POP", "DE");
+                    _e.Instruction("POP", "AF");
+                    _e.Instruction("LD", "C,A");
+                    _e.Instruction("POP", "HL");
+                    _e.Instruction("POP", "AF");
                     break;
                 case 2:
                     _e.Instruction("POP", "DE");
