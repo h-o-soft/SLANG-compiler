@@ -81,6 +81,23 @@ public class PreprocessorTests : IDisposable
         Assert.Contains("YES_K", names);
     }
 
+    [Fact]
+    public void ConstCutByDirective_NotRecorded()
+    {
+        // 1 + 1 の後ろに #IF があり、続き (+ 1) がその中にある: 読めた所まで (2) を覚えない
+        var (names, diag) = Run("CONST K = 1 + 1\n#IF 1\n+ 1\n#END\n;" + IfMark("K == 0"));
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        Assert.Contains("YES_K", names);
+    }
+
+    [Fact]
+    public void ConstStartingWithDirective_DoesNotPickNamesInsideIf()
+    {
+        // 右辺が #IF で始まるとき、#IF の中 (選ばれないかもしれない) の , の後ろの J を覚えない
+        var (names, _) = Run("CONST K =\n#IF 0\n2, J = 3\n#ELSE\n4\n#END\n;" + IfMark("J == 0"));
+        Assert.Contains("YES_J", names);
+    }
+
     // ==== #CHAIN (件 13) ====
 
     [Fact]

@@ -143,6 +143,8 @@ public class Preprocessor
             var name = tokens[i].StringValue;
             int start = i + 2;
             int end;
+            if (start < tokens.Count && IsDirective(tokens[start].Kind))
+                break;   // 右辺が #IF などで始まる: 値は #IF を処理した後で決まるので、ここでは覚えない
             if (start < tokens.Count && IsBlockOpen(tokens[start].Kind))
             {
                 // CODE の並び (CONST T = [1, 2]): 対になる閉じまで飛ばす。値は覚えない
@@ -151,12 +153,19 @@ public class Preprocessor
             else
             {
                 var expr = Parser.Parser.ParseExpressionAt(tokens, start, out end);
+                // 式の後ろが #IF・#INCLUDE などなら、右辺はそこで終わらない (続きが #IF の中や取り込むファイルにある)。
+                // 読めた所までの値は誤りになりうるので覚えず、ここで止める
+                if (end < tokens.Count && IsDirective(tokens[end].Kind))
+                    break;
                 if (expr == null)
                 {
                     // 読めない右辺: 次の , か ; まで飛ばす (いままでどおり)
                     end = start;
                     while (end < tokens.Count && tokens[end].Kind != TokenKind.Comma && tokens[end].Kind != TokenKind.Semicolon)
+                    {
+                        if (IsDirective(tokens[end].Kind)) return;   // #IF の中の字句から次の名前を拾わない
                         end++;
+                    }
                 }
                 else if (end == start + 1 && tokens[start].Kind == TokenKind.IntegerLiteral)
                     SetConst(name, Convert.ToInt32(tokens[start].Value));
@@ -175,6 +184,10 @@ public class Preprocessor
                 break;
         }
     }
+
+    private static bool IsDirective(TokenKind k)
+        => k is TokenKind.PreprocIf or TokenKind.PreprocElse or TokenKind.PreprocEnd
+            or TokenKind.PreprocInclude or TokenKind.PreprocChain;
 
     private static bool IsBlockOpen(TokenKind k)
         => k is TokenKind.LBracket or TokenKind.LBrace or TokenKind.Begin or TokenKind.LAngleBracket;
