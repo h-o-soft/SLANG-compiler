@@ -1063,10 +1063,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var startLabel = NewLabel();
         var endLabel = NewLabel();
 
-        PushLoop(startLabel, endLabel);
+        // CONTINUE は UNTIL の判定へ行く (C の do-while と同じ)。ラベルは CONTINUE があるときだけ作る
+        var loop = PushLoop(null, endLabel);
 
         Emit(IrOp.Label, IrOperand.Lbl(startLabel));
         node.Body.Accept(this);
+        if (loop.ContinueLabel != null)
+            Emit(IrOp.Label, IrOperand.Lbl(loop.ContinueLabel));
 
         var condVal = node.Condition.Accept(this);
         Emit(IrOp.JumpIfZero, IrOperand.Lbl(startLabel), condVal);
@@ -1153,7 +1156,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         var endLabel = NewLabel();
 
-        PushLoop(endLabel, endLabel); // EXIT in CASE goes to end
+        PushLoop(endLabel, endLabel, isCase: true); // EXIT・CONTINUE は CASE を数えずに外のループへ
 
         // Phase 1: 各ブランチの bodyLabel を前計算
         // body==null のブランチ（カンマ先行値）は次の body!=null ブランチの bodyLabel を共有
@@ -1245,24 +1248,47 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         if (node.TargetLabel != null)
         {
-            Emit(IrOp.Jump, IrOperand.Lbl(node.TargetLabel));
+            // GOTO と同じラベル (_LBL_)
+            Emit(IrOp.Jump, IrOperand.Lbl(LabelUtils.UserLabel(node.TargetLabel)));
+            return IrOperand.None;
         }
-        else
+
+        // EXIT(n): n はその場で決まる定数。CASE を数えずに、内側から n 番目のループを抜ける
+        int level = 1;
+        if (node.Level != null)
         {
-            var breakLabel = GetBreakLabel();
-            if (breakLabel != null)
-                Emit(IrOp.Jump, IrOperand.Lbl(breakLabel));
-            else
-                _diagnostics.Error("EXIT outside loop", node.Span);
+            // 引数・局所変数・静的変数は、同じ名前の大域の CONST を隠す (値は実行時なので定数ではない)。
+            // 後ろで決まる大域の CONST (CONST A = B; CONST B = 1;) はたどる
+            bool usesVariable = false;
+            SemanticAnalyzer.ForEachName(node.Level, (name, _) => { if (IsShadowingVariable(name)) usesVariable = true; });
+            var n = _globalSymbols != null && !usesVariable
+                ? new ConstEvaluator(_globalSymbols, _localConsts, followConstAst: true).Evaluate(node.Level) : null;
+            if (n is not int lv || lv < 1)
+            {
+                _diagnostics.Error("EXIT level must be a constant of 1 or more", node.Level.Span);
+                return IrOperand.None;
+            }
+            level = lv;
         }
+        var loop = FindLoop(level);
+        if (loop != null)
+            Emit(IrOp.Jump, IrOperand.Lbl(loop.BreakLabel));
+        else if (FindLoop(1) == null)
+            _diagnostics.Error("EXIT outside loop", node.Span);
+        else
+            _diagnostics.Error($"EXIT({level}) exceeds the loop nesting", node.Span);
         return IrOperand.None;
     }
 
     public IrOperand VisitContinueStmt(ContinueStmt node)
     {
-        var contLabel = GetContinueLabel();
-        if (contLabel != null)
-            Emit(IrOp.Jump, IrOperand.Lbl(contLabel));
+        // CASE を数えずに、いちばん内側のループの続ける所へ
+        var loop = FindLoop(1);
+        if (loop != null)
+        {
+            loop.ContinueLabel ??= NewLabel();
+            Emit(IrOp.Jump, IrOperand.Lbl(loop.ContinueLabel));
+        }
         else
             _diagnostics.Error("CONTINUE outside loop", node.Span);
         return IrOperand.None;
@@ -2900,10 +2926,35 @@ public class IrGenerator : IAstVisitor<IrOperand>
         return strides;
     }
 
-    private readonly Stack<(string ContinueLabel, string BreakLabel)> _loopStack = new();
+    /// <summary>EXIT・CONTINUE の行き先。CASE も積む (EXIT・CONTINUE は CASE を数えずに外のループへ行く)</summary>
+    private sealed class LoopTarget(string? continueLabel, string breakLabel, bool isCase)
+    {
+        // null なら、CONTINUE が来たときに作る (REPEAT の UNTIL の前。CONTINUE のない REPEAT のラベルの番号を変えない)
+        public string? ContinueLabel = continueLabel;
+        public string BreakLabel { get; } = breakLabel;
+        public bool IsCase { get; } = isCase;
+    }
 
-    private void PushLoop(string cont, string brk) => _loopStack.Push((cont, brk));
+    private readonly Stack<LoopTarget> _loopStack = new();
+
+    private LoopTarget PushLoop(string? cont, string brk, bool isCase = false)
+    {
+        var t = new LoopTarget(cont, brk, isCase);
+        _loopStack.Push(t);
+        return t;
+    }
     private void PopLoop() => _loopStack.Pop();
-    private string? GetBreakLabel() => _loopStack.Count > 0 ? _loopStack.Peek().BreakLabel : null;
-    private string? GetContinueLabel() => _loopStack.Count > 0 ? _loopStack.Peek().ContinueLabel : null;
+
+    /// <summary>大域の名前を隠す変数 (引数・局所変数・関数内の静的変数・オーバーレイの中の変数) か</summary>
+    private bool IsShadowingVariable(string name)
+        => _localVars?.ContainsKey(name) == true || _staticVarSizes?.ContainsKey(name) == true
+           || _currentOverlayLookup?.ContainsKey(name) == true;
+
+    /// <summary>内側から level 番目のループ (CASE は数えない)。なければ null</summary>
+    private LoopTarget? FindLoop(int level)
+    {
+        foreach (var t in _loopStack)
+            if (!t.IsCase && --level == 0) return t;
+        return null;
+    }
 }
