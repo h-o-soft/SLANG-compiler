@@ -828,17 +828,16 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// <summary>
     /// 値の式に FLOAT (FLOAT のリテラル・FLOAT の名前 (局所変数が隠すものは見ない)・FLOAT へのキャスト) があるか。
     /// MightBeFloat は、整数に畳み込める式 ((1.0/2.0)*4096.0) を整数と推定するので、番地の式の検査には使わない。
-    /// 比較の値は整数なので見ない
+    /// 比較・条件の中の FLOAT も見る (その場で決める値は整数で畳み込むので、FLOAT の比較を誤る)
     /// </summary>
     private bool ContainsFloat(Expression? e) => e switch
     {
         FloatLiteral => true,
         IdentifierExpr id => IdentifierIsFloat(id),
         CastExpr c => c.TargetSize == DataSize.Float || ContainsFloat(c.Operand),
-        BinaryExpr b when IsComparisonOp(b.Op) => false,
         BinaryExpr b => ContainsFloat(b.Left) || ContainsFloat(b.Right),
         UnaryExpr u => ContainsFloat(u.Operand),
-        ConditionalExpr c => ContainsFloat(c.TrueExpr) || ContainsFloat(c.FalseExpr),
+        ConditionalExpr c => ContainsFloat(c.Condition) || ContainsFloat(c.TrueExpr) || ContainsFloat(c.FalseExpr),
         CommaExpr c => ContainsFloat(c.Right),
         null => false,
         _ => MightBeFloat(e),
@@ -846,8 +845,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     private bool CheckPointerInitializer(ArrayDecl node, bool isPointer)
     {
-        if (isPointer) return true;
-        _diagnostics.Error($"Array '{node.Name}' with a size cannot have a single-value initializer (use {{...}})",
+        // VAR P[] = 番地 だけ。ARRAY A[] は配列 (A の番地そのもの) なので、= 式 を受け付けない
+        if (isPointer && !node.IsArrayKeyword) return true;
+        _diagnostics.Error(isPointer
+                ? $"ARRAY '{node.Name}' cannot have a single-value initializer (use {{...}}, or VAR {node.Name}[] = address for an indirect variable)"
+                : $"Array '{node.Name}' with a size cannot have a single-value initializer (use {{...}})",
             node.InitialValue!.Span);
         return false;
     }

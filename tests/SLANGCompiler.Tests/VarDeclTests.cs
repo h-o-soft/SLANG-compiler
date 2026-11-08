@@ -90,6 +90,7 @@ public class VarDeclTests
 
     [Theory]
     [InlineData("VAR T[3] = 5;", "with a size cannot have a single-value initializer")]
+    [InlineData("ARRAY BYTE A[] = $C000;", "cannot have a single-value initializer")]   // ARRAY の添字なしは配列 (間接変数でない)
     [InlineData("ARRAY T[3] = 5;", "with a size cannot have a single-value initializer")]
     [InlineData("VAR X:\"ABC\";", "Unsupported expression")]
     public void Errors(string decl, string message)
@@ -211,6 +212,7 @@ public class VarDeclTests
     [Theory]
     // VAR の番地も整数。FLOAT の式はエラー (途中の小数を整数で畳み込んで、黙って 0 番地にしない)
     [InlineData("VAR BYTE X:(1.0/2.0)*4096.0;")]
+    [InlineData("VAR BYTE X:((1.0/2.0) > 0.0) ? $C000 : $D000;")]   // 条件の中の FLOAT の比較も
     [InlineData("VAR X:1024.0;")]
     public void VarAddress_Float_Errors(string decl)
     {
