@@ -238,4 +238,15 @@ public class VarDeclTests
         var (_, diag) = Compile($"{decl} MAIN() BEGIN X = X + 1; END;");
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("must not use FLOAT"));
     }
+
+    [Theory]
+    // 大域の FLOAT の変数の初期値は、起動時に書けないのでエラー (前は黙って初期化しなかった)
+    [InlineData("VAR FLOAT X = 1.5;")]
+    [InlineData("VAR FLOAT X:$C000 = 1.5;")]
+    [InlineData("VAR FLOAT X:$C000 = 7;")]
+    public void GlobalFloatInitializer_Errors(string decl)
+    {
+        var (_, diag) = Compile($"{decl} MAIN() BEGIN X = X + 1.0; END;");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("cannot have an initializer here yet"));
+    }
 }

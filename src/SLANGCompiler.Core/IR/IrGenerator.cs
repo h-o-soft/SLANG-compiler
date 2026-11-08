@@ -507,6 +507,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     bool usesFloat = ds <= 2 && ContainsFloat(node.InitialValue);
                     if (usesFloat)
                         _diagnostics.Error($"The initializer of integer variable '{node.Name}' must not use FLOAT", node.InitialValue.Span);
+                    // FLOAT の変数の起動時の代入は、まだ書けない (LoadFloatConst を EmitGlobalInit が書かず、黙って
+                    // 初期化されなかった)。エラー
+                    if (ds > 2)
+                        _diagnostics.Error($"FLOAT variable '{node.Name}' cannot have an initializer here yet (assign it at the start of MAIN)",
+                            node.InitialValue.Span);
                     if (ds <= 2 && (usesFloat || NewConstEvaluator().Evaluate(node.InitialValue) is int))
                     {
                         int cv = usesFloat ? 0 : NewConstEvaluator().Evaluate(node.InitialValue)!.Value;
