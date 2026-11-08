@@ -249,4 +249,35 @@ public class IrLeftoverTests
         Assert.Empty(Errors($"{TargetDecls}MAIN() BEGIN VAR L; X = 1; L = 2; A[1] = 3; P[1] = 4; MEM[$C000] = 5; MEMW[$C000] = 6; " +
             "SOS[1] = 7; SOSW[1] = 8; PORT[1] = 9; PORTW[1] = 10; X++; A[2] += 1; R = &MEM[1]; R = &P[1]; END;"));
     }
+
+    // ==== C4: MACHINE の引数の数 ====
+
+    private const string MachineDecls = "VAR R; MACHINE M(2):$1234; MACHINE M0(0):$1234; MACHINE P():$1234; MACHINE Q:$1234; "
+        + "MACHINE M1(1):$1234; MACHINE M3(3):$1234; MACHINE M4(4):$1234; ";
+
+    [Theory]
+    [InlineData("R = M(1);", "expects 2 arguments, got 1")]
+    [InlineData("R = M(1, 2, 3);", "expects 2 arguments, got 3")]
+    [InlineData("R = M0(1);", "expects 0 arguments, got 1")]
+    [InlineData("R = P(1, 2);", "expects 0 arguments, got 2")]     // 引数の数を省略した宣言
+    [InlineData("R = Q(1);", "expects 0 arguments, got 1")]
+    [InlineData("LOCATE(1);", "expects 2 arguments, got 1")]      // 組み込みの関数
+    public void MachineArgumentCountMismatch_IsError(string body, string message)
+    {
+        Assert.Contains(Errors($"{MachineDecls}MAIN() BEGIN {body} END;"), m => m.Contains(message));
+    }
+
+    [Fact]
+    public void MachineArgumentCountMatch_IsAccepted()
+    {
+        var asm = Asm($"{MachineDecls}MAIN() BEGIN R = M0(); R = P(); R = Q(); R = M1(1); R = M(1, 2); R = M3(1, 2, 3); " +
+            "R = M4(1, 2, 3, 4); LOCATE(1, 2); R = FSIN(1); END;");
+        Assert.Contains("CALL\t$1234", asm);
+    }
+
+    [Fact]
+    public void LaterDeclaredMachine_CountIsChecked()
+    {
+        Assert.Contains(Errors("VAR R; MAIN() BEGIN R = ML(1); END; MACHINE ML(2):$1234;"), m => m.Contains("expects 2 arguments, got 1"));
+    }
 }

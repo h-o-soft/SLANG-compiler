@@ -2372,6 +2372,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 machineParamCount = ft.ParameterTypes.Count;
             else
                 machineParamCount = node.Arguments.Count; // ランタイム関数: 呼び出し側の引数数
+            // MACHINE (組み込みの関数も) は宣言の数で呼ぶ (違うと、積む数と取り出す数が食い違ってスタックが崩れる)。
+            // 引数の数を省略した宣言 (スタック渡し) は作っていないので、引数 0 として扱う
+            if (funcSym?.Kind == SymbolKind.MachineFunction && machineParamCount != node.Arguments.Count)
+                _diagnostics.Error($"Function '{funcName}' expects {machineParamCount} arguments, got {node.Arguments.Count}",
+                    node.Span);
         }
 
         if (isMachine && machineParamCount.HasValue)
