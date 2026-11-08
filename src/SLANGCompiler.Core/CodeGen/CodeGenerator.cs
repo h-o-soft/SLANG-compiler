@@ -2316,7 +2316,9 @@ public class CodeGenerator
     {
         return (inst.Src1.Kind == IrOperandKind.Temp && inst.Src1.TempIndex == tempIdx)
             || (inst.Src2.Kind == IrOperandKind.Temp && inst.Src2.TempIndex == tempIdx)
-            || (inst.Dest.Kind == IrOperandKind.Temp && inst.Dest.TempIndex == tempIdx);
+            || (inst.Dest.Kind == IrOperandKind.Temp && inst.Dest.TempIndex == tempIdx)
+            // 型の変換の呼び出しは、変える値を HL で暗に読む (それを読む所とみなさないと、値のロードを飛ばしてしまう)
+            || (inst.ImplicitSrc.Kind == IrOperandKind.Temp && inst.ImplicitSrc.TempIndex == tempIdx);
     }
 
     private void EmitInstruction(IrInstruction inst)

@@ -348,4 +348,15 @@ public class ExpressionValueTests
         var body = MainBody("T[I] = (A = 5);");
         Assert.Matches(Seq(@"LD\tHL,\$0005", @"PUSH\tHL", @"LD\t\(_V_A\),HL"), body);
     }
+
+    [Fact]
+    public void LocalStoreInConditionalArm_WithConversion_KeepsLoad()
+    {
+        // FG = FLAG ? (L = 5) : F; (L は局所の WORD): 真の側の値は L に書いた 5 を FLOAT に変えたもの。
+        // 5 のロードを、局所への即値の書き込みの最適化で飛ばさない (i16tof24 が古い HL を変えてしまう)
+        var (asm, diag) = Compile($"{Decls} R(N) BEGIN VAR L; IF N > 0 THEN R(N - 1); FG = FLAG ? (L = 5) : F; END; MAIN() BEGIN R(1); END;");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        var body = asm!.Split("\n_F_R:")[1].Split("__F_R_EXIT")[0];
+        Assert.Matches(Seq(@"LD\tHL,\$0005", @"LD\t\(IY\+\$\w\w\),L", @"LD\t\(IY\+\$\w\w\),H", @"CALL\ti16tof24"), body);
+    }
 }
