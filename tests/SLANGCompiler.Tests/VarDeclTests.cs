@@ -118,14 +118,6 @@ public class VarDeclTests
         Assert.Matches($@"LD\tA,\{value}\s*\n\s*LD\t\({label}\),A", asm);
     }
 
-    [Fact]
-    public void PointerInitializer_NonConstant_Warns()
-    {
-        // 起動時の代入は定数だけ (単純変数と同じ警告)
-        var (_, diag) = Compile("VAR Y; VAR P[] = &Y; MAIN() BEGIN P[0] = 1; END;");
-        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("Non-constant initializer for static/global variable 'P'"));
-    }
-
     [Theory]
     // 番地だけの MACHINE はラベルを出さないので、VAR の番地の式には使えない (ランタイムの名前は IntegrationTests)。
     // CONST の中身 (アセンブラの式として展開される) にあるときも
@@ -138,22 +130,10 @@ public class VarDeclTests
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("cannot use MACHINE 'ROM' without a CODE body"));
     }
 
-    [Theory]
-    // 間接変数の初期値は番地 (整数)。FLOAT の式はエラー (途中の小数を整数で畳み込んで、黙って違う番地にしない)
-    [InlineData("VAR P[] = 1024.0; MAIN() BEGIN P[0] = 1; END;")]
-    [InlineData("VAR P[] = (1.0/2.0)*4096.0; MAIN() BEGIN P[0] = 1; END;")]
-    [InlineData("FN() BEGIN VAR L[] = (1.0/2.0)*4096.0; L[0] = 1; END; MAIN() BEGIN FN(); END;")]
-    public void PointerInitializer_Float_Errors(string source)
-    {
-        var (_, diag) = Compile(source);
-        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("must be an integer expression, not FLOAT"));
-    }
-
     // ==== 実装レビューで見つかった形 ====
 
     [Theory]
     // 局所の初期値が引数を読むとき、引数のオフセットが決まってから出す (いまの main でも、単純変数で IY+$00 を読んでいた)
-    [InlineData("FN(BASE) BEGIN VAR P[] = BASE; P[0] = 1; END; MAIN() BEGIN FN($C000); END;")]
     [InlineData("VAR R; FN(BASE) BEGIN VAR X = BASE; R = X; END; MAIN() BEGIN FN(5); END;")]
     public void LocalInitializer_ReadsParameterAtFinalOffset(string source)
     {
@@ -161,16 +141,6 @@ public class VarDeclTests
         var body = asm.Split("\nFN:")[1].Split("_FN_EXIT")[0];
         Assert.DoesNotContain("(IY+$00)", body);
         Assert.Matches(@"LD\tL,\(IY\+\$6C\)\s*\n\s*LD\tH,\(IY\+\$6D\)", body);
-    }
-
-    [Fact]
-    public void PointerInitializer_LocalShadowsGlobalConst()
-    {
-        // 局所の BASE は大域の CONST BASE を隠す (その場で決まる値として $C000 にしない)
-        var asm = CompileOk("CONST BASE = $C000; FN() BEGIN VAR BASE = $D000; VAR P[] = BASE; P[0] = 1; END; MAIN() BEGIN FN(); END;");
-        var body = asm.Split("\nFN:")[1].Split("_FN_EXIT")[0];
-        Assert.DoesNotMatch(@"LD\t\(IY\+\$\w\w\),\$C0", body);      // $C000 を即値で書かない
-        Assert.DoesNotContain("$C000", body);
     }
 
     [Theory]
@@ -201,14 +171,6 @@ public class VarDeclTests
         Assert.Matches(@"LD\t\(IY\+\$\w\w\),\$07", body);
     }
 
-    [Fact]
-    public void PointerInitializer_IntegerLocalShadowsFloatConst_Ok()
-    {
-        // 局所の整数の BASE は、大域の FLOAT の CONST BASE を隠す (FLOAT の式としてエラーにしない)
-        var (_, diag) = Compile("CONST BASE = 0.5; FN() BEGIN VAR BASE = $D000; VAR P[] = BASE; P[0] = 1; END; MAIN() BEGIN FN(); END;");
-        Assert.DoesNotContain(diag.Diagnostics, d => d.Message.Contains("not FLOAT"));
-    }
-
     [Theory]
     // VAR の番地も整数。FLOAT の式はエラー (途中の小数を整数で畳み込んで、黙って 0 番地にしない)
     [InlineData("VAR BYTE X:(1.0/2.0)*4096.0;")]
@@ -230,22 +192,27 @@ public class VarDeclTests
     }
 
     [Theory]
-    // ラベルを含む CONST (まだ値でない式) の中の FLOAT も、番地・間接変数の初期値ではエラー
+    // ラベルを含む CONST (まだ値でない式) の中の FLOAT も、番地ではエラー
     [InlineData("CONST ADDR = BASE + (1.0/2.0)*4096.0; VAR X:ADDR; MAIN() BEGIN X = 1; END;")]
-    [InlineData("CONST ADDR = BASE + (1.0/2.0)*4096.0; FN() BEGIN VAR P[] = ADDR; P[0] = 1; END; MAIN() BEGIN FN(); END;")]
-    [InlineData("CONST INNER = BASE + (1.0/2.0)*4096.0; CONST ADDR = INNER; FN() BEGIN VAR INNER = $D000; VAR P[] = ADDR; P[0] = 1; END; MAIN() BEGIN FN(); END;")]   // 大域の CONST の式の中の名前は大域で引く
     public void FloatInsideLabelConst_Errors(string source)
     {
         var (_, diag) = Compile(source + "\n#ASM\nBASE: DB 0\n#END\n");
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("not FLOAT"));
     }
 
-    [Fact]
-    public void LocalShadowsLabelConstWithFloat_Ok()
+
+    [Theory]
+    // 間接変数の初期値は、その場で決まる整数の定数だけ (通す形を狭くする)。FLOAT・変数・ラベルはエラー
+    [InlineData("VAR Y; VAR P[] = &Y; MAIN() BEGIN P[0] = 1; END;")]                              // 番地 (ラベル)
+    [InlineData("VAR P[] = 1024.0; MAIN() BEGIN P[0] = 1; END;")]                                // FLOAT
+    [InlineData("VAR P[] = (1.0/2.0)*4096.0; MAIN() BEGIN P[0] = 1; END;")]
+    [InlineData("FN() BEGIN VAR L[] = (1.0/2.0)*4096.0; L[0] = 1; END; MAIN() BEGIN FN(); END;")]
+    [InlineData("FN(BASE) BEGIN VAR P[] = BASE; P[0] = 1; END; MAIN() BEGIN FN($C000); END;")]   // 引数
+    [InlineData("CONST BASE = $C000; FN() BEGIN VAR BASE = $D000; VAR P[] = BASE + 2; P[0] = 1; END; MAIN() BEGIN FN(); END;")]   // 局所変数 (大域の CONST を隠す)
+    [InlineData("CONST ADDR = BASE + 4; FN() BEGIN VAR P[] = ADDR; P[0] = 1; END; MAIN() BEGIN FN(); END;\n#ASM\nBASE: DB 0\n#END\n")]   // ラベルを含む CONST
+    public void PointerInitializer_NotIntegerConstant_Errors(string source)
     {
-        // 局所の整数の ADDR は、FLOAT を含む大域の CONST ADDR を隠す (エラーにしない)
-        var (_, diag) = Compile("CONST ADDR = BASE + (1.0/2.0)*4096.0; FN() BEGIN VAR ADDR = $D000; VAR P[] = ADDR; P[0] = 1; END; "
-            + "MAIN() BEGIN FN(); END;\n#ASM\nBASE: DB 0\n#END\n");
-        Assert.DoesNotContain(diag.Diagnostics, d => d.Message.Contains("not FLOAT"));
+        var (_, diag) = Compile(source);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("must be an integer constant"));
     }
 }

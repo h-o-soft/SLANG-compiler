@@ -793,48 +793,32 @@ public class IrGenerator : IAstVisitor<IrOperand>
     }
 
     /// <summary>
-    /// 間接変数の初期値 (番地なので 2 バイトの整数)。その場で決まる値は整数の定数にし、そうでなければ値を作る
+    /// 間接変数の初期値 (番地なので 2 バイトの整数)。その場で決まる整数の定数 (リテラル・CONST・その式) だけを受け付ける。
+    /// FLOAT・変数 (局所変数が隠す CONST の名前も)・ラベルはエラー (通す形を狭くする)
     /// </summary>
     private IrOperand PointerInitialValue(Expression init)
     {
-        // 番地は整数。FLOAT の式は受け付けない (FLOAT の定数の途中の値を整数で畳み込んでしまうので、黙って違う番地になる)
-        if (ContainsFloat(init) || NamesConstWithFloat(init))
-        {
-            _diagnostics.Error("The initializer of an indirect variable (an address) must be an integer expression, not FLOAT",
-                init.Span);
-            var zero = IrOperand.Temp(AllocTemp());
-            Emit(IrOp.LoadConst, zero, IrOperand.Imm(0));
-            return zero;
-        }
-        // 局所変数・引数・静的変数は、同じ名前の大域の CONST を隠す (その場で決まる値ではない)
         bool usesVariable = false;
         SemanticAnalyzer.ForEachName(init, (n, _) =>
         {
             if (_localVars?.ContainsKey(n) == true || _staticVarSizes?.ContainsKey(n) == true) usesVariable = true;
         });
-        if (_globalSymbols != null && !usesVariable && NewConstEvaluator().Evaluate(init) is int v)
-        {
-            var t = IrOperand.Temp(AllocTemp());
-            Emit(IrOp.LoadConst, t, IrOperand.Imm(v & 0xFFFF));
-            return t;
-        }
-        return EmitTypeConversion(init.Accept(this), 2);
+        int? v = _globalSymbols != null && !usesVariable && !ContainsFloat(init) ? NewConstEvaluator().Evaluate(init) : null;
+        if (v == null)
+            _diagnostics.Error("The initializer of an indirect variable must be an integer constant "
+                + "(a literal, a CONST, or an expression of them); FLOAT, variables and labels are not allowed", init.Span);
+        var t = IrOperand.Temp(AllocTemp());
+        Emit(IrOp.LoadConst, t, IrOperand.Imm((v ?? 0) & 0xFFFF));
+        return t;
     }
 
-    /// <summary>
-    /// = 式 (CODE の並びでない初期値) は間接変数 (P[]) だけ。大きさのある配列はエラー
-    /// (いままでは黙って捨てていた)
-    /// </summary>
     /// <summary>式の中の CONST の名前の式 (後ろで決まる・ラベルを含む CONST の、まだ値でない式) に FLOAT があるか (たどる)</summary>
     private bool NamesConstWithFloat(Expression e, HashSet<Symbol>? visited = null)
     {
-        bool top = visited == null;
         visited ??= new HashSet<Symbol>();
         bool found = false;
         SemanticAnalyzer.ForEachName(e, (n, _) =>
         {
-            // 局所変数が隠すのは、元の式に書いた名前だけ (大域の CONST の式の中の名前は大域で引く)
-            if (top && (_localVars?.ContainsKey(n) == true || _staticVarSizes?.ContainsKey(n) == true)) return;
             if (_globalSymbols?.Resolve(n) is { Kind: SymbolKind.Constant, ConstAst: not null } sym && visited.Add(sym)
                 && (ContainsFloat(sym.ConstAst, namesAreLabels: true) || NamesConstWithFloat(sym.ConstAst, visited)))
                 found = true;
@@ -866,6 +850,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _ => !namesAreLabels && MightBeFloat(e),
     };
 
+    /// <summary>
+    /// = 式 (CODE の並びでない初期値) は間接変数 (VAR P[]) だけ。大きさのある配列・ARRAY はエラー
+    /// (いままでは黙って捨てていた)
+    /// </summary>
     private bool CheckPointerInitializer(ArrayDecl node, bool isPointer)
     {
         // VAR P[] = 番地 だけ。ARRAY A[] は配列 (A の番地そのもの) なので、= 式 を受け付けない
