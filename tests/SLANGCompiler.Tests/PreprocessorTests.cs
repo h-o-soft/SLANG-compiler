@@ -81,13 +81,25 @@ public class PreprocessorTests : IDisposable
         Assert.Contains("YES_K", names);
     }
 
-    [Fact]
-    public void ConstCutByDirective_NotRecorded()
+    [Theory]
+    // 式の後ろが #IF か、#IF の中の字句の列の終わり: 読めた所まで (2) を覚えず、warning を出す
+    [InlineData("CONST K = 1 + 1\n#IF 1\n+ 1\n#END\n;")]
+    [InlineData("#IF 1\nCONST K = 1 + 1\n#END\n- 1;")]
+    public void ConstCutByDirective_NotRecorded(string decl)
     {
-        // 1 + 1 の後ろに #IF があり、続き (+ 1) がその中にある: 読めた所まで (2) を覚えない
-        var (names, diag) = Run("CONST K = 1 + 1\n#IF 1\n+ 1\n#END\n;" + IfMark("K == 0"));
+        var (names, diag) = Run(decl + IfMark("K == 0"));
         Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
         Assert.Contains("YES_K", names);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("The value of CONST 'K' is not known to #IF"));
+    }
+
+    [Fact]
+    public void ConstLiteralWithoutSemicolonBeforeIf_Recorded()
+    {
+        // ; を省いた整数のリテラル 1 つの後ろに #IF: いままでどおり値を覚える
+        var (names, diag) = Run("CONST K = 1\n#IF K\nYES_K\n#ELSE\nNO_K\n#END\n");
+        Assert.Contains("YES_K", names);
+        Assert.Empty(diag.Diagnostics);
     }
 
     [Fact]
@@ -145,6 +157,17 @@ public class PreprocessorTests : IDisposable
         Write("b.sl", "B_PART\n#CHAIN a.sl\n");
         var (_, diag) = Run("#CHAIN a.sl\n");
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("#CHAIN loop"));
+    }
+
+    [Fact]
+    public void Chain_SameTargetFromRepeatedIncludes_NotALoop()
+    {
+        // part.sl を 2 度取り込み、どちらも tail.sl へ移る: 輪ではない
+        Write("part.sl", "PART_A\n#CHAIN tail.sl\n");
+        Write("tail.sl", "TAIL_A");
+        var (names, diag) = Run("#INCLUDE part.sl\n#INCLUDE part.sl\nMAIN_B\n");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        Assert.Equal(new[] { "PART_A", "TAIL_A", "PART_A", "TAIL_A", "MAIN_B" }, names);
     }
 
     [Fact]

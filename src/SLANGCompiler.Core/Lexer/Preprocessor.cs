@@ -38,8 +38,6 @@ public class Preprocessor
         public bool ChainWarned;
     }
 
-    // #CHAIN で移ったファイル (同じファイルへ 2 度移ったら輪)
-    private readonly HashSet<string> _chainedFiles = new(StringComparer.OrdinalIgnoreCase);
     // #IF の CONST の値を、式で決めるための記号 (_constValues と同じ中身)
     private readonly Dictionary<string, Semantics.Symbol> _constSymbols = new(StringComparer.OrdinalIgnoreCase);
 
@@ -144,7 +142,11 @@ public class Preprocessor
             int start = i + 2;
             int end;
             if (start < tokens.Count && IsDirective(tokens[start].Kind))
-                break;   // 右辺が #IF などで始まる: 値は #IF を処理した後で決まるので、ここでは覚えない
+            {
+                // 右辺が #IF などで始まる: 値は #IF を処理した後で決まるので、ここでは覚えない
+                WarnConstValueUnknown(name, tokens[i].Span);
+                break;
+            }
             if (start < tokens.Count && IsBlockOpen(tokens[start].Kind))
             {
                 // CODE の並び (CONST T = [1, 2]): 対になる閉じまで飛ばす。値は覚えない
@@ -153,10 +155,16 @@ public class Preprocessor
             else
             {
                 var expr = Parser.Parser.ParseExpressionAt(tokens, start, out end);
-                // 式の後ろが #IF・#INCLUDE などなら、右辺はそこで終わらない (続きが #IF の中や取り込むファイルにある)。
-                // 読めた所までの値は誤りになりうるので覚えず、ここで止める
-                if (end < tokens.Count && IsDirective(tokens[end].Kind))
+                bool literal = expr != null && end == start + 1 && tokens[start].Kind == TokenKind.IntegerLiteral;
+                // 式の後ろが #IF・#INCLUDE などか、字句の列の終わり (#IF の中・取り込んだファイルの終わり。主のファイルの
+                // 終わりには EOF がある) なら、右辺がそこで終わるとは限らない (続きが #IF の外や取り込んだ側にあるかもしれない)。
+                // 整数のリテラル 1 つはいままでどおり覚え (; を省いて #IF が続く形)、式は覚えずに warning を出して止める
+                bool mayContinue = end >= tokens.Count || IsDirective(tokens[end].Kind);
+                if (mayContinue && !literal)
+                {
+                    if (expr != null) WarnConstValueUnknown(name, tokens[i].Span);
                     break;
+                }
                 if (expr == null)
                 {
                     // 読めない右辺: 次の , か ; まで飛ばす (いままでどおり)
@@ -184,6 +192,9 @@ public class Preprocessor
                 break;
         }
     }
+
+    private void WarnConstValueUnknown(string name, SourceSpan span)
+        => _diagnostics.Warning($"The value of CONST '{name}' is not known to #IF (its expression continues past a preprocessor directive or block end); #IF uses 0", span);
 
     private static bool IsDirective(TokenKind k)
         => k is TokenKind.PreprocIf or TokenKind.PreprocElse or TokenKind.PreprocEnd
@@ -262,9 +273,12 @@ public class Preprocessor
             _diagnostics.Error($"#CHAIN file not found: {fileName}", token.Span);
             return;
         }
-        if (!_chainedFiles.Add(Path.GetFullPath(filePath)))
+        // 輪: 読んでいる途中のファイル (#INCLUDE・#CHAIN でたどってきた先祖) へ移る。同じファイルを、別々の
+        // #INCLUDE から 2 度 #CHAIN で読むのは輪ではない
+        var fullPath = Path.GetFullPath(filePath);
+        if (!_includedFiles.Add(fullPath))
         {
-            _diagnostics.Error($"#CHAIN loop: {fileName} is chained twice", token.Span);
+            _diagnostics.Error($"#CHAIN loop: {fileName} is already being read", token.Span);
             return;
         }
 
@@ -277,6 +291,10 @@ public class Preprocessor
         catch (Exception ex)
         {
             _diagnostics.Error($"#CHAIN error: {ex.Message}", token.Span);
+        }
+        finally
+        {
+            _includedFiles.Remove(fullPath);
         }
         ctx.Chained = true;
     }
