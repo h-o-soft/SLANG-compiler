@@ -1510,7 +1510,7 @@ public class CodeGenerator
                 EmitFloatSrc2ToCDE(s2Inst);
                 EmitBinaryDirect(inst);
                 if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
-                    EmitPushValue(3);
+                    EmitPushValue(PushSize(inst));
                 continue;
             }
 
@@ -1532,7 +1532,7 @@ public class CodeGenerator
                 EmitFloatSrc2ToCDE(s1Inst);
                 EmitBinaryDirect(inst);
                 if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
-                    EmitPushValue(3);
+                    EmitPushValue(PushSize(inst));
                 continue;
             }
 
@@ -1659,7 +1659,7 @@ public class CodeGenerator
 
                 // 戻り値のPUSH判定
                 if (inst.Dest.Kind == IrOperandKind.Temp && NeedsPushAfter(insts, i, inst.Dest.TempIndex))
-                    EmitPushValue(inst.DataSize);
+                    EmitPushValue(PushSize(inst));
                 continue;
             }
 
@@ -1671,7 +1671,7 @@ public class CodeGenerator
                 if (prev?.Op is IrOp.IndirStore or IrOp.ArrayStore or IrOp.MemStore)
                     _e.Instruction("EX", "DE,HL");
                 if (NeedsPushAfter(insts, i, inst.Dest.TempIndex))
-                    EmitPushValue(inst.DataSize);
+                    EmitPushValue(PushSize(inst));
                 continue;
             }
 
@@ -1698,7 +1698,7 @@ public class CodeGenerator
             if (inst.Dest.Kind == IrOperandKind.Temp && !skipEmit.Contains(i))
             {
                 if (NeedsPushAfter(insts, i, inst.Dest.TempIndex))
-                    EmitPushValue(inst.DataSize);
+                    EmitPushValue(PushSize(inst));
             }
 
         }
@@ -2428,7 +2428,7 @@ public class CodeGenerator
                 break;
 
             case IrOp.PushArg:
-                EmitPushValue(inst.DataSize);
+                EmitPushValue(PushSize(inst));
                 break;
 
             case IrOp.InlineAsm:
@@ -3107,6 +3107,11 @@ public class CodeGenerator
     }
 
     /// <summary>FLOAT対応のPUSH: DataSize==3ならPUSH AF(上位byte)も追加</summary>
+    /// <summary>
+    /// 命令の結果を積む大きさ。比較の命令の大きさは辺の大きさ (FLOAT の比較は 3) だが、結果は 0/1 の整数なので 2
+    /// </summary>
+    private static int PushSize(IrInstruction inst) => IsCompareOp(inst.Op) ? 2 : inst.DataSize;
+
     private void EmitPushValue(int dataSize = 2)
     {
         if (dataSize == 3) _e.Instruction("PUSH", "AF");

@@ -42,6 +42,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private IrOperand ValueAfterStore(IrOperand stored)
     {
         if (stored.Kind != IrOperandKind.Temp) return stored;
+        // StoreVar・StoreLocal は値を取り出さず HL を壊さないので、書いた値をそのまま使う (積む位置もいままでどおり)。
+        // 値を取り出して書く (メモリ・PORT への書き込み) ときだけ置き直す
+        var list = _emitToGlobalData || _currentFunction == null ? _module.GlobalData : _currentFunction.Instructions;
+        if (list.Count == 0 || list[^1].Op is not (IrOp.IndirStore or IrOp.ArrayStore or IrOp.MemStore or IrOp.PortOut))
+            return stored;
         int ds = _tempDataSize.TryGetValue(stored.TempIndex, out int d) ? d : 2;
         var t = IrOperand.Temp(AllocTemp());
         Emit(IrOp.StoredValue, t, stored, dataSize: ds);

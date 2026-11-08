@@ -326,4 +326,26 @@ public class ExpressionValueTests
         Assert.Matches(Seq(@"LD\tHL,\$0005", @"LD\t\(_V_Y\),HL", @"LD\t\(_V_X\),HL"), body);
     }
 
+
+    // ==== 設計レビュー 3 周目で見つかった形 ====
+
+    [Theory]
+    [InlineData("W = (F < FG) + (A + D);")]
+    [InlineData("MEMW[I] = (F < FG);")]
+    public void FloatComparisonResult_PushedAsWord(string stmt)
+    {
+        // FLOAT の比較の結果は 0/1 の整数なので、1 語だけ積む (AF も積むと、取り出しが 1 語なのでずれる)
+        var body = MainBody(stmt);
+        Assert.Matches(Seq(@"CALL\tf24cmp", @"LD\tHL,\$0000", @"JR\tNC,\$\+3", @"INC\tHL", @"PUSH\tHL"), body);
+        Assert.DoesNotMatch(Seq(@"INC\tHL", @"PUSH\tAF"), body);
+        Assert.Equal(Regex.Matches(body, @"\tPUSH\t").Count, Regex.Matches(body, @"\tPOP\t").Count);
+    }
+
+    [Fact]
+    public void ScalarAssignInsideMemoryStore_Unchanged()
+    {
+        // T[I] = (A = 5): 中の代入はスカラーなので、値を積む位置はいままでどおり (A に書く前)
+        var body = MainBody("T[I] = (A = 5);");
+        Assert.Matches(Seq(@"LD\tHL,\$0005", @"PUSH\tHL", @"LD\t\(_V_A\),HL"), body);
+    }
 }
