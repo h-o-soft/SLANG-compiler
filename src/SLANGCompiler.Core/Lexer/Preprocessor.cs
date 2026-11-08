@@ -158,8 +158,11 @@ public class Preprocessor
             }
             if (start < tokens.Count && IsBlockOpen(tokens[start].Kind))
             {
-                // CODE の並び (CONST T = [1, 2]): 対になる閉じまで飛ばす。値は覚えない
+                // CODE の並び (CONST T = [1, 2]): 対になる閉じまで飛ばす。値は覚えない。
+                // 並びの中に #IF などがあれば、どこで閉じるかは #IF を処理した後で決まるので、ここで止める
+                // (選ばれない側の閉じの後ろの CONST を覚えない)
                 end = SkipBlock(tokens, start);
+                if (end < 0) break;
             }
             else
             {
@@ -233,12 +236,13 @@ public class Preprocessor
     private static bool IsBlockClose(TokenKind k)
         => k is TokenKind.RBracket or TokenKind.RBrace or TokenKind.End or TokenKind.RAngleBracket;
 
-    /// <summary>tokens[start] の開きに対になる閉じの次の位置</summary>
+    /// <summary>tokens[start] の開きに対になる閉じの次の位置。途中に #IF などがあれば -1</summary>
     private static int SkipBlock(List<Token> tokens, int start)
     {
         int depth = 0, j = start;
         for (; j < tokens.Count; j++)
         {
+            if (IsDirective(tokens[j].Kind)) return -1;
             if (IsBlockOpen(tokens[j].Kind)) depth++;
             else if (IsBlockClose(tokens[j].Kind) && --depth == 0) return j + 1;
         }

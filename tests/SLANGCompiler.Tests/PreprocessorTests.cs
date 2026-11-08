@@ -230,4 +230,21 @@ public class PreprocessorTests : IDisposable
         Assert.Equal(new[] { "MAIN_A", "PART2_A" }, names);
         Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
     }
+
+    [Fact]
+    public void ConstTableSpanningIf_DoesNotRecordFollowingConst()
+    {
+        // 並びの中に #IF があるとき、選ばれない側の ] の後ろの B を覚えない (#IF では 0)
+        var (names, _) = Run("CONST T = [0,\n#IF 0\n1], B = 5;\n#ELSE\n2];\n#END\n" + IfMark("B == 0"));
+        Assert.Contains("YES_B", names);
+    }
+
+    [Fact]
+    public void Chain_MalformedNumberAfterChain_DoesNotCrash()
+    {
+        Write("part2.sl", "PART2_A");
+        var (names, diag) = Run("MAIN_A\n#CHAIN part2.sl\n12AF\n");
+        Assert.Equal(new[] { "MAIN_A", "PART2_A" }, names);
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+    }
 }

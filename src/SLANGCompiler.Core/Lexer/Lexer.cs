@@ -232,11 +232,13 @@ public class Lexer
         {
             return ReadNumberCore(start);
         }
-        catch (OverflowException)
+        catch (Exception ex) when (ex is OverflowException or FormatException)
         {
-            // 大きすぎる数: 落ちずに誤りの字句にする (構文解析がエラーを出す。#CHAIN の後ろなら読まずに捨てる)
+            // 大きすぎる数・数として読めない字 (12AF など): 落ちずに誤りの字句にする
+            // (構文解析がエラーを出す。#CHAIN の後ろなら読まずに捨てる)
             string text = _source[startPos.._pos];
-            return MakeToken(TokenKind.Error, $"number too large: {text}", start);
+            return MakeToken(TokenKind.Error,
+                ex is OverflowException ? $"number too large: {text}" : $"invalid number: {text}", start);
         }
     }
 

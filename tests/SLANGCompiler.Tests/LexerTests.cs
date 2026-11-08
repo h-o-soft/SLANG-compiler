@@ -145,4 +145,13 @@ public class LexerTests
         Assert.Equal(TokenKind.Error, tokens[0].Kind);
         Assert.Contains("number too large", tokens[0].Text);
     }
+
+    [Fact]
+    public void MalformedNumber_IsErrorToken()
+    {
+        // 数として読めない字 (H のない 16 進) も、落ちずに誤りの字句にする
+        var tokens = Tokenize("12AF");
+        Assert.Equal(TokenKind.Error, tokens[0].Kind);
+        Assert.Contains("invalid number", tokens[0].Text);
+    }
 }
