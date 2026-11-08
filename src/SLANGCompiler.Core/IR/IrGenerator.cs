@@ -1488,7 +1488,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
         int level = 1;
         if (node.Level != null)
         {
-            var n = _globalSymbols != null ? NewConstEvaluator().Evaluate(node.Level) : null;
+            // 引数・局所変数・静的変数は、同じ名前の大域の CONST を隠す (値は実行時なので定数ではない)。
+            // 後ろで決まる大域の CONST (CONST A = B; CONST B = 1;) はたどる
+            bool usesVariable = false;
+            SemanticAnalyzer.ForEachName(node.Level, (name, _) => { if (IsShadowingVariable(name)) usesVariable = true; });
+            var n = _globalSymbols != null && !usesVariable
+                ? new ConstEvaluator(_globalSymbols, _localConsts, followConstAst: true).Evaluate(node.Level) : null;
             if (n is not int lv || lv < 1)
             {
                 _diagnostics.Error("EXIT level must be a constant of 1 or more", node.Level.Span);
@@ -3272,6 +3277,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
         return t;
     }
     private void PopLoop() => _loopStack.Pop();
+
+    /// <summary>大域の名前を隠す変数 (引数・局所変数・関数内の静的変数・オーバーレイの中の変数) か</summary>
+    private bool IsShadowingVariable(string name)
+        => _localVars?.ContainsKey(name) == true || _staticVarSizes?.ContainsKey(name) == true
+           || _currentOverlayLookup?.ContainsKey(name) == true;
 
     /// <summary>内側から level 番目のループ (CASE は数えない)。なければ null</summary>
     private LoopTarget? FindLoop(int level)

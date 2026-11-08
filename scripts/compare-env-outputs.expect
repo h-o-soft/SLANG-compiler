@@ -23,3 +23,22 @@ bas	@CD1.BAS	convert	success
 bas	@CD1.BAS	disk	success
 bas	@CD1.BAS	wait	success
 bas	@CD1.BAS	tape	error HB0315
+#
+# zxslang の 2 回目の連絡の直し・4 本目 (式の値): ?: が、積んでいない値を POP DE / ADD HL,DE で足していたのを直した。
+# MSX の 3 本は ?: を使う。x1native では MSX のランタイム (MSX_CALLBIOS など) がないので、直す前も後もアセンブルで
+# 失敗する (未定義のラベル E0004)。?: の所の ASM が変わり、アセンブラのエラーの行が変わる
+sl	examples/MSXLSX.SL	x1native-bin	error E0004
+sl	examples/MSXLSX.SL	x1native-tape	error E0004
+sl	examples/MSXLSX.SL	x1native_slfs-bin	error E0004
+sl	examples/MSXLSX.SL	x1native_slfs-disk	error E0004
+sl	examples/MSXLSX.SL	x1native_slfs-disk-name	error E0004
+sl	examples/MSXROM.SL	x1native-bin	error E0004
+sl	examples/MSXROM.SL	x1native-tape	error E0004
+sl	examples/MSXROM.SL	x1native_slfs-bin	error E0004
+sl	examples/MSXROM.SL	x1native_slfs-disk	error E0004
+sl	examples/MSXROM.SL	x1native_slfs-disk-name	error E0004
+sl	examples/MSXSPDRV.SL	x1native-bin	error E0004
+sl	examples/MSXSPDRV.SL	x1native-tape	error E0004
+sl	examples/MSXSPDRV.SL	x1native_slfs-bin	error E0004
+sl	examples/MSXSPDRV.SL	x1native_slfs-disk	error E0004
+sl	examples/MSXSPDRV.SL	x1native_slfs-disk-name	error E0004
