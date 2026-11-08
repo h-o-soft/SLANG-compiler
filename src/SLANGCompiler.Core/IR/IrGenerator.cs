@@ -527,11 +527,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (node.InitialValue != null)
             {
                 var name = node.Name;
+                // 代入と同じく、変数の型に変えて、割り当てた大きさ (BYTE・WORD は 2) で書く。FLOAT の変数の値だけ、
+                // 代入の文の値と同じく FLOAT の定数の演算を正しい値で畳み込む (整数の変数の値はいままでどおり)
+                if (ds == 3) MarkFloatFold(node.InitialValue, true);
                 EmitLocalInit(() =>
                 {
                     var val = node.InitialValue.Accept(this);
                     var info = _localVars![name];
-                    Emit(IrOp.StoreLocal, IrOperand.Imm(info.Offset), val, dataSize: ds);
+                    val = EmitTypeConversion(val, info.ByteSize);
+                    Emit(IrOp.StoreLocal, IrOperand.Imm(info.Offset), val, dataSize: info.ByteSize);
                 });
             }
         }
@@ -838,7 +842,6 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     /// <summary>
     /// 値の式に FLOAT (FLOAT のリテラル・FLOAT の名前 (局所変数が隠すものは見ない)・FLOAT へのキャスト) があるか。
-    /// MightBeFloat は、整数に畳み込める式 ((1.0/2.0)*4096.0) を整数と推定するので、番地の式の検査には使わない。
     /// 比較・条件の中の FLOAT も見る (その場で決める値は整数で畳み込むので、FLOAT の比較を誤る)
     /// </summary>
     /// namesAreLabels: 番地の式 (VAR X:式) では、変数の名前はその番地 (整数のラベル) なので、FLOAT の変数でも FLOAT と見ない
@@ -856,8 +859,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
         ConditionalExpr c => ContainsFloat(c.Condition, namesAreLabels) || ContainsFloat(c.TrueExpr, namesAreLabels)
             || ContainsFloat(c.FalseExpr, namesAreLabels),
         CommaExpr c => ContainsFloat(c.Right, namesAreLabels),
+        IntegerLiteral => false,
         null => false,
-        _ => !namesAreLabels && MightBeFloat(e),
+        _ => !namesAreLabels,   // ほかの形 (関数の呼び出し・配列の要素・代入など) は FLOAT かもしれない
     };
 
     /// <summary>
@@ -1906,23 +1910,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
         }
 
-        // left/rightの型を先にAcceptし、FLOATの場合はleft変換→right Acceptの順にする
+        // 左を作り終えた位置を覚える。右が FLOAT なら、左の変換を右を作った後でこの位置に差し込む (左の値を積む前に
+        // 変える。?: の真の側と同じ)
         var left = node.Left.Accept(this);
         int leftDs = left.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(left.TempIndex, out int lds) ? lds : 2;
-
-        // rightがFLOATかどうかを事前推定（AcceptしないとtempDataSizeは不明だが、
-        // FloatLiteralやFLOAT変数、それらを含む四則演算は先に型が分かる）
-        bool rightMightBeFloat = MightBeFloat(node.Right);
-
-        // leftが整数でrightがFLOATの場合、leftの変換をright Accept前に行う
-        if (leftDs != 3 && rightMightBeFloat)
-        {
-            var conv = IrOperand.Temp(AllocTemp());
-            EmitConversionCall(conv, "i16tof24", left, dataSize: 3);
-            _tempDataSize[conv.TempIndex] = 3;
-            left = conv;
-            leftDs = 3;
-        }
+        var list = CurrentInstructionList();
+        int leftEnd = list.Count;
 
         var right = node.Right.Accept(this);
         var dest = IrOperand.Temp(AllocTemp());
@@ -1952,9 +1945,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
         {
             if (leftDs != 3)
             {
-                // leftの変換: このケースはrightMightBeFloat判定で漏れた場合のフォールバック
                 var conv = IrOperand.Temp(AllocTemp());
-                Emit(IrOp.Call, conv, IrOperand.Sym("i16tof24"), IrOperand.Imm(0), dataSize: 3);
+                list.Insert(leftEnd, new IrInstruction(IrOp.Call, conv, IrOperand.Sym("i16tof24"), IrOperand.Imm(0))
+                    { DataSize = 3, ImplicitSrc = left });
                 _tempDataSize[conv.TempIndex] = 3;
                 left = conv;
             }
@@ -1971,50 +1964,6 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // 比較の命令の大きさは辺の大きさ (FLOAT の比較)、値は 0/1 の整数
         _tempDataSize[dest.TempIndex] = IsComparisonOp(node.Op) ? 2 : resultDs;
         return dest;
-    }
-
-    /// <summary>
-    /// 式を Accept した結果が FLOAT (DataSize 3) になるか。二項演算で、右辺を Accept する前に左辺を FLOAT に変換するための
-    /// 事前推定。偽なのに FLOAT だと、後からの左辺の変換が右辺の値に対して行われ、真なのに整数だと、周りの演算の型が
-    /// 変わる。どちらも誤りなので、Accept の規則 (定数の畳み込み・何もしない演算の正規化・結果の型) をそのままなぞる。
-    /// FLOAT を返す関数・FLOAT の配列の要素は扱わない (偽。今までどおり。今回の畳み込みで新しく FLOAT になる経路ではない)。
-    /// 条件式は、どちらかの側が FLOAT と推定できれば FLOAT (VisitConditionalExpr は両側の実際の大きさで決めるので、
-    /// FLOAT の配列の要素・FLOAT を返す関数だけの側は、推定では整数になる。ほかの式と同じ前からの制限)。
-    /// FLOAT の変数・要素への複合代入 (+= -= *= /=) と前置の増減は、F = F op 値 と同じ式で作るので FLOAT
-    /// </summary>
-    private bool MightBeFloat(Expression e) => e switch
-    {
-        ConditionalExpr c => MightBeFloat(c.TrueExpr) || MightBeFloat(c.FalseExpr),
-        CompoundAssignExpr ca => IsFloatTarget(ca.Target) && ca.Op is CompoundAssignOp.AddAssign
-            or CompoundAssignOp.SubAssign or CompoundAssignOp.MulAssign or CompoundAssignOp.DivAssign,
-        IncrementExpr { IsPrefix: true } pre => IsFloatTarget(pre.Operand),
-        FloatLiteral => true,
-        IdentifierExpr id => IdentifierIsFloat(id),
-        CastExpr c => MightBeFloat(c.Operand),                 // VisitCastExpr は中身をそのまま返す
-        CommaExpr c => MightBeFloat(c.Right),                  // VisitCommaExpr は右の値を返す
-        AssignExpr a => IsFloatTarget(a.Target),               // VisitAssignExpr は書いた値 (代入先の型) を返す
-        CodeEvalExpr ce => MightBeFloat(ce.Inner),             // 中身をそのまま Accept する
-        UnaryExpr { Op: UnaryOp.Negate or UnaryOp.Plus } u => MightBeFloat(u.Operand),
-        IncrementExpr { IsPrefix: false } inc => MightBeFloat(inc.Operand), // 後置は元の値を返す (前置は型なしの結果)
-        AddressOfExpr a => AddressOfIsFloat(a),
-        BinaryExpr b => BinaryResultIsFloat(b),
-        _ => false,
-    };
-
-    /// <summary>VisitAddressOfExpr の結果が FLOAT になるか (&MEM[x]・&PORT[x] と、変数・配列以外の &(式) は中身の値を返す)</summary>
-    private bool AddressOfIsFloat(AddressOfExpr a)
-    {
-        if (a.Operand is IdentifierExpr) return false;
-        if (a.Operand is ArrayAccessExpr arr)
-        {
-            var arrName = (arr.Array as IdentifierExpr)?.Name;
-            if (arrName != null && (_globalSymbols?.Resolve(arrName)?.Type is MemoryArrayType
-                    || arrName.Equals("PORT", StringComparison.OrdinalIgnoreCase)
-                    || arrName.Equals("PORTW", StringComparison.OrdinalIgnoreCase)))
-                return MightBeFloat(arr.Indices[0]);
-            return false;                                      // 配列・ポインタの要素のアドレス
-        }
-        return MightBeFloat(a.Operand);
     }
 
     /// <summary>局所変数に隠されていない、大域の FLOAT のスカラー変数か (A*A → f24sqr などの特殊処理の条件)</summary>
@@ -2112,36 +2061,6 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// <summary>何もしない演算の正規化で見る辺の整数の値。実行時に計算する定数の演算で FLOAT が関わる辺は見ない (null)</summary>
     private static int? NormalizationConst(ConstEvaluator ce, Expression side, bool runtimeFold)
         => runtimeFold && ce.InvolvesFloat(side) ? null : ce.Evaluate(side);
-
-    /// <summary>VisitBinaryExpr の結果が FLOAT になるか (MightBeFloat 用。VisitBinaryExpr と同じ順に判定する)</summary>
-    private bool BinaryResultIsFloat(BinaryExpr b)
-    {
-        if (IsComparisonOp(b.Op)) return false;   // 比較は、辺が FLOAT でも 0/1 の整数
-        if (_globalSymbols != null)
-        {
-            var ce = NewConstEvaluator();
-            bool marked = _floatFoldNodes.Contains(b);
-            var fold = marked || _intFoldNodes.Contains(b) ? ce.FoldFloatArithmetic(b) : null;
-            if (!marked && fold is { Kind: not ConstEvaluator.FloatFoldKind.Int }) fold = null;
-            if (fold is { Kind: ConstEvaluator.FloatFoldKind.Float }) return true;
-            if (fold is { Kind: ConstEvaluator.FloatFoldKind.Int }) return _floatRequiredNodes.Contains(b);
-            if (fold is { Kind: ConstEvaluator.FloatFoldKind.Runtime }) return true;  // 辺を FLOAT のまま実行時に計算する
-            if (ce.Evaluate(b) != null) return false;                    // 整数の即値に畳み込まれる
-            // 何もしない演算の正規化 (残る側の型になる)
-            if (b.Op is BinaryOp.Add or BinaryOp.Sub)
-            {
-                if (ce.Evaluate(b.Right) == 0) return MightBeFloat(b.Left);
-                if (b.Op == BinaryOp.Add && ce.Evaluate(b.Left) == 0) return MightBeFloat(b.Right);
-            }
-            if (b.Op is BinaryOp.Mul or BinaryOp.SMul or BinaryOp.Div or BinaryOp.SDiv)
-            {
-                if (ce.Evaluate(b.Right) == 1) return MightBeFloat(b.Left);
-                if (b.Op is BinaryOp.Mul or BinaryOp.SMul && ce.Evaluate(b.Left) == 1) return MightBeFloat(b.Right);
-            }
-        }
-        if (b.Op is BinaryOp.LogAnd or BinaryOp.LogOr) return false;  // 短絡評価は 0/1 の整数
-        return MightBeFloat(b.Left) || MightBeFloat(b.Right);         // どちらかが FLOAT なら結果も FLOAT
-    }
 
     public IrOperand VisitUnaryExpr(UnaryExpr node)
     {
