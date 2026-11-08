@@ -90,7 +90,9 @@ public class VarDeclTests
 
     [Theory]
     [InlineData("VAR T[3] = 5;", "with a size cannot have a single-value initializer")]
-    [InlineData("ARRAY BYTE A[] = $C000;", "cannot have a single-value initializer")]   // ARRAY の添字なしは配列 (間接変数でない)
+    [InlineData("ARRAY BYTE A[] = $C000;", "cannot have a single-value initializer")]
+    [InlineData("VAR BYTE X:$C000 = {7};", "cannot have a {...} initializer")]   // 単純変数の {…} はどの出力も書かない
+    [InlineData("VAR X = {1, 2};", "cannot have a {...} initializer")]   // ARRAY の添字なしは配列 (間接変数でない)
     [InlineData("ARRAY T[3] = 5;", "with a size cannot have a single-value initializer")]
     [InlineData("VAR X:\"ABC\";", "Unsupported expression")]
     public void Errors(string decl, string message)

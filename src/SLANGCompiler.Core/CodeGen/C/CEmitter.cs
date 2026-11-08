@@ -400,6 +400,12 @@ public class CEmitter : IAstVisitor<EmitResult>
 
         if (isIndirect)
         {
+            // VAR P[] = 番地 (間接変数の初期値) は oscar_c では未サポート (初期値を黙って捨てない)
+            if (node.InitialValue != null)
+            {
+                Error($"VAR `{node.Name}[] = ...` (間接変数の初期値) は oscar_c backend では未サポート", node.Span);
+                return new("", null);
+            }
             var line = _scope.ScopeDepth == 0
                 ? Line($"static {cType} *{ident};")
                 : Line($"{cType} *{ident};");
@@ -951,6 +957,11 @@ public class CEmitter : IAstVisitor<EmitResult>
             // (BEGIN 前) に書かれている場合は static にする。
             if (isIndirect)
             {
+                if (ad.InitialValue != null)
+                {
+                    Error($"VAR `{ad.Name}[] = ...` (間接変数の初期値) は oscar_c backend では未サポート", ad.Span);
+                    return "";
+                }
                 _scope.DeclareLocal(ad.Name, new PointerType(slangType));
                 return Line($"static {cType} *{ident};");
             }

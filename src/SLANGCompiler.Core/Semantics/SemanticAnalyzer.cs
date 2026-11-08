@@ -155,6 +155,9 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     public object? VisitVarDecl(VarDecl node)
     {
         CheckNotLocalConstName(node.Name, node.Span);
+        // 単純変数の {…} の初期値は、どの出力も書かない (Z80 は黙って捨てていた)。エラー
+        if (node.InitialCode != null)
+            _diagnostics.Error($"VAR '{node.Name}' cannot have a {{...}} initializer (use VAR {node.Name} = value)", node.Span);
         CheckDeclUsesPendingConsts(node.Address, node.InitialValue, node.InitialCode);
         CheckDeclAddress(node.Address, scalarVar: true, node.Span);
         var type = DataSizeToType(node.Size);

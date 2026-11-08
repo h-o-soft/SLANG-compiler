@@ -969,6 +969,17 @@ public class ArrayInitOscarCTests
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains(message));
     }
 
+    [Theory]
+    // VAR P[] = 番地 (間接変数の初期値) は oscar_c では未サポート (初期値を黙って捨てて、ヌルのポインタにしない)
+    [InlineData("VAR BYTE P[] = $C000;\nMAIN() { P[0] = 1; }")]
+    [InlineData("MAIN() VAR BYTE P[] = $C000; BEGIN P[0] = 1; END;")]
+    [InlineData("MAIN() BEGIN VAR BYTE P[] = $C000; P[0] = 1; END;")]
+    public void PointerInitializer_Rejected(string source)
+    {
+        TranspileWithEnv(source + "\n", MakeC64Env(), out var diag);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("間接変数の初期値"));
+    }
+
     [Fact]
     public void PointerWithFixedAddressAndInitializer_Rejected()
     {
