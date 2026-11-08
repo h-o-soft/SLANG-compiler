@@ -76,8 +76,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         return t;
     }
 
-    /// <summary>関数の中の CONST も引く ConstEvaluator</summary>
-    private ConstEvaluator NewConstEvaluator() => new(_globalSymbols, _localConsts);
+    /// <summary>関数の中の CONST も引く ConstEvaluator。大域の CONST を隠す変数の名前は定数として読まない</summary>
+    private ConstEvaluator NewConstEvaluator() => new(_globalSymbols, _localConsts, isVariable: IsShadowingVariable);
 
     // 式に関数の中の CONST の名前があるか (大域の名前と同じ名前は意味解析で拒否している)
     private bool UsesLocalConst(Expression expr)
@@ -90,7 +90,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     /// <summary>名前の記号: 関数の中の CONST を先に、なければ大域</summary>
     private Symbol? ResolveConstOrGlobal(string name)
-        => _localConsts != null && _localConsts.TryGetValue(name, out var c) ? c : _globalSymbols?.Resolve(name);
+    {
+        var sym = _localConsts != null && _localConsts.TryGetValue(name, out var c) ? c : _globalSymbols?.Resolve(name);
+        // 引数・局所変数・静的変数が隠す大域の CONST (CODE の並びの CONST も) は引かない (変数として読む)
+        return sym is { Kind: SymbolKind.Constant } or { IsCodeBlock: true } && IsShadowingVariable(name) ? null : sym;
+    }
     private bool _emitToGlobalData;
     private int _currentReturnDataSize = 2;  // 現在処理中の関数の戻り値型 (RETURN/END(expr) で参照)
 
@@ -320,7 +324,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             case IrOp.ArrayStore: Value(inst.Src1); Int(inst.Dest); Int(inst.Src2); break;
             case IrOp.IndirStore or IrOp.MemStore or IrOp.PortOut: Value(inst.Src1); Int(inst.Dest); break;
             case IrOp.ArrayLoad: Int(inst.Src1); Int(inst.Src2); break;
-            case IrOp.IndirLoad or IrOp.MemLoad or IrOp.PortIn or IrOp.LoadIndirect: Int(inst.Src1); break;
+            case IrOp.IndirLoad or IrOp.MemLoad or IrOp.PortIn: Int(inst.Src1); break;
             case IrOp.Add or IrOp.Sub or IrOp.Mul or IrOp.Div or IrOp.SMul or IrOp.SDiv or IrOp.Neg
                 or IrOp.CmpEq or IrOp.CmpNeq or IrOp.CmpLt or IrOp.CmpGt or IrOp.CmpLe or IrOp.CmpGe
                 or IrOp.JoinValue or IrOp.StoredValue:
@@ -500,14 +504,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 // その場で値が決まる式はその値、そうでなければアセンブラの式 (ラベル。ARRAY と同じ)。
                 // いままでは整数のリテラル以外を黙って __WORK__ に置いていた。番地は整数なので FLOAT の式はエラー
                 // (途中の小数を整数で畳み込んで、黙って違う番地にしない)
-                if (ContainsFloat(node.Address, namesAreLabels: true) || NamesConstWithFloat(node.Address))
+                if (VariableInDeclaration(node.Address)) { }
+                else if (ContainsFloat(node.Address, namesAreLabels: true) || NamesConstWithFloat(node.Address))
                     _diagnostics.Error($"Address of VAR '{node.Name}' must be an integer expression, not FLOAT", node.Address.Span);
                 else if (NewConstEvaluator().Evaluate(node.Address) is int constAddr)
                     fixedAddr = constAddr & 0xFFFF;
                 else if (CheckVarAddressNames(node))
                 {
                     int errorsBefore = _diagnostics.ErrorCount;
-                    var asmResult = LabelUtils.ExprToAsmString(node.Address, _globalSymbols, _diagnostics, _localConsts);
+                    var asmResult = LabelUtils.ExprToAsmString(node.Address, _globalSymbols, _diagnostics, _localConsts, IsShadowingVariable);
                     if (asmResult.HasValue)
                     {
                         fixedAddrLabel = asmResult.Value.Expr;
@@ -640,6 +645,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 dimSize = (int)lit.Value + 1; // 仕様: +1個分
             else if (dim == null)
                 dimSize = 0; // 間接配列
+            else if (VariableInDeclaration(dim))
+                dimSize = 1;
             else
             {
                 var constEval = _globalSymbols != null ? NewConstEvaluator() : null;
@@ -679,10 +686,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
             string? fixedAddrLabel = null;
             if (node.Address is IntegerLiteral addrLit)
                 fixedAddr = (int)addrLit.Value;
-            else if (node.Address != null)
+            else if (node.Address != null && !VariableInDeclaration(node.Address))
             {
                 // ラベルベースのアドレス (例: ARRAY X[]:LABEL)
-                var asmResult = LabelUtils.ExprToAsmString(node.Address, _globalSymbols, _diagnostics, _localConsts);
+                var asmResult = LabelUtils.ExprToAsmString(node.Address, _globalSymbols, _diagnostics, _localConsts, IsShadowingVariable);
                 if (asmResult.HasValue)
                 {
                     fixedAddrLabel = asmResult.Value.Expr;
@@ -734,6 +741,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                             initExpr = cast.Operand;
                             itemSize = cast.TargetSize == DataSize.Byte ? 1 : cast.TargetSize == DataSize.Float ? 3 : 2;
                         }
+                        if (VariableInDeclaration(initExpr)) continue;
 
                         // 定数式の評価を試みる（BinaryExpr, CONST参照なども含む）
                         var constEval = _globalSymbols != null ? NewConstEvaluator() : null;
@@ -767,7 +775,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         else
                         {
                             // 非定数式: ExprToAsmStringでアセンブラ式に変換
-                            var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics, _localConsts);
+                            var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics, _localConsts, IsShadowingVariable);
                             if (asmResult.HasValue && itemSize == 2)
                             {
                                 initItems.Add(InitItem.Word(asmResult.Value.Expr));
@@ -899,15 +907,23 @@ public class IrGenerator : IAstVisitor<IrOperand>
         return t;
     }
 
-    /// <summary>式に変数 (局所変数・引数・静的変数) の名前があるか (同じ名前の CONST を隠すので、定数として読まない)</summary>
+    /// <summary>式に変数 (局所変数・引数・静的変数・オーバーレイの変数) の名前があるか (同じ名前の CONST を隠すので、定数として読まない)</summary>
     private bool UsesVariableName(Expression e)
     {
         bool uses = false;
-        SemanticAnalyzer.ForEachName(e, (n, _) =>
-        {
-            if (_localVars?.ContainsKey(n) == true || _staticVarSizes?.ContainsKey(n) == true) uses = true;
-        });
+        SemanticAnalyzer.ForEachName(e, (n, _) => { if (IsShadowingVariable(n)) uses = true; });
         return uses;
+    }
+
+    /// <summary>
+    /// 宣言の式 (配列の大きさ・番地・初期値の項・CODE の定義の項) が変数の名前を使うならエラー (実行時にする道がないので、
+    /// 黙って大きさ 1 にする・項を捨てる・番地を無視する・隠された CONST の値を使う、をしない)
+    /// </summary>
+    private bool VariableInDeclaration(Expression e)
+    {
+        if (!UsesVariableName(e)) return false;
+        _diagnostics.Error("A variable cannot be used in a declaration (only constants and labels)", e.Span);
+        return true;
     }
 
     /// <summary>式の中の CONST の名前の式 (後ろで決まる・ラベルを含む CONST の、まだ値でない式) に FLOAT があるか (たどる)</summary>
@@ -1095,6 +1111,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 initExpr = cast.Operand;
                 itemSize = cast.TargetSize == DataSize.Byte ? 1 : cast.TargetSize == DataSize.Float ? 3 : 2;
             }
+            if (VariableInDeclaration(initExpr)) continue;
             // 定数式の評価を試みる（BinaryExpr, CONST参照なども含む）
             var constEval2 = _globalSymbols != null ? NewConstEvaluator() : null;
             var constVal2 = constEval2?.Evaluate(initExpr);
@@ -1120,7 +1137,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else
             {
                 // 非定数式: アセンブラ式に変換（ラベル参照等）
-                var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics, _localConsts);
+                var asmResult = LabelUtils.ExprToAsmString(initExpr, _globalSymbols, _diagnostics, _localConsts, IsShadowingVariable);
                 if (asmResult.HasValue)
                 {
                     // ラベル参照は常にWORD（アドレス）
@@ -2355,6 +2372,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 machineParamCount = ft.ParameterTypes.Count;
             else
                 machineParamCount = node.Arguments.Count; // ランタイム関数: 呼び出し側の引数数
+            // MACHINE (組み込みの関数も) は宣言の数で呼ぶ (違うと、積む数と取り出す数が食い違ってスタックが崩れる)。
+            // 引数の数を省略した宣言 (スタック渡し) は作っていないので、引数 0 として扱う
+            if (funcSym?.Kind == SymbolKind.MachineFunction && machineParamCount != node.Arguments.Count)
+                _diagnostics.Error($"Function '{funcName}' expects {machineParamCount} arguments, got {node.Arguments.Count}",
+                    node.Span);
         }
 
         if (isMachine && machineParamCount.HasValue)
@@ -2488,6 +2510,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitArrayAccessExpr(ArrayAccessExpr node)
     {
+        CheckSingleIndex(node);
         var arrayName = (node.Array as IdentifierExpr)?.Name;
         var arraySym = arrayName != null ? _globalSymbols?.Resolve(arrayName) : null;
 
@@ -2781,6 +2804,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
         if (node.Operand is ArrayAccessExpr arr)
         {
+            CheckSingleIndex(arr);
             var arrName = (arr.Array as IdentifierExpr)?.Name;
             var arrSym = arrName != null ? _globalSymbols?.Resolve(arrName) : null;
 
@@ -2858,10 +2882,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     else
                         Emit(IrOp.DefWord, IrOperand.Imm(constVal.Value & 0xFFFF));
                 }
-                else if (cast.TargetSize == DataSize.Word)
+                else if (cast.TargetSize == DataSize.Word && !UsesVariableName(cast.Operand))
                 {
                     // 非定数WORD: ラベル式としてDWで埋め込みを試みる
-                    var asmResult = LabelUtils.ExprToAsmString(cast.Operand, _globalSymbols, _diagnostics, _localConsts);
+                    var asmResult = LabelUtils.ExprToAsmString(cast.Operand, _globalSymbols, _diagnostics, _localConsts, IsShadowingVariable);
                     if (asmResult.HasValue)
                     {
                         Emit(IrOp.DefWord, IrOperand.Lbl(asmResult.Value.Expr));
@@ -2875,7 +2899,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 }
                 else
                 {
-                    CodeValue(cast.Operand); // 非定数BYTE→実行時コード
+                    CodeValue(cast.Operand); // 非定数BYTE・変数を使う WORD→実行時コード
                 }
             }
             else if (v is IntegerLiteral ilit)
@@ -3159,6 +3183,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         if (target is IdentifierExpr id)
         {
+            CheckWritableName(id.Name, id.Span, indexed: false);
             var vi = CheckDefined(id.Name, id.Span);
             int storeDs = vi.VarDataSize;
             value = EmitTypeConversion(value, storeDs);
@@ -3170,6 +3195,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         else if (target is ArrayAccessExpr arr)
         {
             var arrayName = (arr.Array as IdentifierExpr)?.Name;
+            if (arrayName != null) CheckWritableName(arrayName, arr.Span, indexed: true);
+            CheckSingleIndex(arr);
             var stVi = arrayName != null ? CheckDefined(arrayName, arr.Span) : default;
             var arraySym = stVi.GlobalSym;
             bool isMemArray = arraySym?.Type is MemoryArrayType;
@@ -3317,12 +3344,33 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
         }
         else
-        {
-            // Indirect store
-            var addr = target.Accept(this);
-            Emit(IrOp.StoreIndirect, addr, value);
-        }
+            _diagnostics.Error(NotWritableMessage, target.Span);
         return value;
+    }
+
+    private const string NotWritableMessage =
+        "The target of an assignment must be a variable, an array element, MEM[ ] or PORT[ ]";
+
+    /// <summary>代入先の名前が書ける記号か。値の CONST・CODE の並びの CONST・関数・MACHINE は書けない (添字の代入先では関数・MACHINE だけ)</summary>
+    private void CheckWritableName(string name, SourceSpan span, bool indexed)
+    {
+        if (IsShadowingVariable(name)) return;
+        var sym = ResolveConstOrGlobal(name);
+        if (sym?.Kind is SymbolKind.Function or SymbolKind.MachineFunction or SymbolKind.CFunction
+            || !indexed && (sym?.Kind == SymbolKind.Constant || sym?.IsCodeBlock == true))
+            _diagnostics.Error($"{NotWritableMessage} ('{name}' is not a variable)", span);
+    }
+
+    /// <summary>MEM・MEMW・SOS・SOSW・PORT・PORTW・間接変数の添字は 1 つ (2 つ目からを黙って捨てない)</summary>
+    private void CheckSingleIndex(ArrayAccessExpr arr)
+    {
+        if (arr.Indices.Count <= 1 || arr.Array is not IdentifierExpr id) return;
+        bool single = id.Name.Equals("PORT", StringComparison.OrdinalIgnoreCase)
+            || id.Name.Equals("PORTW", StringComparison.OrdinalIgnoreCase)
+            || ResolveVarInfo(id.Name) is { IsResolved: true } vi
+               && (vi.Kind == VarKind.Pointer || vi.GlobalSym?.Type is MemoryArrayType);
+        if (single)
+            _diagnostics.Error($"'{id.Name}' takes exactly one index", arr.Span);
     }
 
     // ==== Loop stack for EXIT/CONTINUE ====
@@ -3434,10 +3482,14 @@ public class IrGenerator : IAstVisitor<IrOperand>
     }
     private void PopLoop() => _loopStack.Pop();
 
-    /// <summary>大域の名前を隠す変数 (引数・局所変数・関数内の静的変数・オーバーレイの中の変数) か</summary>
+    /// <summary>
+    /// 大域の名前を隠す変数 (引数・局所変数・関数内の静的変数・オーバーレイの中の変数) か。関数の中の CONST は、それより
+    /// 外のオーバーレイの変数を隠すので、変数ではない (引数・局所変数・静的変数とは同じ名前にできない)
+    /// </summary>
     private bool IsShadowingVariable(string name)
-        => _localVars?.ContainsKey(name) == true || _staticVarSizes?.ContainsKey(name) == true
-           || _currentOverlayLookup?.ContainsKey(name) == true;
+        => _localConsts?.ContainsKey(name) != true
+           && (_localVars?.ContainsKey(name) == true || _staticVarSizes?.ContainsKey(name) == true
+               || _currentOverlayLookup?.ContainsKey(name) == true);
 
     /// <summary>内側から level 番目のループ (CASE は数えない)。なければ null</summary>
     private LoopTarget? FindLoop(int level)

@@ -16,19 +16,25 @@ public class ConstEvaluator
     private readonly HashSet<Symbol> _following = new();
     // たどり終えた CONST の値 (null も覚える)。同じ定数を何度も参照する式で、たどり直さないため
     private readonly Dictionary<Symbol, int?> _followed = new();
+    // 関数の中で、大域の CONST を隠す変数 (引数・局所変数・静的変数) の名前か。真なら定数でない
+    private readonly Func<string, bool>? _isVariable;
 
     public ConstEvaluator(SymbolTable? symbols = null, IReadOnlyDictionary<string, Symbol>? localConstants = null,
-        bool followConstAst = false)
+        bool followConstAst = false, Func<string, bool>? isVariable = null)
     {
         _symbols = symbols;
         _localConstants = localConstants;
         _followConstAst = followConstAst;
+        _isVariable = isVariable;
     }
 
     // 大域の CONST の式をたどっている間は、大域の名前だけを引く (大域の CONST は大域だけで解決する)
     private Symbol? ResolveName(string name)
-        => _localConstants != null && _following.Count == 0 && _localConstants.TryGetValue(name, out var local)
-            ? local : _symbols?.Resolve(name);
+    {
+        if (_following.Count > 0) return _symbols?.Resolve(name);
+        if (_isVariable?.Invoke(name) == true) return null;
+        return _localConstants != null && _localConstants.TryGetValue(name, out var local) ? local : _symbols?.Resolve(name);
+    }
 
     /// <summary>
     /// 式を評価し、定数であれば値を返す。定数でなければnull。

@@ -1,0 +1,303 @@
+using SLANGCompiler.IR;
+using SLANGCompiler.Lexer;
+using SLANGCompiler.Parser;
+using SLANGCompiler.Semantics;
+using Xunit;
+
+namespace SLANGCompiler.Tests;
+
+/// <summary>
+/// 型の整理 (#270) の後に残した 4 件: 大域の CONST を隠す変数、本体が CODE だけの関数、書けない代入先、MACHINE の引数の数
+/// </summary>
+public class IrLeftoverTests
+{
+    private static (DiagnosticBag Diag, IrModule Module) Generate(string source)
+    {
+        var diag = new DiagnosticBag();
+        var tokens = new Lexer.Lexer(source).Tokenize();
+        tokens = new Preprocessor(diag).Process(tokens, ".");
+        var ast = new Parser.Parser(tokens, diag).ParseCompilationUnit();
+        Assert.False(diag.HasErrors, $"Parse errors: {string.Join("; ", diag.Diagnostics)}");
+        var analyzer = new SemanticAnalyzer(diag);
+        analyzer.Analyze(ast);
+        var module = new IrGenerator(diag, analyzer.Symbols).Generate(ast);
+        return (diag, module);
+    }
+
+    private static string Asm(string source)
+    {
+        var (diag, module) = Generate(source);
+        Assert.False(diag.HasErrors, $"IR errors: {string.Join("; ", diag.Diagnostics)}");
+        return new SLANGCompiler.CodeGen.CodeGenerator(module).Generate();
+    }
+
+    /// <summary>関数 name の ASM (ラベルから _name_EXIT まで)</summary>
+    private static string FuncAsm(string source, string name) => Asm(source).Split($"\n{name}:")[1].Split($"_{name}_EXIT")[0];
+
+    private static string Lines(params string[] lines) => string.Join("\n", lines.Select(l => "\t" + l));
+
+    /// <summary>構文解析から IR までのエラー (構文解析のエラーがあっても先へ進める)</summary>
+    private static IEnumerable<string> Errors(string source)
+    {
+        var diag = new DiagnosticBag();
+        var tokens = new Preprocessor(diag).Process(new Lexer.Lexer(source).Tokenize(), ".");
+        var ast = new Parser.Parser(tokens, diag).ParseCompilationUnit();
+        var analyzer = new SemanticAnalyzer(diag);
+        analyzer.Analyze(ast);
+        new IrGenerator(diag, analyzer.Symbols).Generate(ast);
+        return diag.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.Message);
+    }
+
+    // ==== C1: 大域の CONST を隠す変数 ====
+
+    [Fact]
+    public void StaticVariableShadowingConst_IsReadAsVariable()
+    {
+        // 静的変数 X は CONST X を隠す。読み出し・条件・添字・演算とも変数 (いままでは CONST の 5 を使っていた)
+        var asm = FuncAsm("CONST X = 5; VAR R; ARRAY A0[9]; " +
+            "FZ() VAR X; BEGIN X = 0; IF X THEN R = 2; R = A0[X]; R = X * 3; R = X; END; MAIN() BEGIN FZ(); END;", "FZ");
+        Assert.Contains(Lines("LD\tA,H", "OR\tL", "JP\tZ,_L0"), asm);       // IF X を消さない
+        Assert.Contains(Lines("LD\tHL,(_V_FZ_X)", "ADD\tHL,HL", "LD\tDE,_V_A0"), asm);
+        Assert.DoesNotContain("$000F", asm);                                 // X * 3 を 15 にしない
+        Assert.DoesNotContain("(_V_A0+10)", asm);                            // A0[X] を A0[5] にしない
+        Assert.DoesNotContain("$0005", asm);
+    }
+
+    [Theory]
+    [InlineData("FX(X) BEGIN R = X + 1; END;", "FX(1)")]                 // 引数
+    [InlineData("FX() BEGIN VAR X = 9; R = X + 1; END;", "FX()")]       // 局所変数
+    [InlineData("FX() VAR X; BEGIN R = X + 1; END;", "FX()")]           // 静的変数
+    public void VariableShadowingConst_IsNotFolded(string func, string call)
+    {
+        var asm = FuncAsm($"CONST X = 5; VAR R; {func} MAIN() BEGIN {call}; END;", "FX");
+        Assert.Contains(Lines("INC\tHL", "LD\t(_V_R),HL"), asm);
+        Assert.DoesNotContain("$0006", asm);
+    }
+
+    [Fact]
+    public void VariableShadowingConst_MulByOneIsNotNormalizedAway()
+    {
+        // CONST ONE = 1 を隠す引数 ONE で R = Y * ONE は掛け算 (いままでは 1 と見て Y にしていた)
+        var asm = FuncAsm("CONST ONE = 1; VAR R, Y; FX(ONE) BEGIN R = Y * ONE; END; MAIN() BEGIN FX(2); END;", "FX");
+        Assert.Contains(Lines("LD\tHL,(_V_Y)", "LD\tE,(IY+$6E)", "LD\tD,(IY+$6F)", "CALL\tMULHLDE"), asm);
+    }
+
+    [Fact]
+    public void FloatConstShadowedByWordVariable_IsWord()
+    {
+        // FLOAT の CONST を隠す WORD の静的変数は WORD (FLOAT にしない)
+        var asm = FuncAsm("CONST X = 1.5; VAR R; FX() VAR X; BEGIN X = 2; R = X + 1; END; MAIN() BEGIN FX(); END;", "FX");
+        Assert.DoesNotContain("i16tof24", asm);
+        Assert.DoesNotContain("f24", asm);
+        Assert.Contains(Lines("LD\tHL,$0002", "LD\t(_V_FX_X),HL", "INC\tHL"), asm);
+    }
+
+    [Fact]
+    public void WordConstShadowedByFloatVariable_IsFloat()
+    {
+        var asm = FuncAsm("CONST X = 5; FLOAT F; FX() VAR FLOAT X; BEGIN X = 1.5; F = X + 1; END; MAIN() BEGIN FX(); END;", "FX");
+        Assert.Contains(Lines("LD\tA,(_V_FX_X+2)", "LD\tC,A", "LD\tDE,(_V_FX_X)"), asm);
+        Assert.Contains("CALL\tf24add", asm);
+    }
+
+    [Fact]
+    public void CodeBlockConstShadowedByStatic_IsReadAsVariable()
+    {
+        // CODE の並びの CONST (いままでは番地を読んでいた) を隠す静的変数
+        var asm = FuncAsm("CONST X = [1, 2]; VAR R; FX() VAR X; BEGIN X = 0; R = X; END; MAIN() BEGIN FX(); END;", "FX");
+        Assert.DoesNotContain("LD\tHL,_X", asm);
+        Assert.DoesNotContain("LD\tHL,X\n", asm);
+        Assert.Contains("(_V_FX_X)", asm);
+    }
+
+    [Fact]
+    public void CodeWordItemShadowedByParameter_IsRuntime()
+    {
+        // CODE(WORD, X) の X が引数なら、実行時のコード (いままでは CONST X の DW $0005)
+        var asm = FuncAsm("CONST X = 5; VAR R; FX(X) BEGIN R = 0; CODE(WORD, X); END; MAIN() BEGIN FX(1); END;", "FX");
+        Assert.DoesNotContain("$0005", asm);
+        Assert.Contains("LD\tL,(IY+$6E)", asm);
+    }
+
+    [Fact]
+    public void CodeWordCompoundItemWithParameter_IsRuntimeWithoutError()
+    {
+        // CODE(WORD, X * 2) の X が引数なら、実行時のコードにする (アセンブラの式にしようとしてエラーを残さない)
+        var asm = FuncAsm("CONST X = 5; VAR R; FX(X) BEGIN R = 0; CODE(WORD, X * 2); END; MAIN() BEGIN FX(1); END;", "FX");
+        Assert.Contains(Lines("LD\tL,(IY+$6E)", "LD\tH,(IY+$6F)", "ADD\tHL,HL"), asm);
+        Assert.DoesNotContain("$000A", asm);
+    }
+
+    [Fact]
+    public void LocalConstInOverlay_HidesOverlayVariable()
+    {
+        // 関数の中の CONST は、外のオーバーレイの変数を隠す (CONST の 7)
+        var (diag, module) = Generate("VAR R; MAIN() BEGIN R = FX(); END;\n#MODULE $8000\nVAR X;\nFX() CONST X = 7; BEGIN RETURN X; END;");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        var fx = module.Overlays.SelectMany(o => o.Functions).Single(f => f.Name == "FX").Instructions;
+        Assert.Contains(fx, i => i.Op == IrOp.LoadConst && i.Src1.ImmediateValue == 7);
+        Assert.DoesNotContain(fx, i => i.Op == IrOp.LoadVar);
+    }
+
+    [Fact]
+    public void UnshadowedConst_StillFolded()
+    {
+        var asm = FuncAsm("CONST X = 5; VAR R; FX(Y) BEGIN R = X + 1; CODE(WORD, X); END; MAIN() BEGIN FX(1); END;", "FX");
+        Assert.Contains(Lines("LD\tHL,$0006", "LD\t(_V_R),HL"), asm);
+        Assert.Contains("DW\t$0005", asm);
+    }
+
+    [Theory]
+    [InlineData("FX(N) ARRAY A[N]; BEGIN A[1] = 9; END;")]
+    [InlineData("FX(X) ARRAY A[0]:X; BEGIN END;")]
+    [InlineData("FX(X) ARRAY A[0] = {WORD, X}; BEGIN END;")]
+    [InlineData("FX(X) ARRAY A[1] = {WORD, X, 1}; BEGIN END;")]
+    [InlineData("FX(X) VAR B:X; BEGIN END;")]
+    [InlineData("FX() VAR N; ARRAY A[N]; BEGIN END;")]
+    public void VariableInDeclaration_IsError(string func)
+    {
+        Assert.Contains(Errors($"CONST X = 5; CONST N = 7; {func} MAIN() BEGIN END;"),
+            m => m.Contains("cannot be used in a declaration"));
+    }
+
+    [Fact]
+    public void ConstInDeclaration_StillAccepted()
+    {
+        Assert.Empty(Errors("CONST N = 7; FX() ARRAY A[N] = {WORD, N, 1}; BEGIN A[1] = 9; END; MAIN() BEGIN END;"));
+    }
+
+    [Theory]
+    [InlineData("FX(TRUE) BEGIN END;")]
+    [InlineData("FX() VAR FALSE; BEGIN END;")]
+    [InlineData("FX() BEGIN VAR TRUE; END;")]
+    [InlineData("FX() ARRAY TRUE[2]; BEGIN END;")]
+    public void TrueFalseAsName_IsError(string func)
+    {
+        Assert.Contains(Errors($"{func} MAIN() BEGIN END;"), m => m.Contains("cannot be used as a variable or parameter name"));
+    }
+
+    // ==== C2: 本体が CODE だけの関数 ====
+
+    [Theory]
+    [InlineData("FX() BEGIN CODE($3E, $01); END;")]
+    [InlineData("FX()[CODE($3E, $01);]")]
+    [InlineData("FX:WORD()[CODE($3E, $01);]")]
+    [InlineData("FX(0)[CODE($3E, $01);]")]
+    public void ZeroArgumentCodeBody_StaysMachineCodeDefinition(string func)
+    {
+        // 引数 0・戻り値の型なし (か :WORD) は、いままでどおり MACHINE の CODE の定義 (_FX: に DB と RET)
+        var asm = Asm($"VAR R; {func} MAIN() BEGIN R = FX(); END;");
+        Assert.Contains("CALL\t_FX", asm);
+        Assert.Contains("_FX:\n\tDB\t$3E,$01,$C9", asm);
+    }
+
+    [Fact]
+    public void ZeroArgumentCodeBody_ConstantItemsAreBytes()
+    {
+        // MACHINE の CODE の定義の項は、定数をバイトにする (CODE(OP) は DB OP。ふつうの関数の CODE の文とは違う)
+        var asm = Asm("CONST OP = $AF; FX() BEGIN CODE(OP, BYTE, OP + 1); END; MAIN() BEGIN FX(); END;");
+        Assert.Contains("_FX:\n\tDB\t$AF,$B0,$C9", asm);
+    }
+
+    [Theory]
+    [InlineData("FX(A) BEGIN CODE($3E, $01); END;", "FX(1)")]
+    [InlineData("FX(A, B) [CODE($3E, $01);]", "FX(1, 2)")]
+    [InlineData("FX:FLOAT() BEGIN CODE($3E, $01); END;", "FX()")]
+    [InlineData("FX:BYTE() BEGIN CODE($3E, $01); END;", "FX()")]
+    public void CodeBodyWithParameterNamesOrReturnType_IsError(string func, string call)
+    {
+        Assert.Contains(Errors($"VAR R; {func} MAIN() BEGIN {call}; END;"), m => m.Contains("MACHINE CODE definition"));
+    }
+
+    [Fact]
+    public void StatementBeforeCode_IsOrdinaryFunction()
+    {
+        // CODE の前に文があれば、ふつうの関数 (引数を IY から読める)
+        var asm = FuncAsm("VAR R; FX(A) BEGIN R = A; CODE($3E, $01); END; MAIN() BEGIN FX(1); END;", "FX");
+        Assert.Contains("LD\tL,(IY+$6E)", asm);
+        Assert.Contains("DB\t$3E", asm);
+    }
+
+    // ==== C3: 書けない代入先 ====
+
+    private const string TargetDecls = "VAR X, R, P[]; CONST C = 3; CONST T = [1, 2]; ARRAY A[3]; FX() BEGIN END; ";
+
+    [Theory]
+    [InlineData("X + 1 = 5;")]
+    [InlineData("FX() = 1;")]
+    [InlineData("(X + 1)++;")]
+    [InlineData("(X + 1) += 1;")]
+    [InlineData("FX = 1;")]
+    [InlineData("FX[0] = 1;")]
+    [InlineData("FY = 1;")]          // 後ろで定義する関数
+    [InlineData("C = 1;")]
+    [InlineData("C++;")]
+    [InlineData("T = 1;")]
+    [InlineData("BEEP = 1;")]
+    public void NotWritableTarget_IsError(string body)
+    {
+        Assert.Contains(Errors($"{TargetDecls}MAIN() BEGIN {body} END; FY() BEGIN END;"),
+            m => m.Contains("The target of an assignment must be"));
+    }
+
+    [Fact]
+    public void NotWritableTarget_InFunctionEndValue_IsError()
+    {
+        Assert.Contains(Errors($"{TargetDecls}FZ() BEGIN END(FX = 1);  MAIN() BEGIN FZ(); END;"),
+            m => m.Contains("The target of an assignment must be"));
+    }
+
+    [Theory]
+    [InlineData("MEM[1][2] = 3;")]
+    [InlineData("R = MEM[1][2];")]
+    [InlineData("R = &MEM[1][X++];")]
+    [InlineData("MEMW[1][2] = 3;")]
+    [InlineData("SOS[1][2] = 3;")]
+    [InlineData("SOSW[1][2] = 3;")]
+    [InlineData("PORT[1][2] = 3;")]
+    [InlineData("R = PORTW[1][2];")]
+    [InlineData("P[1][2] = 3;")]
+    [InlineData("R = &P[1][2];")]
+    public void SecondIndexOnSingleIndexArray_IsError(string body)
+    {
+        Assert.Contains(Errors($"{TargetDecls}MAIN() BEGIN {body} END;"), m => m.Contains("takes exactly one index"));
+    }
+
+    [Fact]
+    public void WritableTargets_AreAccepted()
+    {
+        Assert.Empty(Errors($"{TargetDecls}MAIN() BEGIN VAR L; X = 1; L = 2; A[1] = 3; P[1] = 4; MEM[$C000] = 5; MEMW[$C000] = 6; " +
+            "SOS[1] = 7; SOSW[1] = 8; PORT[1] = 9; PORTW[1] = 10; X++; A[2] += 1; R = &MEM[1]; R = &P[1]; END;"));
+    }
+
+    // ==== C4: MACHINE の引数の数 ====
+
+    private const string MachineDecls = "VAR R; MACHINE M(2):$1234; MACHINE M0(0):$1234; MACHINE P():$1234; MACHINE Q:$1234; "
+        + "MACHINE M1(1):$1234; MACHINE M3(3):$1234; MACHINE M4(4):$1234; ";
+
+    [Theory]
+    [InlineData("R = M(1);", "expects 2 arguments, got 1")]
+    [InlineData("R = M(1, 2, 3);", "expects 2 arguments, got 3")]
+    [InlineData("R = M0(1);", "expects 0 arguments, got 1")]
+    [InlineData("R = P(1, 2);", "expects 0 arguments, got 2")]     // 引数の数を省略した宣言
+    [InlineData("R = Q(1);", "expects 0 arguments, got 1")]
+    [InlineData("LOCATE(1);", "expects 2 arguments, got 1")]      // 組み込みの関数
+    public void MachineArgumentCountMismatch_IsError(string body, string message)
+    {
+        Assert.Contains(Errors($"{MachineDecls}MAIN() BEGIN {body} END;"), m => m.Contains(message));
+    }
+
+    [Fact]
+    public void MachineArgumentCountMatch_IsAccepted()
+    {
+        var asm = Asm($"{MachineDecls}MAIN() BEGIN R = M0(); R = P(); R = Q(); R = M1(1); R = M(1, 2); R = M3(1, 2, 3); " +
+            "R = M4(1, 2, 3, 4); LOCATE(1, 2); R = FSIN(1); END;");
+        Assert.Contains("CALL\t$1234", asm);
+    }
+
+    [Fact]
+    public void LaterDeclaredMachine_CountIsChecked()
+    {
+        Assert.Contains(Errors("VAR R; MAIN() BEGIN R = ML(1); END; MACHINE ML(2):$1234;"), m => m.Contains("expects 2 arguments, got 1"));
+    }
+}

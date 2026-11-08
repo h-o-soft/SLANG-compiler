@@ -603,6 +603,11 @@ public class Parser
         // MACHINE CODE定義(引数0個): @FUNC()[CODE(...);] — [の次がCODEキーワード
         if (IsBlockOpen() && Peek(1).Kind == TokenKind.Code)
         {
+            // 引数の名前・BYTE/FLOAT の戻り値の型は、MACHINE の CODE の定義では使えない (黙って名前の数の MACHINE にしない)
+            if (parms.Count > 0 || returnSize != DataSize.Word)
+                _diagnostics.Error($"'{name}' has only CODE in its body, which makes it a MACHINE CODE definition: it cannot have "
+                    + "parameter names or a BYTE/FLOAT return type (write the number of arguments, e.g. "
+                    + $"{name}({parms.Count})[CODE(...);], or put a statement before CODE to make a function)", start);
             Advance(); // ブロックオープン消費
             var expr = ParseNcExpr();
             Match(TokenKind.Semicolon);

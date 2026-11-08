@@ -168,7 +168,7 @@ internal static class LabelUtils
     /// </summary>
     public static (string Expr, List<string> Deps)? ExprToAsmString(
         Parser.Ast.Expression expr, Semantics.SymbolTable? symbols, DiagnosticBag? diag = null,
-        IReadOnlyDictionary<string, Semantics.Symbol>? localConstants = null)
+        IReadOnlyDictionary<string, Semantics.Symbol>? localConstants = null, Func<string, bool>? isVariable = null)
     {
         var deps = new List<string>();
 
@@ -178,6 +178,10 @@ internal static class LabelUtils
             {
                 case Parser.Ast.IntegerLiteral lit:
                     return $"${lit.Value:X4}";
+
+                // 関数の中で、大域の名前を隠す変数 (引数・局所変数・静的変数)。定数でもラベルでもない (呼ぶ側が決める)
+                case Parser.Ast.IdentifierExpr vid when isVariable?.Invoke(vid.Name) == true:
+                    return null;
 
                 // 関数の中の CONST (値が決まっている)。この式に直接書いた名前だけ。大域の CONST の式をたどる所
                 // (下の ConstAst の再帰) には渡さない
@@ -237,7 +241,7 @@ internal static class LabelUtils
                     // Mul等の定数演算: ConstEvaluatorで評価してリテラルに変換
                     // (後ろで決まる定数を何段たどっても値が出るように、CONST の式もたどる)
                     var constEval = symbols != null
-                        ? new Semantics.ConstEvaluator(symbols, localConstants, followConstAst: true) : null;
+                        ? new Semantics.ConstEvaluator(symbols, localConstants, followConstAst: true, isVariable) : null;
                     var constVal = constEval?.Evaluate(bin2);
                     if (constVal.HasValue)
                         return $"${constVal.Value & 0xFFFF:X4}";

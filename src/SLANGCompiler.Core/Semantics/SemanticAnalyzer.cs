@@ -161,6 +161,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         CheckDeclUsesPendingConsts(node.Address, node.InitialValue, node.InitialCode);
         CheckDeclAddress(node.Address, scalarVar: true, node.Span);
         var type = DataSizeToType(node.Size);
+        CheckNotTrueFalse(node.Name, node.Span);
         var sym = _symbols.Define(node.Name, SymbolKind.Variable, type);
 
         if (_currentFunc != null && _symbols.IsGlobalScope == false && !_inStaticDecl)
@@ -243,6 +244,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             type = new ArrayType(elemType, dims);
         }
 
+        CheckNotTrueFalse(node.Name, node.Span);
         var sym = _symbols.Define(node.Name, SymbolKind.Variable, type);
         // ARRAYキーワードで宣言されたもののみフラグ設定
         // VAR X[] はポインタ変数（LoadVar）、ARRAY X[] は配列（LoadAddr）
@@ -458,6 +460,7 @@ public class SemanticAnalyzer : IAstVisitor<object?>
                 continue;
             }
             var pType = MakeParamType(param);
+            CheckNotTrueFalse(param.Name, param.Span);
             var pSym = _symbols.Define(param.Name, SymbolKind.Parameter, pType);
             pSym.IsGlobal = false;
             pSym.Offset = argOffset;
@@ -861,6 +864,13 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     private bool IsLocalConst(string name)
         => _currentFunc != null && _currentFunc.LocalConstants.TryGetValue(name, out var c)
            && ReferenceEquals(_symbols.Resolve(name), c);
+
+    /// <summary>変数・配列・引数の名前に TRUE・FALSE は使えない (構文解析が式の中の TRUE・FALSE を 1・0 にするので、読めない)</summary>
+    private void CheckNotTrueFalse(string name, SourceSpan span)
+    {
+        if (name.Equals("TRUE", StringComparison.OrdinalIgnoreCase) || name.Equals("FALSE", StringComparison.OrdinalIgnoreCase))
+            _diagnostics.Error($"'{name}' cannot be used as a variable or parameter name (it is the constant {(name.Equals("TRUE", StringComparison.OrdinalIgnoreCase) ? 1 : 0)})", span);
+    }
 
     private void CheckNotLocalConstWrite(Expression target, string opName, SourceSpan span)
     {
