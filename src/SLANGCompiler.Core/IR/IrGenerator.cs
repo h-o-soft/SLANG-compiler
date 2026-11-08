@@ -20,8 +20,34 @@ public class IrGenerator : IAstVisitor<IrOperand>
     // 関数の中の CONST (名前 → 記号)。宣言の順に入れる。関数の外では null
     private Dictionary<string, Symbol>? _localConsts;
     private FuncInfo? _currentFuncInfo;
-    // 次に訪ねる ++/-- (とカンマ式) の値を使わない (式の文・カンマ式の左)。VisitIncrementExpr・VisitCommaExpr が読んで消す
+    // 次に訪ねる式の値を使わない (式の文・カンマ式の左など)。受け取る式 (TakesDiscard) だけが読んで消す
     private bool _valueDiscarded;
+
+    /// <summary>値を使わない印を受け取る式 (代入・増減・カンマ式と、値をそのまま返す単項の +・キャスト)</summary>
+    private static bool TakesDiscard(Expression e) => e is IncrementExpr or CommaExpr or AssignExpr or CompoundAssignExpr
+        or UnaryExpr { Op: UnaryOp.Plus } or CastExpr;
+
+    private bool TakeDiscard()
+    {
+        bool d = _valueDiscarded;
+        _valueDiscarded = false;
+        return d;
+    }
+
+    /// <summary>
+    /// 書いた値を式の値として使うとき: 書き込みの後で、値を HL (FLOAT は AHL) に置き直す。メモリへの書き込みの後は
+    /// HL が番地なので、コード生成が EX DE,HL を出す。結果は 1 つの新しい値なので、PRINT・関数の引数など、
+    /// どこで読んでも積むかどうかの判断がふつうに働く
+    /// </summary>
+    private IrOperand ValueAfterStore(IrOperand stored)
+    {
+        if (stored.Kind != IrOperandKind.Temp) return stored;
+        int ds = _tempDataSize.TryGetValue(stored.TempIndex, out int d) ? d : 2;
+        var t = IrOperand.Temp(AllocTemp());
+        Emit(IrOp.StoredValue, t, stored, dataSize: ds);
+        if (ds == 3) _tempDataSize[t.TempIndex] = 3;
+        return t;
+    }
 
     /// <summary>関数の中の CONST も引く ConstEvaluator</summary>
     private ConstEvaluator NewConstEvaluator() => new(_globalSymbols, _localConsts);
@@ -974,7 +1000,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // 条件の中の (C=1.0/2.0) などで、FLOAT の値を条件に持ち込まないため)。FLOAT の値を作ってよいのは、
         // 代入先がすべて FLOAT の変数・FLOAT の配列の要素のときだけ (それ以外は整数の値を正すだけ)
         if (node.Expr is AssignExpr assign) MarkFloatFold(assign.Value, IsFloatTarget(assign.Target));
-        _valueDiscarded = node.Expr is IncrementExpr or CommaExpr;
+        _valueDiscarded = TakesDiscard(node.Expr);
         node.Expr.Accept(this);
         return IrOperand.None;
     }
@@ -1743,7 +1769,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
 
         Emit(op, dest, left, right, dataSize: resultDs);
-        _tempDataSize[dest.TempIndex] = resultDs;
+        // 比較の命令の大きさは辺の大きさ (FLOAT の比較)、値は 0/1 の整数
+        _tempDataSize[dest.TempIndex] = IsComparisonOp(node.Op) ? 2 : resultDs;
         return dest;
     }
 
@@ -1757,7 +1784,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// </summary>
     private bool MightBeFloat(Expression e) => e switch
     {
-        ConditionalExpr c => ConditionalSideIsFloat(c.TrueExpr) || ConditionalSideIsFloat(c.FalseExpr),
+        ConditionalExpr c => MightBeFloat(c.TrueExpr) || MightBeFloat(c.FalseExpr),
         CompoundAssignExpr ca => IsFloatTarget(ca.Target) && ca.Op is CompoundAssignOp.AddAssign
             or CompoundAssignOp.SubAssign or CompoundAssignOp.MulAssign or CompoundAssignOp.DivAssign,
         IncrementExpr { IsPrefix: true } pre => IsFloatTarget(pre.Operand),
@@ -1765,7 +1792,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         IdentifierExpr id => IdentifierIsFloat(id),
         CastExpr c => MightBeFloat(c.Operand),                 // VisitCastExpr は中身をそのまま返す
         CommaExpr c => MightBeFloat(c.Right),                  // VisitCommaExpr は右の値を返す
-        AssignExpr a => MightBeFloat(a.Value),                 // VisitAssignExpr は代入する値を返す
+        AssignExpr a => IsFloatTarget(a.Target),               // VisitAssignExpr は書いた値 (代入先の型) を返す
         CodeEvalExpr ce => MightBeFloat(ce.Inner),             // 中身をそのまま Accept する
         UnaryExpr { Op: UnaryOp.Negate or UnaryOp.Plus } u => MightBeFloat(u.Operand),
         IncrementExpr { IsPrefix: false } inc => MightBeFloat(inc.Operand), // 後置は元の値を返す (前置は型なしの結果)
@@ -1887,6 +1914,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// <summary>VisitBinaryExpr の結果が FLOAT になるか (MightBeFloat 用。VisitBinaryExpr と同じ順に判定する)</summary>
     private bool BinaryResultIsFloat(BinaryExpr b)
     {
+        if (IsComparisonOp(b.Op)) return false;   // 比較は、辺が FLOAT でも 0/1 の整数
         if (_globalSymbols != null)
         {
             var ce = NewConstEvaluator();
@@ -1915,6 +1943,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitUnaryExpr(UnaryExpr node)
     {
+        bool discarded = TakeDiscard();   // 単項の + は値をそのまま返すので、値を使わない印を中へ渡す
         // 定数畳み込み: リテラルに対する単項演算をコンパイル時に計算
         if (node.Operand is IntegerLiteral numLit)
         {
@@ -1940,6 +1969,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             return EmitLoadFloatConst(-fLit.Value);
         }
 
+        _valueDiscarded = discarded && node.Op == UnaryOp.Plus && TakesDiscard(node.Operand);
         var operand = node.Operand.Accept(this);
         if (node.Op == UnaryOp.Plus) return operand;
 
@@ -1963,14 +1993,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitAssignExpr(AssignExpr node)
     {
+        bool discarded = TakeDiscard();
         var value = node.Value.Accept(this);
-        // 代入式の値は、書いた値 (代入先の型に変えたもの)
-        return EmitStore(node.Target, value);
+        // 代入式の値は、書いた値 (代入先の型に変えたもの。BYTE は上位を切る前の値)
+        var stored = EmitStore(node.Target, value);
+        return discarded ? stored : ValueAfterStore(stored);
     }
 
     public IrOperand VisitCompoundAssignExpr(CompoundAssignExpr node)
     {
-        CheckTargetEvaluatedTwice(node.Target, node.Span);
+        bool discarded = TakeDiscard();
+        CheckTargetEvaluatedTwice(node.Target, node.Value, node.Span);
         // FLOAT の代入先: F = F op 値 と同じ式 (FLOAT の四則演算) で作る
         // (整数の演算で足して、その結果を整数から FLOAT に変えていた)
         if (IsFloatTarget(node.Target) && node.Op is CompoundAssignOp.AddAssign or CompoundAssignOp.SubAssign
@@ -1983,6 +2016,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 CompoundAssignOp.MulAssign => BinaryOp.Mul,
                 _ => BinaryOp.Div,
             };
+            _valueDiscarded = discarded;
             return VisitAssignExpr(new AssignExpr(node.Target,
                 new BinaryExpr(binOp, node.Target, node.Value, node.Span), node.Span));
         }
@@ -2001,15 +2035,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
         };
 
         Emit(op, dest, target, value);
-        return EmitStore(node.Target, dest);
+        var stored = EmitStore(node.Target, dest);
+        return discarded ? stored : ValueAfterStore(stored);
     }
 
     public IrOperand VisitIncrementExpr(IncrementExpr node)
     {
         // 値を使わない (式の文・カンマ式の左) か。中の式 (T[I++]++ の I++) には引き継がない
-        bool valueUnused = _valueDiscarded;
-        _valueDiscarded = false;
-        CheckTargetEvaluatedTwice(node.Operand, node.Span);
+        bool valueUnused = TakeDiscard();
+        CheckTargetEvaluatedTwice(node.Operand, null, node.Span);
 
         // FLOAT: F = F + 1 と同じ式 (FLOAT の足し算) で作る。後置の値は、新しい値から 1.0 を引いても
         // 古い値に戻らないことがあるので、使えない
@@ -2018,6 +2052,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (!node.IsPrefix && !valueUnused)
                 _diagnostics.Error("The value of postfix ++/-- on FLOAT cannot be used (use prefix ++/--, or a separate statement)",
                     node.Span);
+            _valueDiscarded = valueUnused;
             return VisitAssignExpr(new AssignExpr(node.Operand,
                 new BinaryExpr(node.IsIncrement ? BinaryOp.Add : BinaryOp.Sub, node.Operand,
                     new IntegerLiteral(1, node.Span), node.Span), node.Span));
@@ -2028,10 +2063,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
         Emit(IrOp.LoadConst, one, IrOperand.Imm(1));
         var result = IrOperand.Temp(AllocTemp());
         Emit(node.IsIncrement ? IrOp.Add : IrOp.Sub, result, val, one);
-        EmitStore(node.Operand, result);
+        var stored = EmitStore(node.Operand, result);
 
-        if (node.IsPrefix) return result;
-        if (valueUnused) return val;
+        if (valueUnused) return node.IsPrefix ? stored : val;   // 値を使わない: いままでどおり
+        var newValue = ValueAfterStore(stored);
+        if (node.IsPrefix) return newValue;
 
         // 後置で値を使う: 古い値 (val) は、足し引きのときに HL の上で書き換わって残らないので、書いた後に
         // 新しい値から 1 を引いて (-- なら足して) 作り直す。16 ビットで回るので必ず古い値に戻る
@@ -2039,7 +2075,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var one2 = IrOperand.Temp(AllocTemp());
         Emit(IrOp.LoadConst, one2, IrOperand.Imm(1));
         var old = IrOperand.Temp(AllocTemp());
-        Emit(node.IsIncrement ? IrOp.Sub : IrOp.Add, old, result, one2);
+        Emit(node.IsIncrement ? IrOp.Sub : IrOp.Add, old, newValue, one2);
         return old;
     }
 
@@ -2390,7 +2426,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // 「結果は HL にある」とし、積むかどうかはその 1 か所で決める (側ごとに決めると食い違う)
         var falseLabel = NewLabel();
         var endLabel = NewLabel();
-        int ds = ConditionalSideIsFloat(node.TrueExpr) || ConditionalSideIsFloat(node.FalseExpr) ? 3 : 2;
+        int ds = MightBeFloat(node.TrueExpr) || MightBeFloat(node.FalseExpr) ? 3 : 2;
 
         var cond = node.Condition.Accept(this);
         Emit(IrOp.JumpIfZero, IrOperand.Lbl(falseLabel), cond);
@@ -2409,23 +2445,14 @@ public class IrGenerator : IAstVisitor<IrOperand>
         return result;
     }
 
-    /// <summary>?: の片側が FLOAT の値か。比較と && || は、辺が FLOAT でも 0/1 の整数</summary>
-    private bool ConditionalSideIsFloat(Expression e)
-        => !IsZeroOneResult(e) && MightBeFloat(e);
-
-    private static bool IsZeroOneResult(Expression e) => e is BinaryExpr
-    {
-        Op: BinaryOp.Eq or BinaryOp.Neq or BinaryOp.Lt or BinaryOp.Gt or BinaryOp.Le or BinaryOp.Ge
-            or BinaryOp.SLt or BinaryOp.SGt or BinaryOp.SLe or BinaryOp.SGe or BinaryOp.LogAnd or BinaryOp.LogOr
-    };
+    private static bool IsComparisonOp(BinaryOp op) => op is BinaryOp.Eq or BinaryOp.Neq or BinaryOp.Lt or BinaryOp.Gt
+        or BinaryOp.Le or BinaryOp.Ge or BinaryOp.SLt or BinaryOp.SGt or BinaryOp.SLe or BinaryOp.SGe;
 
     /// <summary>?: の片側の値を、結果の大きさ (FLOAT なら 3) にそろえて作る</summary>
     private IrOperand ConditionalBranchValue(Expression e, int ds)
     {
         var val = e.Accept(this);
-        // 比較の一時値は、辺の大きさ (FLOAT なら 3) を持っているが、値は 0/1 の整数
-        int valueDs = IsZeroOneResult(e) ? 2
-            : val.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(val.TempIndex, out int vds) ? vds : 2;
+        int valueDs = val.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(val.TempIndex, out int vds) ? vds : 2;
         if (valueDs == 3 && ds != 3)
             _diagnostics.Error("FLOAT value on only one side of ?: is not supported here (make both sides FLOAT)", e.Span);
         if (ds == 3 && valueDs != 3)
@@ -2441,10 +2468,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitCommaExpr(CommaExpr node)
     {
         // 左の値は使わない。右の値は、カンマ式そのものの値を使わないとき (式の文など) だけ使わない
-        bool discarded = _valueDiscarded;
-        _valueDiscarded = node.Left is IncrementExpr or CommaExpr;
+        bool discarded = TakeDiscard();
+        _valueDiscarded = TakesDiscard(node.Left);
         node.Left.Accept(this);
-        _valueDiscarded = discarded && node.Right is IncrementExpr or CommaExpr;
+        _valueDiscarded = discarded && TakesDiscard(node.Right);
         return node.Right.Accept(this);
     }
 
@@ -2575,6 +2602,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitCastExpr(CastExpr node)
     {
+        _valueDiscarded = TakeDiscard() && TakesDiscard(node.Operand);   // 値をそのまま返すので、値を使わない印を中へ渡す
         return node.Operand.Accept(this);
     }
 
@@ -2760,18 +2788,26 @@ public class IrGenerator : IAstVisitor<IrOperand>
     }
 
     /// <summary>
-    /// ++ -- と複合代入は、代入先 (配列の添字・番地の式) を、読むときと書くときの 2 回計算する。
-    /// そこに ++ -- ・代入・関数の呼び出しがあると 2 回起きるので、エラーにする
+    /// ++ -- と複合代入は、代入先 (配列の添字・番地の式) を、読むときと書くときの 2 回計算する。次のときは、2 回で
+    /// 違う所になるか副作用が 2 回起きるので、エラーにする:
+    /// 添字・配列の式に ++ -- ・代入・関数の呼び出し・PORT の読み取りがある。右辺 (複合代入の値) が、添字・配列の式の
+    /// 変数に代入する (T[I] += (I = I + 1))。関数の呼び出しの中で変わるものは見ない (式の中の順は決めない、仕様書)
     /// </summary>
-    private void CheckTargetEvaluatedTwice(Expression target, SourceSpan span)
+    private void CheckTargetEvaluatedTwice(Expression target, Expression? value, SourceSpan span)
     {
         if (target is not ArrayAccessExpr arr) return;
         bool sideEffect = false;
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         void Walk(Expression? e)
         {
             switch (e)
             {
-                case IncrementExpr or AssignExpr or CompoundAssignExpr or CallExpr: sideEffect = true; break;
+                case IdentifierExpr id: names.Add(id.Name); break;
+                case IncrementExpr or AssignExpr or CompoundAssignExpr or CallExpr or CodeExpr or StringFuncExpr:
+                    sideEffect = true; break;
+                case ArrayAccessExpr { Array: IdentifierExpr port } when port.Name.Equals("PORT", StringComparison.OrdinalIgnoreCase)
+                        || port.Name.Equals("PORTW", StringComparison.OrdinalIgnoreCase):
+                    sideEffect = true; break;
                 case BinaryExpr b: Walk(b.Left); Walk(b.Right); break;
                 case UnaryExpr u: Walk(u.Operand); break;
                 case CastExpr c: Walk(c.Operand); break;
@@ -2780,13 +2816,50 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 case ConditionalExpr c: Walk(c.Condition); Walk(c.TrueExpr); Walk(c.FalseExpr); break;
                 case CommaExpr c: Walk(c.Left); Walk(c.Right); break;
                 case ArrayAccessExpr a: Walk(a.Array); foreach (var x in a.Indices) Walk(x); break;
-                case CodeExpr or StringFuncExpr: sideEffect = true; break;
             }
         }
         Walk(arr.Array);
         foreach (var x in arr.Indices) Walk(x);
         if (sideEffect)
-            _diagnostics.Error("The target of ++/--/+= etc. is evaluated twice; its index must not contain ++, --, assignments or function calls",
+        {
+            _diagnostics.Error("The target of ++/--/+= etc. is evaluated twice; its index must not contain ++, --, assignments, function calls or PORT reads",
+                span);
+            return;
+        }
+
+        // 右辺が、添字・配列の式の変数に代入する
+        bool writesTargetName = false;
+        void WalkValue(Expression? e)
+        {
+            switch (e)
+            {
+                case AssignExpr a: CheckWrite(a.Target); WalkValue(a.Target); WalkValue(a.Value); break;
+                case CompoundAssignExpr ca: CheckWrite(ca.Target); WalkValue(ca.Target); WalkValue(ca.Value); break;
+                case IncrementExpr inc: CheckWrite(inc.Operand); WalkValue(inc.Operand); break;
+                case BinaryExpr b: WalkValue(b.Left); WalkValue(b.Right); break;
+                case UnaryExpr u: WalkValue(u.Operand); break;
+                case CastExpr c: WalkValue(c.Operand); break;
+                case HighLowExpr h: WalkValue(h.Operand); break;
+                case AddressOfExpr a: WalkValue(a.Operand); break;
+                case ConditionalExpr c: WalkValue(c.Condition); WalkValue(c.TrueExpr); WalkValue(c.FalseExpr); break;
+                case CommaExpr c: WalkValue(c.Left); WalkValue(c.Right); break;
+                case ArrayAccessExpr a: WalkValue(a.Array); foreach (var x in a.Indices) WalkValue(x); break;
+                case CallExpr call: foreach (var x in call.Arguments) WalkValue(x); break;
+            }
+        }
+        void CheckWrite(Expression t)
+        {
+            var root = t switch
+            {
+                IdentifierExpr id => id.Name,
+                ArrayAccessExpr { Array: IdentifierExpr an } => an.Name,
+                _ => null,
+            };
+            if (root != null && names.Contains(root)) writesTargetName = true;
+        }
+        WalkValue(value);
+        if (writesTargetName)
+            _diagnostics.Error("The target of +=/-= etc. is evaluated twice; the right side must not change a variable used in the target's index",
                 span);
     }
 
@@ -2821,12 +2894,14 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
             if (isPortArray)
             {
-                // PORT[addr] = value
+                // PORT[addr] = value (FLOAT は整数に変える。変えないと AHL のまま積まれて、DE だけ取り出される)
+                value = EmitTypeConversion(value, isPortByte ? 1 : 2);
                 var addr = arr.Indices[0].Accept(this);
                 Emit(IrOp.PortOut, addr, value, dataSize: isPortByte ? 1 : 2);
             }
             else if (isMemArray)
             {
+                value = EmitTypeConversion(value, isByteAccess ? 1 : 2);   // FLOAT は整数に変える (PORT と同じ)
                 var addr = arr.Indices[0].Accept(this);
                 Emit(IrOp.MemStore, addr, value, dataSize: isByteAccess ? 1 : 2);
             }

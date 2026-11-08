@@ -1663,6 +1663,18 @@ public class CodeGenerator
                 continue;
             }
 
+            // 書いた値を式の値として使う: 直前のメモリへの書き込みは値を DE (FLOAT は A:DE) に残し、HL は番地なので
+            // HL に戻す。StoreVar・StoreLocal・PortOut の後は、値はもう HL にある
+            if (inst.Op == IrOp.StoredValue)
+            {
+                var prev = PreviousEmitted(insts, i);
+                if (prev?.Op is IrOp.IndirStore or IrOp.ArrayStore or IrOp.MemStore)
+                    _e.Instruction("EX", "DE,HL");
+                if (NeedsPushAfter(insts, i, inst.Dest.TempIndex))
+                    EmitPushValue(inst.DataSize);
+                continue;
+            }
+
             // StoreLocal即値最適化: LD (IY+d),imm 直接ストア
             if (storeLocalDirectConst.TryGetValue(i, out int constDefIdx))
             {
@@ -1689,22 +1701,16 @@ public class CodeGenerator
                     EmitPushValue(inst.DataSize);
             }
 
-            if (inst.Op is IrOp.IndirStore or IrOp.MemStore or IrOp.ArrayStore)
-                KeepStoredValue(insts, i, inst);
         }
         _currentFunction = null;
     }
 
-    /// <summary>
-    /// メモリに書いた値を、この後でまた使うなら HL に戻す (式の値としての代入・前置 ++ など)。
-    /// 書き込みの後、HL は番地、値は DE (FLOAT は A:DE) に残っている
-    /// </summary>
-    private void KeepStoredValue(List<IrInstruction> insts, int i, IrInstruction inst)
+    /// <summary>i の直前に出す命令 (飛ばす命令は除く)</summary>
+    private IrInstruction? PreviousEmitted(List<IrInstruction> insts, int i)
     {
-        if (inst.Src1.Kind != IrOperandKind.Temp || !IsTempReadAfter(insts, i, inst.Src1.TempIndex)) return;
-        _e.Instruction("EX", "DE,HL");
-        if (NeedsPushAfter(insts, i, inst.Src1.TempIndex))
-            EmitPushValue(inst.DataSize);
+        for (int j = i - 1; j >= 0; j--)
+            if (!_currentSkipEmit.Contains(j)) return insts[j];
+        return null;
     }
 
     /// <summary>命令が読む temp (同じ temp は 1 回)。書き込み・出力の Dest は番地、Return・PushArg の Dest は値</summary>
@@ -1720,22 +1726,6 @@ public class CodeGenerator
 
     private static bool DestIsRead(IrOp op) => op is IrOp.IndirStore or IrOp.MemStore or IrOp.ArrayStore
         or IrOp.PortOut or IrOp.StoreIndirect or IrOp.Return or IrOp.PushArg;
-
-    /// <summary>temp を i より後ろで読むか (作り直されたら、そこで終わり)</summary>
-    private static bool IsTempReadAfter(List<IrInstruction> insts, int i, int tempIdx)
-    {
-        for (int j = i + 1; j < insts.Count; j++)
-        {
-            var n = insts[j];
-            if ((n.Src1.Kind == IrOperandKind.Temp && n.Src1.TempIndex == tempIdx)
-                || (n.Src2.Kind == IrOperandKind.Temp && n.Src2.TempIndex == tempIdx)
-                || (n.ImplicitSrc.Kind == IrOperandKind.Temp && n.ImplicitSrc.TempIndex == tempIdx))
-                return true;
-            if (n.Dest.Kind == IrOperandKind.Temp && n.Dest.TempIndex == tempIdx)
-                return DestIsRead(n.Op);   // 読む Dest でなければ作り直し
-        }
-        return false;
-    }
 
     /// <summary>単純ロード命令かどうか（整数用、FLOATは対象外）</summary>
     private static bool IsSimpleLoad(IrInstruction inst) =>

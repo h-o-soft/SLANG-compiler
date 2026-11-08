@@ -13,7 +13,7 @@ namespace SLANGCompiler.Tests;
 /// </summary>
 public class ExpressionValueTests
 {
-    private const string Decls = "VAR A, C, I, J, W, X, FLAG; VAR BYTE B; ARRAY T[3]; VAR P[]; VAR FLOAT F; VAR FLOAT FG; "
+    private const string Decls = "VAR A, C, I, J, W, X, FLAG, D, E, N, Y; VAR BYTE B; ARRAY T[3]; VAR P[]; VAR FLOAT F; VAR FLOAT FG; "
         + "ARRAY FLOAT FA[3]; G(Q) BEGIN RETURN Q + 1; END;";
 
     /// <summary>ASM まで作る。エラーがあれば (null, 診断)</summary>
@@ -281,6 +281,87 @@ public class ExpressionValueTests
     public void TargetWithoutSideEffect_Ok(string stmt)
     {
         var (_, diag) = Compile($"{Decls} MAIN() BEGIN {stmt} END;");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+    }
+
+    // ==== 設計レビュー 2 周目で見つかった形 ====
+
+    [Fact]
+    public void StoreValue_UsedByPrint()
+    {
+        // PRINT は値を暗に (HL で) 受け取る。書いた値を HL に戻してから出す
+        var body = MainBody("PRINT(MEMW[I] = 5);");
+        Assert.Matches(Seq(@"LD\t\(HL\),D", @"EX\tDE,HL", @"CALL\tP10"), body);
+    }
+
+    [Fact]
+    public void PortStoreValue_PushedForOuterOperation()
+    {
+        // PORT への書き込みの後、値は HL にある。外の足し算の右がまだ残っているので積む
+        var body = MainBody("C = (PORTW[I] = A + D) + (E + Y);");
+        Assert.Matches(Seq(@"OUT\t\(C\),H", @"PUSH\tHL", @"LD\tHL,\(_V_E\)"), body);
+        Assert.Equal(Regex.Matches(body, @"\tPUSH\t").Count, Regex.Matches(body, @"\tPOP\t").Count);
+    }
+
+    [Fact]
+    public void AssignValue_TypeIsTargetType()
+    {
+        // (F = 5) の値は FLOAT (書いた値)。左の整数は、右を求める前に FLOAT にする
+        var body = MainBody("FG = N + (F = 5);");
+        Assert.Matches(Seq(@"LD\tHL,\(_V_N\)", @"CALL\ti16tof24", @"PUSH\tAF", @"PUSH\tHL"), body);
+    }
+
+    [Fact]
+    public void FloatComparison_ValueIsInteger()
+    {
+        // FLOAT の比較の値は 0/1 の整数 (FTOI をかけない)。いまの main でも壊れていた形
+        var body = MainBody("W = F < FG;");
+        Assert.DoesNotContain("FTOI", body);
+        Assert.Matches(Seq(@"CALL\tf24cmp", @"LD\tHL,\$0000", @"JR\tNC,\$\+3", @"INC\tHL", @"LD\t\(_V_W\),HL"), body);
+    }
+
+    [Theory]
+    [InlineData("MEMW[I] = F;")]
+    [InlineData("PORTW[I] = F;")]
+    public void FloatToMemOrPort_ConvertedToInteger(string stmt)
+    {
+        // FLOAT を MEM・PORT に書くときは整数に変える (変えないと AF も積まれて、スタックがずれる)
+        var body = MainBody(stmt);
+        Assert.Matches(Seq(@"LD\tA,\(_V_F\+2\)", @"CALL\tFTOI", @"PUSH\tHL"), body);
+        Assert.DoesNotContain("PUSH\tAF", body);
+    }
+
+    [Theory]
+    [InlineData("+I++;")]
+    [InlineData("%I++;")]
+    [InlineData("(I++, J++);")]
+    public void DiscardedThroughWrappers_NoCompensation(string stmt)
+    {
+        var body = MainBody(stmt);
+        Assert.DoesNotContain("DEC\tHL", body);
+    }
+
+    [Fact]
+    public void ChainedScalarAssignment_Unchanged()
+    {
+        var body = MainBody("X = Y = 5;");
+        Assert.Matches(Seq(@"LD\tHL,\$0005", @"LD\t\(_V_Y\),HL", @"LD\t\(_V_X\),HL"), body);
+    }
+
+    [Theory]
+    [InlineData("T[I] += (I = I + 1);")]
+    [InlineData("T[I] -= I++;")]
+    [InlineData("T[PORT[I]]++;")]
+    public void TargetChangedByRightSideOrPort_Errors(string stmt)
+    {
+        var (_, diag) = Compile($"{Decls} MAIN() BEGIN {stmt} END;");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("evaluated twice"));
+    }
+
+    [Fact]
+    public void TargetNotChangedByRightSide_Ok()
+    {
+        var (_, diag) = Compile($"{Decls} MAIN() BEGIN T[I] += (J = 3); T[I] += G(J); END;");
         Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
     }
 }

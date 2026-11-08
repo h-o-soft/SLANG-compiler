@@ -103,6 +103,7 @@ public enum IrOp
     // -- Special --
     Nop,
     JoinValue,          // dest = 分岐の合流で、値はすでに HL (FLOAT は AHL) にある (?: の値。何も出さない)
+    StoredValue,        // dest = 直前の書き込みで書いた値 (src1)。メモリへの書き込みの後は EX DE,HL、ほかは何も出さない
     Comment,
 
     // -- Data definition --
