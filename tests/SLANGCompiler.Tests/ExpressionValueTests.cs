@@ -370,6 +370,8 @@ public class ExpressionValueTests
     [InlineData("F = FLAG ? FA[0] : FA[1];")]
     [InlineData("F = FLAG ? FA[0] : 2;")]
     [InlineData("F = FLAG ? FG2() : 1;")]
+    [InlineData("F = FLAG ? +FA[0] : 0;")]          // 値をそのまま返す単項の + の中
+    [InlineData("F = FLAG ? 0 : FA[1];")]           // 偽の側だけ FLOAT (真の側を、真の側の終わりで広げる)
     public void Conditional_FloatArrayAndFunctionSides(string stmt)
     {
         var (asm, diag) = Compile($"{Decls} FG2:FLOAT() BEGIN RETURN 1.5; END; MAIN() BEGIN {stmt} END;");
@@ -388,5 +390,22 @@ public class ExpressionValueTests
         var load25 = System.Text.RegularExpressions.Regex.Match(direct, @"LD\tHL,\$\w{4}\s*\n\s*LD\tA,\$\w\w").Value;
         Assert.False(string.IsNullOrEmpty(load25));
         Assert.Contains(load25, body);
+    }
+
+    [Fact]
+    public void Conditional_TrueSideWidenedAtEndOfTrueSide()
+    {
+        // 偽の側だけ FLOAT: 真の側の整数は、合流へ飛ぶ前 (真の側の終わり) で FLOAT にする
+        var body = MainBody("F = FLAG ? 2 : 1.5;");
+        Assert.Matches(Seq(@"LD\tHL,\$0002", @"CALL\ti16tof24", @"JP\t_L\d+"), body);
+    }
+
+    [Fact]
+    public void Conditional_PartialFloatArrayIsAddress()
+    {
+        // 2 次元の FLOAT の配列の添字 1 つ (FA2[0]) は番地 (WORD)。?: の結果も WORD で、WORD の引数に渡せる
+        var (asm, diag) = Compile($"{Decls} ARRAY FLOAT FA2[1][1]; MAIN() BEGIN C = G(FLAG ? FA2[0] : FA2[1]); END;");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        Assert.DoesNotContain("i16tof24", asm!.Split("\nMAIN:")[1].Split("_MAIN_EXIT")[0]);
     }
 }

@@ -1784,12 +1784,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// 事前推定。偽なのに FLOAT だと、後からの左辺の変換が右辺の値に対して行われ、真なのに整数だと、周りの演算の型が
     /// 変わる。どちらも誤りなので、Accept の規則 (定数の畳み込み・何もしない演算の正規化・結果の型) をそのままなぞる。
     /// FLOAT を返す関数・FLOAT の配列の要素は扱わない (偽。今までどおり。今回の畳み込みで新しく FLOAT になる経路ではない)。
-    /// 条件式は、どちらかの側が FLOAT なら FLOAT (VisitConditionalExpr が同じ規則で結果の大きさを決める)。
+    /// 条件式は、どちらかの側が FLOAT と推定できれば FLOAT (VisitConditionalExpr は両側の実際の大きさで決めるので、
+    /// FLOAT の配列の要素・FLOAT を返す関数だけの側は、推定では整数になる。ほかの式と同じ前からの制限)。
     /// FLOAT の変数・要素への複合代入 (+= -= *= /=) と前置の増減は、F = F op 値 と同じ式で作るので FLOAT
     /// </summary>
     private bool MightBeFloat(Expression e) => e switch
     {
-        ConditionalExpr c => ConditionalSideIsFloat(c.TrueExpr) || ConditionalSideIsFloat(c.FalseExpr),
+        ConditionalExpr c => MightBeFloat(c.TrueExpr) || MightBeFloat(c.FalseExpr),
         CompoundAssignExpr ca => IsFloatTarget(ca.Target) && ca.Op is CompoundAssignOp.AddAssign
             or CompoundAssignOp.SubAssign or CompoundAssignOp.MulAssign or CompoundAssignOp.DivAssign,
         IncrementExpr { IsPrefix: true } pre => IsFloatTarget(pre.Operand),
@@ -2429,23 +2430,43 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitConditionalExpr(ConditionalExpr node)
     {
         // どちらの側も値を作るだけで、値は HL (FLOAT は AHL) に残る。合流のラベルの後の JoinValue で
-        // 「結果は HL にある」とし、積むかどうかはその 1 か所で決める (側ごとに決めると食い違う)
+        // 「結果は HL にある」とし、積むかどうかはその 1 か所で決める (側ごとに決めると食い違う)。
+        // 結果の大きさは、両側の値の実際の大きさで決める (どちらかが FLOAT なら FLOAT。もう片方を i16tof24 で広げる。
+        // 真の側の変換は、偽の側を作った後で、真の側の終わり (合流へ飛ぶ前) に入れる)
         var falseLabel = NewLabel();
         var endLabel = NewLabel();
-        int ds = ConditionalSideIsFloat(node.TrueExpr) || ConditionalSideIsFloat(node.FalseExpr) ? 3 : 2;
 
         var cond = node.Condition.Accept(this);
         Emit(IrOp.JumpIfZero, IrOperand.Lbl(falseLabel), cond);
 
-        var trueVal = ConditionalBranchValue(node.TrueExpr, ds);
+        var trueVal = node.TrueExpr.Accept(this);
+        var list = CurrentInstructionList();
+        int trueEnd = list.Count;
         Emit(IrOp.Jump, IrOperand.Lbl(endLabel));
 
         Emit(IrOp.Label, IrOperand.Lbl(falseLabel));
-        var falseVal = ConditionalBranchValue(node.FalseExpr, ds);
+        var falseVal = node.FalseExpr.Accept(this);
+
+        int ds = TempDataSize(trueVal) == 3 || TempDataSize(falseVal) == 3 ? 3 : 2;
+        if (ds == 3 && TempDataSize(falseVal) != 3)
+        {
+            var conv = IrOperand.Temp(AllocTemp());
+            EmitConversionCall(conv, "i16tof24", falseVal, dataSize: 3);
+            _tempDataSize[conv.TempIndex] = 3;
+            falseVal = conv;
+        }
+        if (ds == 3 && TempDataSize(trueVal) != 3)
+        {
+            var conv = IrOperand.Temp(AllocTemp());
+            list.Insert(trueEnd, new IrInstruction(IrOp.Call, conv, IrOperand.Sym("i16tof24"), IrOperand.Imm(0))
+                { DataSize = 3, ImplicitSrc = trueVal });
+            _tempDataSize[conv.TempIndex] = 3;
+            trueVal = conv;
+        }
 
         Emit(IrOp.Label, IrOperand.Lbl(endLabel));
         var result = IrOperand.Temp(AllocTemp());
-        // src に両側の値を置く (値を HL に残すことを、コード生成の「後で読むか」の判断に伝える)
+        // src に両側の値を置く (値を HL に残すことを、コード生成の「ほかで使うか」の判断に伝える)
         Emit(IrOp.JoinValue, result, trueVal, falseVal, dataSize: ds);
         if (ds == 3) _tempDataSize[result.TempIndex] = 3;
         return result;
@@ -2454,40 +2475,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private static bool IsComparisonOp(BinaryOp op) => op is BinaryOp.Eq or BinaryOp.Neq or BinaryOp.Lt or BinaryOp.Gt
         or BinaryOp.Le or BinaryOp.Ge or BinaryOp.SLt or BinaryOp.SGt or BinaryOp.SLe or BinaryOp.SGe;
 
-    /// <summary>
-    /// ?: の片側が FLOAT の値か。MightBeFloat に、FLOAT の配列の要素と FLOAT を返す関数の呼び出しを足したもの
-    /// (MightBeFloat はこの 2 つを扱わない。?: の結果の大きさは、両側の値の大きさに合わせる必要がある)
-    /// </summary>
-    private bool ConditionalSideIsFloat(Expression e) => e switch
-    {
-        ArrayAccessExpr a => IsFloatTarget(a),
-        CallExpr { Function: IdentifierExpr fn } => CallReturnsFloat(fn.Name),
-        _ => MightBeFloat(e),
-    };
+    private int TempDataSize(IrOperand v)
+        => v.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(v.TempIndex, out int d) ? d : 2;
 
-    private bool CallReturnsFloat(string name)
-    {
-        var sym = _globalSymbols?.Resolve(name);
-        if (sym?.Type is FunctionType { ReturnType: PrimitiveType { Kind: PrimitiveKind.Float } }) return true;
-        return sym == null && _runtimeManager?.Functions.TryGetValue(name, out var rt) == true && rt.ResultType == "float";
-    }
-
-    /// <summary>?: の片側の値を、結果の大きさ (FLOAT なら 3) にそろえて作る</summary>
-    private IrOperand ConditionalBranchValue(Expression e, int ds)
-    {
-        var val = e.Accept(this);
-        int valueDs = val.Kind == IrOperandKind.Temp && _tempDataSize.TryGetValue(val.TempIndex, out int vds) ? vds : 2;
-        if (valueDs == 3 && ds != 3)
-            _diagnostics.Error("FLOAT value on only one side of ?: is not supported here (make both sides FLOAT)", e.Span);
-        if (ds == 3 && valueDs != 3)
-        {
-            var conv = IrOperand.Temp(AllocTemp());
-            EmitConversionCall(conv, "i16tof24", val, dataSize: 3);
-            _tempDataSize[conv.TempIndex] = 3;
-            return conv;
-        }
-        return val;
-    }
+    /// <summary>いま命令を積んでいる列 (Emit と同じ)</summary>
+    private List<IrInstruction> CurrentInstructionList()
+        => _emitToGlobalData || _currentFunction == null ? _module.GlobalData : _currentFunction.Instructions;
 
     public IrOperand VisitCommaExpr(CommaExpr node)
     {
