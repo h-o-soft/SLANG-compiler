@@ -40,6 +40,9 @@ public class Preprocessor
 
     // #IF の CONST の値を、式で決めるための記号 (_constValues と同じ中身)
     private readonly Dictionary<string, Semantics.Symbol> _constSymbols = new(StringComparer.OrdinalIgnoreCase);
+    // 読んでいる途中のファイル (#INCLUDE・#CHAIN の先祖。#CHAIN の輪を見る)。名前の大文字小文字は、ファイルの仕組みに合わせる
+    private readonly HashSet<string> _activeFiles = new(
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     // 右辺の終わりが分からず (続きが #IF の外・取り込んだ側にあるかもしれない)、値の分からない CONST。#IF で使ったらエラー
     private readonly HashSet<string> _unknownConsts = new(StringComparer.OrdinalIgnoreCase);
     // 右辺の終わりが分からないが、整数のリテラル 1 つなので値を覚えた CONST (これを使う CONST は値が分からない)
@@ -225,7 +228,7 @@ public class Preprocessor
             or TokenKind.PreprocInclude or TokenKind.PreprocChain;
 
     private static bool IsBlockOpen(TokenKind k)
-        => k is TokenKind.LBracket or TokenKind.LBrace or TokenKind.Begin or TokenKind.LAngleBracket;
+        => k is TokenKind.LBracket or TokenKind.ArrayBracketOpen or TokenKind.LBrace or TokenKind.Begin or TokenKind.LAngleBracket;
 
     private static bool IsBlockClose(TokenKind k)
         => k is TokenKind.RBracket or TokenKind.RBrace or TokenKind.End or TokenKind.RAngleBracket;
@@ -266,6 +269,7 @@ public class Preprocessor
             // 同じファイルの再インクルードは許可（循環でなければ）
         }
 
+        bool active = _activeFiles.Add(fullPath);
         try
         {
             var includeTokens = ReadTokens(filePath, fileName);
@@ -281,6 +285,7 @@ public class Preprocessor
         finally
         {
             _includedFiles.Remove(Path.GetFullPath(filePath));
+            if (active) _activeFiles.Remove(fullPath);
         }
     }
 
@@ -300,7 +305,7 @@ public class Preprocessor
         // 輪: 読んでいる途中のファイル (#INCLUDE・#CHAIN でたどってきた先祖) へ移る。同じファイルを、別々の
         // #INCLUDE から 2 度 #CHAIN で読むのは輪ではない
         var fullPath = Path.GetFullPath(filePath);
-        if (!_includedFiles.Add(fullPath))
+        if (!_activeFiles.Add(fullPath))
         {
             _diagnostics.Error($"#CHAIN loop: {fileName} is already being read", token.Span);
             return;
@@ -318,7 +323,7 @@ public class Preprocessor
         }
         finally
         {
-            _includedFiles.Remove(fullPath);
+            _activeFiles.Remove(fullPath);
         }
         ctx.Chained = true;
     }

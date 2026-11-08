@@ -49,6 +49,7 @@ public class PreprocessorTests : IDisposable
     [InlineData("CONST A = 2, B = A * 3;", "B == 6")]
     [InlineData("CONST A = (1, 2), B = 4;", "B == 4")]          // 括弧の中のカンマで区切らない
     [InlineData("CONST T = [1, 2], B = 5;", "B == 5")]          // CODE の並びの中のカンマで区切らない
+    [InlineData("ARRAY BYTE X[1]; CONST T = [1 ? 0 : X[0], 2], B = 5;", "B == 5")]   // 並びの中の添字の [ ] も対にする
     [InlineData("CONST A = 2 + (1 << 16);", "A == 3")]      // 値の規則は CONST そのものと同じ (#259)
     [InlineData("CONST A = $10 + 2;", "A == 18")]
     public void ConstWithExpression_SeenByIf(string consts, string cond)
@@ -206,5 +207,27 @@ public class PreprocessorTests : IDisposable
         var (names, diag) = Run("#INCLUDE lib/inc.sl\n");
         Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
         Assert.Equal(new[] { "INNER_A" }, names);
+    }
+
+    [Fact]
+    public void Chain_DistinctFilesDifferingOnlyInCase_NotALoop()
+    {
+        // 大文字小文字を区別するファイルの仕組みでは、a.sl と A.sl は別のファイル (輪ではない)
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()) return;
+        Write("a.sl", "A_LOWER\n#CHAIN A.sl\n");
+        Write("A.sl", "A_UPPER");
+        var (names, diag) = Run("#CHAIN a.sl\n");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        Assert.Equal(new[] { "A_LOWER", "A_UPPER" }, names);
+    }
+
+    [Fact]
+    public void Chain_OversizedNumberAfterChain_DoesNotCrash()
+    {
+        // #CHAIN の後ろの読まない所に大きすぎる数があっても、字句解析で落ちない (warning だけ)
+        Write("part2.sl", "PART2_A");
+        var (names, diag) = Run("MAIN_A\n#CHAIN part2.sl\n9999999999999999999999999\n");
+        Assert.Equal(new[] { "MAIN_A", "PART2_A" }, names);
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
     }
 }

@@ -228,6 +228,21 @@ public class Lexer
     private Token ReadNumber(SourceLocation start)
     {
         int startPos = _pos;
+        try
+        {
+            return ReadNumberCore(start);
+        }
+        catch (OverflowException)
+        {
+            // 大きすぎる数: 落ちずに誤りの字句にする (構文解析がエラーを出す。#CHAIN の後ろなら読まずに捨てる)
+            string text = _source[startPos.._pos];
+            return MakeToken(TokenKind.Error, $"number too large: {text}", start);
+        }
+    }
+
+    private Token ReadNumberCore(SourceLocation start)
+    {
+        int startPos = _pos;
 
         // $ prefix hex
         if (Peek() == '$')
