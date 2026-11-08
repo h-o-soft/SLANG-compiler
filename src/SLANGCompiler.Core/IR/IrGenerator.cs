@@ -324,7 +324,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             case IrOp.ArrayStore: Value(inst.Src1); Int(inst.Dest); Int(inst.Src2); break;
             case IrOp.IndirStore or IrOp.MemStore or IrOp.PortOut: Value(inst.Src1); Int(inst.Dest); break;
             case IrOp.ArrayLoad: Int(inst.Src1); Int(inst.Src2); break;
-            case IrOp.IndirLoad or IrOp.MemLoad or IrOp.PortIn or IrOp.LoadIndirect: Int(inst.Src1); break;
+            case IrOp.IndirLoad or IrOp.MemLoad or IrOp.PortIn: Int(inst.Src1); break;
             case IrOp.Add or IrOp.Sub or IrOp.Mul or IrOp.Div or IrOp.SMul or IrOp.SDiv or IrOp.Neg
                 or IrOp.CmpEq or IrOp.CmpNeq or IrOp.CmpLt or IrOp.CmpGt or IrOp.CmpLe or IrOp.CmpGe
                 or IrOp.JoinValue or IrOp.StoredValue:
@@ -2505,6 +2505,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitArrayAccessExpr(ArrayAccessExpr node)
     {
+        CheckSingleIndex(node);
         var arrayName = (node.Array as IdentifierExpr)?.Name;
         var arraySym = arrayName != null ? _globalSymbols?.Resolve(arrayName) : null;
 
@@ -2798,6 +2799,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
         if (node.Operand is ArrayAccessExpr arr)
         {
+            CheckSingleIndex(arr);
             var arrName = (arr.Array as IdentifierExpr)?.Name;
             var arrSym = arrName != null ? _globalSymbols?.Resolve(arrName) : null;
 
@@ -3176,6 +3178,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         if (target is IdentifierExpr id)
         {
+            CheckWritableName(id.Name, id.Span, indexed: false);
             var vi = CheckDefined(id.Name, id.Span);
             int storeDs = vi.VarDataSize;
             value = EmitTypeConversion(value, storeDs);
@@ -3187,6 +3190,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         else if (target is ArrayAccessExpr arr)
         {
             var arrayName = (arr.Array as IdentifierExpr)?.Name;
+            if (arrayName != null) CheckWritableName(arrayName, arr.Span, indexed: true);
+            CheckSingleIndex(arr);
             var stVi = arrayName != null ? CheckDefined(arrayName, arr.Span) : default;
             var arraySym = stVi.GlobalSym;
             bool isMemArray = arraySym?.Type is MemoryArrayType;
@@ -3334,12 +3339,33 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
         }
         else
-        {
-            // Indirect store
-            var addr = target.Accept(this);
-            Emit(IrOp.StoreIndirect, addr, value);
-        }
+            _diagnostics.Error(NotWritableMessage, target.Span);
         return value;
+    }
+
+    private const string NotWritableMessage =
+        "The target of an assignment must be a variable, an array element, MEM[ ] or PORT[ ]";
+
+    /// <summary>代入先の名前が書ける記号か。値の CONST・CODE の並びの CONST・関数・MACHINE は書けない (添字の代入先では関数・MACHINE だけ)</summary>
+    private void CheckWritableName(string name, SourceSpan span, bool indexed)
+    {
+        if (IsShadowingVariable(name)) return;
+        var sym = ResolveConstOrGlobal(name);
+        if (sym?.Kind is SymbolKind.Function or SymbolKind.MachineFunction or SymbolKind.CFunction
+            || !indexed && (sym?.Kind == SymbolKind.Constant || sym?.IsCodeBlock == true))
+            _diagnostics.Error($"{NotWritableMessage} ('{name}' is not a variable)", span);
+    }
+
+    /// <summary>MEM・MEMW・SOS・SOSW・PORT・PORTW・間接変数の添字は 1 つ (2 つ目からを黙って捨てない)</summary>
+    private void CheckSingleIndex(ArrayAccessExpr arr)
+    {
+        if (arr.Indices.Count <= 1 || arr.Array is not IdentifierExpr id) return;
+        bool single = id.Name.Equals("PORT", StringComparison.OrdinalIgnoreCase)
+            || id.Name.Equals("PORTW", StringComparison.OrdinalIgnoreCase)
+            || ResolveVarInfo(id.Name) is { IsResolved: true } vi
+               && (vi.Kind == VarKind.Pointer || vi.GlobalSym?.Type is MemoryArrayType);
+        if (single)
+            _diagnostics.Error($"'{id.Name}' takes exactly one index", arr.Span);
     }
 
     // ==== Loop stack for EXIT/CONTINUE ====

@@ -1751,7 +1751,7 @@ public class CodeGenerator
     }
 
     private static bool DestIsRead(IrOp op) => op is IrOp.IndirStore or IrOp.MemStore or IrOp.ArrayStore
-        or IrOp.PortOut or IrOp.StoreIndirect or IrOp.Return or IrOp.PushArg;
+        or IrOp.PortOut or IrOp.Return or IrOp.PushArg;
 
     /// <summary>単純ロード命令かどうか（整数用、FLOATは対象外）</summary>
     private static bool IsSimpleLoad(IrInstruction inst) =>

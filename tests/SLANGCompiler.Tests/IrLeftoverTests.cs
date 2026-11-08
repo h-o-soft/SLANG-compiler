@@ -197,4 +197,56 @@ public class IrLeftoverTests
         Assert.Contains("LD\tL,(IY+$6E)", asm);
         Assert.Contains("DB\t$3E", asm);
     }
+
+    // ==== C3: 書けない代入先 ====
+
+    private const string TargetDecls = "VAR X, R, P[]; CONST C = 3; CONST T = [1, 2]; ARRAY A[3]; FX() BEGIN END; ";
+
+    [Theory]
+    [InlineData("X + 1 = 5;")]
+    [InlineData("FX() = 1;")]
+    [InlineData("(X + 1)++;")]
+    [InlineData("(X + 1) += 1;")]
+    [InlineData("FX = 1;")]
+    [InlineData("FX[0] = 1;")]
+    [InlineData("FY = 1;")]          // 後ろで定義する関数
+    [InlineData("C = 1;")]
+    [InlineData("C++;")]
+    [InlineData("T = 1;")]
+    [InlineData("BEEP = 1;")]
+    public void NotWritableTarget_IsError(string body)
+    {
+        Assert.Contains(Errors($"{TargetDecls}MAIN() BEGIN {body} END; FY() BEGIN END;"),
+            m => m.Contains("The target of an assignment must be"));
+    }
+
+    [Fact]
+    public void NotWritableTarget_InFunctionEndValue_IsError()
+    {
+        Assert.Contains(Errors($"{TargetDecls}FZ() BEGIN END(FX = 1);  MAIN() BEGIN FZ(); END;"),
+            m => m.Contains("The target of an assignment must be"));
+    }
+
+    [Theory]
+    [InlineData("MEM[1][2] = 3;")]
+    [InlineData("R = MEM[1][2];")]
+    [InlineData("R = &MEM[1][X++];")]
+    [InlineData("MEMW[1][2] = 3;")]
+    [InlineData("SOS[1][2] = 3;")]
+    [InlineData("SOSW[1][2] = 3;")]
+    [InlineData("PORT[1][2] = 3;")]
+    [InlineData("R = PORTW[1][2];")]
+    [InlineData("P[1][2] = 3;")]
+    [InlineData("R = &P[1][2];")]
+    public void SecondIndexOnSingleIndexArray_IsError(string body)
+    {
+        Assert.Contains(Errors($"{TargetDecls}MAIN() BEGIN {body} END;"), m => m.Contains("takes exactly one index"));
+    }
+
+    [Fact]
+    public void WritableTargets_AreAccepted()
+    {
+        Assert.Empty(Errors($"{TargetDecls}MAIN() BEGIN VAR L; X = 1; L = 2; A[1] = 3; P[1] = 4; MEM[$C000] = 5; MEMW[$C000] = 6; " +
+            "SOS[1] = 7; SOSW[1] = 8; PORT[1] = 9; PORTW[1] = 10; X++; A[2] += 1; R = &MEM[1]; R = &P[1]; END;"));
+    }
 }
