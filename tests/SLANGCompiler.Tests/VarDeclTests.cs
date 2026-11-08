@@ -238,4 +238,13 @@ public class VarDeclTests
         var (_, diag) = Compile(source + "\n#ASM\nBASE: DB 0\n#END\n");
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("not FLOAT"));
     }
+
+    [Fact]
+    public void LocalShadowsLabelConstWithFloat_Ok()
+    {
+        // 局所の整数の ADDR は、FLOAT を含む大域の CONST ADDR を隠す (エラーにしない)
+        var (_, diag) = Compile("CONST ADDR = BASE + (1.0/2.0)*4096.0; FN() BEGIN VAR ADDR = $D000; VAR P[] = ADDR; P[0] = 1; END; "
+            + "MAIN() BEGIN FN(); END;\n#ASM\nBASE: DB 0\n#END\n");
+        Assert.DoesNotContain(diag.Diagnostics, d => d.Message.Contains("not FLOAT"));
+    }
 }

@@ -832,6 +832,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         bool found = false;
         SemanticAnalyzer.ForEachName(e, (n, _) =>
         {
+            if (_localVars?.ContainsKey(n) == true || _staticVarSizes?.ContainsKey(n) == true) return;   // 局所変数が隠す CONST は見ない
             if (_globalSymbols?.Resolve(n) is { Kind: SymbolKind.Constant, ConstAst: not null } sym && visited.Add(sym)
                 && (ContainsFloat(sym.ConstAst, namesAreLabels: true) || NamesConstWithFloat(sym.ConstAst, visited)))
                 found = true;
