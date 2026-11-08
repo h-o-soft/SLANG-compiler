@@ -228,4 +228,14 @@ public class VarDeclTests
         var asm = CompileOk("VAR FLOAT VALUE; VAR X:VALUE; MAIN() BEGIN X = 1; END;");
         Assert.Contains("_V_X\tEQU\t_V_VALUE\n", asm);
     }
+
+    [Theory]
+    // ラベルを含む CONST (まだ値でない式) の中の FLOAT も、番地・間接変数の初期値ではエラー
+    [InlineData("CONST ADDR = BASE + (1.0/2.0)*4096.0; VAR X:ADDR; MAIN() BEGIN X = 1; END;")]
+    [InlineData("CONST ADDR = BASE + (1.0/2.0)*4096.0; FN() BEGIN VAR P[] = ADDR; P[0] = 1; END; MAIN() BEGIN FN(); END;")]
+    public void FloatInsideLabelConst_Errors(string source)
+    {
+        var (_, diag) = Compile(source + "\n#ASM\nBASE: DB 0\n#END\n");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("not FLOAT"));
+    }
 }

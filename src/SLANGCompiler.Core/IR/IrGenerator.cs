@@ -450,7 +450,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 // その場で値が決まる式はその値、そうでなければアセンブラの式 (ラベル。ARRAY と同じ)。
                 // いままでは整数のリテラル以外を黙って __WORK__ に置いていた。番地は整数なので FLOAT の式はエラー
                 // (途中の小数を整数で畳み込んで、黙って違う番地にしない)
-                if (ContainsFloat(node.Address, namesAreLabels: true))
+                if (ContainsFloat(node.Address, namesAreLabels: true) || NamesConstWithFloat(node.Address))
                     _diagnostics.Error($"Address of VAR '{node.Name}' must be an integer expression, not FLOAT", node.Address.Span);
                 else if (NewConstEvaluator().Evaluate(node.Address) is int constAddr)
                     fixedAddr = constAddr & 0xFFFF;
@@ -798,7 +798,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private IrOperand PointerInitialValue(Expression init)
     {
         // 番地は整数。FLOAT の式は受け付けない (FLOAT の定数の途中の値を整数で畳み込んでしまうので、黙って違う番地になる)
-        if (ContainsFloat(init))
+        if (ContainsFloat(init) || NamesConstWithFloat(init))
         {
             _diagnostics.Error("The initializer of an indirect variable (an address) must be an integer expression, not FLOAT",
                 init.Span);
@@ -825,6 +825,20 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// = 式 (CODE の並びでない初期値) は間接変数 (P[]) だけ。大きさのある配列はエラー
     /// (いままでは黙って捨てていた)
     /// </summary>
+    /// <summary>式の中の CONST の名前の式 (後ろで決まる・ラベルを含む CONST の、まだ値でない式) に FLOAT があるか (たどる)</summary>
+    private bool NamesConstWithFloat(Expression e, HashSet<Symbol>? visited = null)
+    {
+        visited ??= new HashSet<Symbol>();
+        bool found = false;
+        SemanticAnalyzer.ForEachName(e, (n, _) =>
+        {
+            if (_globalSymbols?.Resolve(n) is { Kind: SymbolKind.Constant, ConstAst: not null } sym && visited.Add(sym)
+                && (ContainsFloat(sym.ConstAst, namesAreLabels: true) || NamesConstWithFloat(sym.ConstAst, visited)))
+                found = true;
+        });
+        return found;
+    }
+
     /// <summary>
     /// 値の式に FLOAT (FLOAT のリテラル・FLOAT の名前 (局所変数が隠すものは見ない)・FLOAT へのキャスト) があるか。
     /// MightBeFloat は、整数に畳み込める式 ((1.0/2.0)*4096.0) を整数と推定するので、番地の式の検査には使わない。
