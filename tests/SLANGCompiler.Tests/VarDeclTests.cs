@@ -125,11 +125,15 @@ public class VarDeclTests
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("Non-constant initializer for static/global variable 'P'"));
     }
 
-    [Fact]
-    public void VarAddress_AddressOnlyMachine_Error()
+    [Theory]
+    // 番地だけの MACHINE はラベルを出さないので、VAR の番地の式には使えない (ランタイムの名前は IntegrationTests)。
+    // CONST の中身 (アセンブラの式として展開される) にあるときも
+    [InlineData("MACHINE ROM(0):$1234; VAR X:ROM;")]
+    [InlineData("MACHINE ROM(0):$1234; CONST ADDR = ROM; VAR X:ADDR;")]
+    [InlineData("MACHINE ROM(0):$1234; CONST A1 = ROM + 1; CONST A2 = A1; VAR X:A2;")]
+    public void VarAddress_AddressOnlyMachine_Error(string decls)
     {
-        // 番地だけの MACHINE はラベルを出さないので、VAR の番地の式には使えない (ランタイムの名前は IntegrationTests)
-        var (_, diag) = Compile("MACHINE ROM(0):$1234; VAR X:ROM; MAIN() BEGIN X = 1; END;");
+        var (_, diag) = Compile($"{decls} MAIN() BEGIN X = 1; END;");
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("cannot use MACHINE 'ROM' without a CODE body"));
     }
 

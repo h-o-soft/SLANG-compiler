@@ -738,20 +738,28 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private bool CheckVarAddressNames(VarDecl node)
     {
         bool ok = true;
-        SemanticAnalyzer.ForEachName(node.Address, (name, span) =>
+        var visited = new HashSet<Symbol>();
+        void Check(Expression? e)
         {
-            var sym = _globalSymbols?.Resolve(name);
-            if (sym?.Kind == SymbolKind.MachineFunction && !sym.HasCodeBody)
+            SemanticAnalyzer.ForEachName(e, (name, span) =>
             {
-                _diagnostics.Error($"Address of VAR '{node.Name}' cannot use MACHINE '{name}' without a CODE body (write its address)", span);
-                ok = false;
-            }
-            else if (sym == null && _runtimeManager?.Functions.ContainsKey(name) == true)
-            {
-                _diagnostics.Error($"Address of VAR '{node.Name}' cannot use the runtime name '{name}'", span);
-                ok = false;
-            }
-        });
+                var sym = _globalSymbols?.Resolve(name);
+                if (sym?.Kind == SymbolKind.MachineFunction && !sym.HasCodeBody)
+                {
+                    _diagnostics.Error($"Address of VAR '{node.Name}' cannot use MACHINE '{name}' without a CODE body (write its address)", span);
+                    ok = false;
+                }
+                else if (sym == null && _runtimeManager?.Functions.ContainsKey(name) == true)
+                {
+                    _diagnostics.Error($"Address of VAR '{node.Name}' cannot use the runtime name '{name}'", span);
+                    ok = false;
+                }
+                // CONST の式 (アセンブラの式として中身が展開される) の中の名前も見る
+                else if (sym?.Kind == SymbolKind.Constant && sym.ConstAst != null && visited.Add(sym))
+                    Check(sym.ConstAst);
+            });
+        }
+        Check(node.Address);
         return ok;
     }
 
