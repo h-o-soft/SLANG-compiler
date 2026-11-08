@@ -134,4 +134,24 @@ public class LexerTests
         var tokens = Tokenize("X // comment\n Y /* block */ Z (* pascal *) W");
         Assert.Equal(4, tokens.Count(t => t.Kind == TokenKind.Identifier));
     }
+
+    [Theory]
+    // 大きすぎる数は、落ちずに誤りの字句にする (いままでは OverflowException で落ちていた)
+    [InlineData("9999999999999999999999999")]
+    [InlineData("$FFFFFFFFFFFFFFFFFFFF")]
+    public void OversizedNumber_IsErrorToken(string source)
+    {
+        var tokens = Tokenize(source);
+        Assert.Equal(TokenKind.Error, tokens[0].Kind);
+        Assert.Contains("number too large", tokens[0].Text);
+    }
+
+    [Fact]
+    public void MalformedNumber_IsErrorToken()
+    {
+        // 数として読めない字 (H のない 16 進) も、落ちずに誤りの字句にする
+        var tokens = Tokenize("12AF");
+        Assert.Equal(TokenKind.Error, tokens[0].Kind);
+        Assert.Contains("invalid number", tokens[0].Text);
+    }
 }

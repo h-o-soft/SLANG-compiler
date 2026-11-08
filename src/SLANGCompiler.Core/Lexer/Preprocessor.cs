@@ -27,7 +27,28 @@ public class Preprocessor
     }
 
     /// <summary>プリプロセッサ定数を事前登録（環境定数等）。#IF条件式で参照可能。</summary>
-    public void DefineConst(string name, int value) => _constValues[name] = value;
+    public void DefineConst(string name, int value) => SetConst(name, value);
+
+    /// <summary>読んでいるファイルの文脈: 場所 (#INCLUDE・#CHAIN の探し方)・深さ・#CHAIN で続きへ移ったか</summary>
+    private sealed class FileContext(string baseDir, int depth)
+    {
+        public string BaseDir { get; } = baseDir;
+        public int Depth { get; } = depth;
+        public bool Chained;       // #CHAIN で続きへ移った (このファイルの残りは、#IF の外も読まない)
+        public bool ChainWarned;
+    }
+
+    // #IF の CONST の値を、式で決めるための記号 (_constValues と同じ中身)
+    private readonly Dictionary<string, Semantics.Symbol> _constSymbols = new(StringComparer.OrdinalIgnoreCase);
+    private const int MaxChains = 64;
+    private int _chainCount;
+    // 読んでいる途中のファイル (#INCLUDE・#CHAIN の先祖。#CHAIN の輪を見る)。名前の大文字小文字は、ファイルの仕組みに合わせる
+    private readonly HashSet<string> _activeFiles = new(
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    // 右辺の終わりが分からず (続きが #IF の外・取り込んだ側にあるかもしれない)、値の分からない CONST。#IF で使ったらエラー
+    private readonly HashSet<string> _unknownConsts = new(StringComparer.OrdinalIgnoreCase);
+    // CONST の右辺の式が使った名前 (たどった先も)
+    private readonly Dictionary<string, HashSet<string>> _constDeps = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// トークン列を処理し、#INCLUDEを展開、#IF/#ELSE/#ENDIFを評価する。
@@ -35,21 +56,37 @@ public class Preprocessor
     public List<Token> Process(List<Token> tokens, string baseDir, int depth = 0)
     {
         var result = new List<Token>();
+        ProcessTokens(tokens, new FileContext(baseDir, depth), result);
+        return result;
+    }
+
+    private void ProcessTokens(List<Token> tokens, FileContext ctx, List<Token> result)
+    {
         int i = 0;
 
         while (i < tokens.Count)
         {
+            if (ctx.Chained)
+            {
+                WarnTextAfterChain(tokens, i, ctx);
+                return;
+            }
             var token = tokens[i];
 
             switch (token.Kind)
             {
                 case TokenKind.PreprocInclude:
-                    ProcessInclude(token, result, baseDir, depth);
+                    ProcessInclude(token, result, ctx);
+                    i++;
+                    break;
+
+                case TokenKind.PreprocChain:
+                    ProcessChain(token, result, ctx);
                     i++;
                     break;
 
                 case TokenKind.PreprocIf:
-                    i = ProcessIf(tokens, i, result);
+                    i = ProcessIf(tokens, i, result, ctx);
                     break;
 
                 case TokenKind.PreprocElse:
@@ -77,64 +114,167 @@ public class Preprocessor
                     break;
             }
         }
+    }
 
-        return result;
+    /// <summary>#CHAIN の後ろに字句があれば、読まないことを 1 度だけ知らせる</summary>
+    private void WarnTextAfterChain(List<Token> tokens, int from, FileContext ctx)
+    {
+        if (ctx.ChainWarned) return;
+        for (int j = from; j < tokens.Count; j++)
+        {
+            if (tokens[j].Kind == TokenKind.EOF) continue;
+            _diagnostics.Warning("Text after #CHAIN is not read", tokens[j].Span);
+            ctx.ChainWarned = true;
+            return;
+        }
+    }
+
+    private void SetConst(string name, int value)
+    {
+        // 値が決まった (宣言し直したものも): 前の「値が分からない」「仮の値」は消す
+        _unknownConsts.Remove(name);
+        _constValues[name] = value;
+        _constSymbols[name] = new Semantics.Symbol(name, Semantics.SymbolKind.Constant, Semantics.SlangType.Word) { ConstValue = value };
     }
 
     /// <summary>
-    /// CONSTトークンの後続トークンから name=value パターンを抽出。
-    /// 整数リテラル右辺のみ対応。トークン列自体は変更しない（パーサーにも渡す）。
+    /// CONSTトークンの後続トークンから name=value を抽出。右辺は構文解析器で式として読み (読み終えた所が右辺の終わり)、
+    /// 整数のリテラル 1 つならその値、それ以外はそれまでに覚えた値で ConstEvaluator にかける。
+    /// 値が出なければ覚えない (#IF では 0)。トークン列自体は変更しない（パーサーにも渡す）。
     /// </summary>
     private void ExtractConstValues(List<Token> tokens, int constIndex)
     {
         int i = constIndex + 1;
-        while (i < tokens.Count)
+        while (i + 1 < tokens.Count
+               && tokens[i].Kind == TokenKind.Identifier
+               && tokens[i + 1].Kind == TokenKind.Eq)
         {
-            // name = value パターン
-            if (i + 2 < tokens.Count
-                && tokens[i].Kind == TokenKind.Identifier
-                && tokens[i + 1].Kind == TokenKind.Eq
-                && tokens[i + 2].Kind == TokenKind.IntegerLiteral)
+            var name = tokens[i].StringValue;
+            int start = i + 2;
+            int end;
+            if (start < tokens.Count && IsDirective(tokens[start].Kind))
             {
-                _constValues[tokens[i].StringValue] = Convert.ToInt32(tokens[i + 2].Value);
-                i += 3;
-                // カンマで続く場合
-                if (i < tokens.Count && tokens[i].Kind == TokenKind.Comma)
-                    i++;
-                else
-                    break;
+                // 右辺が #IF などで始まる: 値は #IF を処理した後で決まるので、ここでは覚えない
+                _unknownConsts.Add(name);
+                break;
             }
-            else if (i + 2 < tokens.Count
-                     && tokens[i].Kind == TokenKind.Identifier
-                     && tokens[i + 1].Kind == TokenKind.Eq)
+            if (start < tokens.Count && IsBlockOpen(tokens[start].Kind))
             {
-                // 右辺が整数リテラルでない → この定数はスキップ（式やラベル参照）
-                // 次のカンマかセミコロンまで飛ばす
-                i += 2;
-                while (i < tokens.Count && tokens[i].Kind != TokenKind.Comma && tokens[i].Kind != TokenKind.Semicolon)
-                    i++;
-                if (i < tokens.Count && tokens[i].Kind == TokenKind.Comma)
-                    i++;
-                else
-                    break;
+                // CODE の並び (CONST T = [1, 2]): 対になる閉じまで飛ばす。値は覚えない。
+                // 並びの中に #IF などがあれば、どこで閉じるかは #IF を処理した後で決まるので、ここで止める
+                // (選ばれない側の閉じの後ろの CONST を覚えない)
+                end = SkipBlock(tokens, start);
+                if (end < 0) break;
             }
             else
             {
-                break;
+                var expr = Parser.Parser.ParseExpressionAt(tokens, start, out end);
+                bool literal = expr != null && end == start + 1 && tokens[start].Kind == TokenKind.IntegerLiteral;
+                // #IF に使う値は、右辺が同じ字句の列の , か ; (主のファイルの終わり) で終わる形だけ決める (通す形を狭くする)。
+                // 式の後ろが #IF・#INCLUDE などか、字句の列の終わり (#IF の中・取り込んだファイルの終わり) なら、
+                // 続きがあるかもしれないので値は分からないとする (#IF で使ったらエラー)
+                if (expr != null && (end >= tokens.Count || !(tokens[end].Kind is TokenKind.Comma or TokenKind.Semicolon or TokenKind.EOF)))
+                {
+                    _unknownConsts.Add(name);
+                    break;
+                }
+                if (expr == null)
+                {
+                    // 読めない右辺: 次の , か ; まで飛ばす (いままでどおり)
+                    end = start;
+                    while (end < tokens.Count && tokens[end].Kind != TokenKind.Comma && tokens[end].Kind != TokenKind.Semicolon)
+                    {
+                        if (IsDirective(tokens[end].Kind))
+                        {
+                            // 式の途中に #IF など (CONST K = 1 +<#IF>): 値は #IF を処理した後で決まるので、値が分からない
+                            // (#IF の中の字句から次の名前も拾わない)
+                            _unknownConsts.Add(name);
+                            return;
+                        }
+                        end++;
+                    }
+                }
+                else if (literal)
+                {
+                    _constDeps.Remove(name);
+                    SetConst(name, Convert.ToInt32(tokens[start].Value));
+                }
+                else
+                    RecordConst(name, expr);
             }
+
+            // カンマで続く場合
+            if (end < tokens.Count && tokens[end].Kind == TokenKind.Comma)
+                i = end + 1;
+            else
+                break;
         }
     }
 
-    private void ProcessInclude(Token token, List<Token> result, string baseDir, int depth)
+
+    /// <summary>
+    /// 式の右辺の CONST の値を決める。使った名前 (とその名前が使った名前) を覚え、#IF で name を使ったら、それらも
+    /// 使ったことにする (関数の中の CONST を、大域の CONST を通して #IF に使うのを、意味解析が見つけられるように)
+    /// </summary>
+    private void RecordConst(string name, Parser.Ast.Expression expr)
     {
-        if (depth >= _maxIncludeDepth)
+        var deps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Semantics.SemanticAnalyzer.ForEachName(expr, (n, _) =>
+        {
+            deps.Add(n);
+            if (_constDeps.TryGetValue(n, out var nd)) deps.UnionWith(nd);
+        });
+        _constDeps[name] = deps;
+        if (deps.Any(_unknownConsts.Contains))
+        {
+            _unknownConsts.Add(name);   // 値の分からない CONST を使う CONST も、値が分からない
+            return;
+        }
+        var eval = new Semantics.ConstEvaluator(null, _constSymbols);
+        if (!eval.InvolvesFloat(expr) && eval.Evaluate(expr) is int value)
+            SetConst(name, value);
+        else
+        {
+            // 値の出ない宣言 (ラベル・FLOAT): 前の値・前の「分からない」は使わない (#IF では、知らない名前と同じく 0)
+            _constValues.Remove(name);
+            _constSymbols.Remove(name);
+            _unknownConsts.Remove(name);
+        }
+    }
+
+    private static bool IsDirective(TokenKind k)
+        => k is TokenKind.PreprocIf or TokenKind.PreprocElse or TokenKind.PreprocEnd
+            or TokenKind.PreprocInclude or TokenKind.PreprocChain;
+
+    private static bool IsBlockOpen(TokenKind k)
+        => k is TokenKind.LBracket or TokenKind.ArrayBracketOpen or TokenKind.LBrace or TokenKind.Begin or TokenKind.LAngleBracket;
+
+    private static bool IsBlockClose(TokenKind k)
+        => k is TokenKind.RBracket or TokenKind.RBrace or TokenKind.End or TokenKind.RAngleBracket;
+
+    /// <summary>tokens[start] の開きに対になる閉じの次の位置。途中に #IF などがあれば -1</summary>
+    private static int SkipBlock(List<Token> tokens, int start)
+    {
+        int depth = 0, j = start;
+        for (; j < tokens.Count; j++)
+        {
+            if (IsDirective(tokens[j].Kind)) return -1;
+            if (IsBlockOpen(tokens[j].Kind)) depth++;
+            else if (IsBlockClose(tokens[j].Kind) && --depth == 0) return j + 1;
+        }
+        return j;
+    }
+
+    private void ProcessInclude(Token token, List<Token> result, FileContext ctx)
+    {
+        if (ctx.Depth >= _maxIncludeDepth)
         {
             _diagnostics.Error($"#INCLUDE nesting too deep (max {_maxIncludeDepth})", token.Span);
             return;
         }
 
         var fileName = token.StringValue.Trim().Trim('"');
-        var filePath = ResolveIncludePath(fileName, baseDir);
+        var filePath = ResolveIncludePath(fileName, ctx.BaseDir);
 
         if (filePath == null)
         {
@@ -149,19 +289,14 @@ public class Preprocessor
             // 同じファイルの再インクルードは許可（循環でなければ）
         }
 
+        bool active = _activeFiles.Add(fullPath);
         try
         {
-            var source = File.ReadAllText(filePath);
-            var lexer = new Lexer(source, fileName);
-            var includeTokens = lexer.Tokenize();
+            var includeTokens = ReadTokens(filePath, fileName);
 
-            // EOF トークンを除去
-            includeTokens.RemoveAll(t => t.Kind == TokenKind.EOF);
-
-            // 再帰的にプリプロセス
-            var includeDir = Path.GetDirectoryName(filePath) ?? baseDir;
-            var processed = Process(includeTokens, includeDir, depth + 1);
-            result.AddRange(processed);
+            // 再帰的にプリプロセス (取り込んだファイルの文脈で。#CHAIN はそのファイルの残りを止めるだけ)
+            var includeDir = Path.GetDirectoryName(filePath) ?? ctx.BaseDir;
+            ProcessTokens(includeTokens, new FileContext(includeDir, ctx.Depth + 1), result);
         }
         catch (Exception ex)
         {
@@ -170,10 +305,66 @@ public class Preprocessor
         finally
         {
             _includedFiles.Remove(Path.GetFullPath(filePath));
+            if (active) _activeFiles.Remove(fullPath);
         }
     }
 
-    private int ProcessIf(List<Token> tokens, int startIndex, List<Token> result)
+    /// <summary>
+    /// #CHAIN ファイル: そのファイルへ移って戻らない (原典)。中身を出したあと、このファイルの残りは読まない。
+    /// 移った先は続きなので、深さは同じ
+    /// </summary>
+    private void ProcessChain(Token token, List<Token> result, FileContext ctx)
+    {
+        var fileName = token.StringValue.Trim().Trim('"');
+        var filePath = ResolveIncludePath(fileName, ctx.BaseDir);
+        if (filePath == null)
+        {
+            _diagnostics.Error($"#CHAIN file not found: {fileName}", token.Span);
+            return;
+        }
+        // 輪: 読んでいる途中のファイル (#INCLUDE・#CHAIN でたどってきた先祖) へ移る。同じファイルを、別々の
+        // #INCLUDE から 2 度 #CHAIN で読むのは輪ではない
+        var fullPath = Path.GetFullPath(filePath);
+        if (!_activeFiles.Add(fullPath))
+        {
+            _diagnostics.Error($"#CHAIN loop: {fileName} is already being read", token.Span);
+            return;
+        }
+        if (++_chainCount > MaxChains)
+        {
+            // 続きへ移るたびに入れ子で読むので、長すぎる #CHAIN の列は止める (スタックを使い切らない)
+            _activeFiles.Remove(fullPath);
+            _diagnostics.Error($"Too many #CHAIN transitions (max {MaxChains})", token.Span);
+            return;
+        }
+
+        try
+        {
+            var chainTokens = ReadTokens(filePath, fileName);
+            var chainDir = Path.GetDirectoryName(filePath) ?? ctx.BaseDir;
+            ProcessTokens(chainTokens, new FileContext(chainDir, ctx.Depth), result);
+        }
+        catch (Exception ex)
+        {
+            _diagnostics.Error($"#CHAIN error: {ex.Message}", token.Span);
+        }
+        finally
+        {
+            _activeFiles.Remove(fullPath);
+        }
+        ctx.Chained = true;
+    }
+
+    /// <summary>ファイルを読んで字句にする (EOF は除く)</summary>
+    private static List<Token> ReadTokens(string filePath, string fileName)
+    {
+        var source = File.ReadAllText(filePath);
+        var tokens = new Lexer(source, fileName).Tokenize();
+        tokens.RemoveAll(t => t.Kind == TokenKind.EOF);
+        return tokens;
+    }
+
+    private int ProcessIf(List<Token> tokens, int startIndex, List<Token> result, FileContext ctx)
     {
         var ifToken = tokens[startIndex];
         bool condition = EvaluateCondition(ifToken);
@@ -234,9 +425,9 @@ public class Preprocessor
             }
         }
 
-        // 採用したトークンを再帰的にProcess（内側の#IFを評価）
-        var processed = Process(collect, ".", 0);
-        result.AddRange(processed);
+        // 採用したトークンを、同じファイルの文脈で処理する（内側の#IFを評価。#INCLUDE はこのファイルの場所から探し、
+        // #CHAIN ならこのファイルの残りも止める）
+        ProcessTokens(collect, ctx, result);
 
         return i;
     }
@@ -385,6 +576,14 @@ public class Preprocessor
         {
             pos++;
             IdentifiersUsedByIf.Add(token.StringValue);
+            if (_constDeps.TryGetValue(token.StringValue, out var deps))
+                IdentifiersUsedByIf.UnionWith(deps);
+            if (_unknownConsts.Contains(token.StringValue))
+            {
+                _diagnostics.Error($"#IF uses CONST '{token.StringValue}', whose value is not known here "
+                    + "(its declaration continues past a preprocessor directive or the end of a block/file)", token.Span);
+                return 0;
+            }
             if (_constValues.TryGetValue(token.StringValue, out int constVal))
                 return constVal;
             // 未定義の識別子 → 0として扱う（旧コンパイラ互換）

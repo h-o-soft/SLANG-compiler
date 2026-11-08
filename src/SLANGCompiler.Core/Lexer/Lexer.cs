@@ -228,6 +228,23 @@ public class Lexer
     private Token ReadNumber(SourceLocation start)
     {
         int startPos = _pos;
+        try
+        {
+            return ReadNumberCore(start);
+        }
+        catch (Exception ex) when (ex is OverflowException or FormatException)
+        {
+            // 大きすぎる数・数として読めない字 (12AF など): 落ちずに誤りの字句にする
+            // (構文解析がエラーを出す。#CHAIN の後ろなら読まずに捨てる)
+            string text = _source[startPos.._pos];
+            return MakeToken(TokenKind.Error,
+                ex is OverflowException ? $"number too large: {text}" : $"invalid number: {text}", start);
+        }
+    }
+
+    private Token ReadNumberCore(SourceLocation start)
+    {
+        int startPos = _pos;
 
         // $ prefix hex
         if (Peek() == '$')
@@ -610,6 +627,15 @@ public class Lexer
             while (!IsAtEnd && Peek() != '\n') Advance();
             string path = _source[fnStart.._pos].Trim().Trim('"');
             return MakeToken(TokenKind.PreprocInclude, path, start, path);
+        }
+        if (directive.Equals("CHAIN", StringComparison.OrdinalIgnoreCase))
+        {
+            // #INCLUDE と同じくファイル名を持つ
+            SkipSpaces();
+            int fnStart = _pos;
+            while (!IsAtEnd && Peek() != '\n') Advance();
+            string path = _source[fnStart.._pos].Trim().Trim('"');
+            return MakeToken(TokenKind.PreprocChain, path, start, path);
         }
         if (directive.Equals("IF", StringComparison.OrdinalIgnoreCase))
         {
