@@ -284,4 +284,80 @@ public class FloatTypeTests
         Assert.Contains("CALL\tf24sub", asm);
         Assert.Contains("CALL\tf24mul", asm);
     }
+
+    // ==== C3: FLOAT を受け付けない所 ====
+
+    private const string Decls = "VAR I, W; FLOAT F; FLOAT G; VAR A[3]; FLOAT FA[3]; MACHINE M1(1):$1234; MACHINE M2(2):$1234; ";
+
+    [Theory]
+    [InlineData("IF F THEN I = 1;")]
+    [InlineData("WHILE F [ I = 1; ]")]
+    [InlineData("REPEAT I = 1; UNTIL F;")]
+    [InlineData("I = F ? 1 : 2;")]
+    [InlineData("I = F && W;")]
+    [InlineData("I = W || F;")]
+    [InlineData("I = NOT F;")]
+    public void FloatCondition_IsError(string body)
+    {
+        Assert.Contains(Errors($"{Decls}MAIN() BEGIN {body} END;"), m => m.Contains("cannot be used as a condition"));
+    }
+
+    [Theory]
+    [InlineData("F = F MOD G;")]
+    [InlineData("I = F AND 1;")]
+    [InlineData("I = F OR 1;")]
+    [InlineData("I = F XOR 1;")]
+    [InlineData("I = F << 1;")]
+    [InlineData("I = F >> 1;")]
+    [InlineData("I = F .<. G;")]
+    [InlineData("I = CPL F;")]
+    [InlineData("I = HIGH F;")]
+    [InlineData("I = LOW F;")]
+    [InlineData("A[F] = 1;")]
+    [InlineData("I = A[F];")]
+    [InlineData("MEM[F] = 1;")]
+    [InlineData("I = MEM[F];")]
+    [InlineData("PORT[F] = 1;")]
+    [InlineData("I = PORT[F];")]
+    public void FloatInIntegerOperation_IsError(string body)
+    {
+        Assert.Contains(Errors($"{Decls}MAIN() BEGIN {body} END;"), m => m.Contains("cannot be used in this operation"));
+    }
+
+    [Theory]
+    [InlineData("PRINT(F);", "cannot be printed directly")]
+    [InlineData("PRINT(HEX4$(F));", "cannot be printed directly")]
+    [InlineData("FOR F = 1 TO 10 DO I = 1;", "FOR variable must not be FLOAT")]
+    [InlineData("FOR I = F TO 10 DO W = 1;", "start of FOR must not be FLOAT")]
+    [InlineData("FOR I = 1 TO F DO W = 1;", "end of FOR must not be FLOAT")]
+    [InlineData("I = %F;", "type cast does not convert")]
+    [InlineData("I = &MEM[F];", "cannot be used as an address")]
+    [InlineData("I = &PORT[F];", "cannot be used as an address")]
+    [InlineData("I = M2(F, 1);", "only as its single argument")]
+    [InlineData("I = M2(F);", "only as its single argument")]
+    [InlineData("I = CODE([F]);", "cannot be used in CODE")]
+    public void FloatInOtherPlaces_IsError(string body, string message)
+    {
+        Assert.Contains(Errors($"{Decls}MAIN() BEGIN {body} END;"), m => m.Contains(message));
+    }
+
+    [Theory]
+    [InlineData("F = F * 2; F = F .*. G; F = F ./. G; F = -F; F = +F;")]
+    [InlineData("I = F < G; I = F == 1; I = F <> 0.0; IF F > 0.5 THEN I = 1;")]
+    [InlineData("F = W ? F : 1; F = 1; I = F; FA[I] = F; MEM[I] = F; A[I] = F;")]
+    [InlineData("F += 0.5; F++; F--; F -= 1; F *= 2; F /= 2;")]
+    [InlineData("F = FSIN(1); F = FPOW(F, 2); PRINT(FL$(F), FL$(5)); I = M1(F);")]
+    [InlineData("IF 1.0 THEN I = 1; I = A[1.0];")]
+    public void AcceptedFloatForms_AreNotErrors(string body)
+    {
+        var src = $"{Decls}MAIN() BEGIN {body} END;";
+        Assert.Empty(Errors(src));
+    }
+
+    [Theory]
+    [InlineData("FX:FLOAT() BEGIN RETURN 1.5; END; VAR X = 3;")]
+    public void IntegerGlobalInitializer_AfterFloat_IsNotError(string decls)
+    {
+        Assert.Empty(Errors($"{decls} MAIN() BEGIN END;"));
+    }
 }

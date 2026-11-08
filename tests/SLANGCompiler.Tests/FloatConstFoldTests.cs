@@ -76,7 +76,6 @@ public class FloatConstFoldTests
     [InlineData("B=I+(A*1);", IrOp.Add)]         // 何もしない演算の正規化で A (FLOAT) が残る
     [InlineData("B=I+(A=-(5.0/2.0));", IrOp.Add)] // 代入式は代入する値
     [InlineData("B=I+&(A*A);", IrOp.Add)]         // 変数・配列以外の & は中身の値
-    [InlineData("B=I+&MEM[A*A];", IrOp.Add)]      // &MEM[x] は x の値
     public void MixedExpression_ConvertsLeftBeforeFloatRight(string src, IrOp op)
     {
         // 右辺が FLOAT の式のとき、左辺の整数は右辺を求める前に FLOAT にする (後から変換すると、右辺の値を変換してしまう)

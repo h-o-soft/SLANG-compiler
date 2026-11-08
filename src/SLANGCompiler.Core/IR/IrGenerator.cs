@@ -288,10 +288,50 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private void Emit(IrOp op, IrOperand dest = default, IrOperand src1 = default, IrOperand src2 = default, int dataSize = 2)
     {
         var inst = new IrInstruction(op, dest, src1, src2) { DataSize = dataSize };
+        CheckFloatOperands(inst);
         if (_emitToGlobalData || _currentFunction == null)
             _module.GlobalData.Add(inst);
         else
             _currentFunction.Instructions.Add(inst);
+    }
+
+    // いま作っている文の場所 (Emit の FLOAT の検査のエラーの場所)
+    private SourceSpan _stmtSpan;
+
+    /// <summary>
+    /// 命令が読む値の型を見る。値として読むオペランドは、命令の大きさが 3 (FLOAT) かと、値が FLOAT かが同じであること
+    /// (違えば変換が抜けている)。番地・添字として読むオペランドは整数であること。FLOAT を扱えない命令 (MOD・ビット演算・
+    /// シフト・符号付きの比較・条件など) は FLOAT の値を読まないこと。書き込みの番地は Dest にある
+    /// </summary>
+    private void CheckFloatOperands(IrInstruction inst)
+    {
+        bool fl = inst.DataSize == 3;
+        bool bad = false;
+        void Value(IrOperand o) { if (o.Kind == IrOperandKind.Temp && (TempDataSize(o) == 3) != fl) bad = true; }
+        void Int(IrOperand o) { if (o.Kind == IrOperandKind.Temp && TempDataSize(o) == 3) bad = true; }
+        switch (inst.Op)
+        {
+            case IrOp.StoreVar or IrOp.StoreLocal: Value(inst.Src1); break;
+            case IrOp.ArrayStore: Value(inst.Src1); Int(inst.Dest); Int(inst.Src2); break;
+            case IrOp.IndirStore or IrOp.MemStore or IrOp.PortOut: Value(inst.Src1); Int(inst.Dest); break;
+            case IrOp.ArrayLoad: Int(inst.Src1); Int(inst.Src2); break;
+            case IrOp.IndirLoad or IrOp.MemLoad or IrOp.PortIn or IrOp.LoadIndirect: Int(inst.Src1); break;
+            case IrOp.Add or IrOp.Sub or IrOp.Mul or IrOp.Div or IrOp.SMul or IrOp.SDiv or IrOp.Neg
+                or IrOp.CmpEq or IrOp.CmpNeq or IrOp.CmpLt or IrOp.CmpGt or IrOp.CmpLe or IrOp.CmpGe
+                or IrOp.JoinValue or IrOp.StoredValue:
+                Value(inst.Src1); Value(inst.Src2); break;
+            case IrOp.Mod or IrOp.SMod or IrOp.And or IrOp.Or or IrOp.Xor or IrOp.Not or IrOp.Shl or IrOp.Shr
+                or IrOp.SShl or IrOp.SShr or IrOp.CmpSLt or IrOp.CmpSGt or IrOp.CmpSLe or IrOp.CmpSGe
+                or IrOp.High or IrOp.Low or IrOp.LogAnd or IrOp.LogOr or IrOp.LogNot
+                or IrOp.JumpIfZero or IrOp.JumpIfNonZero:
+                bad = fl;
+                Int(inst.Src1); Int(inst.Src2);
+                break;
+        }
+        if (!bad) return;
+        _diagnostics.Error(inst.Op is IrOp.JumpIfZero or IrOp.JumpIfNonZero or IrOp.LogAnd or IrOp.LogOr or IrOp.LogNot
+            ? "A FLOAT value cannot be used as a condition (compare it, e.g. F <> 0.0)"
+            : "A FLOAT value cannot be used in this operation, index or address (use FTOI to make it an integer)", _stmtSpan);
     }
 
     /// <summary>HL の値 (input) を変える呼び出し (i16tof24・FTOI)。読む値を ImplicitSrc に覚える (コード生成が「後で読むか」を判断するため)</summary>
@@ -404,8 +444,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitBlock(Block node)
     {
+        var prevSpan = _stmtSpan;
         foreach (var stmt in node.Statements)
+        {
+            _stmtSpan = stmt.Span;
             stmt.Accept(this);
+        }
+        _stmtSpan = prevSpan;
         return IrOperand.None;
     }
 
@@ -498,6 +543,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (node.InitialValue != null)
             {
                 _emitToGlobalData = true;
+                _tempDataSize.Clear();   // 関数の外の一時値は番号がいつも 0。前の初期値の FLOAT の記録を残さない
+                _stmtSpan = node.Span;
                 try
                 {
                     // 起動時の代入は LoadConst と StoreVar の組だけを書く (EmitGlobalInit)。整数の変数の初期値は、その場で
@@ -1135,6 +1182,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // Return value from END(expr)
         if (node.ReturnValue != null)
         {
+            _stmtSpan = node.ReturnValue.Span;
             if (_currentReturnDataSize == 3) MarkFloatFold(node.ReturnValue, true);
             var retVal = node.ReturnValue.Accept(this);
             retVal = ConvertReturnValue(retVal, node.ReturnValue.Span);
@@ -1154,6 +1202,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _currentReturnDataSize = prevReturnDs;
         _localConsts = prevLocalConsts;
         _currentFuncInfo = prevFuncInfo;
+        _tempDataSize.Clear();   // 関数の外の一時値は番号がいつも 0 なので、関数の中の FLOAT の記録を残さない
         return IrOperand.None;
     }
 
@@ -1342,9 +1391,16 @@ public class IrGenerator : IAstVisitor<IrOperand>
         var forVarInfo = forVi.Local;
         bool forVarIsLocal = forVarInfo != null;
         int forVarDs = forVi.VarDataSize;
+        if (forVarDs == 3 && forVi.Kind == VarKind.Scalar)
+        {
+            _diagnostics.Error("The FOR variable must not be FLOAT (use an integer variable)", node.Span);
+            return IrOperand.None;
+        }
 
         // Initialize: var = from
         var fromVal = node.From.Accept(this);
+        if (TempDataSize(fromVal) == 3)
+            _diagnostics.Error("The start of FOR must not be FLOAT (use FTOI)", node.From.Span);
         if (forVarIsLocal)
             Emit(IrOp.StoreLocal, IrOperand.Imm(forVarInfo!.Offset), fromVal, dataSize: forVarDs);
         else
@@ -1379,6 +1435,8 @@ public class IrGenerator : IAstVisitor<IrOperand>
         // FOR TO: unsigned比較（旧コンパイラ互換、コンパクト）
         // FOR DOWNTO: 符号付き比較（0を跨ぐオーバーフロー対策）
         var limit = node.To.Accept(this);
+        if (TempDataSize(limit) == 3)
+            _diagnostics.Error("The end of FOR must not be FLOAT (use FTOI)", node.To.Span);
         var cmp = IrOperand.Temp(AllocTemp());
         Emit(node.IsDownTo ? IrOp.CmpSGe : IrOp.CmpLe, cmp, newVal, limit);
         Emit(IrOp.JumpIfNonZero, IrOperand.Lbl(startLabel), cmp);
@@ -1578,65 +1636,65 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PCRONE"));
                         break;
                     case "HEX2$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PHEX2"));
                         break;
                     case "HEX4$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PHEX4"));
                         break;
                     case "FORM$":
                         // FORM$(value, n): HL=value, DE=n桁 → MACHINE(2)として呼ぶ
                         if (sf.Arguments.Count >= 2)
                         {
-                            sf.Arguments[0].Accept(this);
+                            PrintValue(sf.Arguments[0]);
                             Emit(IrOp.PushArg, IrOperand.None);
-                            sf.Arguments[1].Accept(this);
+                            PrintValue(sf.Arguments[1]);
                             Emit(IrOp.PushArg, IrOperand.None);
                         }
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10toN"), IrOperand.Imm(2));
                         break;
                     case "DECI$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10to5"));
                         break;
                     case "%" or "PN$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSIGN"));
                         break;
                     case "MSG$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PMSG"));
                         break;
                     case "!" or "MSX$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PMSX"));
                         break;
                     case "STR$":
                         // STR$(char, n): HL=char, DE=n → MACHINE(2)として呼ぶ
                         if (sf.Arguments.Count >= 2)
                         {
-                            sf.Arguments[0].Accept(this);
+                            PrintValue(sf.Arguments[0]);
                             Emit(IrOp.PushArg, IrOperand.None);
-                            sf.Arguments[1].Accept(this);
+                            PrintValue(sf.Arguments[1]);
                             Emit(IrOp.PushArg, IrOperand.None);
                         }
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSTR"), IrOperand.Imm(2));
                         break;
                     case "CHR$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PCHR"));
                         break;
                     case "SPC$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PSPC"));
                         break;
                     case "CR$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PCR"));
                         break;
                     case "TAB$":
-                        if (sf.Arguments.Count > 0) { var v = sf.Arguments[0].Accept(this); }
+                        if (sf.Arguments.Count > 0) PrintValue(sf.Arguments[0]);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PTAB"));
                         break;
                     case "FL$":
@@ -1649,7 +1707,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("PFLOAT"));
                         break;
                     default:
-                        foreach (var a in sf.Arguments) a.Accept(this);
+                        foreach (var a in sf.Arguments) PrintValue(a);
                         Emit(IrOp.Call, IrOperand.None, IrOperand.Sym($"PRINT_{sf.FuncName}"));
                         break;
                 }
@@ -1662,12 +1720,19 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
             else
             {
-                var val = arg.Accept(this);
+                PrintValue(arg);
                 // P10: HL=数値を10進文字列に変換して出力
                 Emit(IrOp.Call, IrOperand.None, IrOperand.Sym("P10"));
             }
         }
         return IrOperand.None;
+    }
+
+    /// <summary>PRINT の項の値 (FL$ のほか)。FLOAT の値はそのまま出せない</summary>
+    private void PrintValue(Expression e)
+    {
+        if (TempDataSize(e.Accept(this)) == 3)
+            _diagnostics.Error("A FLOAT value cannot be printed directly (use FL$(x))", e.Span);
     }
 
     // ==== Expressions ====
@@ -2277,6 +2342,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 else if (paramType != null && TempDataSize(argVal) == 3)
                     _diagnostics.Error("Cannot pass FLOAT value to non-FLOAT parameter (use FTOI for explicit conversion)",
                         node.Arguments[i].Span);
+                // 注釈のない MACHINE・ランタイムの関数に FLOAT を渡せるのは、ただ 1 つの引数 (AHL のまま渡る) のときだけ
+                // (2 つ目からは A が壊れる。積む数と取り出す数 (宣言の引数の数) がどちらも 1 のとき)
+                else if (paramType == null && TempDataSize(argVal) == 3
+                         && (node.Arguments.Count != 1 || machineParamCount.Value != 1))
+                    _diagnostics.Error($"A FLOAT value can be passed to MACHINE '{funcName}' only as its single argument "
+                        + "(use FTOI to make it an integer)", node.Arguments[i].Span);
                 Emit(IrOp.PushArg, argVal, IrOperand.Imm(i), dataSize: twoFloats ? 3 : 2);
             }
 
@@ -2643,6 +2714,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
         return node.Right.Accept(this);
     }
 
+    /// <summary>&MEM[x]・&PORT[x] の x (命令を作らずにそのまま番地になるので、ここで FLOAT を止める)</summary>
+    private IrOperand IntegerAddress(Expression e)
+    {
+        var v = e.Accept(this);
+        if (TempDataSize(v) == 3)
+            _diagnostics.Error("A FLOAT value cannot be used as an address (use FTOI to make it an integer)", e.Span);
+        return v;
+    }
+
     public IrOperand VisitAddressOfExpr(AddressOfExpr node)
     {
         if (node.Operand is IdentifierExpr id)
@@ -2666,12 +2746,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
             // &MEM[x] / &SOS[x] → アドレスxそのもの
             if (arrSym?.Type is MemoryArrayType)
-                return arr.Indices[0].Accept(this);
+                return IntegerAddress(arr.Indices[0]);
 
             // &PORT[x] → 意味がないがアドレスxを返す
             if (arrName != null && (arrName.Equals("PORT", StringComparison.OrdinalIgnoreCase)
                 || arrName.Equals("PORTW", StringComparison.OrdinalIgnoreCase)))
-                return arr.Indices[0].Accept(this);
+                return IntegerAddress(arr.Indices[0]);
 
             // 間接変数: &p[i] → p + i*elemSize のアドレス
             var addrVi = arrName != null ? CheckDefined(arrName, arr.Span) : default;
@@ -2699,6 +2779,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
         return dest;
     }
 
+    /// <summary>CODE の中で実行時に作る値。FLOAT は扱えない (CODE の値は HL の整数として使われる)</summary>
+    private void CodeValue(Expression e)
+    {
+        if (TempDataSize(e.Accept(this)) == 3)
+            _diagnostics.Error("A FLOAT value cannot be used in CODE (use FTOI to make it an integer)", e.Span);
+    }
+
     public IrOperand VisitCodeExpr(CodeExpr node)
     {
         // CODE関数: データを直接オブジェクトに埋め込む。
@@ -2713,7 +2800,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else if (v is CodeEvalExpr eval)
             {
                 // [式] → 式を評価してHLに代入するコードを埋め込み
-                eval.Inner.Accept(this);
+                CodeValue(eval.Inner);
             }
             else if (v is CodeLabelRef labelRef)
             {
@@ -2743,12 +2830,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     }
                     else
                     {
-                        cast.Operand.Accept(this); // フォールバック: 実行時コード
+                        CodeValue(cast.Operand); // フォールバック: 実行時コード
                     }
                 }
                 else
                 {
-                    cast.Operand.Accept(this); // 非定数BYTE→実行時コード
+                    CodeValue(cast.Operand); // 非定数BYTE→実行時コード
                 }
             }
             else if (v is IntegerLiteral ilit)
@@ -2759,7 +2846,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else
             {
                 // その他の式 → 実行時コード
-                v.Accept(this);
+                CodeValue(v);
             }
         }
 
@@ -2771,7 +2858,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitCastExpr(CastExpr node)
     {
         _valueDiscarded = TakeDiscard() && TakesDiscard(node.Operand);   // 値をそのまま返すので、値を使わない印を中へ渡す
-        return node.Operand.Accept(this);
+        var v = node.Operand.Accept(this);
+        if (TempDataSize(v) == 3)   // キャストは値を変えない (FLOAT の値を整数にしない)
+            _diagnostics.Error("A type cast does not convert a FLOAT value (use FTOI or an assignment)", node.Span);
+        return v;
     }
 
     public IrOperand VisitStringFuncExpr(StringFuncExpr node)
