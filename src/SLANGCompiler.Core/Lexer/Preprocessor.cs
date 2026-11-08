@@ -135,6 +135,9 @@ public class Preprocessor
 
     private void SetConst(string name, int value)
     {
+        // 値が決まった (宣言し直したものも): 前の「値が分からない」「仮の値」は消す
+        _unknownConsts.Remove(name);
+        _provisionalConsts.Remove(name);
         _constValues[name] = value;
         _constSymbols[name] = new Semantics.Symbol(name, Semantics.SymbolKind.Constant, Semantics.SlangType.Word) { ConstValue = value };
     }
@@ -195,12 +198,21 @@ public class Preprocessor
                     end = start;
                     while (end < tokens.Count && tokens[end].Kind != TokenKind.Comma && tokens[end].Kind != TokenKind.Semicolon)
                     {
-                        if (IsDirective(tokens[end].Kind)) return;   // #IF の中の字句から次の名前を拾わない
+                        if (IsDirective(tokens[end].Kind))
+                        {
+                            // 式の途中に #IF など (CONST K = 1 +<#IF>): 値は #IF を処理した後で決まるので、値が分からない
+                            // (#IF の中の字句から次の名前も拾わない)
+                            _unknownConsts.Add(name);
+                            return;
+                        }
                         end++;
                     }
                 }
                 else if (literal)
+                {
+                    _constDeps.Remove(name);
                     SetConst(name, Convert.ToInt32(tokens[start].Value));
+                }
                 else
                     RecordConst(name, expr);
             }

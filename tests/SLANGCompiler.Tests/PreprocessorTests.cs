@@ -291,4 +291,21 @@ public class PreprocessorTests : IDisposable
         Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
         Assert.Contains("YES_K", names);
     }
+
+    [Fact]
+    public void DirectiveRightAfterOperator_IsUnknown()
+    {
+        // 演算子の直後に #IF (CONST K = 1 +<#IF>): 値は分からない (#IF で使うとエラー。0 として黙って違う分岐にしない)
+        var (_, diag) = Run("CONST K = 1 +\n#IF 1\n0\n#END\n;" + IfMark("K == 1"));
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("#IF uses CONST 'K', whose value is not known here"));
+    }
+
+    [Fact]
+    public void RedeclaredAfterUnknown_UsesNewValue()
+    {
+        // 値の分からなかった CONST を、あとで終わりの分かる形で宣言し直す: 新しい値を使う
+        var (names, diag) = Run("CONST K =\n#IF 1\n1\n#END\n;\nCONST K = 2;" + IfMark("K == 2"));
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        Assert.Contains("YES_K", names);
+    }
 }
