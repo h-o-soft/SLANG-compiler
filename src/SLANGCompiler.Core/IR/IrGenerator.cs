@@ -3028,10 +3028,9 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 case ArrayAccessExpr a: Walk(a.Array); foreach (var x in a.Indices) Walk(x); break;
             }
         }
+        // 配列の名前そのもの (大きさのある配列・MEM) は番地が変わらないので、変数を読むとは見ない (間接変数は見る)
+        if (arr.Array is not IdentifierExpr baseId || ResolveVarInfo(baseId.Name).Kind == VarKind.Pointer) Walk(arr.Array);
         foreach (var x in arr.Indices) Walk(x);
-        // 配列の要素に書くのは、添字が読む配列のときだけ代入先を変える (T[0] += (T[1] = 2) は T[0] のまま)
-        var indexNames = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
-        Walk(arr.Array);
         if (sideEffect)
         {
             _diagnostics.Error("Side effects (++, --, assignments, function calls, PORT reads) are not allowed in the index of "
@@ -3039,15 +3038,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
             return;
         }
 
-        // 右辺が、添字・配列の式の変数に代入する
-        bool writesTargetName = false;
+        // 代入先が変数を読むとき、右辺に代入・++ -- があればエラー (どの変数を変えるかは見ない: MEMW[&I] = 1 のように
+        // メモリを通して変えることもある。通す形を狭くする)
+        if (names.Count == 0) return;
+        bool writes = false;
         void WalkValue(Expression? e)
         {
             switch (e)
             {
-                case AssignExpr a: CheckWrite(a.Target); WalkValue(a.Target); WalkValue(a.Value); break;
-                case CompoundAssignExpr ca: CheckWrite(ca.Target); WalkValue(ca.Target); WalkValue(ca.Value); break;
-                case IncrementExpr inc: CheckWrite(inc.Operand); WalkValue(inc.Operand); break;
+                case AssignExpr or CompoundAssignExpr or IncrementExpr: writes = true; break;
                 case BinaryExpr b: WalkValue(b.Left); WalkValue(b.Right); break;
                 case UnaryExpr u: WalkValue(u.Operand); break;
                 case CastExpr c: WalkValue(c.Operand); break;
@@ -3061,16 +3060,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 case CodeEvalExpr ce: WalkValue(ce.Inner); break;
             }
         }
-        void CheckWrite(Expression t)
-        {
-            if (t is IdentifierExpr id ? names.Contains(id.Name)
-                : t is ArrayAccessExpr { Array: IdentifierExpr an } && indexNames.Contains(an.Name))
-                writesTargetName = true;
-        }
         WalkValue(value);
-        if (writesTargetName)
-            _diagnostics.Error("The right side of +=/-=/*=//= must not change a variable used in the index of the target "
-                + "(the target is evaluated twice, for reading and for writing)", span);
+        if (writes)
+            _diagnostics.Error("The right side of +=/-=/*=//= must not contain assignments or ++/-- when the index of the target "
+                + "uses a variable (the target is evaluated twice, for reading and for writing)", span);
     }
 
     /// <summary>代入先に値を書く。書いた値 (代入先の型に変えたもの) を返す (代入式の値)</summary>

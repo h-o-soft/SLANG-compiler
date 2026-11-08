@@ -437,6 +437,9 @@ public class ExpressionValueTests
     [InlineData("T[I] -= I++;")]
     [InlineData("T[I] += CODE([I = I + 1]);")]   // CODE の中の代入も
     [InlineData("T[T[0]] += (T[0] = 1);")]       // 添字が読む配列の要素に書く
+    [InlineData("T[I] += (MEMW[&I] = 1);")]      // メモリを通して添字の変数を変える
+    [InlineData("P[0] += (P = &W);")]            // 間接変数の値 (番地) を変える
+    [InlineData("T[I] += (J = 3);")]             // 添字が変数なら、右辺に代入を書かない (どの変数を変えるかは見ない)
     [InlineData("T[PORT[I]]++;")]
     public void TargetChangedByRightSideOrPort_Errors(string stmt)
     {
@@ -447,7 +450,8 @@ public class ExpressionValueTests
     [Fact]
     public void TargetNotChangedByRightSide_Ok()
     {
-        var (_, diag) = Compile($"{Decls} MAIN() BEGIN T[I] += (J = 3); T[I] += G(J); END;");
+        // 右辺の関数の呼び出しは見ない (関数の中で変わるものは見ない)。代入先の添字が定数なら、右辺の代入もよい
+        var (_, diag) = Compile($"{Decls} MAIN() BEGIN T[I] += G(J); T[0] += (J = 3); END;");
         Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
     }
 }
