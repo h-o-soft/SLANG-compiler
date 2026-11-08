@@ -828,11 +828,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// <summary>式の中の CONST の名前の式 (後ろで決まる・ラベルを含む CONST の、まだ値でない式) に FLOAT があるか (たどる)</summary>
     private bool NamesConstWithFloat(Expression e, HashSet<Symbol>? visited = null)
     {
+        bool top = visited == null;
         visited ??= new HashSet<Symbol>();
         bool found = false;
         SemanticAnalyzer.ForEachName(e, (n, _) =>
         {
-            if (_localVars?.ContainsKey(n) == true || _staticVarSizes?.ContainsKey(n) == true) return;   // 局所変数が隠す CONST は見ない
+            // 局所変数が隠すのは、元の式に書いた名前だけ (大域の CONST の式の中の名前は大域で引く)
+            if (top && (_localVars?.ContainsKey(n) == true || _staticVarSizes?.ContainsKey(n) == true)) return;
             if (_globalSymbols?.Resolve(n) is { Kind: SymbolKind.Constant, ConstAst: not null } sym && visited.Add(sym)
                 && (ContainsFloat(sym.ConstAst, namesAreLabels: true) || NamesConstWithFloat(sym.ConstAst, visited)))
                 found = true;

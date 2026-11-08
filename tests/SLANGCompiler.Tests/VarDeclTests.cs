@@ -233,6 +233,7 @@ public class VarDeclTests
     // ラベルを含む CONST (まだ値でない式) の中の FLOAT も、番地・間接変数の初期値ではエラー
     [InlineData("CONST ADDR = BASE + (1.0/2.0)*4096.0; VAR X:ADDR; MAIN() BEGIN X = 1; END;")]
     [InlineData("CONST ADDR = BASE + (1.0/2.0)*4096.0; FN() BEGIN VAR P[] = ADDR; P[0] = 1; END; MAIN() BEGIN FN(); END;")]
+    [InlineData("CONST INNER = BASE + (1.0/2.0)*4096.0; CONST ADDR = INNER; FN() BEGIN VAR INNER = $D000; VAR P[] = ADDR; P[0] = 1; END; MAIN() BEGIN FN(); END;")]   // 大域の CONST の式の中の名前は大域で引く
     public void FloatInsideLabelConst_Errors(string source)
     {
         var (_, diag) = Compile(source + "\n#ASM\nBASE: DB 0\n#END\n");
