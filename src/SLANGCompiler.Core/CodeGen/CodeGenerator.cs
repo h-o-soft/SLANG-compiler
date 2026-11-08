@@ -523,11 +523,27 @@ public class CodeGenerator
     private void EmitGlobalInit()
     {
         int? pendingConstVal = null;
+        (int Mantissa, int Exponent)? pendingFloat = null;
         foreach (var inst in _module.GlobalData)
         {
             if (inst.Op == IrOp.LoadConst && inst.Src1.Kind == IrOperandKind.Immediate)
             {
                 pendingConstVal = (int)(inst.Src1.ImmediateValue & 0xFFFF);
+                pendingFloat = null;
+            }
+            else if (inst.Op == IrOp.LoadFloatConst)
+            {
+                pendingFloat = ((int)inst.Src1.ImmediateValue & 0xFFFF, (int)inst.Src2.ImmediateValue & 0xFF);
+                pendingConstVal = null;
+            }
+            else if (inst.Op == IrOp.StoreVar && inst.DataSize == 3 && pendingFloat is var (m, e))
+            {
+                // FLOAT: 仮数を HL、指数を A で書く
+                _e.Instruction("LD", $"HL,${m:X4}");
+                _e.Instruction("LD", $"({AsmLabel(inst.Dest.Name!)}),HL");
+                _e.Instruction("LD", $"A,${e:X2}");
+                _e.Instruction("LD", $"({AsmLabel(inst.Dest.Name!)}+2),A");
+                pendingFloat = null;
             }
             else if (inst.Op == IrOp.StoreVar && pendingConstVal.HasValue)
             {
@@ -547,6 +563,7 @@ public class CodeGenerator
             else
             {
                 pendingConstVal = null;
+                pendingFloat = null;
             }
         }
     }

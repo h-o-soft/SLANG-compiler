@@ -547,15 +547,24 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 _stmtSpan = node.Span;
                 try
                 {
-                    // 起動時の代入は LoadConst と StoreVar の組だけを書く (EmitGlobalInit)。整数の変数の初期値は、その場で
-                    // 決まる整数の定数だけ (?: なども値にしてから積む)。FLOAT を使う式・定数にならない式・FLOAT の変数の
-                    // 初期値は、黙って書かれなかったのでエラー (FLOAT は整数で畳み込むと違う値になりうる)
-                    int? cv = ds <= 2 && !ContainsFloat(node.InitialValue) ? NewConstEvaluator().Evaluate(node.InitialValue) : null;
+                    // 起動時の代入は LoadConst (FLOAT は LoadFloatConst) と StoreVar の組だけを書く (EmitGlobalInit)。
+                    // 整数の変数の初期値は、その場で決まる整数の定数だけ (?: なども値にしてから積む)。FLOAT を使う式・
+                    // 定数にならない式は、黙って書かれなかったのでエラー (FLOAT は整数で畳み込むと違う値になりうる)。
+                    // FLOAT の変数の初期値は GlobalFloatInitialValue の形だけ
+                    if (ds == 3)
+                    {
+                        double? fv = GlobalFloatInitialValue(node.InitialValue);
+                        if (fv == null)
+                            _diagnostics.Error($"The initializer of FLOAT variable '{node.Name}' must be a FLOAT literal, "
+                                + "a FLOAT CONST or a constant expression (assign other values at the start of MAIN)",
+                                node.InitialValue.Span);
+                        Emit(IrOp.StoreVar, IrOperand.Sym(label), EmitLoadFloatConst(fv ?? 0), dataSize: 3);
+                        return IrOperand.None;
+                    }
+                    int? cv = !ContainsFloat(node.InitialValue) ? NewConstEvaluator().Evaluate(node.InitialValue) : null;
                     if (cv == null)
-                        _diagnostics.Error(ds > 2
-                            ? $"FLOAT variable '{node.Name}' cannot have an initializer here yet (assign it at the start of MAIN)"
-                            : $"The initializer of global/static variable '{node.Name}' must be an integer constant "
-                              + "(FLOAT and non-constant expressions are not written at startup)", node.InitialValue.Span);
+                        _diagnostics.Error($"The initializer of global/static variable '{node.Name}' must be an integer constant "
+                            + "(FLOAT and non-constant expressions are not written at startup)", node.InitialValue.Span);
                     var val = IrOperand.Temp(AllocTemp());
                     Emit(IrOp.LoadConst, val, IrOperand.Imm((cv ?? 0) & (ds == 1 ? 0xFF : 0xFFFF)));
                     Emit(IrOp.StoreVar, IrOperand.Sym(label), val, dataSize: ds);
@@ -587,6 +596,23 @@ public class IrGenerator : IAstVisitor<IrOperand>
             }
         }
         return IrOperand.None;
+    }
+
+    /// <summary>
+    /// 大域・静的の FLOAT の変数の初期値として通す形の値: FLOAT のリテラル (前に - が 1 つあってもよい)・FLOAT の CONST・
+    /// FLOAT を含まない整数の定数の式 (代入と同じく符号付きで FLOAT にする)・FLOAT が関わる定数の四則演算で値が決まるもの。
+    /// ほかは null (エラー)
+    /// </summary>
+    private double? GlobalFloatInitialValue(Expression e)
+    {
+        if (e is FloatLiteral fl) return fl.Value;
+        if (e is UnaryExpr { Op: UnaryOp.Negate, Operand: FloatLiteral nfl }) return -nfl.Value;
+        if (e is IdentifierExpr id && ResolveConstOrGlobal(id.Name) is { Kind: SymbolKind.Constant, ConstFloatValue: double cf })
+            return cf;
+        if (_globalSymbols == null) return null;
+        var ce = NewConstEvaluator();
+        if (!ce.InvolvesFloat(e)) return ce.Evaluate(e) is int iv ? (short)iv : null;
+        return ce.FoldFloatArithmetic(e) is { Kind: not ConstEvaluator.FloatFoldKind.Runtime } f ? f.FloatValue : null;
     }
 
     public IrOperand VisitArrayDecl(ArrayDecl node)

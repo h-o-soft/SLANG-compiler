@@ -193,8 +193,8 @@ public class SemanticAnalyzer : IAstVisitor<object?>
         {
             node.InitialValue.Accept(this);
 
-            // グローバル/静的変数の初期値は定数でなければならない
-            if (sym.IsGlobal && node.InitialValue is not IntegerLiteral)
+            // グローバル/静的変数の初期値は定数でなければならない (FLOAT の変数の初期値は IrGenerator が形を見る)
+            if (sym.IsGlobal && node.InitialValue is not IntegerLiteral && node.Size != DataSize.Float)
             {
                 var constVal = _constEval.Evaluate(node.InitialValue);
                 if (!constVal.HasValue)

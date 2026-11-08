@@ -243,13 +243,22 @@ public class VarDeclTests
     }
 
     [Theory]
-    // 大域の FLOAT の変数の初期値は、起動時に書けないのでエラー (前は黙って初期化しなかった)
-    [InlineData("VAR FLOAT X = 1.5;")]
-    [InlineData("VAR FLOAT X:$C000 = 1.5;")]
-    [InlineData("VAR FLOAT X:$C000 = 7;")]
+    // 大域の FLOAT の変数の初期値は、定数の狭い形だけ起動時に書く (FloatTypeTests)。ほかはエラー (前は黙って初期化しなかった)
+    [InlineData("VAR FLOAT G; VAR FLOAT X = G;")]
+    [InlineData("VAR FLOAT X:$C000 = 1.5 + 2.5;")]
     public void GlobalFloatInitializer_Errors(string decl)
     {
         var (_, diag) = Compile($"{decl} MAIN() BEGIN X = X + 1.0; END;");
-        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("cannot have an initializer here yet"));
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("must be a FLOAT literal"));
+    }
+
+    [Theory]
+    [InlineData("VAR FLOAT X:$C000 = 1.5;", "$8000", "$3F")]
+    [InlineData("VAR FLOAT X:$C000 = 7;", "$C000", "$41")]
+    public void GlobalFloatInitializer_FixedAddress_WrittenAtStartup(string decl, string mantissa, string exponent)
+    {
+        var (asm, diag) = Compile($"{decl} MAIN() BEGIN X = X + 1.0; END;");
+        Assert.Empty(diag.Diagnostics);
+        Assert.Contains($"\tLD\tHL,{mantissa}\n\tLD\t(_V_X),HL\n\tLD\tA,{exponent}\n\tLD\t(_V_X+2),A", asm);
     }
 }

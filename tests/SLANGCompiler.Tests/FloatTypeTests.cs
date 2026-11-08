@@ -360,4 +360,37 @@ public class FloatTypeTests
     {
         Assert.Empty(Errors($"{decls} MAIN() BEGIN END;"));
     }
+
+    // ==== C4: 起動時の FLOAT の初期値 ====
+
+    [Theory]
+    [InlineData("VAR FLOAT H = 1.5;", "$8000", "$3F")]
+    [InlineData("VAR FLOAT H = -1.5;", "$8000", "$BF")]
+    [InlineData("VAR FLOAT H = 3;", "$8000", "$40")]
+    [InlineData("VAR FLOAT H = 40000;", "$8F00", "$CD")]           // 代入と同じく符号付き (-25536.0)
+    [InlineData("CONST PI = 3.14; VAR FLOAT H = PI;", "$91EC", "$40")]
+    [InlineData("VAR FLOAT H = 2.0 * 3;", "$8000", "$41")]          // 6.0
+    [InlineData("VAR FLOAT H = 2.0 - 3.0;", "$0000", "$BF")]        // -1.0
+    [InlineData("VAR FLOAT H = 20000.0 * 2.0;", "$3880", "$4E")]    // 40000.0
+    public void GlobalFloatInitializer_WrittenAtStartup(string decl, string mantissa, string exponent)
+    {
+        var asm = Asm($"{decl} MAIN() BEGIN END;");
+        Assert.Contains(Lines($"LD\tHL,{mantissa}", "LD\t(_V_H),HL", $"LD\tA,{exponent}", "LD\t(_V_H+2),A"), asm);
+    }
+
+    [Theory]
+    [InlineData("FLOAT G; VAR FLOAT H = G;")]
+    [InlineData("VAR FLOAT H = 1.5 + 2.5;")]
+    [InlineData("VAR FLOAT H = 1.0 / 3.0;")]
+    public void GlobalFloatInitializer_OtherForms_AreErrors(string decl)
+    {
+        Assert.Contains(Errors($"{decl} MAIN() BEGIN END;"), m => m.Contains("must be a FLOAT literal"));
+    }
+
+    [Fact]
+    public void IntegerGlobalInitializer_AfterFloatInitializer_IsNotError()
+    {
+        var asm = Asm("VAR FLOAT H = 1.5; VAR X = 3; MAIN() BEGIN END;");
+        Assert.Contains(Lines("LD\tHL,$0003", "LD\t(_V_X),HL"), asm);
+    }
 }
