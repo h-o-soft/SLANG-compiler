@@ -192,6 +192,9 @@ public class ExpressionValueTests
     {
         Assert.Equal(MainBody("F = F + 1;"), MainBody("F += 1;"));
         Assert.Equal(MainBody("F = F - 1;"), MainBody("F--;"));
+        // FLOAT の定数の四則演算も、代入の文と同じく正しい値で畳み込む (1.0/2.0 を整数の 0 にしない)
+        Assert.Equal(MainBody("F = F * (1.0/2.0);"), MainBody("F *= (1.0/2.0);"));
+        Assert.Equal(MainBody("F = F + 3.0/4.0;"), MainBody("F += 3.0/4.0;"));
     }
 
     [Fact]

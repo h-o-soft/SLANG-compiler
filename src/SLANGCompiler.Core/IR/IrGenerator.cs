@@ -2020,9 +2020,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 CompoundAssignOp.MulAssign => BinaryOp.Mul,
                 _ => BinaryOp.Div,
             };
+            var floatValue = new BinaryExpr(binOp, node.Target, node.Value, node.Span);
+            MarkFloatFold(floatValue, true);   // 代入の文と同じく、FLOAT の定数の四則演算を正しい値で畳み込む
             _valueDiscarded = discarded;
-            return VisitAssignExpr(new AssignExpr(node.Target,
-                new BinaryExpr(binOp, node.Target, node.Value, node.Span), node.Span));
+            return VisitAssignExpr(new AssignExpr(node.Target, floatValue, node.Span));
         }
 
         var target = node.Target.Accept(this);
