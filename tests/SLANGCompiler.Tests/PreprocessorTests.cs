@@ -264,4 +264,31 @@ public class PreprocessorTests : IDisposable
         var (_, diag) = Run("#IF 1\nCONST K = 1\n#END\n+ 1;" + IfMark("K == 1"));
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("#IF uses CONST 'K', whose value is not known here"));
     }
+
+    [Fact]
+    public void SliceEndLiteral_FollowedByDeclaration_IsFinal()
+    {
+        // ; を省いて、#END の後ろに次の宣言 (VAR) が来る: K は 1 のまま (エラーにしない)
+        var (names, diag) = Run("#IF 1\nCONST K = 1\n#END\nVAR X;" + IfMark("K == 1"));
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        Assert.Contains("YES_K", names);
+    }
+
+    [Fact]
+    public void LiteralInterruptedByDirective_CompletedInside_IsFinal()
+    {
+        // CONST K = 1 の後ろが #IF で、その中の ; で終わる: K は仮の値でなくなり、別名の FLAG も 1
+        var (names, diag) = Run("CONST K = 1\n#IF 1\n;\n#END\nCONST FLAG = K;" + IfMark("FLAG == 1"));
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        Assert.Contains("YES_FLAG", names);
+    }
+
+    [Fact]
+    public void ExpressionWithoutSemicolon_SettledByNextDeclaration()
+    {
+        // ; を省いた式の CONST の後ろに次の宣言: そこで右辺が終わっていたとして値を決める
+        var (names, diag) = Run("#IF 1\nCONST K = 1 + 1\n#END\nVAR X;" + IfMark("K == 2"));
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        Assert.Contains("YES_K", names);
+    }
 }

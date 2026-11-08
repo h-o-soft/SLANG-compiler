@@ -47,10 +47,8 @@ public class Preprocessor
     private readonly HashSet<string> _unknownConsts = new(StringComparer.OrdinalIgnoreCase);
     // 右辺の終わりが分からないが、整数のリテラル 1 つなので値を覚えた CONST (これを使う CONST は値が分からない)
     private readonly HashSet<string> _provisionalConsts = new(StringComparer.OrdinalIgnoreCase);
-    // 字句の列の終わりで切れた、整数のリテラル 1 つの CONST。外の列の次の字句 (指示でないもの) で決める:
-    // ; か , なら宣言はそこで終わっていた (仮の値でなくなる)。ほかなら式が続いていた (値が分からない)
-    private readonly List<string> _sliceEndConsts = new();
-    private List<Token>? _sliceEndList;   // _sliceEndConsts を覚えた字句の列 (その列の残りの字句では決めない)
+    // 右辺の終わりが分からなかった CONST。宣言の後で選ばれた字句で決める (SettlePendingConsts)
+    private readonly List<PendingConst> _pendingConsts = new();
     // CONST の右辺の式が使った名前 (たどった先も)
     private readonly Dictionary<string, HashSet<string>> _constDeps = new(StringComparer.OrdinalIgnoreCase);
 
@@ -76,9 +74,8 @@ public class Preprocessor
                 return;
             }
             var token = tokens[i];
-            if (_sliceEndConsts.Count > 0 && !ReferenceEquals(tokens, _sliceEndList)
-                && !IsDirective(token.Kind) && token.Kind != TokenKind.EOF)
-                SettleSliceEndConsts(token.Kind is TokenKind.Semicolon or TokenKind.Comma);
+            if (_pendingConsts.Count > 0 && !IsDirective(token.Kind))
+                SettlePendingConsts(tokens, i, token.Kind);
 
             switch (token.Kind)
             {
@@ -176,13 +173,20 @@ public class Preprocessor
                 var expr = Parser.Parser.ParseExpressionAt(tokens, start, out end);
                 bool literal = expr != null && end == start + 1 && tokens[start].Kind == TokenKind.IntegerLiteral;
                 // 式の後ろが #IF・#INCLUDE などか、字句の列の終わり (#IF の中・取り込んだファイルの終わり。主のファイルの
-                // 終わりには EOF がある) なら、右辺がそこで終わるとは限らない (続きが #IF の外や取り込んだ側にあるかもしれない)。
-                // 整数のリテラル 1 つはいままでどおり覚え (; を省いて #IF が続く形)、式は値が分からないとして止める
-                // (#IF で使ったらエラー)
-                bool mayContinue = end >= tokens.Count || IsDirective(tokens[end].Kind);
-                if (mayContinue && !literal)
+                // 終わりには EOF がある) なら、右辺がそこで終わるとは限らない (続きが #IF の中・外や取り込んだ側にあるかも
+                // しれない)。次に選ばれた字句 (指示でないもの) で決める (SettlePendingConsts)。それまで、整数のリテラル 1 つは
+                // #IF で直接使うといままでどおりの値 (仮の値。これを使う CONST の値は分からない)、式は値が分からない
+                bool mayContinue = expr != null && (end >= tokens.Count || IsDirective(tokens[end].Kind));
+                if (mayContinue)
                 {
-                    _unknownConsts.Add(name);
+                    if (literal)
+                    {
+                        SetConst(name, Convert.ToInt32(tokens[start].Value));
+                        _provisionalConsts.Add(name);
+                    }
+                    else
+                        _unknownConsts.Add(name);
+                    _pendingConsts.Add(new PendingConst(name, expr!, literal, tokens, end));
                     break;
                 }
                 if (expr == null)
@@ -195,42 +199,10 @@ public class Preprocessor
                         end++;
                     }
                 }
-                else if (end == start + 1 && tokens[start].Kind == TokenKind.IntegerLiteral)
-                {
+                else if (literal)
                     SetConst(name, Convert.ToInt32(tokens[start].Value));
-                    // 右辺の終わりが分からない整数のリテラル 1 つは、#IF で直接使うときはいままでどおりの値。
-                    // 続きがあるかもしれないので、これを使う CONST の値は分からないとする (誤った値を別名に広げない)
-                    if (mayContinue)
-                    {
-                        _provisionalConsts.Add(name);
-                        // 字句の列 (#IF の中・取り込んだファイル) の終わりで切れたもの: 外の列の次の字句で決める
-                        if (end >= tokens.Count)
-                        {
-                            _sliceEndConsts.Add(name);
-                            _sliceEndList = tokens;
-                        }
-                    }
-                }
                 else
-                {
-                    // 使った名前 (とその名前が使った名前) を覚える。#IF で name を使ったら、それらも使ったことにする
-                    // (関数の中の CONST を、大域の CONST を通して #IF に使うのを、意味解析が見つけられるように)
-                    var deps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    Semantics.SemanticAnalyzer.ForEachName(expr, (n, _) =>
-                    {
-                        deps.Add(n);
-                        if (_constDeps.TryGetValue(n, out var nd)) deps.UnionWith(nd);
-                    });
-                    _constDeps[name] = deps;
-                    if (deps.Any(d => _unknownConsts.Contains(d) || _provisionalConsts.Contains(d)))
-                        _unknownConsts.Add(name);   // 値の分からない CONST を使う CONST も、値が分からない
-                    else
-                    {
-                        var eval = new Semantics.ConstEvaluator(null, _constSymbols);
-                        if (!eval.InvolvesFloat(expr) && eval.Evaluate(expr) is int value)
-                            SetConst(name, value);
-                    }
-                }
+                    RecordConst(name, expr);
             }
 
             // カンマで続く場合
@@ -242,18 +214,69 @@ public class Preprocessor
     }
 
 
-    private void SettleSliceEndConsts(bool completed)
+    /// <summary>
+    /// 式の右辺の CONST の値を決める。使った名前 (とその名前が使った名前) を覚え、#IF で name を使ったら、それらも
+    /// 使ったことにする (関数の中の CONST を、大域の CONST を通して #IF に使うのを、意味解析が見つけられるように)
+    /// </summary>
+    private void RecordConst(string name, Parser.Ast.Expression expr)
     {
-        foreach (var n in _sliceEndConsts)
+        var deps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Semantics.SemanticAnalyzer.ForEachName(expr, (n, _) =>
         {
-            _provisionalConsts.Remove(n);
-            if (completed) continue;
-            _constValues.Remove(n);
-            _constSymbols.Remove(n);
-            _unknownConsts.Add(n);
+            deps.Add(n);
+            if (_constDeps.TryGetValue(n, out var nd)) deps.UnionWith(nd);
+        });
+        _constDeps[name] = deps;
+        if (deps.Any(d => _unknownConsts.Contains(d) || _provisionalConsts.Contains(d)))
+        {
+            _unknownConsts.Add(name);   // 値の分からない CONST・仮の値の CONST を使う CONST も、値が分からない
+            return;
         }
-        _sliceEndConsts.Clear();
+        var eval = new Semantics.ConstEvaluator(null, _constSymbols);
+        if (!eval.InvolvesFloat(expr) && eval.Evaluate(expr) is int value)
+            SetConst(name, value);
     }
+
+    /// <summary>右辺の終わりが分からなかった CONST (PendingConst)。List・End は、宣言のあった字句の列と、右辺の次の位置</summary>
+    private sealed record PendingConst(string Name, Parser.Ast.Expression Expr, bool Literal, List<Token> List, int End);
+
+    /// <summary>
+    /// 宣言の後で選ばれた字句 (指示でないもの) が来たら、右辺の終わりが分からなかった CONST を決める。その字句が式を続ける
+    /// もの (二項演算子・? ・添字の [ など) なら、右辺は続いていた (値が分からない)。ほか (; ・, ・次の宣言・EOF など) なら、
+    /// 右辺はそこで終わっていた (リテラルは仮でなくなり、式はここで値を決める)
+    /// </summary>
+    private void SettlePendingConsts(List<Token> tokens, int index, TokenKind kind)
+    {
+        bool continues = ContinuesExpression(kind);
+        for (int k = 0; k < _pendingConsts.Count; k++)
+        {
+            var p = _pendingConsts[k];
+            if (ReferenceEquals(p.List, tokens) && index < p.End) continue;   // 宣言そのものの字句
+            _pendingConsts.RemoveAt(k--);
+            if (continues)
+            {
+                _provisionalConsts.Remove(p.Name);
+                _constValues.Remove(p.Name);
+                _constSymbols.Remove(p.Name);
+                _unknownConsts.Add(p.Name);
+            }
+            else if (p.Literal)
+                _provisionalConsts.Remove(p.Name);
+            else
+            {
+                _unknownConsts.Remove(p.Name);
+                RecordConst(p.Name, p.Expr);
+            }
+        }
+    }
+
+    private static bool ContinuesExpression(TokenKind k) => k is TokenKind.Plus or TokenKind.Minus or TokenKind.Star
+        or TokenKind.Slash or TokenKind.Percent or TokenKind.Mod or TokenKind.And or TokenKind.Or or TokenKind.Xor
+        or TokenKind.Ampersand or TokenKind.Pipe or TokenKind.EqEq or TokenKind.NotEq or TokenKind.Lt or TokenKind.Gt
+        or TokenKind.Le or TokenKind.Ge or TokenKind.SignedLt or TokenKind.SignedGt or TokenKind.SignedLe or TokenKind.SignedGe
+        or TokenKind.SignedMul or TokenKind.SignedDiv or TokenKind.SignedMod or TokenKind.SignedShl or TokenKind.SignedShr
+        or TokenKind.Shl or TokenKind.Shr or TokenKind.LogAnd or TokenKind.LogOr or TokenKind.PlusPlus or TokenKind.MinusMinus
+        or TokenKind.Question or TokenKind.Colon or TokenKind.ArrayBracketOpen or TokenKind.LParen;
 
     private static bool IsDirective(TokenKind k)
         => k is TokenKind.PreprocIf or TokenKind.PreprocElse or TokenKind.PreprocEnd
