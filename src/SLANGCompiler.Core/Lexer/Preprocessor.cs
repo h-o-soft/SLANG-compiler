@@ -40,6 +40,8 @@ public class Preprocessor
 
     // #IF の CONST の値を、式で決めるための記号 (_constValues と同じ中身)
     private readonly Dictionary<string, Semantics.Symbol> _constSymbols = new(StringComparer.OrdinalIgnoreCase);
+    private const int MaxChains = 64;
+    private int _chainCount;
     // 読んでいる途中のファイル (#INCLUDE・#CHAIN の先祖。#CHAIN の輪を見る)。名前の大文字小文字は、ファイルの仕組みに合わせる
     private readonly HashSet<string> _activeFiles = new(
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
@@ -247,6 +249,12 @@ public class Preprocessor
         var eval = new Semantics.ConstEvaluator(null, _constSymbols);
         if (!eval.InvolvesFloat(expr) && eval.Evaluate(expr) is int value)
             SetConst(name, value);
+        else
+        {
+            // 値の出ない宣言し直し (ラベル・FLOAT): 前の値は使わない (#IF では、知らない名前と同じく 0)
+            _constValues.Remove(name);
+            _constSymbols.Remove(name);
+        }
     }
 
     /// <summary>右辺の終わりが分からなかった CONST (PendingConst)。List・End は、宣言のあった字句の列と、右辺の次の位置</summary>
@@ -376,6 +384,13 @@ public class Preprocessor
         if (!_activeFiles.Add(fullPath))
         {
             _diagnostics.Error($"#CHAIN loop: {fileName} is already being read", token.Span);
+            return;
+        }
+        if (++_chainCount > MaxChains)
+        {
+            // 続きへ移るたびに入れ子で読むので、長すぎる #CHAIN の列は止める (スタックを使い切らない)
+            _activeFiles.Remove(fullPath);
+            _diagnostics.Error($"Too many #CHAIN transitions (max {MaxChains})", token.Span);
             return;
         }
 

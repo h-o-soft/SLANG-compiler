@@ -308,4 +308,21 @@ public class PreprocessorTests : IDisposable
         Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
         Assert.Contains("YES_K", names);
     }
+
+    [Fact]
+    public void RedeclaredWithAddress_ForgetsOldValue()
+    {
+        // 値の出ない形 (ラベル) で宣言し直したら、前の値 (1) は #IF で使わない (0)
+        var (names, _) = Run("VAR TARGET; CONST FLAG = 1; CONST FLAG = 0 + TARGET;" + IfMark("FLAG == 0"));
+        Assert.Contains("YES_FLAG", names);
+    }
+
+    [Fact]
+    public void Chain_TooLong_Errors()
+    {
+        for (int k = 0; k < 70; k++) Write($"c{k}.sl", $"C{k}\n#CHAIN c{k + 1}.sl\n");
+        Write("c70.sl", "C70");
+        var (_, diag) = Run("#CHAIN c0.sl\n");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("Too many #CHAIN transitions"));
+    }
 }
