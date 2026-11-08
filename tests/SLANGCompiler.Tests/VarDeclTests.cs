@@ -138,12 +138,14 @@ public class VarDeclTests
     }
 
     [Theory]
-    // 間接変数の初期値は 2 バイトの番地。小数部のない FLOAT もその値 (仮数を番地にしない)
-    [InlineData("VAR P[] = 1024.0; MAIN() BEGIN P[0] = 1; END;", @"LD\tHL,\$0400\s*\n\s*LD\t\(_V_P\),HL")]
-    [InlineData("FN() BEGIN VAR L[] = 1024.0; L[0] = 1; END; MAIN() BEGIN FN(); END;", @"LD\t\(IY\+\$\w\w\),\$00\s*\n\s*LD\t\(IY\+\$\w\w\),\$04")]
-    public void PointerInitializer_FloatConstantIsAddress(string source, string pattern)
+    // 間接変数の初期値は番地 (整数)。FLOAT の式はエラー (途中の小数を整数で畳み込んで、黙って違う番地にしない)
+    [InlineData("VAR P[] = 1024.0; MAIN() BEGIN P[0] = 1; END;")]
+    [InlineData("VAR P[] = (1.0/2.0)*4096.0; MAIN() BEGIN P[0] = 1; END;")]
+    [InlineData("FN() BEGIN VAR L[] = (1.0/2.0)*4096.0; L[0] = 1; END; MAIN() BEGIN FN(); END;")]
+    public void PointerInitializer_Float_Errors(string source)
     {
-        Assert.Matches(pattern, CompileOk(source));
+        var (_, diag) = Compile(source);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("must be an integer expression, not FLOAT"));
     }
 
     // ==== 実装レビューで見つかった形 ====

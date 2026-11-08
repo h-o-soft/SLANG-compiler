@@ -790,11 +790,19 @@ public class IrGenerator : IAstVisitor<IrOperand>
     }
 
     /// <summary>
-    /// 間接変数の初期値 (番地なので 2 バイトの整数)。その場で決まる値 (1024.0 のような小数部のない FLOAT も) は
-    /// 整数の定数にし、そうでなければ値を作って 2 バイトの整数に変える (FLOAT の仮数をそのまま番地にしない)
+    /// 間接変数の初期値 (番地なので 2 バイトの整数)。その場で決まる値は整数の定数にし、そうでなければ値を作る
     /// </summary>
     private IrOperand PointerInitialValue(Expression init)
     {
+        // 番地は整数。FLOAT の式は受け付けない (FLOAT の定数の途中の値を整数で畳み込んでしまうので、黙って違う番地になる)
+        if (MightBeFloat(init) || (_globalSymbols != null && NewConstEvaluator().InvolvesFloat(init)))
+        {
+            _diagnostics.Error("The initializer of an indirect variable (an address) must be an integer expression, not FLOAT",
+                init.Span);
+            var zero = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.LoadConst, zero, IrOperand.Imm(0));
+            return zero;
+        }
         // 局所変数・引数・静的変数は、同じ名前の大域の CONST を隠す (その場で決まる値ではない)
         bool usesVariable = false;
         SemanticAnalyzer.ForEachName(init, (n, _) =>

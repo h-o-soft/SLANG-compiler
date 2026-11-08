@@ -310,6 +310,12 @@ public class CEmitter : IAstVisitor<EmitResult>
         // ARRAY x:address → static T *A_x = (T*)addr;
         if (node.Address != null)
         {
+            // VAR P[]:addr = 値 (固定アドレスに置いたポインタの初期値) は、置き場も初期値も表せないので未サポート
+            if (node.InitialValue != null)
+            {
+                Error($"VAR `{node.Name}[]:address = ...` (固定アドレスの間接変数の初期値) は oscar_c backend では未サポート", node.Span);
+                return new("", null);
+            }
             var addrText = Expr(node.Address);
             var line = _scope.ScopeDepth == 0
                 ? Line($"static {cType} *{ident} = ({cType} *){addrText};")

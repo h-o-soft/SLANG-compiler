@@ -958,6 +958,14 @@ public class ArrayInitOscarCTests
             d => d.Message.Contains("Expected", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void PointerWithFixedAddressAndInitializer_Rejected()
+    {
+        // VAR P[]:addr = 値 は、oscar_c では置き場も初期値も表せない (黙って初期値を捨てない)
+        TranspileWithEnv("VAR BYTE P[]:$3000 = $C000;\nMAIN() { P[0] = 1; }\n", MakeC64Env(), out var diag);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("固定アドレスの間接変数の初期値"));
+    }
+
     [Theory]
     // 固定アドレスの VAR は oscar_c では未サポート。初期値があっても同じくエラー (初期値を先に見て、ふつうの変数にしない)
     [InlineData("VAR BYTE X:$3000;")]
