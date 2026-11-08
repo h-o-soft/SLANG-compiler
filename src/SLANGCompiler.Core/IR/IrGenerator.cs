@@ -500,7 +500,16 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 _emitToGlobalData = true;
                 try
                 {
-                    var val = node.InitialValue.Accept(this);
+                    // 起動時の代入は LoadConst と StoreVar の組だけを書く (EmitGlobalInit)。その場で決まる整数の式
+                    // (?: など) は値にしてから積む (式のまま積むと、黙って書かれなかった)
+                    IrOperand val;
+                    if (ds <= 2 && !ContainsFloat(node.InitialValue) && NewConstEvaluator().Evaluate(node.InitialValue) is int cv)
+                    {
+                        val = IrOperand.Temp(AllocTemp());
+                        Emit(IrOp.LoadConst, val, IrOperand.Imm(cv & (ds == 1 ? 0xFF : 0xFFFF)));
+                    }
+                    else
+                        val = node.InitialValue.Accept(this);
                     Emit(IrOp.StoreVar, IrOperand.Sym(label), val, dataSize: ds);
                 }
                 finally

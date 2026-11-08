@@ -217,4 +217,14 @@ public class VarDeclTests
         var (_, diag) = Compile(source);
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("must be an integer constant"));
     }
+
+    [Theory]
+    // 大域・固定番地の初期値の ?: (その場で決まる整数の式) も、起動時に書く (前は黙って書かなかった)
+    [InlineData("VAR X = (1 ? 7 : 8);")]
+    [InlineData("VAR X:$C000 = (1 ? 7 : 8);")]
+    public void GlobalInitializer_ConstantConditional_IsWritten(string decl)
+    {
+        var asm = CompileOk($"{decl} MAIN() BEGIN X = X + 1; END;");
+        Assert.Matches(@"LD\tHL,\$0007\s*\n\s*LD\t\(_V_X\),HL", asm);
+    }
 }
