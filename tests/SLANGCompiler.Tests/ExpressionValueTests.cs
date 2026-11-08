@@ -265,6 +265,29 @@ public class ExpressionValueTests
         Assert.Matches(Seq(@"INC\tHL", @"CALL\ti16tof24", @"JP\t_L\d+"), fbody);
     }
 
+    [Theory]
+    [InlineData("T[I++]++;")]
+    [InlineData("T[I++] += 1;")]
+    [InlineData("T[G(1)] += 1;")]
+    [InlineData("MEM[I++]++;")]
+    [InlineData("C = --T[J = 1];")]
+    public void TargetEvaluatedTwice_WithSideEffect_Errors(string stmt)
+    {
+        var (_, diag) = Compile($"{Decls} MAIN() BEGIN {stmt} END;");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("evaluated twice"));
+    }
+
+    [Theory]
+    [InlineData("T[I]++;")]
+    [InlineData("T[I + 1] += 2;")]
+    [InlineData("T[I++] = 5;")]
+    [InlineData("T[0] += (T[1] = 2);")]     // ほかの要素に書いても、代入先 T[0] は変わらない
+    public void TargetWithoutSideEffect_Ok(string stmt)
+    {
+        var (_, diag) = Compile($"{Decls} MAIN() BEGIN {stmt} END;");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+    }
+
     // ==== 設計レビュー 2 周目で見つかった形 ====
 
     [Fact]
@@ -407,5 +430,28 @@ public class ExpressionValueTests
         var (asm, diag) = Compile($"{Decls} ARRAY FLOAT FA2[1][1]; MAIN() BEGIN C = G(FLAG ? FA2[0] : FA2[1]); END;");
         Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
         Assert.DoesNotContain("i16tof24", asm!.Split("\nMAIN:")[1].Split("_MAIN_EXIT")[0]);
+    }
+
+    [Theory]
+    [InlineData("T[I] += (I = I + 1);")]
+    [InlineData("T[I] -= I++;")]
+    [InlineData("T[I] += CODE([I = I + 1]);")]   // CODE の中の代入も
+    [InlineData("T[T[0]] += (T[0] = 1);")]       // 添字が読む配列の要素に書く
+    [InlineData("T[I] += (MEMW[&I] = 1);")]      // メモリを通して添字の変数を変える
+    [InlineData("P[0] += (P = &W);")]            // 間接変数の値 (番地) を変える
+    [InlineData("T[I] += (J = 3);")]             // 添字が変数なら、右辺に代入を書かない (どの変数を変えるかは見ない)
+    [InlineData("T[PORT[I]]++;")]
+    public void TargetChangedByRightSideOrPort_Errors(string stmt)
+    {
+        var (_, diag) = Compile($"{Decls} MAIN() BEGIN {stmt} END;");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("evaluated twice"));
+    }
+
+    [Fact]
+    public void TargetNotChangedByRightSide_Ok()
+    {
+        // 右辺の関数の呼び出しは見ない (関数の中で変わるものは見ない)。代入先の添字が定数なら、右辺の代入もよい
+        var (_, diag) = Compile($"{Decls} MAIN() BEGIN T[I] += G(J); T[0] += (J = 3); END;");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
     }
 }
