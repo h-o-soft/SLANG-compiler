@@ -25,8 +25,21 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     private void EmitLocalInit(Action emit)
     {
-        if (_deferredLocalInits != null) _deferredLocalInits.Add(emit);
-        else emit();
+        if (_deferredLocalInits == null)
+        {
+            emit();
+            return;
+        }
+        // 後で出すときも、名前は宣言の所で見えていたものだけで引く (後ろで宣言する局所変数は隠す。
+        // VAR X = BASE; VAR BASE = 9; の BASE は、大域の BASE)。引数は初めから見えている (オフセットは決まった後のもの)
+        var visible = new HashSet<string>(_localVars!.Keys, _localVars.Comparer);
+        _deferredLocalInits.Add(() =>
+        {
+            var later = _localVars!.Where(kv => !visible.Contains(kv.Key)).ToList();
+            foreach (var kv in later) _localVars.Remove(kv.Key);
+            try { emit(); }
+            finally { foreach (var kv in later) _localVars[kv.Key] = kv.Value; }
+        });
     }
 
     // 次に訪ねる式の値を使わない (式の文・カンマ式の左など)。受け取る式 (TakesDiscard) だけが読んで消す

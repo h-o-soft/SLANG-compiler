@@ -187,4 +187,14 @@ public class VarDeclTests
         var (_, diag) = Compile("ARRAY T[3]; FN() BEGIN VAR P[] = (T = $C000); P[0] = 1; END; MAIN() BEGIN FN(); END;");
         Assert.True(diag.HasErrors);
     }
+
+    [Fact]
+    public void LocalInitializer_SeesNamesVisibleAtDeclaration()
+    {
+        // 後で出す局所の初期値も、宣言の所で見えていた名前で引く: X の初期値の BASE は大域の CONST (7)。
+        // 後ろで宣言する局所の BASE (9) ではない
+        var asm = CompileOk("CONST BASE = 7; VAR R; FN() BEGIN VAR X = BASE; VAR BASE = 9; R = X + BASE; END; MAIN() BEGIN FN(); END;");
+        var body = asm.Split("\nFN:")[1].Split("_FN_EXIT")[0];
+        Assert.Matches(@"LD\t\(IY\+\$\w\w\),\$07", body);
+    }
 }

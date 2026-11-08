@@ -257,11 +257,8 @@ public class CEmitter : IAstVisitor<EmitResult>
         }
 
         string init;
-        if (node.InitialValue != null)
-        {
-            init = " = " + CastTo(ExprFull(node.InitialValue), slangType);
-        }
-        else if (node.Address != null)
+        // 固定アドレスは、初期値があっても未サポート (初期値を先に見ると、ふつうの変数として出してしまう)
+        if (node.Address != null)
         {
             // VAR x:address → ポインタとして扱う (= MEM 直アクセス)。
             // ただし SLANG では VAR x:$3000 は固定アドレスに変数を置く意味だが、
@@ -271,6 +268,10 @@ public class CEmitter : IAstVisitor<EmitResult>
             // v1 では明示 error (= 利用例少なめ、SLANG ENV_TYPE で gate 想定)。
             Error($"VAR `{node.Name}:address` (固定アドレス変数) は oscar_c backend では未サポート (v1)。MEM[$addr] 経由でアクセスしてください", node.Span);
             return new("", null);
+        }
+        else if (node.InitialValue != null)
+        {
+            init = " = " + CastTo(ExprFull(node.InitialValue), slangType);
         }
         else
         {
