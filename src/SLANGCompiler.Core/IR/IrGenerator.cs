@@ -2882,7 +2882,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                     else
                         Emit(IrOp.DefWord, IrOperand.Imm(constVal.Value & 0xFFFF));
                 }
-                else if (cast.TargetSize == DataSize.Word)
+                else if (cast.TargetSize == DataSize.Word && !UsesVariableName(cast.Operand))
                 {
                     // 非定数WORD: ラベル式としてDWで埋め込みを試みる
                     var asmResult = LabelUtils.ExprToAsmString(cast.Operand, _globalSymbols, _diagnostics, _localConsts, IsShadowingVariable);
@@ -2899,7 +2899,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 }
                 else
                 {
-                    CodeValue(cast.Operand); // 非定数BYTE→実行時コード
+                    CodeValue(cast.Operand); // 非定数BYTE・変数を使う WORD→実行時コード
                 }
             }
             else if (v is IntegerLiteral ilit)
@@ -3482,10 +3482,14 @@ public class IrGenerator : IAstVisitor<IrOperand>
     }
     private void PopLoop() => _loopStack.Pop();
 
-    /// <summary>大域の名前を隠す変数 (引数・局所変数・関数内の静的変数・オーバーレイの中の変数) か</summary>
+    /// <summary>
+    /// 大域の名前を隠す変数 (引数・局所変数・関数内の静的変数・オーバーレイの中の変数) か。関数の中の CONST は、それより
+    /// 外のオーバーレイの変数を隠すので、変数ではない (引数・局所変数・静的変数とは同じ名前にできない)
+    /// </summary>
     private bool IsShadowingVariable(string name)
-        => _localVars?.ContainsKey(name) == true || _staticVarSizes?.ContainsKey(name) == true
-           || _currentOverlayLookup?.ContainsKey(name) == true;
+        => _localConsts?.ContainsKey(name) != true
+           && (_localVars?.ContainsKey(name) == true || _staticVarSizes?.ContainsKey(name) == true
+               || _currentOverlayLookup?.ContainsKey(name) == true);
 
     /// <summary>内側から level 番目のループ (CASE は数えない)。なければ null</summary>
     private LoopTarget? FindLoop(int level)

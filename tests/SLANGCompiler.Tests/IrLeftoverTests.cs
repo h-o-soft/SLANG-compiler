@@ -120,6 +120,26 @@ public class IrLeftoverTests
     }
 
     [Fact]
+    public void CodeWordCompoundItemWithParameter_IsRuntimeWithoutError()
+    {
+        // CODE(WORD, X * 2) の X が引数なら、実行時のコードにする (アセンブラの式にしようとしてエラーを残さない)
+        var asm = FuncAsm("CONST X = 5; VAR R; FX(X) BEGIN R = 0; CODE(WORD, X * 2); END; MAIN() BEGIN FX(1); END;", "FX");
+        Assert.Contains(Lines("LD\tL,(IY+$6E)", "LD\tH,(IY+$6F)", "ADD\tHL,HL"), asm);
+        Assert.DoesNotContain("$000A", asm);
+    }
+
+    [Fact]
+    public void LocalConstInOverlay_HidesOverlayVariable()
+    {
+        // 関数の中の CONST は、外のオーバーレイの変数を隠す (CONST の 7)
+        var (diag, module) = Generate("VAR R; MAIN() BEGIN R = FX(); END;\n#MODULE $8000\nVAR X;\nFX() CONST X = 7; BEGIN RETURN X; END;");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        var fx = module.Overlays.SelectMany(o => o.Functions).Single(f => f.Name == "FX").Instructions;
+        Assert.Contains(fx, i => i.Op == IrOp.LoadConst && i.Src1.ImmediateValue == 7);
+        Assert.DoesNotContain(fx, i => i.Op == IrOp.LoadVar);
+    }
+
+    [Fact]
     public void UnshadowedConst_StillFolded()
     {
         var asm = FuncAsm("CONST X = 5; VAR R; FX(Y) BEGIN R = X + 1; CODE(WORD, X); END; MAIN() BEGIN FX(1); END;", "FX");
