@@ -210,4 +210,35 @@ BEGIN
 END;");
         Assert.Matches(@"LD\tHL,\$0009", LineAfterLabel(body, JumpAfterMark(body, "X")));
     }
+
+    [Theory]
+    // 引数・局所変数は、同じ名前の大域の CONST を隠す (EXIT(N) の N は実行時の値なので定数ではない)
+    [InlineData("CONST N = 2; FN(N) BEGIN LOOP [ LOOP [ EXIT(N); ]; ]; END; MAIN() BEGIN FN(1); END;")]
+    [InlineData("CONST N = 2; FN() BEGIN VAR N; N = 1; LOOP [ LOOP [ EXIT(N); ]; ]; END; MAIN() BEGIN FN(); END;")]
+    public void ExitLevel_ShadowedByVariable_Errors(string source)
+    {
+        var (_, diag) = Compile(source);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("EXIT level must be a constant of 1 or more"));
+    }
+
+    [Fact]
+    public void ExitLevel_ForwardConstAlias()
+    {
+        // 後ろで決まる大域の CONST をたどる (CONST A = B; CONST B = 2;)
+        var body = MainBody(@"
+CONST A = B;
+CONST B = 2;
+VAR I, J, N;
+MAIN()
+BEGIN
+  FOR I = 0 TO 3 DO [
+    FOR J = 0 TO 3 DO [ #ASM
+; X
+#END
+      EXIT(A); ];
+  ];
+  N = 9;
+END;");
+        Assert.Matches(@"LD\tHL,\$0009", LineAfterLabel(body, JumpAfterMark(body, "X")));
+    }
 }
