@@ -387,11 +387,21 @@ public class FloatTypeTests
         Assert.Contains(Errors($"{decl} MAIN() BEGIN END;"), m => m.Contains("must be a FLOAT literal"));
     }
 
-    [Fact]
-    public void IntegerGlobalInitializer_AfterFloatInitializer_IsNotError()
+    [Theory]
+    [InlineData("VAR FLOAT H = 1.5; VAR X = 3;", "_V_X", "$0003")]
+    [InlineData("VAR FLOAT H = 1.5; VAR P[] = $C000;", "_V_P", "$C000")]   // 間接変数の初期値も (一時値の番号はどれも 0)
+    public void IntegerGlobalInitializer_AfterFloatInitializer_IsNotError(string decls, string label, string value)
     {
-        var asm = Asm("VAR FLOAT H = 1.5; VAR X = 3; MAIN() BEGIN END;");
-        Assert.Contains(Lines("LD\tHL,$0003", "LD\t(_V_X),HL"), asm);
+        var asm = Asm($"{decls} MAIN() BEGIN END;");
+        Assert.Contains(Lines($"LD\tHL,{value}", $"LD\t({label}),HL"), asm);
+    }
+
+    [Theory]
+    [InlineData("FX(X) VAR FLOAT H = X; BEGIN END;")]          // 引数 X が CONST X を隠す
+    [InlineData("FX(X) VAR FLOAT H = X * 2.0; BEGIN END;")]
+    public void StaticFloatInitializer_ShadowedConst_IsError(string func)
+    {
+        Assert.Contains(Errors($"CONST X = 1.5; {func} MAIN() BEGIN FX(7); END;"), m => m.Contains("must be a FLOAT literal"));
     }
 
     // ==== C5: 引数の大きさの上限 ====

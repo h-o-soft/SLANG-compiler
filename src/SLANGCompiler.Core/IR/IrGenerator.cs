@@ -282,7 +282,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
     }
 
-    private int AllocTemp() => _currentFunction?.AllocTemp() ?? 0;
+    private int AllocTemp()
+    {
+        if (_currentFunction != null) return _currentFunction.AllocTemp();
+        _tempDataSize.Remove(0);   // 関数の外の一時値は番号がいつも 0。前の値の FLOAT の記録を残さない
+        return 0;
+    }
     private string NewLabel() => $"_L{_labelCount++}";
 
     private void Emit(IrOp op, IrOperand dest = default, IrOperand src1 = default, IrOperand src2 = default, int dataSize = 2)
@@ -543,7 +548,6 @@ public class IrGenerator : IAstVisitor<IrOperand>
             if (node.InitialValue != null)
             {
                 _emitToGlobalData = true;
-                _tempDataSize.Clear();   // 関数の外の一時値は番号がいつも 0。前の初期値の FLOAT の記録を残さない
                 _stmtSpan = node.Span;
                 try
                 {
@@ -601,10 +605,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// <summary>
     /// 大域・静的の FLOAT の変数の初期値として通す形の値: FLOAT のリテラル (前に - が 1 つあってもよい)・FLOAT の CONST・
     /// FLOAT を含まない整数の定数の式 (代入と同じく符号付きで FLOAT にする)・FLOAT が関わる定数の四則演算で値が決まるもの。
-    /// ほかは null (エラー)
+    /// ほかは null (エラー。変数 (CONST を隠す引数・局所変数も) を使う式も)
     /// </summary>
     private double? GlobalFloatInitialValue(Expression e)
     {
+        if (UsesVariableName(e)) return null;
         if (e is FloatLiteral fl) return fl.Value;
         if (e is UnaryExpr { Op: UnaryOp.Negate, Operand: FloatLiteral nfl }) return -nfl.Value;
         if (e is IdentifierExpr id && ResolveConstOrGlobal(id.Name) is { Kind: SymbolKind.Constant, ConstFloatValue: double cf })
@@ -885,18 +890,24 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// </summary>
     private IrOperand PointerInitialValue(Expression init)
     {
-        bool usesVariable = false;
-        SemanticAnalyzer.ForEachName(init, (n, _) =>
-        {
-            if (_localVars?.ContainsKey(n) == true || _staticVarSizes?.ContainsKey(n) == true) usesVariable = true;
-        });
-        int? v = _globalSymbols != null && !usesVariable && !ContainsFloat(init) ? NewConstEvaluator().Evaluate(init) : null;
+        int? v = _globalSymbols != null && !UsesVariableName(init) && !ContainsFloat(init) ? NewConstEvaluator().Evaluate(init) : null;
         if (v == null)
             _diagnostics.Error("The initializer of an indirect variable must be an integer constant "
                 + "(a literal, a CONST, or an expression of them); FLOAT, variables and labels are not allowed", init.Span);
         var t = IrOperand.Temp(AllocTemp());
         Emit(IrOp.LoadConst, t, IrOperand.Imm((v ?? 0) & 0xFFFF));
         return t;
+    }
+
+    /// <summary>式に変数 (局所変数・引数・静的変数) の名前があるか (同じ名前の CONST を隠すので、定数として読まない)</summary>
+    private bool UsesVariableName(Expression e)
+    {
+        bool uses = false;
+        SemanticAnalyzer.ForEachName(e, (n, _) =>
+        {
+            if (_localVars?.ContainsKey(n) == true || _staticVarSizes?.ContainsKey(n) == true) uses = true;
+        });
+        return uses;
     }
 
     /// <summary>式の中の CONST の名前の式 (後ろで決まる・ラベルを含む CONST の、まだ値でない式) に FLOAT があるか (たどる)</summary>
@@ -1232,7 +1243,6 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _currentReturnDataSize = prevReturnDs;
         _localConsts = prevLocalConsts;
         _currentFuncInfo = prevFuncInfo;
-        _tempDataSize.Clear();   // 関数の外の一時値は番号がいつも 0 なので、関数の中の FLOAT の記録を残さない
         return IrOperand.None;
     }
 
