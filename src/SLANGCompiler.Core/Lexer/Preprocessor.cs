@@ -47,10 +47,6 @@ public class Preprocessor
         OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     // 右辺の終わりが分からず (続きが #IF の外・取り込んだ側にあるかもしれない)、値の分からない CONST。#IF で使ったらエラー
     private readonly HashSet<string> _unknownConsts = new(StringComparer.OrdinalIgnoreCase);
-    // 右辺の終わりが分からないが、整数のリテラル 1 つなので値を覚えた CONST (これを使う CONST は値が分からない)
-    private readonly HashSet<string> _provisionalConsts = new(StringComparer.OrdinalIgnoreCase);
-    // 右辺の終わりが分からなかった CONST。宣言の後で選ばれた字句で決める (SettlePendingConsts)
-    private readonly List<PendingConst> _pendingConsts = new();
     // CONST の右辺の式が使った名前 (たどった先も)
     private readonly Dictionary<string, HashSet<string>> _constDeps = new(StringComparer.OrdinalIgnoreCase);
 
@@ -76,8 +72,6 @@ public class Preprocessor
                 return;
             }
             var token = tokens[i];
-            if (_pendingConsts.Count > 0 && !IsDirective(token.Kind))
-                SettlePendingConsts(tokens, i, token.Kind);
 
             switch (token.Kind)
             {
@@ -139,7 +133,6 @@ public class Preprocessor
     {
         // 値が決まった (宣言し直したものも): 前の「値が分からない」「仮の値」は消す
         _unknownConsts.Remove(name);
-        _provisionalConsts.Remove(name);
         _constValues[name] = value;
         _constSymbols[name] = new Semantics.Symbol(name, Semantics.SymbolKind.Constant, Semantics.SlangType.Word) { ConstValue = value };
     }
@@ -177,21 +170,12 @@ public class Preprocessor
             {
                 var expr = Parser.Parser.ParseExpressionAt(tokens, start, out end);
                 bool literal = expr != null && end == start + 1 && tokens[start].Kind == TokenKind.IntegerLiteral;
-                // 式の後ろが #IF・#INCLUDE などか、字句の列の終わり (#IF の中・取り込んだファイルの終わり。主のファイルの
-                // 終わりには EOF がある) なら、右辺がそこで終わるとは限らない (続きが #IF の中・外や取り込んだ側にあるかも
-                // しれない)。次に選ばれた字句 (指示でないもの) で決める (SettlePendingConsts)。それまで、整数のリテラル 1 つは
-                // #IF で直接使うといままでどおりの値 (仮の値。これを使う CONST の値は分からない)、式は値が分からない
-                bool mayContinue = expr != null && (end >= tokens.Count || IsDirective(tokens[end].Kind));
-                if (mayContinue)
+                // #IF に使う値は、右辺が同じ字句の列の , か ; (主のファイルの終わり) で終わる形だけ決める (通す形を狭くする)。
+                // 式の後ろが #IF・#INCLUDE などか、字句の列の終わり (#IF の中・取り込んだファイルの終わり) なら、
+                // 続きがあるかもしれないので値は分からないとする (#IF で使ったらエラー)
+                if (expr != null && (end >= tokens.Count || !(tokens[end].Kind is TokenKind.Comma or TokenKind.Semicolon or TokenKind.EOF)))
                 {
-                    if (literal)
-                    {
-                        SetConst(name, Convert.ToInt32(tokens[start].Value));
-                        _provisionalConsts.Add(name);
-                    }
-                    else
-                        _unknownConsts.Add(name);
-                    _pendingConsts.Add(new PendingConst(name, expr!, literal, tokens, end));
+                    _unknownConsts.Add(name);
                     break;
                 }
                 if (expr == null)
@@ -241,9 +225,9 @@ public class Preprocessor
             if (_constDeps.TryGetValue(n, out var nd)) deps.UnionWith(nd);
         });
         _constDeps[name] = deps;
-        if (deps.Any(d => _unknownConsts.Contains(d) || _provisionalConsts.Contains(d)))
+        if (deps.Any(_unknownConsts.Contains))
         {
-            _unknownConsts.Add(name);   // 値の分からない CONST・仮の値の CONST を使う CONST も、値が分からない
+            _unknownConsts.Add(name);   // 値の分からない CONST を使う CONST も、値が分からない
             return;
         }
         var eval = new Semantics.ConstEvaluator(null, _constSymbols);
@@ -251,52 +235,12 @@ public class Preprocessor
             SetConst(name, value);
         else
         {
-            // 値の出ない宣言し直し (ラベル・FLOAT): 前の値は使わない (#IF では、知らない名前と同じく 0)
+            // 値の出ない宣言 (ラベル・FLOAT): 前の値・前の「分からない」は使わない (#IF では、知らない名前と同じく 0)
             _constValues.Remove(name);
             _constSymbols.Remove(name);
+            _unknownConsts.Remove(name);
         }
     }
-
-    /// <summary>右辺の終わりが分からなかった CONST (PendingConst)。List・End は、宣言のあった字句の列と、右辺の次の位置</summary>
-    private sealed record PendingConst(string Name, Parser.Ast.Expression Expr, bool Literal, List<Token> List, int End);
-
-    /// <summary>
-    /// 宣言の後で選ばれた字句 (指示でないもの) が来たら、右辺の終わりが分からなかった CONST を決める。その字句が式を続ける
-    /// もの (二項演算子・? ・添字の [ など) なら、右辺は続いていた (値が分からない)。ほか (; ・, ・次の宣言・EOF など) なら、
-    /// 右辺はそこで終わっていた (リテラルは仮でなくなり、式はここで値を決める)
-    /// </summary>
-    private void SettlePendingConsts(List<Token> tokens, int index, TokenKind kind)
-    {
-        bool continues = ContinuesExpression(kind);
-        for (int k = 0; k < _pendingConsts.Count; k++)
-        {
-            var p = _pendingConsts[k];
-            if (ReferenceEquals(p.List, tokens) && index < p.End) continue;   // 宣言そのものの字句
-            _pendingConsts.RemoveAt(k--);
-            if (continues)
-            {
-                _provisionalConsts.Remove(p.Name);
-                _constValues.Remove(p.Name);
-                _constSymbols.Remove(p.Name);
-                _unknownConsts.Add(p.Name);
-            }
-            else if (p.Literal)
-                _provisionalConsts.Remove(p.Name);
-            else
-            {
-                _unknownConsts.Remove(p.Name);
-                RecordConst(p.Name, p.Expr);
-            }
-        }
-    }
-
-    private static bool ContinuesExpression(TokenKind k) => k is TokenKind.Plus or TokenKind.Minus or TokenKind.Star
-        or TokenKind.Slash or TokenKind.Percent or TokenKind.Mod or TokenKind.And or TokenKind.Or or TokenKind.Xor
-        or TokenKind.Ampersand or TokenKind.Pipe or TokenKind.EqEq or TokenKind.NotEq or TokenKind.Lt or TokenKind.Gt
-        or TokenKind.Le or TokenKind.Ge or TokenKind.SignedLt or TokenKind.SignedGt or TokenKind.SignedLe or TokenKind.SignedGe
-        or TokenKind.SignedMul or TokenKind.SignedDiv or TokenKind.SignedMod or TokenKind.SignedShl or TokenKind.SignedShr
-        or TokenKind.Shl or TokenKind.Shr or TokenKind.LogAnd or TokenKind.LogOr or TokenKind.PlusPlus or TokenKind.MinusMinus
-        or TokenKind.Question or TokenKind.Colon or TokenKind.ArrayBracketOpen or TokenKind.LParen;
 
     private static bool IsDirective(TokenKind k)
         => k is TokenKind.PreprocIf or TokenKind.PreprocElse or TokenKind.PreprocEnd

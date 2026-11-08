@@ -102,15 +102,6 @@ public class PreprocessorTests : IDisposable
     }
 
     [Fact]
-    public void ConstLiteralWithoutSemicolonBeforeIf_Recorded()
-    {
-        // ; を省いた整数のリテラル 1 つの後ろに #IF: いままでどおり値を覚える
-        var (names, diag) = Run("CONST K = 1\n#IF K\nYES_K\n#ELSE\nNO_K\n#END\n");
-        Assert.Contains("YES_K", names);
-        Assert.Empty(diag.Diagnostics);
-    }
-
-    [Fact]
     public void ConstStartingWithDirective_DoesNotPickNamesInsideIf()
     {
         // 右辺が #IF で始まるとき、#IF の中 (選ばれないかもしれない) の , の後ろの J を覚えない
@@ -249,47 +240,11 @@ public class PreprocessorTests : IDisposable
     }
 
     [Fact]
-    public void SliceEndLiteral_CompletedBySemicolon_IsFinal()
-    {
-        // #IF の中で切れた CONST K = 1 が、#END の後ろの ; で終わる: K も別名の FLAG も 1 (エラーにしない)
-        var (names, diag) = Run("#IF 1\nCONST K = 1\n#END\n;\nCONST FLAG = K;" + IfMark("FLAG == 1"));
-        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
-        Assert.Contains("YES_FLAG", names);
-    }
-
-    [Fact]
     public void SliceEndLiteral_ContinuedAfterEnd_IsUnknown()
     {
         // #IF の中で切れた CONST K = 1 の続き (+ 1) が #END の後ろにある: K の値は分からない (#IF で使うとエラー)
         var (_, diag) = Run("#IF 1\nCONST K = 1\n#END\n+ 1;" + IfMark("K == 1"));
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("#IF uses CONST 'K', whose value is not known here"));
-    }
-
-    [Fact]
-    public void SliceEndLiteral_FollowedByDeclaration_IsFinal()
-    {
-        // ; を省いて、#END の後ろに次の宣言 (VAR) が来る: K は 1 のまま (エラーにしない)
-        var (names, diag) = Run("#IF 1\nCONST K = 1\n#END\nVAR X;" + IfMark("K == 1"));
-        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
-        Assert.Contains("YES_K", names);
-    }
-
-    [Fact]
-    public void LiteralInterruptedByDirective_CompletedInside_IsFinal()
-    {
-        // CONST K = 1 の後ろが #IF で、その中の ; で終わる: K は仮の値でなくなり、別名の FLAG も 1
-        var (names, diag) = Run("CONST K = 1\n#IF 1\n;\n#END\nCONST FLAG = K;" + IfMark("FLAG == 1"));
-        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
-        Assert.Contains("YES_FLAG", names);
-    }
-
-    [Fact]
-    public void ExpressionWithoutSemicolon_SettledByNextDeclaration()
-    {
-        // ; を省いた式の CONST の後ろに次の宣言: そこで右辺が終わっていたとして値を決める
-        var (names, diag) = Run("#IF 1\nCONST K = 1 + 1\n#END\nVAR X;" + IfMark("K == 2"));
-        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
-        Assert.Contains("YES_K", names);
     }
 
     [Fact]
@@ -324,5 +279,27 @@ public class PreprocessorTests : IDisposable
         Write("c70.sl", "C70");
         var (_, diag) = Run("#CHAIN c0.sl\n");
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("Too many #CHAIN transitions"));
+    }
+
+    [Theory]
+    // #IF に使う値は、右辺が同じ字句の列の , か ; で終わる形だけ決める (通す形を狭くする)。; を省いて #IF が続く形・
+    // #IF の中で切れる形は、値が分からない (#IF で使うとエラー。黙って違う分岐を選ばない)
+    [InlineData("CONST K = 1\n#IF K\nYES_K\n#END\n", "K")]
+    [InlineData("#IF 1\nCONST K = 1\n#END\n;" + "\n#IF K == 1\n#END\n", "K")]
+    [InlineData("#IF 1\nCONST K = 1\n#END\nVAR X;" + "\n#IF K == 1\n#END\n", "K")]
+    [InlineData("CONST K = 1\n#IF 1\n;\n#END\nCONST FLAG = K;" + "\n#IF FLAG == 1\n#END\n", "FLAG")]
+    public void ConstNotEndedInSameList_UsedInIf_Errors(string source, string name)
+    {
+        var (_, diag) = Run(source);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains($"#IF uses CONST '{name}', whose value is not known here"));
+    }
+
+    [Fact]
+    public void UnknownThenRedeclaredWithAddress_IsZero()
+    {
+        // 値の分からなかった CONST を、値の出ない形 (ラベル) で宣言し直す: エラーにせず 0
+        var (names, diag) = Run("VAR TARGET; CONST FLAG =\n#IF 1\n1\n#END\n; CONST FLAG = 0 + TARGET;" + IfMark("FLAG == 0"));
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        Assert.Contains("YES_FLAG", names);
     }
 }
