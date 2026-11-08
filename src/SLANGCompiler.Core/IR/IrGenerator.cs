@@ -448,8 +448,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
             else if (node.Address != null)
             {
                 // その場で値が決まる式はその値、そうでなければアセンブラの式 (ラベル。ARRAY と同じ)。
-                // いままでは整数のリテラル以外を黙って __WORK__ に置いていた
-                if (NewConstEvaluator().Evaluate(node.Address) is int constAddr)
+                // いままでは整数のリテラル以外を黙って __WORK__ に置いていた。番地は整数なので FLOAT の式はエラー
+                // (途中の小数を整数で畳み込んで、黙って違う番地にしない)
+                if (ContainsFloat(node.Address))
+                    _diagnostics.Error($"Address of VAR '{node.Name}' must be an integer expression, not FLOAT", node.Address.Span);
+                else if (NewConstEvaluator().Evaluate(node.Address) is int constAddr)
                     fixedAddr = constAddr & 0xFFFF;
                 else if (CheckVarAddressNames(node))
                 {
@@ -795,7 +798,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     private IrOperand PointerInitialValue(Expression init)
     {
         // 番地は整数。FLOAT の式は受け付けない (FLOAT の定数の途中の値を整数で畳み込んでしまうので、黙って違う番地になる)
-        if (MightBeFloat(init) || (_globalSymbols != null && NewConstEvaluator().InvolvesFloat(init)))
+        if (ContainsFloat(init))
         {
             _diagnostics.Error("The initializer of an indirect variable (an address) must be an integer expression, not FLOAT",
                 init.Span);
@@ -822,6 +825,25 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// = 式 (CODE の並びでない初期値) は間接変数 (P[]) だけ。大きさのある配列はエラー
     /// (いままでは黙って捨てていた)
     /// </summary>
+    /// <summary>
+    /// 値の式に FLOAT (FLOAT のリテラル・FLOAT の名前 (局所変数が隠すものは見ない)・FLOAT へのキャスト) があるか。
+    /// MightBeFloat は、整数に畳み込める式 ((1.0/2.0)*4096.0) を整数と推定するので、番地の式の検査には使わない。
+    /// 比較の値は整数なので見ない
+    /// </summary>
+    private bool ContainsFloat(Expression? e) => e switch
+    {
+        FloatLiteral => true,
+        IdentifierExpr id => IdentifierIsFloat(id),
+        CastExpr c => c.TargetSize == DataSize.Float || ContainsFloat(c.Operand),
+        BinaryExpr b when IsComparisonOp(b.Op) => false,
+        BinaryExpr b => ContainsFloat(b.Left) || ContainsFloat(b.Right),
+        UnaryExpr u => ContainsFloat(u.Operand),
+        ConditionalExpr c => ContainsFloat(c.TrueExpr) || ContainsFloat(c.FalseExpr),
+        CommaExpr c => ContainsFloat(c.Right),
+        null => false,
+        _ => MightBeFloat(e),
+    };
+
     private bool CheckPointerInitializer(ArrayDecl node, bool isPointer)
     {
         if (isPointer) return true;

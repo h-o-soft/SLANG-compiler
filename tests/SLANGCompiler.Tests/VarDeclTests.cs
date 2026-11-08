@@ -199,4 +199,22 @@ public class VarDeclTests
         var body = asm.Split("\nFN:")[1].Split("_FN_EXIT")[0];
         Assert.Matches(@"LD\t\(IY\+\$\w\w\),\$07", body);
     }
+
+    [Fact]
+    public void PointerInitializer_IntegerLocalShadowsFloatConst_Ok()
+    {
+        // 局所の整数の BASE は、大域の FLOAT の CONST BASE を隠す (FLOAT の式としてエラーにしない)
+        var (_, diag) = Compile("CONST BASE = 0.5; FN() BEGIN VAR BASE = $D000; VAR P[] = BASE; P[0] = 1; END; MAIN() BEGIN FN(); END;");
+        Assert.DoesNotContain(diag.Diagnostics, d => d.Message.Contains("not FLOAT"));
+    }
+
+    [Theory]
+    // VAR の番地も整数。FLOAT の式はエラー (途中の小数を整数で畳み込んで、黙って 0 番地にしない)
+    [InlineData("VAR BYTE X:(1.0/2.0)*4096.0;")]
+    [InlineData("VAR X:1024.0;")]
+    public void VarAddress_Float_Errors(string decl)
+    {
+        var (_, diag) = Compile($"{decl} MAIN() BEGIN X = 1; END;");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("must be an integer expression, not FLOAT"));
+    }
 }
