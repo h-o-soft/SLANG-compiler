@@ -155,6 +155,9 @@ public class SemanticAnalyzer : IAstVisitor<object?>
     public object? VisitVarDecl(VarDecl node)
     {
         CheckNotLocalConstName(node.Name, node.Span);
+        // 単純変数の {…} の初期値は、どの出力も書かない (Z80 は黙って捨てていた)。エラー
+        if (node.InitialCode != null)
+            _diagnostics.Error($"VAR '{node.Name}' cannot have a {{...}} initializer (use VAR {node.Name} = value)", node.Span);
         CheckDeclUsesPendingConsts(node.Address, node.InitialValue, node.InitialCode);
         CheckDeclAddress(node.Address, scalarVar: true, node.Span);
         var type = DataSizeToType(node.Size);
@@ -263,6 +266,14 @@ public class SemanticAnalyzer : IAstVisitor<object?>
             else
                 sym.AsmLabel = LabelUtils.UserVarLabel(node.Name);
         }
+
+        // 間接変数の初期値 (VAR P[] = 番地) の式も調べる (代入の禁止など、単純変数の初期値と同じ)
+        node.InitialValue?.Accept(this);
+
+        // 固定アドレスの配列の CODE の並びの初期値は、どの出力も書かない (エラーにする。前は構文エラーだった形)
+        if (node.Address != null && node.InitialCode != null)
+            _diagnostics.Error($"Array '{node.Name}' with a fixed address cannot have an initializer", node.Span);
+
 
         // Issue #190: ARRAY initializer 容量超過 check (= 全 backend 共通)。
         // SLANG 仕様: 「添字省略時はチェックしない」 — 全次元 null (= PointerType)

@@ -295,9 +295,9 @@ public class Parser
             Expect(TokenKind.RBracket, "Expected ']'");
         }
 
-        // :address
+        // :address (代入を含まない式まで。後ろの = は初期値)
         if (Match(TokenKind.Colon))
-            address = ParseNcExpr();
+            address = ParseConditional();
 
         // = initializer
         Expression? initValue = null;
@@ -341,7 +341,7 @@ public class Parser
 
             Expression? address = null;
             if (Match(TokenKind.Colon))
-                address = ParseNcExpr();
+                address = ParseConditional();   // 代入を含まない式まで。後ろの = は初期値
 
             Expression? initValue = null;
             List<Expression>? initCode = null;

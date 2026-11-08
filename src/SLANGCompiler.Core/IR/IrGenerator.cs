@@ -20,6 +20,28 @@ public class IrGenerator : IAstVisitor<IrOperand>
     // 関数の中の CONST (名前 → 記号)。宣言の順に入れる。関数の外では null
     private Dictionary<string, Symbol>? _localConsts;
     private FuncInfo? _currentFuncInfo;
+    // 関数の頭の局所宣言の初期値 (引数のオフセットが決まってから出す)。関数の頭の局所宣言を訪ねる間だけ null でない
+    private List<Action>? _deferredLocalInits;
+
+    private void EmitLocalInit(Action emit)
+    {
+        if (_deferredLocalInits == null)
+        {
+            emit();
+            return;
+        }
+        // 後で出すときも、名前は宣言の所で見えていたものだけで引く (後ろで宣言する局所変数は隠す。
+        // VAR X = BASE; VAR BASE = 9; の BASE は、大域の BASE)。引数は初めから見えている (オフセットは決まった後のもの)
+        var visible = new HashSet<string>(_localVars!.Keys, _localVars.Comparer);
+        _deferredLocalInits.Add(() =>
+        {
+            var later = _localVars!.Where(kv => !visible.Contains(kv.Key)).ToList();
+            foreach (var kv in later) _localVars.Remove(kv.Key);
+            try { emit(); }
+            finally { foreach (var kv in later) _localVars[kv.Key] = kv.Value; }
+        });
+    }
+
     // 次に訪ねる式の値を使わない (式の文・カンマ式の左など)。受け取る式 (TakesDiscard) だけが読んで消す
     private bool _valueDiscarded;
 
@@ -414,14 +436,38 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (_currentFunction == null || _inStaticDecl)
         {
             int? fixedAddr = null;
+            string? fixedAddrLabel = null;
             if (node.Address is IntegerLiteral addrLit)
                 fixedAddr = (int)addrLit.Value;
             else if (node.Address != null && UsesLocalConst(node.Address)
                      && NewConstEvaluator().Evaluate(node.Address) is int localAddr)
             {
-                // 関数の中の CONST を使ったアドレスの式 (VAR BYTE REG:BASE)。大域の名前だけの式は、
-                // いままでどおり (整数のリテラルしか固定アドレスにならない。前からの制限で、ここでは変えない)
+                // 関数の中の CONST を使ったアドレスの式 (VAR BYTE REG:BASE)
                 fixedAddr = localAddr & 0xFFFF;
+            }
+            else if (node.Address != null)
+            {
+                // その場で値が決まる式はその値、そうでなければアセンブラの式 (ラベル。ARRAY と同じ)。
+                // いままでは整数のリテラル以外を黙って __WORK__ に置いていた。番地は整数なので FLOAT の式はエラー
+                // (途中の小数を整数で畳み込んで、黙って違う番地にしない)
+                if (ContainsFloat(node.Address, namesAreLabels: true) || NamesConstWithFloat(node.Address))
+                    _diagnostics.Error($"Address of VAR '{node.Name}' must be an integer expression, not FLOAT", node.Address.Span);
+                else if (NewConstEvaluator().Evaluate(node.Address) is int constAddr)
+                    fixedAddr = constAddr & 0xFFFF;
+                else if (CheckVarAddressNames(node))
+                {
+                    int errorsBefore = _diagnostics.ErrorCount;
+                    var asmResult = LabelUtils.ExprToAsmString(node.Address, _globalSymbols, _diagnostics, _localConsts);
+                    if (asmResult.HasValue)
+                    {
+                        fixedAddrLabel = asmResult.Value.Expr;
+                        foreach (var dep in asmResult.Value.Deps)
+                            _module.AddressSymbolDeps.Add(dep);
+                    }
+                    else if (_diagnostics.ErrorCount == errorsBefore)
+                        _diagnostics.Error($"Address of VAR '{node.Name}' must be a constant or an assembler label expression",
+                            node.Address.Span);
+                }
             }
 
             // ラベル: 関数内静的は __{FuncName}_{VarName}、トップレベルは __{VarName}
@@ -444,6 +490,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 ByteSize = ds,
                 ElemSize = ds,
                 FixedAddress = fixedAddr,
+                FixedAddressLabel = fixedAddrLabel,
                 VarKind = GlobalVarKind.Scalar,
             });
 
@@ -453,7 +500,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 _emitToGlobalData = true;
                 try
                 {
-                    var val = node.InitialValue.Accept(this);
+                    // 起動時の代入は LoadConst と StoreVar の組だけを書く (EmitGlobalInit)。整数の変数の初期値は、その場で
+                    // 決まる整数の定数だけ (?: なども値にしてから積む)。FLOAT を使う式・定数にならない式・FLOAT の変数の
+                    // 初期値は、黙って書かれなかったのでエラー (FLOAT は整数で畳み込むと違う値になりうる)
+                    int? cv = ds <= 2 && !ContainsFloat(node.InitialValue) ? NewConstEvaluator().Evaluate(node.InitialValue) : null;
+                    if (cv == null)
+                        _diagnostics.Error(ds > 2
+                            ? $"FLOAT variable '{node.Name}' cannot have an initializer here yet (assign it at the start of MAIN)"
+                            : $"The initializer of global/static variable '{node.Name}' must be an integer constant "
+                              + "(FLOAT and non-constant expressions are not written at startup)", node.InitialValue.Span);
+                    var val = IrOperand.Temp(AllocTemp());
+                    Emit(IrOp.LoadConst, val, IrOperand.Imm((cv ?? 0) & (ds == 1 ? 0xFF : 0xFFFF)));
                     Emit(IrOp.StoreVar, IrOperand.Sym(label), val, dataSize: ds);
                 }
                 finally
@@ -469,9 +526,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
             if (node.InitialValue != null)
             {
-                var val = node.InitialValue.Accept(this);
-                var info = _localVars![node.Name];
-                Emit(IrOp.StoreLocal, IrOperand.Imm(info.Offset), val, dataSize: ds);
+                var name = node.Name;
+                EmitLocalInit(() =>
+                {
+                    var val = node.InitialValue.Accept(this);
+                    var info = _localVars![name];
+                    Emit(IrOp.StoreLocal, IrOperand.Imm(info.Offset), val, dataSize: ds);
+                });
             }
         }
         return IrOperand.None;
@@ -677,6 +738,20 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 InitialItems = initItems,
                 StorageKind = initItems != null ? VarStorageKind.InitArray : VarStorageKind.Bss,
             });
+
+            // 間接変数の初期値 (VAR P[] = $C000): 単純変数の初期値と同じく、起動時に 1 回だけ変数そのものに書く
+            if (node.InitialValue != null && CheckPointerInitializer(node, isPointerGlobal))
+            {
+                _emitToGlobalData = true;
+                try
+                {
+                    Emit(IrOp.StoreVar, IrOperand.Sym(label), PointerInitialValue(node.InitialValue), dataSize: 2);
+                }
+                finally
+                {
+                    _emitToGlobalData = false;
+                }
+            }
         }
         else
         {
@@ -687,8 +762,117 @@ public class IrGenerator : IAstVisitor<IrOperand>
             int offset = 0x70 - _localOffset;
             var kind = isPointerVar ? VarKind.Pointer : VarKind.Array;
             _localVars![node.Name] = new LocalVarInfo(offset, allocSize, Kind: kind, IsByte: isByte, Dims: dims, ElemSize: elemSize);
+
+            // 間接変数の初期値: 単純変数の局所の初期値と同じく、宣言の所で書く
+            if (node.InitialValue != null && CheckPointerInitializer(node, isPointerVar))
+                EmitLocalInit(() => Emit(IrOp.StoreLocal, IrOperand.Imm(offset), PointerInitialValue(node.InitialValue), dataSize: 2));
         }
         return IrOperand.None;
+    }
+
+    /// <summary>
+    /// VAR の番地のアセンブラの式に使える名前か。番地だけの MACHINE (ラベルを出さない) と、ランタイムの名前 (別名・
+    /// 名前空間の解決をしない) はエラーにする。使えるのは #ASM のラベルと、SLANG の大域の名前
+    /// </summary>
+    private bool CheckVarAddressNames(VarDecl node)
+    {
+        bool ok = true;
+        var visited = new HashSet<Symbol>();
+        void Check(Expression? e)
+        {
+            SemanticAnalyzer.ForEachName(e, (name, span) =>
+            {
+                var sym = _globalSymbols?.Resolve(name);
+                if (sym?.Kind == SymbolKind.MachineFunction && !sym.HasCodeBody)
+                {
+                    _diagnostics.Error($"Address of VAR '{node.Name}' cannot use MACHINE '{name}' without a CODE body (write its address)", span);
+                    ok = false;
+                }
+                else if (sym == null && _runtimeManager?.Functions.ContainsKey(name) == true)
+                {
+                    _diagnostics.Error($"Address of VAR '{node.Name}' cannot use the runtime name '{name}'", span);
+                    ok = false;
+                }
+                // CONST の式 (アセンブラの式として中身が展開される) の中の名前も見る
+                else if (sym?.Kind == SymbolKind.Constant && sym.ConstAst != null && visited.Add(sym))
+                    Check(sym.ConstAst);
+            });
+        }
+        Check(node.Address);
+        return ok;
+    }
+
+    /// <summary>
+    /// 間接変数の初期値 (番地なので 2 バイトの整数)。その場で決まる整数の定数 (リテラル・CONST・その式) だけを受け付ける。
+    /// FLOAT・変数 (局所変数が隠す CONST の名前も)・ラベルはエラー (通す形を狭くする)
+    /// </summary>
+    private IrOperand PointerInitialValue(Expression init)
+    {
+        bool usesVariable = false;
+        SemanticAnalyzer.ForEachName(init, (n, _) =>
+        {
+            if (_localVars?.ContainsKey(n) == true || _staticVarSizes?.ContainsKey(n) == true) usesVariable = true;
+        });
+        int? v = _globalSymbols != null && !usesVariable && !ContainsFloat(init) ? NewConstEvaluator().Evaluate(init) : null;
+        if (v == null)
+            _diagnostics.Error("The initializer of an indirect variable must be an integer constant "
+                + "(a literal, a CONST, or an expression of them); FLOAT, variables and labels are not allowed", init.Span);
+        var t = IrOperand.Temp(AllocTemp());
+        Emit(IrOp.LoadConst, t, IrOperand.Imm((v ?? 0) & 0xFFFF));
+        return t;
+    }
+
+    /// <summary>式の中の CONST の名前の式 (後ろで決まる・ラベルを含む CONST の、まだ値でない式) に FLOAT があるか (たどる)</summary>
+    private bool NamesConstWithFloat(Expression e, HashSet<Symbol>? visited = null)
+    {
+        visited ??= new HashSet<Symbol>();
+        bool found = false;
+        SemanticAnalyzer.ForEachName(e, (n, _) =>
+        {
+            if (_globalSymbols?.Resolve(n) is { Kind: SymbolKind.Constant, ConstAst: not null } sym && visited.Add(sym)
+                && (ContainsFloat(sym.ConstAst, namesAreLabels: true) || NamesConstWithFloat(sym.ConstAst, visited)))
+                found = true;
+        });
+        return found;
+    }
+
+    /// <summary>
+    /// 値の式に FLOAT (FLOAT のリテラル・FLOAT の名前 (局所変数が隠すものは見ない)・FLOAT へのキャスト) があるか。
+    /// MightBeFloat は、整数に畳み込める式 ((1.0/2.0)*4096.0) を整数と推定するので、番地の式の検査には使わない。
+    /// 比較・条件の中の FLOAT も見る (その場で決める値は整数で畳み込むので、FLOAT の比較を誤る)
+    /// </summary>
+    /// namesAreLabels: 番地の式 (VAR X:式) では、変数の名前はその番地 (整数のラベル) なので、FLOAT の変数でも FLOAT と見ない
+    /// (FLOAT の CONST は値なので見る)
+    private bool ContainsFloat(Expression? e, bool namesAreLabels = false) => e switch
+    {
+        FloatLiteral => true,
+        IdentifierExpr id => namesAreLabels
+            ? _globalSymbols?.Resolve(id.Name) is { Kind: SymbolKind.Constant, ConstFloatValue: not null }
+            : IdentifierIsFloat(id),
+        CastExpr c => c.TargetSize == DataSize.Float || ContainsFloat(c.Operand, namesAreLabels),
+        BinaryExpr b => ContainsFloat(b.Left, namesAreLabels) || ContainsFloat(b.Right, namesAreLabels),
+        UnaryExpr u => ContainsFloat(u.Operand, namesAreLabels),
+        HighLowExpr h => ContainsFloat(h.Operand, namesAreLabels),
+        ConditionalExpr c => ContainsFloat(c.Condition, namesAreLabels) || ContainsFloat(c.TrueExpr, namesAreLabels)
+            || ContainsFloat(c.FalseExpr, namesAreLabels),
+        CommaExpr c => ContainsFloat(c.Right, namesAreLabels),
+        null => false,
+        _ => !namesAreLabels && MightBeFloat(e),
+    };
+
+    /// <summary>
+    /// = 式 (CODE の並びでない初期値) は間接変数 (VAR P[]) だけ。大きさのある配列・ARRAY はエラー
+    /// (いままでは黙って捨てていた)
+    /// </summary>
+    private bool CheckPointerInitializer(ArrayDecl node, bool isPointer)
+    {
+        // VAR P[] = 番地 だけ。ARRAY A[] は配列 (A の番地そのもの) なので、= 式 を受け付けない
+        if (isPointer && !node.IsArrayKeyword) return true;
+        _diagnostics.Error(isPointer
+                ? $"ARRAY '{node.Name}' cannot have a single-value initializer (use {{...}}, or VAR {node.Name}[] = address for an indirect variable)"
+                : $"Array '{node.Name}' with a size cannot have a single-value initializer (use {{...}})",
+            node.InitialValue!.Span);
+        return false;
     }
 
     public IrOperand VisitConstDecl(ConstDecl node)
@@ -917,7 +1101,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _inStaticDecl = true;
         foreach (var d in node.StaticDeclarations) d.Accept(this);
         _inStaticDecl = false;
+        // 局所の初期値は、引数のオフセットが決まってから出す (初期値の式が引数を読むことがある)
+        _deferredLocalInits = new List<Action>();
         foreach (var d in node.LocalDeclarations) d.Accept(this);
+        var localInits = _deferredLocalInits;
+        _deferredLocalInits = null;
 
         // ローカル変数確定後、引数のオフセットを計算
         // ADD IY, (localOffset + paramTotalBytes) でIYがずれるため:
@@ -935,6 +1123,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // localOffsetに引数分も加算（ADD IY,BCのフレームサイズ）
             _localOffset = totalFrameSize;
         }
+        foreach (var init in localInits) init();
 
         // Body
         node.Body.Accept(this);

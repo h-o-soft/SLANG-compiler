@@ -958,23 +958,59 @@ public class ArrayInitOscarCTests
             d => d.Message.Contains("Expected", StringComparison.OrdinalIgnoreCase));
     }
 
-    [Fact]
-    public void ArrayWithFixedAddressAndInitCode_ParserRejects()
+    [Theory]
+    // 関数の中の静的宣言 (BEGIN の前) の固定アドレスも、大域と同じく未サポート (番地を黙って捨てない)
+    [InlineData("MAIN() VAR BYTE X:$3000 = 7; BEGIN X = 1; END;", "固定アドレス変数")]
+    [InlineData("MAIN() VAR BYTE X:$3000; BEGIN X = 1; END;", "固定アドレス変数")]
+    [InlineData("MAIN() VAR BYTE P[]:$3000 = $C000; BEGIN P[0] = 1; END;", "固定アドレスの間接変数の初期値")]
+    public void StaticDeclWithFixedAddress_Rejected(string source, string message)
     {
-        // SLANG 文法レベルで `ARRAY x:address = { ... }` は parse error
-        // (= `:address` の後に LBrace は来ない)。 つまり CEmitter の Address +
-        // InitialCode 分岐は到達不能 = dead code。 v3b-E (5) で defensive guard を
-        // 削除した際の回帰防止 (= 将来 parser に `:address = { ... }` 受理が入っても
-        // この test が落ちて気付ける)。
+        TranspileWithEnv(source + "\n", MakeC64Env(), out var diag);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains(message));
+    }
+
+    [Theory]
+    // VAR P[] = 番地 (間接変数の初期値) は oscar_c では未サポート (初期値を黙って捨てて、ヌルのポインタにしない)
+    [InlineData("VAR BYTE P[] = $C000;\nMAIN() { P[0] = 1; }")]
+    [InlineData("MAIN() VAR BYTE P[] = $C000; BEGIN P[0] = 1; END;")]
+    [InlineData("MAIN() BEGIN VAR BYTE P[] = $C000; P[0] = 1; END;")]
+    public void PointerInitializer_Rejected(string source)
+    {
+        TranspileWithEnv(source + "\n", MakeC64Env(), out var diag);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("間接変数の初期値"));
+    }
+
+    [Fact]
+    public void PointerWithFixedAddressAndInitializer_Rejected()
+    {
+        // VAR P[]:addr = 値 は、oscar_c では置き場も初期値も表せない (黙って初期値を捨てない)
+        TranspileWithEnv("VAR BYTE P[]:$3000 = $C000;\nMAIN() { P[0] = 1; }\n", MakeC64Env(), out var diag);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("固定アドレスの間接変数の初期値"));
+    }
+
+    [Theory]
+    // 固定アドレスの VAR は oscar_c では未サポート。初期値があっても同じくエラー (初期値を先に見て、ふつうの変数にしない)
+    [InlineData("VAR BYTE X:$3000;")]
+    [InlineData("VAR BYTE X:$3000 = 7;")]
+    public void ScalarVarWithFixedAddress_Rejected(string decl)
+    {
+        TranspileWithEnv(decl + "\nMAIN() { X = 1; }\n", MakeC64Env(), out var diag);
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("固定アドレス変数"));
+    }
+
+    [Fact]
+    public void ArrayWithFixedAddressAndInitCode_Rejected()
+    {
+        // `ARRAY x:address = { ... }` は、番地を代入を含まない式まで読むようになって構文は通るが、
+        // どの出力も初期値を書かないので、意味解析がエラーにする (前は parse error)。CEmitter の Address +
+        // InitialCode 分岐は、いまも到達しない。
         var src = TranspileWithEnv("""
             ARRAY BYTE A:$3000 = { 1, 2, 3 };
             MAIN() { PRINT(A[0]); }
             """, MakeC64Env(), out var diag);
 
-        Assert.True(diag.HasErrors, "`ARRAY ...:address = { ... }` は SLANG parser で reject される文法");
-        Assert.Contains(diag.Diagnostics,
-            d => d.Message.Contains("Expected expression", StringComparison.OrdinalIgnoreCase)
-              || d.Message.Contains("LBrace", StringComparison.OrdinalIgnoreCase));
+        Assert.True(diag.HasErrors, "`ARRAY ...:address = { ... }` は意味解析で reject される");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("with a fixed address cannot have an initializer"));
     }
 
     // === v3b-E (Issue #194) (3b): ARRAY initializer 内の非定数 address 参照は

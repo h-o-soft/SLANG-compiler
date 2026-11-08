@@ -42,3 +42,17 @@ sl	examples/MSXSPDRV.SL	x1native-tape	error E0004
 sl	examples/MSXSPDRV.SL	x1native_slfs-bin	error E0004
 sl	examples/MSXSPDRV.SL	x1native_slfs-disk	error E0004
 sl	examples/MSXSPDRV.SL	x1native_slfs-disk-name	error E0004
+#
+# zxslang の 2 回目の連絡の直し・5 本目 (変数の宣言): VAR BYTE BCOUNTER:BYTECOUNTER (BYTECOUNTER は #ASM のラベル) を、
+# いままでは黙って __WORK__ に置いていた。ラベルの番地 (EQU BYTECOUNTER) にしたので ASM が変わる。x1native では
+# 直す前も後も、アセンブルで失敗する (assets の取り込みのファイルがない E2002)。アセンブラのエラーの行が変わる
+sl	examples/zxn/game.sl	x1native-bin	error E2002
+sl	examples/zxn/game.sl	x1native-tape	error E2002
+sl	examples/zxn/game.sl	x1native_slfs-bin	error E2002
+sl	examples/zxn/game.sl	x1native_slfs-disk	error E2002
+sl	examples/zxn/game.sl	x1native_slfs-disk-name	error E2002
+sl	examples/zxn/game_nomusic.sl	x1native-bin	error E2002
+sl	examples/zxn/game_nomusic.sl	x1native-tape	error E2002
+sl	examples/zxn/game_nomusic.sl	x1native_slfs-bin	error E2002
+sl	examples/zxn/game_nomusic.sl	x1native_slfs-disk	error E2002
+sl	examples/zxn/game_nomusic.sl	x1native_slfs-disk-name	error E2002

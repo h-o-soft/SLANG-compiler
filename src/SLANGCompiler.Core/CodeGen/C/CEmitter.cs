@@ -257,11 +257,8 @@ public class CEmitter : IAstVisitor<EmitResult>
         }
 
         string init;
-        if (node.InitialValue != null)
-        {
-            init = " = " + CastTo(ExprFull(node.InitialValue), slangType);
-        }
-        else if (node.Address != null)
+        // 固定アドレスは、初期値があっても未サポート (初期値を先に見ると、ふつうの変数として出してしまう)
+        if (node.Address != null)
         {
             // VAR x:address → ポインタとして扱う (= MEM 直アクセス)。
             // ただし SLANG では VAR x:$3000 は固定アドレスに変数を置く意味だが、
@@ -271,6 +268,10 @@ public class CEmitter : IAstVisitor<EmitResult>
             // v1 では明示 error (= 利用例少なめ、SLANG ENV_TYPE で gate 想定)。
             Error($"VAR `{node.Name}:address` (固定アドレス変数) は oscar_c backend では未サポート (v1)。MEM[$addr] 経由でアクセスしてください", node.Span);
             return new("", null);
+        }
+        else if (node.InitialValue != null)
+        {
+            init = " = " + CastTo(ExprFull(node.InitialValue), slangType);
         }
         else
         {
@@ -309,6 +310,12 @@ public class CEmitter : IAstVisitor<EmitResult>
         // ARRAY x:address → static T *A_x = (T*)addr;
         if (node.Address != null)
         {
+            // VAR P[]:addr = 値 (固定アドレスに置いたポインタの初期値) は、置き場も初期値も表せないので未サポート
+            if (node.InitialValue != null)
+            {
+                Error($"VAR `{node.Name}[]:address = ...` (固定アドレスの間接変数の初期値) は oscar_c backend では未サポート", node.Span);
+                return new("", null);
+            }
             var addrText = Expr(node.Address);
             var line = _scope.ScopeDepth == 0
                 ? Line($"static {cType} *{ident} = ({cType} *){addrText};")
@@ -393,6 +400,12 @@ public class CEmitter : IAstVisitor<EmitResult>
 
         if (isIndirect)
         {
+            // VAR P[] = 番地 (間接変数の初期値) は oscar_c では未サポート (初期値を黙って捨てない)
+            if (node.InitialValue != null)
+            {
+                Error($"VAR `{node.Name}[] = ...` (間接変数の初期値) は oscar_c backend では未サポート", node.Span);
+                return new("", null);
+            }
             var line = _scope.ScopeDepth == 0
                 ? Line($"static {cType} *{ident};")
                 : Line($"{cType} *{ident};");
@@ -853,6 +866,12 @@ public class CEmitter : IAstVisitor<EmitResult>
         // C の関数内 `static` 変数として出す。識別子は funcName_varName で衝突回避。
         if (decl is VarDecl vd)
         {
+            // 固定アドレスは、大域と同じく未サポート (番地を黙って捨てて、ふつうの static 変数にしない)
+            if (vd.Address != null)
+            {
+                Error($"VAR `{vd.Name}:address` (固定アドレス変数) は oscar_c backend では未サポート (v1)。MEM[$addr] 経由でアクセスしてください", vd.Span);
+                return "";
+            }
             var slangType = TypeOfDataSize(vd.Size);
             var cType = CTypeMapper.MapDeclType(slangType);
             var ident = StaticVarIdent(_currentFuncName!, vd.Name);
@@ -869,6 +888,11 @@ public class CEmitter : IAstVisitor<EmitResult>
         if (decl is ArrayDecl ad)
         {
             // 関数内 static / 関数内 local の VAR/ARRAY 宣言。
+            if (ad.Address != null && ad.InitialValue != null)
+            {
+                Error($"VAR `{ad.Name}[]:address = ...` (固定アドレスの間接変数の初期値) は oscar_c backend では未サポート", ad.Span);
+                return "";
+            }
             var slangType = TypeOfDataSize(ad.Size);
             var cType = CTypeMapper.MapDeclType(slangType);
             var ident = StaticVarIdent(_currentFuncName!, ad.Name);
@@ -933,6 +957,11 @@ public class CEmitter : IAstVisitor<EmitResult>
             // (BEGIN 前) に書かれている場合は static にする。
             if (isIndirect)
             {
+                if (ad.InitialValue != null)
+                {
+                    Error($"VAR `{ad.Name}[] = ...` (間接変数の初期値) は oscar_c backend では未サポート", ad.Span);
+                    return "";
+                }
                 _scope.DeclareLocal(ad.Name, new PointerType(slangType));
                 return Line($"static {cType} *{ident};");
             }

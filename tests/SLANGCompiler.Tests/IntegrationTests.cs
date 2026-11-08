@@ -268,6 +268,14 @@ public class IntegrationTests : IDisposable
     }
 
     [Fact]
+    public void VarAddress_RuntimeName_Errors()
+    {
+        // ランタイムの名前は、別名 (ITOF → i16tof24)・名前空間を解決しないので、VAR の番地の式には使えない
+        var stderr = CompileExpectError("VAR X:ITOF; MAIN() BEGIN X = 1; END;", "zxn");
+        Assert.Contains("cannot use the runtime name 'ITOF'", stderr);
+    }
+
+    [Fact]
     public void Overlay_NoSLANGINIT()
     {
         var source = @"
