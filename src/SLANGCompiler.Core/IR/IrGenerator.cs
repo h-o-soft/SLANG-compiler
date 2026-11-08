@@ -500,26 +500,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 _emitToGlobalData = true;
                 try
                 {
-                    // 起動時の代入は LoadConst と StoreVar の組だけを書く (EmitGlobalInit)。その場で決まる整数の式
-                    // (?: など) は値にしてから積む (式のまま積むと、黙って書かれなかった)。整数の変数の初期値に FLOAT を
-                    // 使う式は、整数で畳み込むと違う値になりうるのでエラー
-                    IrOperand val;
-                    bool usesFloat = ds <= 2 && ContainsFloat(node.InitialValue);
-                    if (usesFloat)
-                        _diagnostics.Error($"The initializer of integer variable '{node.Name}' must not use FLOAT", node.InitialValue.Span);
-                    // FLOAT の変数の起動時の代入は、まだ書けない (LoadFloatConst を EmitGlobalInit が書かず、黙って
-                    // 初期化されなかった)。エラー
-                    if (ds > 2)
-                        _diagnostics.Error($"FLOAT variable '{node.Name}' cannot have an initializer here yet (assign it at the start of MAIN)",
-                            node.InitialValue.Span);
-                    if (ds <= 2 && (usesFloat || NewConstEvaluator().Evaluate(node.InitialValue) is int))
-                    {
-                        int cv = usesFloat ? 0 : NewConstEvaluator().Evaluate(node.InitialValue)!.Value;
-                        val = IrOperand.Temp(AllocTemp());
-                        Emit(IrOp.LoadConst, val, IrOperand.Imm(cv & (ds == 1 ? 0xFF : 0xFFFF)));
-                    }
-                    else
-                        val = node.InitialValue.Accept(this);
+                    // 起動時の代入は LoadConst と StoreVar の組だけを書く (EmitGlobalInit)。整数の変数の初期値は、その場で
+                    // 決まる整数の定数だけ (?: なども値にしてから積む)。FLOAT を使う式・定数にならない式・FLOAT の変数の
+                    // 初期値は、黙って書かれなかったのでエラー (FLOAT は整数で畳み込むと違う値になりうる)
+                    int? cv = ds <= 2 && !ContainsFloat(node.InitialValue) ? NewConstEvaluator().Evaluate(node.InitialValue) : null;
+                    if (cv == null)
+                        _diagnostics.Error(ds > 2
+                            ? $"FLOAT variable '{node.Name}' cannot have an initializer here yet (assign it at the start of MAIN)"
+                            : $"The initializer of global/static variable '{node.Name}' must be an integer constant "
+                              + "(FLOAT and non-constant expressions are not written at startup)", node.InitialValue.Span);
+                    var val = IrOperand.Temp(AllocTemp());
+                    Emit(IrOp.LoadConst, val, IrOperand.Imm((cv ?? 0) & (ds == 1 ? 0xFF : 0xFFFF)));
                     Emit(IrOp.StoreVar, IrOperand.Sym(label), val, dataSize: ds);
                 }
                 finally

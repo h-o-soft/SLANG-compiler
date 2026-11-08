@@ -229,14 +229,17 @@ public class VarDeclTests
     }
 
     [Theory]
-    // 整数の大域の変数の初期値に FLOAT を使う式はエラー (起動時に黙って書かない・整数で畳み込んで違う値にしない)
+    // 整数の大域の変数の初期値は、その場で決まる整数の定数だけ。FLOAT を使う式・定数でない式はエラー
+    // (起動時に黙って書かない・整数で畳み込んで違う値にしない)
     [InlineData("VAR X:$C000 = (1.0 > 0.0 ? 7 : 8);")]
     [InlineData("VAR X = (1.0 > 0.0 ? 7 : 8);")]
     [InlineData("VAR X = (1.0/2.0)*4096.0;")]
-    public void GlobalIntegerInitializer_Float_Errors(string decl)
+    [InlineData("VAR X:$C000 = 6 ./. 2;")]   // 定数として畳み込めない式 (符号つきの割り算) も
+    [InlineData("VAR Y; VAR X = Y + 1;")]   // 定数でない式も (前は warning を出して、黙って書かなかった)
+    public void GlobalIntegerInitializer_NotConstant_Errors(string decl)
     {
         var (_, diag) = Compile($"{decl} MAIN() BEGIN X = X + 1; END;");
-        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("must not use FLOAT"));
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("must be an integer constant"));
     }
 
     [Theory]
