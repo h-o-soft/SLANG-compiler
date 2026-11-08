@@ -265,6 +265,28 @@ public class ExpressionValueTests
         Assert.Matches(Seq(@"INC\tHL", @"CALL\ti16tof24", @"JP\t_L\d+"), fbody);
     }
 
+    [Theory]
+    [InlineData("T[I++]++;")]
+    [InlineData("T[I++] += 1;")]
+    [InlineData("T[G(1)] += 1;")]
+    [InlineData("MEM[I++]++;")]
+    [InlineData("C = --T[J = 1];")]
+    public void TargetEvaluatedTwice_WithSideEffect_Errors(string stmt)
+    {
+        var (_, diag) = Compile($"{Decls} MAIN() BEGIN {stmt} END;");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("evaluated twice"));
+    }
+
+    [Theory]
+    [InlineData("T[I]++;")]
+    [InlineData("T[I + 1] += 2;")]
+    [InlineData("T[I++] = 5;")]
+    public void TargetWithoutSideEffect_Ok(string stmt)
+    {
+        var (_, diag) = Compile($"{Decls} MAIN() BEGIN {stmt} END;");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+    }
+
     // ==== 設計レビュー 2 周目で見つかった形 ====
 
     [Fact]
@@ -407,5 +429,22 @@ public class ExpressionValueTests
         var (asm, diag) = Compile($"{Decls} ARRAY FLOAT FA2[1][1]; MAIN() BEGIN C = G(FLAG ? FA2[0] : FA2[1]); END;");
         Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
         Assert.DoesNotContain("i16tof24", asm!.Split("\nMAIN:")[1].Split("_MAIN_EXIT")[0]);
+    }
+
+    [Theory]
+    [InlineData("T[I] += (I = I + 1);")]
+    [InlineData("T[I] -= I++;")]
+    [InlineData("T[PORT[I]]++;")]
+    public void TargetChangedByRightSideOrPort_Errors(string stmt)
+    {
+        var (_, diag) = Compile($"{Decls} MAIN() BEGIN {stmt} END;");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("evaluated twice"));
+    }
+
+    [Fact]
+    public void TargetNotChangedByRightSide_Ok()
+    {
+        var (_, diag) = Compile($"{Decls} MAIN() BEGIN T[I] += (J = 3); T[I] += G(J); END;");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
     }
 }

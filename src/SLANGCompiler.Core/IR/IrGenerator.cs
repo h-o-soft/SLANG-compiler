@@ -2202,6 +2202,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitCompoundAssignExpr(CompoundAssignExpr node)
     {
         bool discarded = TakeDiscard();
+        CheckTargetEvaluatedTwice(node.Target, node.Value, node.Span);
         // FLOAT の代入先: F = F op 値 と同じ式 (FLOAT の四則演算) で作る
         // (整数の演算で足して、その結果を整数から FLOAT に変えていた)
         if (IsFloatTarget(node.Target) && node.Op is CompoundAssignOp.AddAssign or CompoundAssignOp.SubAssign
@@ -2242,6 +2243,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         // 値を使わない (式の文・カンマ式の左) か。中の式 (T[I++]++ の I++) には引き継がない
         bool valueUnused = TakeDiscard();
+        CheckTargetEvaluatedTwice(node.Operand, null, node.Span);
 
         // FLOAT: F = F + 1 と同じ式 (FLOAT の足し算) で作る。後置の値は、新しい値から 1.0 を引いても
         // 古い値に戻らないことがあるので、使えない
@@ -2993,6 +2995,82 @@ public class IrGenerator : IAstVisitor<IrOperand>
         }
         // 拡大方向 (WORD→FLOAT) のみ自動変換
         return EmitTypeConversionExpand(val, returnDs);
+    }
+
+    /// <summary>
+    /// ++ -- と複合代入は、代入先 (配列の添字・番地の式) を、読むときと書くときの 2 回計算する。次のときは、2 回で
+    /// 違う所になるか副作用が 2 回起きるので、エラーにする:
+    /// 添字・配列の式に ++ -- ・代入・関数の呼び出し・PORT の読み取りがある。右辺 (複合代入の値) が、添字・配列の式の
+    /// 変数に代入する (T[I] += (I = I + 1))。関数の呼び出しの中で変わるものは見ない (式の中の順は決めない、仕様書)
+    /// </summary>
+    private void CheckTargetEvaluatedTwice(Expression target, Expression? value, SourceSpan span)
+    {
+        if (target is not ArrayAccessExpr arr) return;
+        bool sideEffect = false;
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void Walk(Expression? e)
+        {
+            switch (e)
+            {
+                case IdentifierExpr id: names.Add(id.Name); break;
+                case IncrementExpr or AssignExpr or CompoundAssignExpr or CallExpr or CodeExpr or StringFuncExpr:
+                    sideEffect = true; break;
+                case ArrayAccessExpr { Array: IdentifierExpr port } when port.Name.Equals("PORT", StringComparison.OrdinalIgnoreCase)
+                        || port.Name.Equals("PORTW", StringComparison.OrdinalIgnoreCase):
+                    sideEffect = true; break;
+                case BinaryExpr b: Walk(b.Left); Walk(b.Right); break;
+                case UnaryExpr u: Walk(u.Operand); break;
+                case CastExpr c: Walk(c.Operand); break;
+                case HighLowExpr h: Walk(h.Operand); break;
+                case AddressOfExpr a: Walk(a.Operand); break;
+                case ConditionalExpr c: Walk(c.Condition); Walk(c.TrueExpr); Walk(c.FalseExpr); break;
+                case CommaExpr c: Walk(c.Left); Walk(c.Right); break;
+                case ArrayAccessExpr a: Walk(a.Array); foreach (var x in a.Indices) Walk(x); break;
+            }
+        }
+        Walk(arr.Array);
+        foreach (var x in arr.Indices) Walk(x);
+        if (sideEffect)
+        {
+            _diagnostics.Error("Side effects (++, --, assignments, function calls, PORT reads) are not allowed in the index of "
+                + "the target of ++/--/+=/-=/*=//= (the target is evaluated twice, for reading and for writing)", span);
+            return;
+        }
+
+        // 右辺が、添字・配列の式の変数に代入する
+        bool writesTargetName = false;
+        void WalkValue(Expression? e)
+        {
+            switch (e)
+            {
+                case AssignExpr a: CheckWrite(a.Target); WalkValue(a.Target); WalkValue(a.Value); break;
+                case CompoundAssignExpr ca: CheckWrite(ca.Target); WalkValue(ca.Target); WalkValue(ca.Value); break;
+                case IncrementExpr inc: CheckWrite(inc.Operand); WalkValue(inc.Operand); break;
+                case BinaryExpr b: WalkValue(b.Left); WalkValue(b.Right); break;
+                case UnaryExpr u: WalkValue(u.Operand); break;
+                case CastExpr c: WalkValue(c.Operand); break;
+                case HighLowExpr h: WalkValue(h.Operand); break;
+                case AddressOfExpr a: WalkValue(a.Operand); break;
+                case ConditionalExpr c: WalkValue(c.Condition); WalkValue(c.TrueExpr); WalkValue(c.FalseExpr); break;
+                case CommaExpr c: WalkValue(c.Left); WalkValue(c.Right); break;
+                case ArrayAccessExpr a: WalkValue(a.Array); foreach (var x in a.Indices) WalkValue(x); break;
+                case CallExpr call: foreach (var x in call.Arguments) WalkValue(x); break;
+            }
+        }
+        void CheckWrite(Expression t)
+        {
+            var root = t switch
+            {
+                IdentifierExpr id => id.Name,
+                ArrayAccessExpr { Array: IdentifierExpr an } => an.Name,
+                _ => null,
+            };
+            if (root != null && names.Contains(root)) writesTargetName = true;
+        }
+        WalkValue(value);
+        if (writesTargetName)
+            _diagnostics.Error("The right side of +=/-=/*=//= must not change a variable used in the index of the target "
+                + "(the target is evaluated twice, for reading and for writing)", span);
     }
 
     /// <summary>代入先に値を書く。書いた値 (代入先の型に変えたもの) を返す (代入式の値)</summary>
