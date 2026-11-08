@@ -1035,6 +1035,14 @@ public class CodeGenerator
         var halfDirectOps = new HashSet<int>();  // src2のみ単純ロード
         var reverseHalfDirectOps = new HashSet<int>(); // src1のみ単純ロード（可換演算のみ）
 
+        // 直接ロードにできるのは、その値を読む命令が 1 つだけのとき。ほかでも読む値 (式の値としての代入
+        // C = (A = 5) + X の 5、?: の側の値など) のロードを飛ばすと、もう一方の読み手が値を受け取れない
+        var readCount = new Dictionary<int, int>();
+        foreach (var r in insts)
+            foreach (var t in ReadTemps(r))
+                readCount[t] = readCount.GetValueOrDefault(t) + 1;
+        bool Sole(bool simple, IrOperand src) => simple && readCount.GetValueOrDefault(src.TempIndex) == 1;
+
         for (int i = 0; i < insts.Count; i++)
         {
             var inst = insts[i];
@@ -1044,20 +1052,20 @@ public class CodeGenerator
                 && tempDef.TryGetValue(inst.Src1.TempIndex, out int s1)
                 && tempDef.TryGetValue(inst.Src2.TempIndex, out int s2))
             {
-                if (IsSimpleLoad(insts[s1]) && IsSimpleLoad(insts[s2]))
+                if (Sole(IsSimpleLoad(insts[s1]), inst.Src1) && Sole(IsSimpleLoad(insts[s2]), inst.Src2))
                 {
                     // 両方単純ロード → HL/DE直接ロード
                     skipEmit.Add(s1);
                     skipEmit.Add(s2);
                     directBinaryOps.Add(i);
                 }
-                else if (IsSimpleLoad(insts[s2]) && !IsSimpleLoad(insts[s1]))
+                else if (Sole(IsSimpleLoad(insts[s2]), inst.Src2) && !Sole(IsSimpleLoad(insts[s1]), inst.Src1))
                 {
                     // src2のみ単純ロード → src1はHLに残っている、src2をDE直接ロード
                     skipEmit.Add(s2);
                     halfDirectOps.Add(i);
                 }
-                else if (IsSimpleLoad(insts[s1]) && !IsSimpleLoad(insts[s2])
+                else if (Sole(IsSimpleLoad(insts[s1]), inst.Src1) && !Sole(IsSimpleLoad(insts[s2]), inst.Src2)
                          && IsCommutativeOp(inst.Op))
                 {
                     // src1のみ単純ロード + 可換演算 → src2がHL、src1をDE直接ロード
@@ -1066,13 +1074,13 @@ public class CodeGenerator
                     reverseHalfDirectOps.Add(i);
                 }
                 // FLOAT版: src2が単純FLOATロード → CDE直接ロード (PUSH/POP回避)
-                else if (inst.DataSize == 3 && IsSimpleFloatLoad(insts[s2]) && !IsSimpleFloatLoad(insts[s1]))
+                else if (inst.DataSize == 3 && Sole(IsSimpleFloatLoad(insts[s2]), inst.Src2) && !Sole(IsSimpleFloatLoad(insts[s1]), inst.Src1))
                 {
                     skipEmit.Add(s2);
                     halfDirectOps.Add(i);
                 }
                 // FLOAT版: src1が単純FLOATロード + 可換演算(Add/Mul) → 左右入替でCDE直接ロード
-                else if (inst.DataSize == 3 && IsSimpleFloatLoad(insts[s1]) && !IsSimpleFloatLoad(insts[s2])
+                else if (inst.DataSize == 3 && Sole(IsSimpleFloatLoad(insts[s1]), inst.Src1) && !Sole(IsSimpleFloatLoad(insts[s2]), inst.Src2)
                          && IsCommutativeOp(inst.Op))
                 {
                     skipEmit.Add(s1);
@@ -1680,8 +1688,53 @@ public class CodeGenerator
                 if (NeedsPushAfter(insts, i, inst.Dest.TempIndex))
                     EmitPushValue(inst.DataSize);
             }
+
+            if (inst.Op is IrOp.IndirStore or IrOp.MemStore or IrOp.ArrayStore)
+                KeepStoredValue(insts, i, inst);
         }
         _currentFunction = null;
+    }
+
+    /// <summary>
+    /// メモリに書いた値を、この後でまた使うなら HL に戻す (式の値としての代入・前置 ++ など)。
+    /// 書き込みの後、HL は番地、値は DE (FLOAT は A:DE) に残っている
+    /// </summary>
+    private void KeepStoredValue(List<IrInstruction> insts, int i, IrInstruction inst)
+    {
+        if (inst.Src1.Kind != IrOperandKind.Temp || !IsTempReadAfter(insts, i, inst.Src1.TempIndex)) return;
+        _e.Instruction("EX", "DE,HL");
+        if (NeedsPushAfter(insts, i, inst.Src1.TempIndex))
+            EmitPushValue(inst.DataSize);
+    }
+
+    /// <summary>命令が読む temp (同じ temp は 1 回)。書き込み・出力の Dest は番地、Return・PushArg の Dest は値</summary>
+    private static IEnumerable<int> ReadTemps(IrInstruction inst)
+    {
+        var set = new HashSet<int>();
+        if (inst.Src1.Kind == IrOperandKind.Temp) set.Add(inst.Src1.TempIndex);
+        if (inst.Src2.Kind == IrOperandKind.Temp) set.Add(inst.Src2.TempIndex);
+        if (inst.Dest.Kind == IrOperandKind.Temp && DestIsRead(inst.Op)) set.Add(inst.Dest.TempIndex);
+        if (inst.ImplicitSrc.Kind == IrOperandKind.Temp) set.Add(inst.ImplicitSrc.TempIndex);
+        return set;
+    }
+
+    private static bool DestIsRead(IrOp op) => op is IrOp.IndirStore or IrOp.MemStore or IrOp.ArrayStore
+        or IrOp.PortOut or IrOp.StoreIndirect or IrOp.Return or IrOp.PushArg;
+
+    /// <summary>temp を i より後ろで読むか (作り直されたら、そこで終わり)</summary>
+    private static bool IsTempReadAfter(List<IrInstruction> insts, int i, int tempIdx)
+    {
+        for (int j = i + 1; j < insts.Count; j++)
+        {
+            var n = insts[j];
+            if ((n.Src1.Kind == IrOperandKind.Temp && n.Src1.TempIndex == tempIdx)
+                || (n.Src2.Kind == IrOperandKind.Temp && n.Src2.TempIndex == tempIdx)
+                || (n.ImplicitSrc.Kind == IrOperandKind.Temp && n.ImplicitSrc.TempIndex == tempIdx))
+                return true;
+            if (n.Dest.Kind == IrOperandKind.Temp && n.Dest.TempIndex == tempIdx)
+                return DestIsRead(n.Op);   // 読む Dest でなければ作り直し
+        }
+        return false;
     }
 
     /// <summary>単純ロード命令かどうか（整数用、FLOATは対象外）</summary>
@@ -2432,6 +2485,7 @@ public class CodeGenerator
                 break;
 
             case IrOp.Nop:
+            case IrOp.JoinValue:   // 値は HL にある。積むかどうかは呼び出し側 (NeedsPushAfter) が決める
                 break;
 
             default:

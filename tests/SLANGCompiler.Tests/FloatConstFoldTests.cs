@@ -75,7 +75,6 @@ public class FloatConstFoldTests
     [InlineData("B=I+(0,5.0/2.0);", IrOp.Add)]   // カンマ式は右の値
     [InlineData("B=I+(A*1);", IrOp.Add)]         // 何もしない演算の正規化で A (FLOAT) が残る
     [InlineData("B=I+(A=-(5.0/2.0));", IrOp.Add)] // 代入式は代入する値
-    [InlineData("B=I+(A++);", IrOp.Add)]          // 後置の増分は元の値 (FLOAT)
     [InlineData("B=I+&(A*A);", IrOp.Add)]         // 変数・配列以外の & は中身の値
     [InlineData("B=I+&MEM[A*A];", IrOp.Add)]      // &MEM[x] は x の値
     public void MixedExpression_ConvertsLeftBeforeFloatRight(string src, IrOp op)
@@ -86,8 +85,7 @@ public class FloatConstFoldTests
         Assert.True(load >= 0, src);
         var conv = ops[load + 1];
         Assert.True(conv.Op == IrOp.Call && conv.Src1.Name == "i16tof24", src);
-        if (!src.Contains("++"))   // A++ は増分の結果を A に入れるときにも変換する
-            Assert.Equal(1, ops.Count(o => o.Op == IrOp.Call && o.Src1.Name == "i16tof24"));
+        Assert.Equal(1, ops.Count(o => o.Op == IrOp.Call && o.Src1.Name == "i16tof24"));
         var outer = ops.Last(o => o.Op == op);
         Assert.Equal(3, outer.DataSize);                       // FLOAT の演算
         Assert.Equal(conv.Dest, outer.Src1);                   // 左辺は変換した値
@@ -110,12 +108,17 @@ public class FloatConstFoldTests
     }
 
     [Fact]
-    public void MixedExpression_PrefixIncrementIsNotFloat()
+    public void MixedExpression_PrefixIncrementOnFloatIsFloat()
     {
-        // 前置の増分は結果の一時値に型を付けない (整数) ので、左辺を先に FLOAT にしない (後置との区別)
+        // FLOAT の前置の増分は A = A + 1 と同じ式で、値は FLOAT。左辺の整数は、右辺を求める前に FLOAT にする
+        // (FLOAT の後置の増分の値は使えない (エラー))
         var ops = MainOps(Generate("VAR I; FLOAT A; FLOAT B; MAIN() BEGIN B=I+(++A); END;").Module);
         int load = ops.FindIndex(o => o.Op == IrOp.LoadVar && o.Src1.Name == "_V_I");
-        Assert.False(ops[load + 1].Op == IrOp.Call && ops[load + 1].Src1.Name == "i16tof24");
+        var conv = ops[load + 1];
+        Assert.True(conv.Op == IrOp.Call && conv.Src1.Name == "i16tof24");
+        var outer = ops.Last(o => o.Op == IrOp.Add);
+        Assert.Equal(3, outer.DataSize);
+        Assert.Equal(conv.Dest, outer.Src1);
     }
 
     [Theory]
