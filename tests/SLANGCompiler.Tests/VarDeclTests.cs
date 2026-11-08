@@ -124,4 +124,21 @@ public class VarDeclTests
         var (_, diag) = Compile("VAR Y; VAR P[] = &Y; MAIN() BEGIN P[0] = 1; END;");
         Assert.Contains(diag.Diagnostics, d => d.Message.Contains("Non-constant initializer for static/global variable 'P'"));
     }
+
+    [Fact]
+    public void VarAddress_AddressOnlyMachine_Error()
+    {
+        // 番地だけの MACHINE はラベルを出さないので、VAR の番地の式には使えない (ランタイムの名前は IntegrationTests)
+        var (_, diag) = Compile("MACHINE ROM(0):$1234; VAR X:ROM; MAIN() BEGIN X = 1; END;");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("cannot use MACHINE 'ROM' without a CODE body"));
+    }
+
+    [Theory]
+    // 間接変数の初期値は 2 バイトの番地。小数部のない FLOAT もその値 (仮数を番地にしない)
+    [InlineData("VAR P[] = 1024.0; MAIN() BEGIN P[0] = 1; END;", @"LD\tHL,\$0400\s*\n\s*LD\t\(_V_P\),HL")]
+    [InlineData("FN() BEGIN VAR L[] = 1024.0; L[0] = 1; END; MAIN() BEGIN FN(); END;", @"LD\t\(IY\+\$\w\w\),\$00\s*\n\s*LD\t\(IY\+\$\w\w\),\$04")]
+    public void PointerInitializer_FloatConstantIsAddress(string source, string pattern)
+    {
+        Assert.Matches(pattern, CompileOk(source));
+    }
 }

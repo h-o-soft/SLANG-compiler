@@ -429,7 +429,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 // いままでは整数のリテラル以外を黙って __WORK__ に置いていた
                 if (NewConstEvaluator().Evaluate(node.Address) is int constAddr)
                     fixedAddr = constAddr & 0xFFFF;
-                else
+                else if (CheckVarAddressNames(node))
                 {
                     int errorsBefore = _diagnostics.ErrorCount;
                     var asmResult = LabelUtils.ExprToAsmString(node.Address, _globalSymbols, _diagnostics, _localConsts);
@@ -706,8 +706,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 _emitToGlobalData = true;
                 try
                 {
-                    var val = node.InitialValue.Accept(this);
-                    Emit(IrOp.StoreVar, IrOperand.Sym(label), val, dataSize: 2);
+                    Emit(IrOp.StoreVar, IrOperand.Sym(label), PointerInitialValue(node.InitialValue), dataSize: 2);
                 }
                 finally
                 {
@@ -727,12 +726,48 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
             // 間接変数の初期値: 単純変数の局所の初期値と同じく、宣言の所で書く
             if (node.InitialValue != null && CheckPointerInitializer(node, isPointerVar))
-            {
-                var val = node.InitialValue.Accept(this);
-                Emit(IrOp.StoreLocal, IrOperand.Imm(offset), val, dataSize: 2);
-            }
+                Emit(IrOp.StoreLocal, IrOperand.Imm(offset), PointerInitialValue(node.InitialValue), dataSize: 2);
         }
         return IrOperand.None;
+    }
+
+    /// <summary>
+    /// VAR の番地のアセンブラの式に使える名前か。番地だけの MACHINE (ラベルを出さない) と、ランタイムの名前 (別名・
+    /// 名前空間の解決をしない) はエラーにする。使えるのは #ASM のラベルと、SLANG の大域の名前
+    /// </summary>
+    private bool CheckVarAddressNames(VarDecl node)
+    {
+        bool ok = true;
+        SemanticAnalyzer.ForEachName(node.Address, (name, span) =>
+        {
+            var sym = _globalSymbols?.Resolve(name);
+            if (sym?.Kind == SymbolKind.MachineFunction && !sym.HasCodeBody)
+            {
+                _diagnostics.Error($"Address of VAR '{node.Name}' cannot use MACHINE '{name}' without a CODE body (write its address)", span);
+                ok = false;
+            }
+            else if (sym == null && _runtimeManager?.Functions.ContainsKey(name) == true)
+            {
+                _diagnostics.Error($"Address of VAR '{node.Name}' cannot use the runtime name '{name}'", span);
+                ok = false;
+            }
+        });
+        return ok;
+    }
+
+    /// <summary>
+    /// 間接変数の初期値 (番地なので 2 バイトの整数)。その場で決まる値 (1024.0 のような小数部のない FLOAT も) は
+    /// 整数の定数にし、そうでなければ値を作って 2 バイトの整数に変える (FLOAT の仮数をそのまま番地にしない)
+    /// </summary>
+    private IrOperand PointerInitialValue(Expression init)
+    {
+        if (_globalSymbols != null && NewConstEvaluator().Evaluate(init) is int v)
+        {
+            var t = IrOperand.Temp(AllocTemp());
+            Emit(IrOp.LoadConst, t, IrOperand.Imm(v & 0xFFFF));
+            return t;
+        }
+        return EmitTypeConversion(init.Accept(this), 2);
     }
 
     /// <summary>
