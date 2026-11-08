@@ -109,6 +109,25 @@ public class LexerTests
         Assert.Equal(TokenKind.RBracket, tokens[3].Kind);
     }
 
+    [Theory]
+    // ( と , の直後の [ は添字ではない (CODE([式], …) の [式])。名前・] の直後は今までどおり添字
+    [InlineData("CODE([K], $00)", 2)]
+    [InlineData("CODE(X,[K])", 4)]
+    [InlineData("CODE($00,[K])", 4)]
+    public void BracketAfterParenOrComma_IsNotSubscript(string source, int index)
+    {
+        var tokens = Tokenize(source);
+        Assert.Equal(TokenKind.LBracket, tokens[index].Kind);
+    }
+
+    [Fact]
+    public void BracketAfterNameInsideParen_IsSubscript()
+    {
+        var tokens = Tokenize("F(A[1], B[2])");
+        Assert.Equal(TokenKind.ArrayBracketOpen, tokens[3].Kind);
+        Assert.Equal(TokenKind.ArrayBracketOpen, tokens[8].Kind);
+    }
+
     [Fact]
     public void Comments()
     {

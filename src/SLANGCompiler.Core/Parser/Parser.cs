@@ -13,6 +13,8 @@ public class Parser
     private readonly DiagnosticBag _diagnostics;
     private int _pos;
     private int _argListDepth;
+    // NAME:番地(n) の番地を読む間は、式の後ろの ( を呼び出しとして読まない (括弧の中は読む)
+    private bool _noCallPostfix;
 
     public Parser(List<Token> tokens, DiagnosticBag diagnostics)
     {
@@ -98,9 +100,25 @@ public class Parser
 
     private bool IsFuncDefStart()
     {
-        // identifier [: expr] '('
+        // identifier [: expr] '('。expr は字句 1 つか、括弧でくくった式 (NAME:(BASE+4)(n))
         int i = 1;
-        if (Peek(i).Kind == TokenKind.Colon) i += 2; // skip : expr (simplified)
+        if (Peek(i).Kind == TokenKind.Colon)
+        {
+            i++;
+            if (Peek(i).Kind == TokenKind.LParen)
+            {
+                int depth = 0;
+                do
+                {
+                    var k = Peek(i).Kind;
+                    if (k == TokenKind.LParen) depth++;
+                    else if (k == TokenKind.RParen) depth--;
+                    else if (k == TokenKind.EOF) return false;
+                    i++;
+                } while (depth > 0);
+            }
+            else i++;
+        }
         return Peek(i).Kind == TokenKind.LParen;
     }
 
@@ -515,7 +533,9 @@ public class Parser
             }
             else
             {
-                address = ParseNcExpr();
+                _noCallPostfix = true;
+                try { address = ParseNcExpr(); }
+                finally { _noCallPostfix = false; }
             }
         }
 
@@ -837,17 +857,12 @@ public class Parser
         if (!down) Expect(TokenKind.To, "Expected TO or DOWNTO");
         var to = ParseNcExpr();
 
-        AstNode body;
-        if (Match(TokenKind.Do) || IsBlockOpen())
-        {
-            body = ParseCompound();
-            Match(TokenKind.Next); Match(TokenKind.Semicolon);
-        }
-        else
-        {
-            body = ParseStmt() ?? new Block(new List<AstNode>(), s);
-            Match(TokenKind.Next); Match(TokenKind.Semicolon);
-        }
+        // DO の後ろも、ブロックか 1 つの文 (仕様書: FOR 変数名 = 式1 TO 式2 [DO] 文 [NEXT;])
+        Match(TokenKind.Do);
+        AstNode body = IsBlockOpen()
+            ? ParseCompound()
+            : ParseStmt() ?? new Block(new List<AstNode>(), s);
+        Match(TokenKind.Next); Match(TokenKind.Semicolon);
         return new ForStmt(v, from, to, down, body, s);
     }
 
@@ -1217,7 +1232,7 @@ public class Parser
                 }
                 e = new ArrayAccessExpr(e, indices, e.Span);
             }
-            else if (Check(TokenKind.LParen))
+            else if (Check(TokenKind.LParen) && !_noCallPostfix)
             {
                 Advance();
                 var args = new List<Expression>();
@@ -1266,9 +1281,15 @@ public class Parser
         }
         if (Match(TokenKind.LParen))
         {
-            var e = ParseExpr();
-            Expect(TokenKind.RParen, "Expected ')'");
-            return e;
+            bool noCall = _noCallPostfix;
+            _noCallPostfix = false;
+            try
+            {
+                var e = ParseExpr();
+                Expect(TokenKind.RParen, "Expected ')'");
+                return e;
+            }
+            finally { _noCallPostfix = noCall; }
         }
 
         Error($"Expected expression, got {Current.Kind} '{Current.Text}'");
