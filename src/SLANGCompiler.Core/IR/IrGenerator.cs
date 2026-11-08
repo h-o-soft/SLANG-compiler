@@ -501,10 +501,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 try
                 {
                     // 起動時の代入は LoadConst と StoreVar の組だけを書く (EmitGlobalInit)。その場で決まる整数の式
-                    // (?: など) は値にしてから積む (式のまま積むと、黙って書かれなかった)
+                    // (?: など) は値にしてから積む (式のまま積むと、黙って書かれなかった)。整数の変数の初期値に FLOAT を
+                    // 使う式は、整数で畳み込むと違う値になりうるのでエラー
                     IrOperand val;
-                    if (ds <= 2 && !ContainsFloat(node.InitialValue) && NewConstEvaluator().Evaluate(node.InitialValue) is int cv)
+                    bool usesFloat = ds <= 2 && ContainsFloat(node.InitialValue);
+                    if (usesFloat)
+                        _diagnostics.Error($"The initializer of integer variable '{node.Name}' must not use FLOAT", node.InitialValue.Span);
+                    if (ds <= 2 && (usesFloat || NewConstEvaluator().Evaluate(node.InitialValue) is int))
                     {
+                        int cv = usesFloat ? 0 : NewConstEvaluator().Evaluate(node.InitialValue)!.Value;
                         val = IrOperand.Temp(AllocTemp());
                         Emit(IrOp.LoadConst, val, IrOperand.Imm(cv & (ds == 1 ? 0xFF : 0xFFFF)));
                     }
