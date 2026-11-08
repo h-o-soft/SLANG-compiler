@@ -86,6 +86,14 @@ public class PreprocessorTests : IDisposable
     }
 
     [Fact]
+    public void BoundaryLiteral_AliasIsUnknown()
+    {
+        // #IF の中で切れた CONST K=1 (続きの +1 が #END の後ろ) を、別名の FLAG に広げない: FLAG を #IF で使うとエラー
+        var (_, diag) = Run("#IF 1\nCONST K = 1\n#END\n+ 1;\nCONST FLAG = K;" + IfMark("FLAG == 1"));
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("#IF uses CONST 'FLAG', whose value is not known here"));
+    }
+
+    [Fact]
     public void ConstValueUnknown_NotUsedInIf_NoDiagnostic()
     {
         var (_, diag) = Run("#IF 1\nCONST K = 1 + 1\n#END\n- 1;");

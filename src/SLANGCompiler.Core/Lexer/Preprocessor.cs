@@ -42,6 +42,8 @@ public class Preprocessor
     private readonly Dictionary<string, Semantics.Symbol> _constSymbols = new(StringComparer.OrdinalIgnoreCase);
     // 右辺の終わりが分からず (続きが #IF の外・取り込んだ側にあるかもしれない)、値の分からない CONST。#IF で使ったらエラー
     private readonly HashSet<string> _unknownConsts = new(StringComparer.OrdinalIgnoreCase);
+    // 右辺の終わりが分からないが、整数のリテラル 1 つなので値を覚えた CONST (これを使う CONST は値が分からない)
+    private readonly HashSet<string> _provisionalConsts = new(StringComparer.OrdinalIgnoreCase);
     // CONST の右辺の式が使った名前 (たどった先も)
     private readonly Dictionary<string, HashSet<string>> _constDeps = new(StringComparer.OrdinalIgnoreCase);
 
@@ -181,7 +183,12 @@ public class Preprocessor
                     }
                 }
                 else if (end == start + 1 && tokens[start].Kind == TokenKind.IntegerLiteral)
+                {
                     SetConst(name, Convert.ToInt32(tokens[start].Value));
+                    // 右辺の終わりが分からない整数のリテラル 1 つは、#IF で直接使うときはいままでどおりの値。
+                    // 続きがあるかもしれないので、これを使う CONST の値は分からないとする (誤った値を別名に広げない)
+                    if (mayContinue) _provisionalConsts.Add(name);
+                }
                 else
                 {
                     // 使った名前 (とその名前が使った名前) を覚える。#IF で name を使ったら、それらも使ったことにする
@@ -193,7 +200,7 @@ public class Preprocessor
                         if (_constDeps.TryGetValue(n, out var nd)) deps.UnionWith(nd);
                     });
                     _constDeps[name] = deps;
-                    if (deps.Any(_unknownConsts.Contains))
+                    if (deps.Any(d => _unknownConsts.Contains(d) || _provisionalConsts.Contains(d)))
                         _unknownConsts.Add(name);   // 値の分からない CONST を使う CONST も、値が分からない
                     else
                     {
