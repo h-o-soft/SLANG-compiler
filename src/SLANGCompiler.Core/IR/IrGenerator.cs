@@ -414,14 +414,35 @@ public class IrGenerator : IAstVisitor<IrOperand>
         if (_currentFunction == null || _inStaticDecl)
         {
             int? fixedAddr = null;
+            string? fixedAddrLabel = null;
             if (node.Address is IntegerLiteral addrLit)
                 fixedAddr = (int)addrLit.Value;
             else if (node.Address != null && UsesLocalConst(node.Address)
                      && NewConstEvaluator().Evaluate(node.Address) is int localAddr)
             {
-                // 関数の中の CONST を使ったアドレスの式 (VAR BYTE REG:BASE)。大域の名前だけの式は、
-                // いままでどおり (整数のリテラルしか固定アドレスにならない。前からの制限で、ここでは変えない)
+                // 関数の中の CONST を使ったアドレスの式 (VAR BYTE REG:BASE)
                 fixedAddr = localAddr & 0xFFFF;
+            }
+            else if (node.Address != null)
+            {
+                // その場で値が決まる式はその値、そうでなければアセンブラの式 (ラベル。ARRAY と同じ)。
+                // いままでは整数のリテラル以外を黙って __WORK__ に置いていた
+                if (NewConstEvaluator().Evaluate(node.Address) is int constAddr)
+                    fixedAddr = constAddr & 0xFFFF;
+                else
+                {
+                    int errorsBefore = _diagnostics.ErrorCount;
+                    var asmResult = LabelUtils.ExprToAsmString(node.Address, _globalSymbols, _diagnostics, _localConsts);
+                    if (asmResult.HasValue)
+                    {
+                        fixedAddrLabel = asmResult.Value.Expr;
+                        foreach (var dep in asmResult.Value.Deps)
+                            _module.AddressSymbolDeps.Add(dep);
+                    }
+                    else if (_diagnostics.ErrorCount == errorsBefore)
+                        _diagnostics.Error($"Address of VAR '{node.Name}' must be a constant or an assembler label expression",
+                            node.Address.Span);
+                }
             }
 
             // ラベル: 関数内静的は __{FuncName}_{VarName}、トップレベルは __{VarName}
@@ -444,6 +465,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 ByteSize = ds,
                 ElemSize = ds,
                 FixedAddress = fixedAddr,
+                FixedAddressLabel = fixedAddrLabel,
                 VarKind = GlobalVarKind.Scalar,
             });
 
@@ -677,6 +699,21 @@ public class IrGenerator : IAstVisitor<IrOperand>
                 InitialItems = initItems,
                 StorageKind = initItems != null ? VarStorageKind.InitArray : VarStorageKind.Bss,
             });
+
+            // 間接変数の初期値 (VAR P[] = $C000): 単純変数の初期値と同じく、起動時に 1 回だけ変数そのものに書く
+            if (node.InitialValue != null && CheckPointerInitializer(node, isPointerGlobal))
+            {
+                _emitToGlobalData = true;
+                try
+                {
+                    var val = node.InitialValue.Accept(this);
+                    Emit(IrOp.StoreVar, IrOperand.Sym(label), val, dataSize: 2);
+                }
+                finally
+                {
+                    _emitToGlobalData = false;
+                }
+            }
         }
         else
         {
@@ -687,8 +724,27 @@ public class IrGenerator : IAstVisitor<IrOperand>
             int offset = 0x70 - _localOffset;
             var kind = isPointerVar ? VarKind.Pointer : VarKind.Array;
             _localVars![node.Name] = new LocalVarInfo(offset, allocSize, Kind: kind, IsByte: isByte, Dims: dims, ElemSize: elemSize);
+
+            // 間接変数の初期値: 単純変数の局所の初期値と同じく、宣言の所で書く
+            if (node.InitialValue != null && CheckPointerInitializer(node, isPointerVar))
+            {
+                var val = node.InitialValue.Accept(this);
+                Emit(IrOp.StoreLocal, IrOperand.Imm(offset), val, dataSize: 2);
+            }
         }
         return IrOperand.None;
+    }
+
+    /// <summary>
+    /// = 式 (CODE の並びでない初期値) は間接変数 (P[]) だけ。大きさのある配列はエラー
+    /// (いままでは黙って捨てていた)
+    /// </summary>
+    private bool CheckPointerInitializer(ArrayDecl node, bool isPointer)
+    {
+        if (isPointer) return true;
+        _diagnostics.Error($"Array '{node.Name}' with a size cannot have a single-value initializer (use {{...}})",
+            node.InitialValue!.Span);
+        return false;
     }
 
     public IrOperand VisitConstDecl(ConstDecl node)
