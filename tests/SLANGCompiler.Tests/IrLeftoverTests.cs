@@ -36,8 +36,17 @@ public class IrLeftoverTests
 
     private static string Lines(params string[] lines) => string.Join("\n", lines.Select(l => "\t" + l));
 
+    /// <summary>構文解析から IR までのエラー (構文解析のエラーがあっても先へ進める)</summary>
     private static IEnumerable<string> Errors(string source)
-        => Generate(source).Diag.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.Message);
+    {
+        var diag = new DiagnosticBag();
+        var tokens = new Preprocessor(diag).Process(new Lexer.Lexer(source).Tokenize(), ".");
+        var ast = new Parser.Parser(tokens, diag).ParseCompilationUnit();
+        var analyzer = new SemanticAnalyzer(diag);
+        analyzer.Analyze(ast);
+        new IrGenerator(diag, analyzer.Symbols).Generate(ast);
+        return diag.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Select(d => d.Message);
+    }
 
     // ==== C1: 大域の CONST を隠す変数 ====
 
@@ -145,5 +154,47 @@ public class IrLeftoverTests
     public void TrueFalseAsName_IsError(string func)
     {
         Assert.Contains(Errors($"{func} MAIN() BEGIN END;"), m => m.Contains("cannot be used as a variable or parameter name"));
+    }
+
+    // ==== C2: 本体が CODE だけの関数 ====
+
+    [Theory]
+    [InlineData("FX() BEGIN CODE($3E, $01); END;")]
+    [InlineData("FX()[CODE($3E, $01);]")]
+    [InlineData("FX:WORD()[CODE($3E, $01);]")]
+    [InlineData("FX(0)[CODE($3E, $01);]")]
+    public void ZeroArgumentCodeBody_StaysMachineCodeDefinition(string func)
+    {
+        // 引数 0・戻り値の型なし (か :WORD) は、いままでどおり MACHINE の CODE の定義 (_FX: に DB と RET)
+        var asm = Asm($"VAR R; {func} MAIN() BEGIN R = FX(); END;");
+        Assert.Contains("CALL\t_FX", asm);
+        Assert.Contains("_FX:\n\tDB\t$3E,$01,$C9", asm);
+    }
+
+    [Fact]
+    public void ZeroArgumentCodeBody_ConstantItemsAreBytes()
+    {
+        // MACHINE の CODE の定義の項は、定数をバイトにする (CODE(OP) は DB OP。ふつうの関数の CODE の文とは違う)
+        var asm = Asm("CONST OP = $AF; FX() BEGIN CODE(OP, BYTE, OP + 1); END; MAIN() BEGIN FX(); END;");
+        Assert.Contains("_FX:\n\tDB\t$AF,$B0,$C9", asm);
+    }
+
+    [Theory]
+    [InlineData("FX(A) BEGIN CODE($3E, $01); END;", "FX(1)")]
+    [InlineData("FX(A, B) [CODE($3E, $01);]", "FX(1, 2)")]
+    [InlineData("FX:FLOAT() BEGIN CODE($3E, $01); END;", "FX()")]
+    [InlineData("FX:BYTE() BEGIN CODE($3E, $01); END;", "FX()")]
+    public void CodeBodyWithParameterNamesOrReturnType_IsError(string func, string call)
+    {
+        Assert.Contains(Errors($"VAR R; {func} MAIN() BEGIN {call}; END;"), m => m.Contains("MACHINE CODE definition"));
+    }
+
+    [Fact]
+    public void StatementBeforeCode_IsOrdinaryFunction()
+    {
+        // CODE の前に文があれば、ふつうの関数 (引数を IY から読める)
+        var asm = FuncAsm("VAR R; FX(A) BEGIN R = A; CODE($3E, $01); END; MAIN() BEGIN FX(1); END;", "FX");
+        Assert.Contains("LD\tL,(IY+$6E)", asm);
+        Assert.Contains("DB\t$3E", asm);
     }
 }
