@@ -264,6 +264,13 @@ public class SemanticAnalyzer : IAstVisitor<object?>
                 sym.AsmLabel = LabelUtils.UserVarLabel(node.Name);
         }
 
+        // 間接変数の初期値 (VAR P[] = 番地) の式も調べる (代入の禁止など、単純変数の初期値と同じ)
+        node.InitialValue?.Accept(this);
+
+        // 固定アドレスの配列の CODE の並びの初期値は、どの出力も書かない (エラーにする。前は構文エラーだった形)
+        if (node.Address != null && node.InitialCode != null)
+            _diagnostics.Error($"Array '{node.Name}' with a fixed address cannot have an initializer", node.Span);
+
         // 間接変数の初期値 (VAR P[] = 番地): 大域・静的は、単純変数と同じく定数でなければ起動時に入らない
         if (node.InitialValue != null && sym.IsGlobal && node.InitialValue is not IntegerLiteral
             && _constEval.Evaluate(node.InitialValue) == null)

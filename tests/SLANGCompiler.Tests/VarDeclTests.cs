@@ -145,4 +145,46 @@ public class VarDeclTests
     {
         Assert.Matches(pattern, CompileOk(source));
     }
+
+    // ==== 実装レビューで見つかった形 ====
+
+    [Theory]
+    // 局所の初期値が引数を読むとき、引数のオフセットが決まってから出す (いまの main でも、単純変数で IY+$00 を読んでいた)
+    [InlineData("FN(BASE) BEGIN VAR P[] = BASE; P[0] = 1; END; MAIN() BEGIN FN($C000); END;")]
+    [InlineData("VAR R; FN(BASE) BEGIN VAR X = BASE; R = X; END; MAIN() BEGIN FN(5); END;")]
+    public void LocalInitializer_ReadsParameterAtFinalOffset(string source)
+    {
+        var asm = CompileOk(source);
+        var body = asm.Split("\nFN:")[1].Split("_FN_EXIT")[0];
+        Assert.DoesNotContain("(IY+$00)", body);
+        Assert.Matches(@"LD\tL,\(IY\+\$6C\)\s*\n\s*LD\tH,\(IY\+\$6D\)", body);
+    }
+
+    [Fact]
+    public void PointerInitializer_LocalShadowsGlobalConst()
+    {
+        // 局所の BASE は大域の CONST BASE を隠す (その場で決まる値として $C000 にしない)
+        var asm = CompileOk("CONST BASE = $C000; FN() BEGIN VAR BASE = $D000; VAR P[] = BASE; P[0] = 1; END; MAIN() BEGIN FN(); END;");
+        var body = asm.Split("\nFN:")[1].Split("_FN_EXIT")[0];
+        Assert.DoesNotMatch(@"LD\t\(IY\+\$\w\w\),\$C0", body);      // $C000 を即値で書かない
+        Assert.DoesNotContain("$C000", body);
+    }
+
+    [Theory]
+    // 固定アドレスの配列の並びの初期値は、どの出力も書かないのでエラー (前は構文エラーだった形)
+    [InlineData("ARRAY BYTE BUF[3]:$C000 = {1,2,3};")]
+    [InlineData("VAR BYTE BUF[3]:$C000 = {1,2,3};")]
+    public void FixedAddressArrayInitializer_Errors(string decl)
+    {
+        var (_, diag) = Compile($"{decl} MAIN() BEGIN BUF[0] = 1; END;");
+        Assert.Contains(diag.Diagnostics, d => d.Message.Contains("with a fixed address cannot have an initializer"));
+    }
+
+    [Fact]
+    public void PointerInitializer_IsCheckedLikeAssignment()
+    {
+        // 間接変数の初期値の式も、意味解析で調べる (配列への代入は禁止)
+        var (_, diag) = Compile("ARRAY T[3]; FN() BEGIN VAR P[] = (T = $C000); P[0] = 1; END; MAIN() BEGIN FN(); END;");
+        Assert.True(diag.HasErrors);
+    }
 }

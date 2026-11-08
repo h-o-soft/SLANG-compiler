@@ -20,6 +20,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
     // 関数の中の CONST (名前 → 記号)。宣言の順に入れる。関数の外では null
     private Dictionary<string, Symbol>? _localConsts;
     private FuncInfo? _currentFuncInfo;
+    // 関数の頭の局所宣言の初期値 (引数のオフセットが決まってから出す)。関数の頭の局所宣言を訪ねる間だけ null でない
+    private List<Action>? _deferredLocalInits;
+
+    private void EmitLocalInit(Action emit)
+    {
+        if (_deferredLocalInits != null) _deferredLocalInits.Add(emit);
+        else emit();
+    }
+
     // 次に訪ねる式の値を使わない (式の文・カンマ式の左など)。受け取る式 (TakesDiscard) だけが読んで消す
     private bool _valueDiscarded;
 
@@ -491,9 +500,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
             if (node.InitialValue != null)
             {
-                var val = node.InitialValue.Accept(this);
-                var info = _localVars![node.Name];
-                Emit(IrOp.StoreLocal, IrOperand.Imm(info.Offset), val, dataSize: ds);
+                var name = node.Name;
+                EmitLocalInit(() =>
+                {
+                    var val = node.InitialValue.Accept(this);
+                    var info = _localVars![name];
+                    Emit(IrOp.StoreLocal, IrOperand.Imm(info.Offset), val, dataSize: ds);
+                });
             }
         }
         return IrOperand.None;
@@ -726,7 +739,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
             // 間接変数の初期値: 単純変数の局所の初期値と同じく、宣言の所で書く
             if (node.InitialValue != null && CheckPointerInitializer(node, isPointerVar))
-                Emit(IrOp.StoreLocal, IrOperand.Imm(offset), PointerInitialValue(node.InitialValue), dataSize: 2);
+                EmitLocalInit(() => Emit(IrOp.StoreLocal, IrOperand.Imm(offset), PointerInitialValue(node.InitialValue), dataSize: 2));
         }
         return IrOperand.None;
     }
@@ -769,7 +782,13 @@ public class IrGenerator : IAstVisitor<IrOperand>
     /// </summary>
     private IrOperand PointerInitialValue(Expression init)
     {
-        if (_globalSymbols != null && NewConstEvaluator().Evaluate(init) is int v)
+        // 局所変数・引数・静的変数は、同じ名前の大域の CONST を隠す (その場で決まる値ではない)
+        bool usesVariable = false;
+        SemanticAnalyzer.ForEachName(init, (n, _) =>
+        {
+            if (_localVars?.ContainsKey(n) == true || _staticVarSizes?.ContainsKey(n) == true) usesVariable = true;
+        });
+        if (_globalSymbols != null && !usesVariable && NewConstEvaluator().Evaluate(init) is int v)
         {
             var t = IrOperand.Temp(AllocTemp());
             Emit(IrOp.LoadConst, t, IrOperand.Imm(v & 0xFFFF));
@@ -1016,7 +1035,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
         _inStaticDecl = true;
         foreach (var d in node.StaticDeclarations) d.Accept(this);
         _inStaticDecl = false;
+        // 局所の初期値は、引数のオフセットが決まってから出す (初期値の式が引数を読むことがある)
+        _deferredLocalInits = new List<Action>();
         foreach (var d in node.LocalDeclarations) d.Accept(this);
+        var localInits = _deferredLocalInits;
+        _deferredLocalInits = null;
 
         // ローカル変数確定後、引数のオフセットを計算
         // ADD IY, (localOffset + paramTotalBytes) でIYがずれるため:
@@ -1034,6 +1057,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             // localOffsetに引数分も加算（ADD IY,BCのフレームサイズ）
             _localOffset = totalFrameSize;
         }
+        foreach (var init in localInits) init();
 
         // Body
         node.Body.Accept(this);
