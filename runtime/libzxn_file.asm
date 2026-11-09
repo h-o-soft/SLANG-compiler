@@ -1,6 +1,9 @@
 ; Converted from lib/libdef/libzxn_file.yml
 ; SLANG Runtime Library (new format)
 
+; NextZXOS の esxDOS の呼び出し (RST $08 / DB $9A〜$A1) は、引数を表の組 (A・BC・DE・HL・IX) のまま渡す。
+; EXX はしない (前は各関数に EXX があり、モード・数・位置が届いていなかった。注釈にした M_P3DOS ($94) の呼び方の名残)。
+
 ; @name FOPEN
 ; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
@@ -14,7 +17,6 @@ LD B,E
 
 LD DE,FHEADER
 
-EXX
 RST $08
 DB $9A  ; F_OPEN
 
@@ -101,7 +103,6 @@ RET
 ; HL = File Handle
 LD A,L
 
-EXX
 RST $08
 DB $9B  ; F_CLOSE
 
@@ -151,7 +152,6 @@ LD C,(HL)
 INC HL
 LD B,(HL)
 
-EXX
 RST $08
 DB $9F  ; F_SEEK
 
@@ -173,7 +173,6 @@ LD A,L
 PUSH DE
 POP IX
 
-EXX
 RST $08
 DB $A1  ; F_STAT
 
@@ -190,7 +189,6 @@ LD A,L
 PUSH DE
 POP IX
 
-EXX
 RST $08
 DB $9D    ; F_READ
 
@@ -207,7 +205,6 @@ LD A,L
 PUSH DE
 POP IX
 
-EXX
 RST $08
 DB $9E    ; F_WRITE
 

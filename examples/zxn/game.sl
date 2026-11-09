@@ -110,22 +110,24 @@ VAR I, J, F;
 	LOCATE(2,20);
 	PRINT(MSX$(DATABUF), /);
 
-	// 書き込む時はこんな感じ(ただしエミュでは正常に動かない。実機でもファイルサイズが怪しいので、あまり書き込みは使わない方がいいかも)
-	//I = FOPEN("test2.txt", ESX_MODE_OPEN_CREAT OR ESX_MODE_CREAT_TRUNC OR ESX_MODE_WRITE);
-	//FWRITE(I, "Hello World!", 12);
-	//FCLOSE(I);
+	// 書き込む時はこんな感じ
+	I = FOPEN("test2.txt", ESX_MODE_OPEN_CREAT OR ESX_MODE_CREAT_TRUNC OR ESX_MODE_WRITE);
+	FWRITE(I, "Hello World!", 12);
 
 	// ファイルシークはこんな感じ(4バイトの値を渡す必要があるので4バイト配列のアドレスを渡す必要がある)
-	// SEEKADR[0] = 0;
-	// SEEKADR[1] = 0;
-	// FSEEK(I, SEEKADR, ESX_SEEK_SET);
+	// 先頭から6バイトの所に移って上書きするので、test2.txt は "Hello Next!!" になる
+	SEEKADR[0] = 6;
+	SEEKADR[1] = 0;
+	FSEEK(I, SEEKADR, ESX_SEEK_SET);
+	FWRITE(I, "Next!!", 6);
+	FCLOSE(I);
 
 	// FSTATで情報を取得し、ファイルサイズの下位2バイトを取得して表示
-	// F = FOPEN("test.txt", ESX_MODE_OPEN_EXIST OR ESX_MODE_READ);
-	// FSTAT(F, STATADR);
-	// FCLOSE(F);
-	// I = STATADR[7] + (STATADR[8] << 8);
-	// PRINT(I);
+	F = FOPEN("test.txt", ESX_MODE_OPEN_EXIST OR ESX_MODE_READ);
+	FSTAT(F, STATADR);
+	FCLOSE(F);
+	I = STATADR[7] + (STATADR[8] << 8);
+	PRINT(I);
 
 	// 普通にLOCATEとPRINTで文字が表示可能
 	LOCATE(7,3);
