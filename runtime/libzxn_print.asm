@@ -82,10 +82,15 @@ JR .pstr1
 ; @name PCHR
 ; @resident shared
 ; @calls PRT
+; 16-bit 値 HL のうち 0 バイトは出力しない (liblsx_print と同じ)。
+; PRT は 0 も字として描いて桁を進めるので、CHR$(48+I) が 2 字になっていた。
 LD A, H
-CALL PRT
+OR A
+CALL NZ,PRT
 LD A, L
-JR PRT
+OR A
+JR NZ,PRT
+RET
 
 
 ; @name CRDISP
