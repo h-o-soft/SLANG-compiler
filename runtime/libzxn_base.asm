@@ -196,6 +196,9 @@ RET
 ; HL = Selects palette for read or write($43)
 ; DE = IDX
 ; BC = COLOR
+; HL が 8〜15 なら $43 の 7 ビット目 (パレットの番号の自動の進みを止める) も立てる (COPPER でパレットを書くとき用)。
+; 1 色ずつの SET_PAL・SET_PAL9 は、この「止めた」状態を残す ($8F)。まとめて書く SET_PALALL・SET_PAL9ALL は
+; 進みが要るので落とす ($0F)。その後も止めておきたいなら、もう一度 SET_PAL(8〜15, …) を呼ぶ。
 LD A,(EULA_CTRL)
 AND $8F
 SLA L
@@ -220,8 +223,9 @@ RET
 ; @resident shared
 ; HL = Selects palette for read or write($43)
 ; DE = COLOR Address
+; 番号の自動の進みが要るので、7 ビット目を落とす (SET_PAL の注釈)
 LD A,(EULA_CTRL)
-AND $8F
+AND $0F
 SLA L
 SLA L
 SLA L
@@ -233,7 +237,8 @@ DB $ED,$92,$43
 ; NEXTREG $40,0
 DB $ED,$91,$40,$00
 EX DE,HL
-LD B,255
+; B = 0 で DJNZ が 256 回 (0〜255 番)
+LD B,0
 .copy8bitpal
 LD A,(HL)
 INC HL
@@ -249,8 +254,9 @@ RET
 ; HL = Selects palette for read or write($43)
 ; DE = IDX
 ; BC = COLOR(9bits)
+; 1 色ずつなので、7 ビット目 (自動の進みを止める) を残す (SET_PAL の注釈)
 LD A,(EULA_CTRL)
-AND $0F
+AND $8F
 SLA L
 SLA L
 SLA L
@@ -276,6 +282,7 @@ RET
 ; @resident shared
 ; HL = Selects palette for read or write($43)
 ; DE = COLOR Address
+; 番号の自動の進みが要るので、7 ビット目を落とす (SET_PAL の注釈)
 LD A,(EULA_CTRL)
 AND $0F
 SLA L
@@ -289,7 +296,8 @@ DB $ED,$92,$43
 ; NEXTREG $40,0
 DB $ED,$91,$40,$00
 EX DE,HL
-LD B,255
+; B = 0 で DJNZ が 256 回 (0〜255 番)
+LD B,0
 .copy9bitpal
 LD A,(HL)
 INC HL

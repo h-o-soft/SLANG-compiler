@@ -289,6 +289,7 @@ VAR I, J, F;
 	COPPER_SET(CPCODE, 10);
 	// ↑COPPERでパレット設定する場合パレットのオートインクリメントを止めておく必要があるので、
 	// ↓これでULA first paletteのオートインクリメントを止める
+	// (SET_PALALL・SET_PAL9ALL は止めた状態を戻すので、それらを呼んだ後なら、もう一度 SET_PAL(8〜15, …) を呼ぶ)
 	SET_PAL(8, 9, 2);
 
 	// NextDAWの初期化
