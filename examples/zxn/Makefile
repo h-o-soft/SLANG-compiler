@@ -30,5 +30,37 @@ build_music: game.nex
 %.nex: %.bin %.cfg
 	$(NEXCREATOR) $*.cfg $@
 
+# --- Arkos Tracker (AKM) の見本 (ARKOS.md) ---
+# 再生部 PSGAKM.bin を RASM で $E000 に組み、ARKOS.SL と曲・効果音と一緒に NEX にする。
+# 置き場: 本体 $8000〜 / 曲 BGM.AKM $B000 / 効果音 SE.AKX $C000 / ワーク $D000〜 / スタック $E000 から下 / 再生部 $E000〜
+RASM ?= rasm
+
+arkos: ARKOS.nex
+	$(EMU) ARKOS.nex
+
+PSGAKM.bin: ../../runtime/zxn/playerAkm_zxn_wrapper.asm ../../runtime/x1/PlayerAkm_x1.asm ../../runtime/x1/PlayerAkm_SoundEffects.asm
+	$(RASM) ../../runtime/zxn/playerAkm_zxn_wrapper.asm -DDRIVER_ORG=0xE000 -o PSGAKM
+
+# .sym を __WORKEND__ の検査に使うので --keep-asm を付ける
+ARKOS.bin: ARKOS.SL ARKOSZXN.SL
+	$(SLANGBUILD) -E zxn ARKOS.SL -o ARKOS --keep-asm
+
+# 置き場の重なりを調べてから NEX にする (重なったら止める)。スタックに 512 バイトを取っておく
+ARKOS.nex: ARKOS.bin PSGAKM.bin ARKOS.cfg ../X1_ARKOS/BGM.AKM ../X1_ARKOS/SE.AKX
+	@prg=`wc -c < ARKOS.bin | tr -d ' '`; \
+	bgm=`wc -c < ../X1_ARKOS/BGM.AKM | tr -d ' '`; \
+	sfx=`wc -c < ../X1_ARKOS/SE.AKX | tr -d ' '`; \
+	drv=`wc -c < PSGAKM.bin | tr -d ' '`; \
+	we=`sed -n 's/^__WORKEND__ equ \$$\([0-9A-Fa-f]*\).*/\1/p' ARKOS.sym`; \
+	if [ -z "$$we" ]; then echo "ERROR: __WORKEND__ not found in ARKOS.sym"; exit 1; fi; \
+	we=`printf '%d' 0x$$we`; \
+	if [ `expr 32768 + $$prg` -gt 45056 ]; then echo "ERROR: ARKOS.bin ($$prg B) overflows \$$8000..\$$B000"; exit 1; fi; \
+	if [ `expr 45056 + $$bgm` -gt 49152 ]; then echo "ERROR: BGM.AKM ($$bgm B) overflows \$$B000..\$$C000"; exit 1; fi; \
+	if [ `expr 49152 + $$sfx` -gt 53248 ]; then echo "ERROR: SE.AKX ($$sfx B) overflows \$$C000..\$$D000"; exit 1; fi; \
+	if [ $$we -gt 56832 ]; then echo "ERROR: work ends at $$we, over \$$E000-512"; exit 1; fi; \
+	if [ `expr 57344 + $$drv` -gt 64768 ]; then echo "ERROR: PSGAKM.bin ($$drv B) overflows \$$E000..\$$FD00"; exit 1; fi; \
+	echo "ARKOS: prg=$$prg bgm=$$bgm sfx=$$sfx work_end=$$we drv=$$drv"
+	$(NEXCREATOR) ARKOS.cfg ARKOS.nex
+
 clean:
 	rm -f *.bin *.nex *.ASM *.LST *.sym
