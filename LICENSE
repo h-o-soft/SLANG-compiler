@@ -438,7 +438,7 @@ Copyright(C) 2002-2019 Num Kadoma
 
 ※ 詳細は assets/ui/LICENSE.font を参照。
 
-Arkos Tracker player (runtime/x1/PlayerAk*.asm / playerAk*_x1_wrapper.asm)
+Arkos Tracker player (runtime/x1/PlayerAk*.asm / playerAk*_x1_wrapper.asm / runtime/zxn/playerAkm_zxn_wrapper.asm)
 https://www.julien-nevo.com/arkostracker/
 ------
 The MIT License (MIT)
@@ -447,6 +447,8 @@ Arkos Tracker 3 player, by Targhan/Arkos.
 X1 系 env (-E x1 / sosx1 / x1native / x1native_slfs) の Arkos Tracker 楽曲
 (.akg / .akm) / 効果音 (.akx) 再生に使用する PSG driver。 X1 (PSG) 向け移植と
 jump table wrapper は本 repo 作者が元の Arkos player をカスタマイズして作成。
+zxn (ZX Spectrum Next) では、同じ player 本体を Pentagon (AY 1.75MHz) の道で組み、
+runtime/zxn/playerAkm_zxn_wrapper.asm の jump table wrapper で包む。
 player 本体の license は Arkos Tracker 公式 FAQ に明記:
   "The players are MIT-licensed. Basically, you can use and modify them at
    will, in any production, free or sold, open or closed source."
