@@ -233,7 +233,8 @@ DB $ED,$92,$43
 ; NEXTREG $40,0
 DB $ED,$91,$40,$00
 EX DE,HL
-LD B,255
+; B = 0 で DJNZ が 256 回 (0〜255 番)
+LD B,0
 .copy8bitpal
 LD A,(HL)
 INC HL
@@ -289,7 +290,8 @@ DB $ED,$92,$43
 ; NEXTREG $40,0
 DB $ED,$91,$40,$00
 EX DE,HL
-LD B,255
+; B = 0 で DJNZ が 256 回 (0〜255 番)
+LD B,0
 .copy9bitpal
 LD A,(HL)
 INC HL
