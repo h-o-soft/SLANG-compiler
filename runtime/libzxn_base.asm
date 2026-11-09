@@ -750,6 +750,7 @@ RET
 ;
 ; スタックには近い順に(RETADR)PAT,Y,X,IDXが積まれている
 ; PatはAttribute 2が上位、Attribute 3が下位に来た値であるが、特例としてX座標の最上位ビットはX側が使われる
+; (Patの上位の0ビット目はX座標の最上位ビットの場所なので0にする。SPR_MOVEのHと同じ)
 LD (SPTMP),SP
 LD IX,(SPTMP)
 
@@ -821,7 +822,7 @@ RET
 ; HL = X
 ; DE = Y
 ; C  = PAT (Attribute 3)
-; B  = Attribute 2
+; B  = Attribute 2 (0ビット目はXの上位から入るので0にする)
 ; X
 LD A,L
 DB $ED,$92,$35
