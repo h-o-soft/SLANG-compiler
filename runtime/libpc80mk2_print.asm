@@ -160,6 +160,7 @@ CALL NZ,PRT
 LD A, L
 OR A
 JR NZ,PRT
+RET
 
 
 ; @name CRDISP
