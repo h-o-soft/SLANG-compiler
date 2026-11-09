@@ -262,7 +262,7 @@ VAR I, J, F;
 	ZXN_WRITE_REG($4B, 0);
 
 	// 0番スプライトを設定
-	SPR_SET(0,100,80,0 OR $4000);	// pattern 4
+	SPR_SET(0,100,80,0 OR $40);	// pattern 0。$40 は Attribute 4 を使う印 (アンカーにするため)
 	// SPR_SCALE(0,0,0);
 	// 0番スプライトをアンカーとする
 	SPR_STARTANCHOR(0);

@@ -750,6 +750,7 @@ RET
 ;
 ; スタックには近い順に(RETADR)PAT,Y,X,IDXが積まれている
 ; PatはAttribute 2が上位、Attribute 3が下位に来た値であるが、特例としてX座標の最上位ビットはX側が使われる
+; (Patの上位の0ビット目はX座標の最上位ビットの場所なので0にする。SPR_MOVEのHと同じ)
 LD (SPTMP),SP
 LD IX,(SPTMP)
 
@@ -768,7 +769,7 @@ DB $ED,$92,$36
 ; Attribute 2
 LD A,(IX+7) ; X 9bit
 AND 1
-LD L,(IX+3)
+OR (IX+3)   ; PAT の上位 (反転・回転・パレットのずらし)
 DB $ED,$92,$37
 
 ; Attribute 3
@@ -809,7 +810,7 @@ RET
 ; @name SPR_STARTANCHOR
 ; @resident shared
 ; SPR_SETの直後に呼び出すとSPR_SETしたスプライトが親スプライトになる
-; SPR_SETの第四引数には$4000をORする事
+; SPR_SETの第四引数には$40をORする事 (Attribute 3 の 6 ビット目。Attribute 4 を使う印)
 LD A,$20
 OR L
 DB $ED,$92,$79
@@ -820,8 +821,8 @@ RET
 ; @resident shared
 ; HL = X
 ; DE = Y
-; C  = PAT
-; B  = Attribute 3
+; C  = PAT (Attribute 3)
+; B  = Attribute 2 (0ビット目はXの上位から入るので0にする)
 ; X
 LD A,L
 DB $ED,$92,$35
@@ -833,7 +834,7 @@ DB $ED,$92,$36
 ; Attribute 2
 LD A,H  ; X 9bit
 AND 1
-LD L,B
+OR B
 DB $ED,$92,$37
 
 ; Attribute 3
@@ -886,7 +887,7 @@ LD D,(IX+4)
 ; EにY2を入れる
 LD E,(IX+2)
 
-; reset Tilemap clip-window register index
+; reset Sprite clip-window register index
 DB $ED,$91,$1C,$2
 
 ; X1
@@ -916,6 +917,7 @@ DB $ED,$92,$34
 ; Attribute 3
 XOR A
 DB $ED,$92,$38
+RET
 
 
 ; @name STICK
@@ -923,7 +925,7 @@ DB $ED,$92,$38
 ; HL = 0 (JOYSTICK 1) or 1 (JOYSTICK2)
 LD A,L
 CP 1
-JR .joy1
+JR NZ,.joy1
 LD A,$37-$1F
 .joy1
 ADD A,$1F
@@ -945,13 +947,16 @@ DB $ED, $91, $61, $00
 ; NEXTREG $62,0
 DB $ED, $91, $62, $00
 
-LD B,E
+; DE バイト (16 ビットで数える。0 は渡さない)
 .nextByte
 LD A,(HL)
 ; NEXTREG $63,A
 DB $ED,$92,$63
 INC HL
-DJNZ .nextByte
+DEC DE
+LD A,D
+OR E
+JR NZ,.nextByte
 
 ; NEXTREG $61,0
 DB $ED, $91, $61, $00
