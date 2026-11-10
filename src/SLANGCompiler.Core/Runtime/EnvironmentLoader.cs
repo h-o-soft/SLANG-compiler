@@ -44,7 +44,7 @@ public class EnvironmentLoader
         if (hasAreaStart || hasAreaEnd || raw.StackSize.HasValue)
         {
             if (!hasAreaStart || !hasAreaEnd || !raw.StackSize.HasValue || config.StackTop == null)
-                throw new InvalidOperationException(
+                throw new InvalidDataException(
                     $"`area_start` / `area_end` / `stack_size` must be given together with `stack_top` in {envFilePath}.");
             config.AreaStart = ParseAddress(raw.AreaStart!);
             config.AreaEnd = ParseAddress(raw.AreaEnd!);
