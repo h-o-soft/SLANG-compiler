@@ -82,6 +82,18 @@ env に `area_start`・`area_end`・`stack_size` がある環境 (いまは zxn 
 Next の SLANG IDE のリンク時の検査と同じで、エラーの文も同じ (コードが範囲を越えたら `Code does not fit`、ほかは `Areas overlap or leave 8000H-FCFFH`)。
 FD00H〜FFFFH は IDE の予約域。6000H〜7FFFH (タイルマップなど) は検査の外。`#MODULE` のモジュールと、slangc だけで ASM を作るときは調べない。
 
+env に `norom: true` がある環境 (いまは zxn だけ) では、大域の `CONST __NOROM = 1;` で、ROM を使う部品を ROM を使わない版にする。
+zxn では次の 3 つ (ランタイムの `runtime/libzxn_norom.asm` の `名前__NOROM` の断片。
+slangc がコード生成の前に、元の断片の中身をそれに差し替える。名前と出力の順は元のまま):
+- `PRT` (PRINT など字を出すもの全部): 字の形を ROM の 3D00H でなく、ランタイムの字 (`ZXN_FONT`、32〜127 の 768 バイト。5×7 の字) から描く。
+  5EH・60H は ASCII の `^`・`` ` `` (ROM は ↑・£)、7FH は ROM と同じ ©
+- `GETC` (INKEY): ROM の KEY_SCAN などを呼ばず、キーのポートを読んで表 (`ZXN_KEYMAP`、120 バイト) で字にする。
+  値は ROM の L モード・CAPS LOCK が切れているときと同じ。違う所: 普通のキーの同時押しは最初の 1 つ (ROM は 0)、CAPS と SYMBOL の両方は SYMBOL の表
+- `SLANGINIT`: Next のハードウェアの IM 2 にする (ROM の 0038H を使わない)。表は WORK の中の 32 バイト (32 の境目)、
+  割り込みは ULA (フレーム) だけで、処理は何もしない (`HALT` を解くだけ)。`ZXN_SETIM2` で自分の IM 2 に替えてよい
+
+値は 0 か 1 の数でなければエラー。0 か、書かなければ、いままでどおり ROM を使う (出力は変わらない)。ほかの環境では、ふつうの CONST のまま。
+
 ---
 
 ## 型

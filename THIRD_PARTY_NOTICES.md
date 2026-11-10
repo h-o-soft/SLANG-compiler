@@ -120,6 +120,19 @@ LICENSE 全文は `runtime/x1/banjo/upstream/LICENSE.md` および repo root `LI
 
 ---
 
+## zxn の字 (ZXN_FONT)
+
+zxn の `CONST __NOROM = 1;` で PRINT が使う字の形 (`runtime/libzxn_norom.asm` の `ZXN_FONT`、32〜127 の 96 字)。
+
+| 項目 | 内容 |
+|---|---|
+| 配置 | `runtime/libzxn_norom.asm` (`ZXN_FONT`) |
+| 出どころ | LSX-Dodgers Next の移植で作った字 (Next の SLANG IDE の `tools/font.py` と同じ表) |
+| License | SLANG Compiler の `LICENSE` (H.O SOFT の新しいデータ) |
+| 改変 | 7FH を © に (ROM の字に合わせた)。カナは入れていない |
+
+---
+
 ## LICENSE 別途同梱物
 
 以下の同梱物は LICENSE 全文を別ファイルとして同梱しています。詳細は各 LICENSE ファイルを参照してください。

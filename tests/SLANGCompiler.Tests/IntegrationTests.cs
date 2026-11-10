@@ -315,6 +315,63 @@ public class IntegrationTests : IDisposable
         Assert.DoesNotContain("__STACKTOP EQU", asm);
     }
 
+    private const string NoRomProgram = "VAR X; MAIN() BEGIN X = $1234; PRINT(HEX4$(X), X, /); X = INKEY(0); END;";
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("CONST __NOROM = 0;")]
+    public void ZxnNoRom_Off_UsesRom(string decl)
+    {
+        // CONST __NOROM が無いか 0 なら、いままでの ROM を使う部品のまま (ROM を使わない版は入らない)
+        var asm = CompileWithCli(decl + NoRomProgram, "zxn");
+        Assert.Contains("DB $ED,$94", asm);          // PRT の PIXELAD
+        Assert.Contains("call KEY_SCAN", asm);       // GETC の ROM
+        Assert.DoesNotContain("ZXN_FONT", asm);
+        Assert.DoesNotContain("ZXN_KEYMAP", asm);
+        Assert.DoesNotContain("IM 2", asm);
+    }
+
+    [Fact]
+    public void ZxnNoRom_On_SwapsInPlace()
+    {
+        // CONST __NOROM = 1 で PRT・GETC・SLANGINIT の中身が ROM を使わない版になる。名前と並びはそのまま
+        var asm = CompileWithCli("CONST __NOROM = 1; " + NoRomProgram, "zxn");
+        Assert.DoesNotContain("DB $ED,$94", asm);
+        Assert.DoesNotContain("KEY_SCAN", asm);
+        Assert.DoesNotContain("__NOROM:", asm);
+        Assert.Matches(@"(?m)^ZXN_FONT:", asm);
+        Assert.Matches(@"(?m)^ZXN_KEYMAP:", asm);
+        Assert.Matches(@"(?m)^ZXN_NOROM_ISR:", asm);
+        Assert.Matches(@"IM 2", asm);
+        Assert.Contains("ZXN_IM2TBL EQU (__WORK_ALIGNED_32__ + 0)", asm);
+        // PHEX は隣の PRT へそのまま進む
+        Assert.Matches(@"CALL SASC\s*\nPRT:\s*\n", asm);
+        // PRT は HL・DE・BC を残す (PSTR が DE を回数に使う)
+        var prt = asm.Split("\nPRT:")[1];
+        prt = prt[..prt.IndexOf("\nGETC:", StringComparison.Ordinal)];
+        Assert.Matches(@"PUSH\s+HL\s*\n(\s*;.*\n)?\s*PUSH\s+DE\s*\n\s*PUSH\s+BC", prt);
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(prt, @"POP\s+BC\s*\n\s*POP\s+DE\s*\n\s*POP\s+HL\s*\n\s*RET").Count);
+    }
+
+    [Theory]
+    [InlineData("CONST __NOROM = 2;")]
+    [InlineData("CONST __NOROM = 1.5;")]
+    [InlineData("VAR __NOROM;")]
+    [InlineData("CONST ASM __NOROM = 1;")]
+    public void ZxnNoRom_NotZeroOrOne_Errors(string decl)
+    {
+        var stderr = CompileExpectError(decl + " MAIN() BEGIN END;", "zxn");
+        Assert.Contains("CONST __NOROM must be 0 or 1", stderr);
+    }
+
+    [Fact]
+    public void NoRom_OtherEnvsUnchanged()
+    {
+        // norom の無い env (zxn 以外) では、__NOROM はふつうの名前のまま
+        var asm = CompileWithCli("CONST __NOROM = 2; MAIN() BEGIN PRINT(1); END;", "lsx");
+        Assert.DoesNotContain("ZXN_FONT", asm);
+    }
+
     [Fact]
     public void VarAddress_RuntimeName_Errors()
     {
