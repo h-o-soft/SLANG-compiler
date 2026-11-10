@@ -1,6 +1,9 @@
 
 VAR I,P;
 ARRAY BYTE NT[10000];
+// zxn では WORK ($D000〜) がこの配列で大きくなるので、スタックを WORK の下に置く
+// (__STACKTOP を使うのは stack_top のある env だけ。ほかの env ではふつうの CONST で、何も変わらない)
+CONST __STACKTOP = $D000;
 
 MAIN()
 {

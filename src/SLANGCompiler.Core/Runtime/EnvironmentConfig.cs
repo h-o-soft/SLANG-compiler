@@ -29,6 +29,12 @@ public class EnvironmentConfig
     /// <summary>スタックの初めの番地の既定 (env の stack_top)。ある env だけ、主の ASM に `__STACKTOP EQU` を出し、
     /// ソースの `CONST __STACKTOP = 番地;` で変えられる (いまは zxn だけ。SLANGINIT が `LD SP,__STACKTOP` する)</summary>
     public int? StackTop { get; set; }
+    /// <summary>プログラムを置いてよい範囲 (area_start 以上 area_end 未満) と、検査でスタックに取る大きさ (stack_size)。
+    /// ある env だけ、slangbuild が組んだ後に「コード・WORK・スタックがこの範囲に収まり、重ならない」を調べる
+    /// (いまは zxn だけ。Next の SLANG IDE のリンク時の検査と同じ)</summary>
+    public int? AreaStart { get; set; }
+    public int? AreaEnd { get; set; }
+    public int StackSize { get; set; }
     public List<string> Libraries { get; set; } = new();
     public string? OptimizeRules { get; set; }
     public bool CodeReadonly { get; set; }

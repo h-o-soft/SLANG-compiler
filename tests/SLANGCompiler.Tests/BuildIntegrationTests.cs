@@ -209,6 +209,44 @@ public class BuildIntegrationTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_tempDir, "flog.bin")), $"bin not produced. stderr: {stderr}");
     }
 
+    [Theory]
+    [InlineData("", true)]
+    [InlineData("ORG $D000;", false)]                              // コードが WORK に重なる
+    [InlineData("WORK $DB80;", false)]                             // IY の場所がスタックに入る
+    [InlineData("WORK $FC00;", false)]                             // FD00H 以上 (IDE の予約域) に入る
+    [InlineData("ORG $7000;", false)]                              // 8000H より下
+    [InlineData("WORK $DA00;", true)]                              // WORK の終わりがちょうどスタックの下端
+    [InlineData("WORK $DA01;", false)]
+    [InlineData("CONST __STACKTOP = $F000;", true)]
+    [InlineData("CONST __STACKTOP = $E001; WORK $DA00;", true)]    // スタックの下端は 16 バイトに切り下げる (DC00H)
+    [InlineData("CONST __STACKTOP = $E001; WORK $DA01;", false)]
+    public void Zxn_AreaCheck(string head, bool ok)
+    {
+        // zxn は、コード・WORK・スタック (__STACKTOP − 1KB を 16 バイトに切り下げた所から) が 8000H〜FCFFH に収まり、
+        // 重ならないことを組んだ後に調べる (Next の SLANG IDE のリンク時の検査と同じ。上の形は IDE の試験と同じ)
+        var slPath = Path.Combine(_tempDir, "area.SL");
+        File.WriteAllText(slPath, head + "\nMAIN() BEGIN VAR X; X = 1; END;\n");
+        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "zxn");
+        if (ok)
+            Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        else
+        {
+            Assert.NotEqual(0, code);
+            Assert.Contains("Areas overlap or leave 8000H-FCFFH", stderr);
+        }
+    }
+
+    [Fact]
+    public void Zxn_AreaCheck_CodeDoesNotFit()
+    {
+        // コードが FD00H を越えると「Code does not fit」(IDE と同じ文)
+        var slPath = Path.Combine(_tempDir, "area.SL");
+        File.WriteAllText(slPath, "ORG $FCFC;\nMAIN() BEGIN VAR X; X = 1; END;\n");
+        var (code, _, stderr) = RunSlangbuild(slPath, "-E", "zxn");
+        Assert.NotEqual(0, code);
+        Assert.Contains("Code does not fit", stderr);
+    }
+
     [Fact]
     public void SingleStage_NoOverlay_ProducesMainBin()
     {

@@ -39,6 +39,18 @@ public class EnvironmentLoader
         if (!string.IsNullOrEmpty(raw.StackTop))
             config.StackTop = ParseAddress(raw.StackTop);
 
+        // プログラムを置いてよい範囲 (area_start / area_end) と、検査でスタックに取る大きさ (stack_size)。3 つそろって使う
+        bool hasAreaStart = !string.IsNullOrEmpty(raw.AreaStart), hasAreaEnd = !string.IsNullOrEmpty(raw.AreaEnd);
+        if (hasAreaStart || hasAreaEnd || raw.StackSize.HasValue)
+        {
+            if (!hasAreaStart || !hasAreaEnd || !raw.StackSize.HasValue || config.StackTop == null)
+                throw new InvalidDataException(
+                    $"`area_start` / `area_end` / `stack_size` must be given together with `stack_top` in {envFilePath}.");
+            config.AreaStart = ParseAddress(raw.AreaStart!);
+            config.AreaEnd = ParseAddress(raw.AreaEnd!);
+            config.StackSize = raw.StackSize!.Value;
+        }
+
         // コード領域の読取専用フラグ（ROM環境）
         config.CodeReadonly = raw.CodeReadonly;
 
@@ -507,6 +519,15 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "stack_top")]
         public string? StackTop { get; set; }
+
+        [YamlMember(Alias = "area_start")]
+        public string? AreaStart { get; set; }
+
+        [YamlMember(Alias = "area_end")]
+        public string? AreaEnd { get; set; }
+
+        [YamlMember(Alias = "stack_size")]
+        public int? StackSize { get; set; }
 
         [YamlMember(Alias = "libraries")]
         public List<string>? Libraries { get; set; }
