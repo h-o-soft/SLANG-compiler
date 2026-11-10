@@ -286,6 +286,16 @@ public class IntegrationTests : IDisposable
     }
 
     [Theory]
+    [InlineData("CONST __STACKTOP = TOP; CONST TOP = $C000;")]
+    [InlineData("CONST __STACKTOP = A; CONST A = B + $100; CONST B = $BF00;")]
+    public void ZxnStackTop_ForwardConst(string decls)
+    {
+        // 後ろで定義される CONST を参照してもよい (何段でも)
+        var asm = CompileWithCli(decls + " MAIN() BEGIN END;", "zxn");
+        Assert.Contains("__STACKTOP EQU $C000", asm);
+    }
+
+    [Theory]
     [InlineData("CONST __STACKTOP = 1.5;")]
     [InlineData("VAR __STACKTOP;")]
     [InlineData("CONST __STACKTOP = [1, 2];")]

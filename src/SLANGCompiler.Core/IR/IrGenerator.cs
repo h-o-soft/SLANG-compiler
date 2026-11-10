@@ -263,7 +263,15 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         var sym = _globalSymbols?.Resolve(StackTopName);
         if (sym == null) return;
-        if (sym.Kind == SymbolKind.Constant && !sym.IsCodeBlock && !sym.IsAsmEqu && sym.ConstValue is int v && v >= 0 && v <= 0xFFFF)
+        int? v = null;
+        if (sym.Kind == SymbolKind.Constant && !sym.IsCodeBlock && !sym.IsAsmEqu)
+        {
+            // 後ろで定義される CONST を参照する式 (CONST __STACKTOP = TOP; CONST TOP = $C000;) は式のまま残っているので、ここで評価する
+            v = sym.ConstValue as int?;
+            if (v == null && sym.ConstAst != null)
+                v = new ConstEvaluator(_globalSymbols, followConstAst: true).Evaluate(sym.ConstAst);   // 循環は null
+        }
+        if (v is >= 0 and <= 0xFFFF)
             _module.StackTop = v;
         else
             _module.StackTopInvalid = true;
