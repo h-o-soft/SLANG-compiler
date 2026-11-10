@@ -268,6 +268,44 @@ public class IntegrationTests : IDisposable
     }
 
     [Fact]
+    public void ZxnStackTop_DefaultsToE000()
+    {
+        // 何も書かなければ、SP の初めは env の stack_top ($E000)
+        var asm = CompileWithCli("MAIN() BEGIN END;", "zxn");
+        Assert.Contains("__STACKTOP EQU $E000", asm);
+        Assert.Matches(@"LD\s+SP,__STACKTOP", asm);
+    }
+
+    [Fact]
+    public void ZxnStackTop_ConstOverrides()
+    {
+        // 大域の CONST __STACKTOP で変えられる (Next の SLANG IDE と同じ名前・意味)。式でもよい
+        var asm = CompileWithCli("CONST TOP = $C000; CONST __STACKTOP = TOP; MAIN() BEGIN END;", "zxn");
+        Assert.Contains("__STACKTOP EQU $C000", asm);
+        Assert.DoesNotContain("__STACKTOP EQU $E000", asm);
+    }
+
+    [Theory]
+    [InlineData("CONST __STACKTOP = 1.5;")]
+    [InlineData("VAR __STACKTOP;")]
+    [InlineData("CONST __STACKTOP = [1, 2];")]
+    [InlineData("CONST ASM __STACKTOP = $C000;")]
+    public void ZxnStackTop_NotANumber_Errors(string decl)
+    {
+        // 0〜65535 の数の CONST でなければエラー
+        var stderr = CompileExpectError(decl + " MAIN() BEGIN END;", "zxn");
+        Assert.Contains("CONST __STACKTOP must be a number from 0 to 65535", stderr);
+    }
+
+    [Fact]
+    public void StackTop_OtherEnvsUnchanged()
+    {
+        // stack_top の無い env (zxn 以外) では、CONST __STACKTOP はふつうの CONST のまま (EQU を出さない)
+        var asm = CompileWithCli("CONST __STACKTOP = $C000; MAIN() BEGIN END;", "lsx");
+        Assert.DoesNotContain("__STACKTOP EQU", asm);
+    }
+
+    [Fact]
     public void VarAddress_RuntimeName_Errors()
     {
         // ランタイムの名前は、別名 (ITOF → i16tof24)・名前空間を解決しないので、VAR の番地の式には使えない

@@ -72,6 +72,10 @@ WORK 定数式     変数・配列のワークエリア先頭アドレス
 OFFSET 定数式   コード生成時のオフセット
 ```
 
+スタックの初めの番地は、env に `stack_top` がある環境 (いまは zxn だけ。既定 `$E000`) では、大域の
+`CONST __STACKTOP = 定数式;` で変えられる (Next の SLANG IDE と同じ名前・意味。SLANGINIT が `LD SP,__STACKTOP` する)。
+値は 0〜65535 の数でなければエラー (`CONST ASM`・CODE の CONST・小数・変数の名前もエラー)。ほかの環境では、ふつうの CONST のまま。
+
 ---
 
 ## 型
