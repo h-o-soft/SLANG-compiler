@@ -35,6 +35,9 @@ public class EnvironmentConfig
     public int? AreaStart { get; set; }
     public int? AreaEnd { get; set; }
     public int StackSize { get; set; }
+    /// <summary>ROM を使わない版の断片 (名前__NOROM) がある env (norom: true)。ソースの大域の `CONST __NOROM = 1;` で、
+    /// コード生成の前に `X` の中身を `X__NOROM` のものに差し替える (いまは zxn だけ)</summary>
+    public bool NoRom { get; set; }
     public List<string> Libraries { get; set; } = new();
     public string? OptimizeRules { get; set; }
     public bool CodeReadonly { get; set; }

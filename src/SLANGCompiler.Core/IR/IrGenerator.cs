@@ -252,10 +252,30 @@ public class IrGenerator : IAstVisitor<IrOperand>
         CheckFunctionLabelCollisions();
         unit.Accept(this);
         ResolveStackTop();
+        ResolveNoRom();
         return _module;
     }
 
     private const string StackTopName = "__STACKTOP";
+    private const string NoRomName = "__NOROM";
+
+    /// <summary>大域の `CONST __NOROM = 0|1;` を読む。0 か 1 の数でなければ印だけ付け、エラーにするかは CLI が env (norom) を見て決める</summary>
+    private void ResolveNoRom()
+    {
+        var sym = _globalSymbols?.Resolve(NoRomName);
+        if (sym == null) return;
+        int? v = null;
+        if (sym.Kind == SymbolKind.Constant && !sym.IsCodeBlock && !sym.IsAsmEqu)
+        {
+            v = sym.ConstValue as int?;
+            if (v == null && sym.ConstAst != null)
+                v = new ConstEvaluator(_globalSymbols, followConstAst: true).Evaluate(sym.ConstAst);
+        }
+        if (v is 0 or 1)
+            _module.NoRom = v == 1;
+        else
+            _module.NoRomInvalid = true;
+    }
 
     /// <summary>大域の `CONST __STACKTOP = 番地;` を読む。0〜65535 の数でなければ印だけ付け、
     /// エラーにするかはコード生成が env (stack_top のある env だけ) を見て決める</summary>
@@ -1005,9 +1025,11 @@ public class IrGenerator : IAstVisitor<IrOperand>
     public IrOperand VisitConstDecl(ConstDecl node)
     {
         // CONST __STACKTOP の場所 (エラーの位置に使う)。名前の比べ方は記号表に任せる
-        if (_localConsts == null && _globalSymbols != null
-            && _globalSymbols.Resolve(node.Name) is { } decl && ReferenceEquals(decl, _globalSymbols.Resolve(StackTopName)))
-            _module.StackTopSpan = node.Span;
+        if (_localConsts == null && _globalSymbols != null && _globalSymbols.Resolve(node.Name) is { } decl)
+        {
+            if (ReferenceEquals(decl, _globalSymbols.Resolve(StackTopName))) _module.StackTopSpan = node.Span;
+            if (ReferenceEquals(decl, _globalSymbols.Resolve(NoRomName))) _module.NoRomSpan = node.Span;
+        }
         // 関数の中の CONST: 意味解析で値が決まっている。宣言の順に見えるようにする
         if (_localConsts != null && _currentFuncInfo != null)
         {

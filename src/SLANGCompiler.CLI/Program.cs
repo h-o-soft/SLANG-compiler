@@ -220,6 +220,19 @@ class Program
                 Console.WriteLine(irModule);
             }
 
+            // ROM を使わない版 (env の norom、ソースの CONST __NOROM = 1): コード生成の前に X の中身を X__NOROM に差し替える
+            if (envConfig.NoRom)
+            {
+                if (irModule.NoRomInvalid)
+                {
+                    diagnostics.Error("CONST __NOROM must be 0 or 1", irModule.NoRomSpan);
+                    diagnostics.WriteTo(Console.Error);
+                    return 1;
+                }
+                if (irModule.NoRom)
+                    runtimeManager.ApplyVariant("__NOROM");
+            }
+
             // Phase 5: Code Generation
 
             if (!irModule.OrgAddress.HasValue && envConfig.DefaultOrg > 0)

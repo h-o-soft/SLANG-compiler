@@ -221,6 +221,11 @@ public class IrModule
     /// <summary>`__STACKTOP` という名前があるが、0〜65535 の数の CONST でない</summary>
     public bool StackTopInvalid { get; set; }
     public SourceSpan StackTopSpan { get; set; } = SourceSpan.Unknown;
+    /// <summary>`CONST __NOROM = 1;` があれば真 (0 か 1 の数のときだけ)。使うのは env に norom のあるときだけ</summary>
+    public bool NoRom { get; set; }
+    /// <summary>`__NOROM` という名前があるが、0 か 1 の数の CONST でない</summary>
+    public bool NoRomInvalid { get; set; }
+    public SourceSpan NoRomSpan { get; set; } = SourceSpan.Unknown;
     public List<OverlayModule> Overlays { get; } = new();
     public HashSet<string> AddressSymbolDeps { get; } = new(StringComparer.OrdinalIgnoreCase);
 

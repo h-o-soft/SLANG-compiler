@@ -247,6 +247,31 @@ public class BuildIntegrationTests : IDisposable
         Assert.Contains("Code does not fit", stderr);
     }
 
+    [Theory]
+    [InlineData("", 0xD200)]
+    [InlineData("WORK $D050;", 0xD260)]     // 表の下 8 ビットが 0 でない置き方
+    public void Zxn_NoRom_Im2TableAligned(string head, int table)
+    {
+        // CONST __NOROM = 1 の IM 2 の表は WORK の中の 32 バイトの境目。
+        // NextReg C0H = (表 AND E0H) OR 01H、I = 表の上 8 ビット、(表 + 22) に処理の番地を書く
+        var slPath = Path.Combine(_tempDir, "norom.SL");
+        File.WriteAllText(slPath, "CONST __NOROM = 1;\n" + head + "\nMAIN() BEGIN VAR X; X = 1; END;\n");
+        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "zxn");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        var bin = File.ReadAllBytes(Path.Combine(_tempDir, "norom.bin"));
+        Assert.Equal(0, table % 32);
+        Assert.True(IndexOf(bin, new byte[] { 0x22, (byte)(table + 22), (byte)(table >> 8) }) >= 0, "LD (表+22),HL");
+        Assert.True(IndexOf(bin, new byte[] { 0x3E, (byte)((table & 0xE0) | 1), 0xED, 0x92, 0xC0 }) >= 0, "NextReg C0H");
+        Assert.True(IndexOf(bin, new byte[] { 0x3E, (byte)(table >> 8), 0xED, 0x47, 0xED, 0x5E }) >= 0, "LD I,A / IM 2");
+    }
+
+    private static int IndexOf(byte[] data, byte[] pattern)
+    {
+        for (int i = 0; i + pattern.Length <= data.Length; i++)
+            if (data.AsSpan(i, pattern.Length).SequenceEqual(pattern)) return i;
+        return -1;
+    }
+
     [Fact]
     public void SingleStage_NoOverlay_ProducesMainBin()
     {

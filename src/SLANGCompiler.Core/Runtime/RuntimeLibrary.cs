@@ -90,6 +90,48 @@ public class RuntimeManager
     }
 
     /// <summary>
+    /// 「名前 + suffix」の断片があれば、元の名前の断片の中身 (コードと属性すべて) をそれに差し替える。
+    /// 名前 (ラベル)・出力の順 (LoadOrder)・別名は元のまま (並びに頼るフォールスルーと JR の距離を保つため)。
+    /// 元の名前の断片が無ければエラー (ランタイムの書き誤り)。差し替えた元の名前を返す。使用済みのマークより前に呼ぶこと
+    /// </summary>
+    public List<string> ApplyVariant(string suffix)
+    {
+        var replaced = new List<string>();
+        var variants = _functions.Values.Distinct()
+            .Where(f => f.Name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase) && f.Name.Length > suffix.Length)
+            .OrderBy(f => f.LoadOrder).ToList();
+        foreach (var v in variants)
+        {
+            var baseName = v.Name[..^suffix.Length];
+            if (!_functions.TryGetValue(baseName, out var orig))
+                throw new InvalidDataException($"runtime: {v.Name} ({v.SourceFile}) has no {baseName} to replace");
+            var merged = new RuntimeFunction
+            {
+                Name = orig.Name,
+                ParamCount = v.ParamCount,
+                Dependencies = new List<string>(v.Dependencies),
+                Code = v.Code,
+                InitCode = v.InitCode,
+                LibName = v.LibName,
+                SourceFile = v.SourceFile,
+                LoadOrder = orig.LoadOrder,
+                Works = v.Works,
+                WorksAlignment = v.WorksAlignment,
+                CalleeCleanup = v.CalleeCleanup,
+                Aliases = orig.Aliases,
+                ResultType = v.ResultType,
+                ParamTypes = v.ParamTypes,
+                Residency = v.Residency,
+            };
+            _functions[orig.Name] = merged;
+            foreach (var alias in orig.Aliases)
+                _functions[alias] = merged;
+            replaced.Add(orig.Name);
+        }
+        return replaced;
+    }
+
+    /// <summary>
     /// 関数を使用済みとしてマーク。依存関係も再帰的にマーク。
     /// </summary>
     public void MarkUsed(string name)
