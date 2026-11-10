@@ -18,8 +18,8 @@ DOS_GET_EOF EQU $0139
 ; im 1
 di
 
-; test
-LD SP,$E000
+; SP の初め: __STACKTOP (env の stack_top、ソースの CONST __STACKTOP で変えられる。既定 $E000)
+LD SP,__STACKTOP
 
 ; WORK ZERO CLEAR
 XOR A

@@ -26,6 +26,9 @@ public class EnvironmentConfig
     public int OsType { get; set; }
     public int DefaultOrg { get; set; }
     public int DefaultWork { get; set; }
+    /// <summary>スタックの初めの番地の既定 (env の stack_top)。ある env だけ、主の ASM に `__STACKTOP EQU` を出し、
+    /// ソースの `CONST __STACKTOP = 番地;` で変えられる (いまは zxn だけ。SLANGINIT が `LD SP,__STACKTOP` する)</summary>
+    public int? StackTop { get; set; }
     public List<string> Libraries { get; set; } = new();
     public string? OptimizeRules { get; set; }
     public bool CodeReadonly { get; set; }

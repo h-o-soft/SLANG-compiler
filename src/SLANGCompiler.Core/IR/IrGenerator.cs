@@ -251,7 +251,30 @@ public class IrGenerator : IAstVisitor<IrOperand>
     {
         CheckFunctionLabelCollisions();
         unit.Accept(this);
+        ResolveStackTop();
         return _module;
+    }
+
+    private const string StackTopName = "__STACKTOP";
+
+    /// <summary>大域の `CONST __STACKTOP = 番地;` を読む。0〜65535 の数でなければ印だけ付け、
+    /// エラーにするかはコード生成が env (stack_top のある env だけ) を見て決める</summary>
+    private void ResolveStackTop()
+    {
+        var sym = _globalSymbols?.Resolve(StackTopName);
+        if (sym == null) return;
+        int? v = null;
+        if (sym.Kind == SymbolKind.Constant && !sym.IsCodeBlock && !sym.IsAsmEqu)
+        {
+            // 後ろで定義される CONST を参照する式 (CONST __STACKTOP = TOP; CONST TOP = $C000;) は式のまま残っているので、ここで評価する
+            v = sym.ConstValue as int?;
+            if (v == null && sym.ConstAst != null)
+                v = new ConstEvaluator(_globalSymbols, followConstAst: true).Evaluate(sym.ConstAst);   // 循環は null
+        }
+        if (v is >= 0 and <= 0xFFFF)
+            _module.StackTop = v;
+        else
+            _module.StackTopInvalid = true;
     }
 
     /// <summary>
@@ -981,6 +1004,10 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitConstDecl(ConstDecl node)
     {
+        // CONST __STACKTOP の場所 (エラーの位置に使う)。名前の比べ方は記号表に任せる
+        if (_localConsts == null && _globalSymbols != null
+            && _globalSymbols.Resolve(node.Name) is { } decl && ReferenceEquals(decl, _globalSymbols.Resolve(StackTopName)))
+            _module.StackTopSpan = node.Span;
         // 関数の中の CONST: 意味解析で値が決まっている。宣言の順に見えるようにする
         if (_localConsts != null && _currentFuncInfo != null)
         {

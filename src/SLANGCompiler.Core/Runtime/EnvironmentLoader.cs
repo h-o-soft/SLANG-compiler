@@ -35,6 +35,10 @@ public class EnvironmentLoader
         if (!string.IsNullOrEmpty(raw.DefaultWork))
             config.DefaultWork = ParseAddress(raw.DefaultWork);
 
+        // スタックの初めの番地の既定 (stack_top)
+        if (!string.IsNullOrEmpty(raw.StackTop))
+            config.StackTop = ParseAddress(raw.StackTop);
+
         // コード領域の読取専用フラグ（ROM環境）
         config.CodeReadonly = raw.CodeReadonly;
 
@@ -500,6 +504,9 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "default_work")]
         public string? DefaultWork { get; set; }
+
+        [YamlMember(Alias = "stack_top")]
+        public string? StackTop { get; set; }
 
         [YamlMember(Alias = "libraries")]
         public List<string>? Libraries { get; set; }

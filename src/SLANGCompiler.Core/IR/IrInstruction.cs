@@ -1,3 +1,5 @@
+using SLANGCompiler.Lexer;
+
 namespace SLANGCompiler.IR;
 
 /// <summary>
@@ -214,6 +216,11 @@ public class IrModule
     public int? OrgAddress { get; set; }
     public int? WorkAddress { get; set; }
     public int? OffsetAddress { get; set; }
+    /// <summary>`CONST __STACKTOP = 番地;` の値 (0〜65535 の数のときだけ)。使うのは env に stack_top のあるときだけ</summary>
+    public int? StackTop { get; set; }
+    /// <summary>`__STACKTOP` という名前があるが、0〜65535 の数の CONST でない</summary>
+    public bool StackTopInvalid { get; set; }
+    public SourceSpan StackTopSpan { get; set; } = SourceSpan.Unknown;
     public List<OverlayModule> Overlays { get; } = new();
     public HashSet<string> AddressSymbolDeps { get; } = new(StringComparer.OrdinalIgnoreCase);
 

@@ -341,6 +341,14 @@ public class CodeGenerator
         {
             _e.Raw($"ENV_TYPE EQU {_envConfig.EnvType} ");
             _e.Raw($"OS_TYPE EQU {_envConfig.OsType}");
+
+            // スタックの初めの番地 (env に stack_top のあるときだけ)。ソースの CONST __STACKTOP が優先
+            if (_envConfig.StackTop.HasValue)
+            {
+                if (_module.StackTopInvalid)
+                    _diagnostics?.Error("CONST __STACKTOP must be a number from 0 to 65535", _module.StackTopSpan);
+                _e.Raw($"__STACKTOP EQU ${(_module.StackTop ?? _envConfig.StackTop.Value):X4}");
+            }
         }
 
         // === Phase 4: エントリポイント生成 ===
