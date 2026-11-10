@@ -373,6 +373,13 @@ public class Driver
                 if (rc != 0) return rc;
             }
 
+            // === Step 3.4: 置き場の検査 (env.AreaStart / AreaEnd 指定時) ===
+            if (envConfig.AreaStart.HasValue && envConfig.AreaEnd.HasValue)
+            {
+                int areaRc = CheckAreas(envConfig, mainSym);
+                if (areaRc != 0) return areaRc;
+            }
+
             // === Step 3.5a: overlay rename (env.OverlayName 指定時) ===
             // 旧 path: <output dir>/<prefix>._m{N}{overlayBinExt}
             // 新 path: <output dir>/<env.OverlayName で {index} 展開>
@@ -815,6 +822,49 @@ public class Driver
     /// 結合元欠落時は明示エラー (= silent wrong 防止)。結合に消費された
     /// overlay は intermediate cleanup 対象に追加 (= --keep-asm 時は残る)。
     /// </summary>
+    /// <summary>
+    /// コード (__CODE__〜SLANG_PROG_END)、WORK (__WORK__〜__WORKEND__。IY の場所を含む)、スタック (__STACKTOP − stack_size を
+    /// 16 バイトに切り下げた所〜__STACKTOP) が、どれも area_start〜area_end に収まり、互いに重ならないことを調べる。
+    /// ちょうど接するのは通す。FFFFH を越えて一周するものは拒む。Next の SLANG IDE のリンク時の検査と同じで、
+    /// エラーの文も IDE と同じ (コードが範囲の終わりを越えたら「Code does not fit」、ほかは「Areas overlap or leave ...」)。
+    /// </summary>
+    private static int CheckAreas(EnvironmentConfig env, string mainSym)
+    {
+        var syms = SymFileReader.ReadFile(mainSym);
+        int start = env.AreaStart!.Value, end = env.AreaEnd!.Value;
+        int Sym(string name) => syms.TryGetValue(name, out var v) ? v
+            : throw new InvalidOperationException($"slangbuild: area check: symbol {name} not found in {Path.GetFileName(mainSym)}");
+        int stackTop = Sym("__STACKTOP");
+        var areas = new (string Name, long Lo, long Hi)[]
+        {
+            ("code", Sym("__CODE__"), Sym("SLANG_PROG_END")),
+            ("work", Sym("__WORK__"), Sym("__WORKEND__")),
+            // __STACKTOP = 0 は 10000H の下から (SP は 0 から下へ積む)
+            ("stack", ((stackTop == 0 ? 0x10000 : stackTop) - env.StackSize) & ~15L, stackTop == 0 ? 0x10000 : stackTop),
+        };
+        string Range(long lo, long hi) => $"${lo:X4}-${hi:X4}";
+        string detail = string.Join(", ", areas.Select(a => $"{a.Name} {Range(a.Lo, a.Hi)}"));
+        string area = $"{start:X4}H-{end - 1:X4}H";
+
+        var code = areas[0];
+        if (code.Hi > end || code.Hi < code.Lo)
+        {
+            Console.Error.WriteLine($"slangbuild: error: Code does not fit ({detail}; area {area})");
+            return 1;
+        }
+        bool ok = areas.All(a => a.Lo <= a.Hi && a.Lo >= start && a.Hi <= end);
+        for (int i = 0; ok && i < areas.Length; i++)
+            for (int j = i + 1; ok && j < areas.Length; j++)
+                if (areas[i].Lo < areas[j].Hi && areas[j].Lo < areas[i].Hi)
+                    ok = false;
+        if (!ok)
+        {
+            Console.Error.WriteLine($"slangbuild: error: Areas overlap or leave {area} ({detail})");
+            return 1;
+        }
+        return 0;
+    }
+
     private int ConcatCmt(string mainBin, List<string> concatFiles,
                           List<string> overlayBins, List<string> intermediates)
     {

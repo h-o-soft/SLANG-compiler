@@ -336,6 +336,9 @@ public class CodeGenerator
         {
             _e.Instruction("ORG", $"${_module.OrgAddress.Value:X4}");
         }
+        // コードの始まり (slangbuild の置き場の検査が使う。終わりは SLANG_PROG_END)。env に置き場の範囲のあるときだけ
+        if (_envConfig?.AreaEnd != null)
+            _e.Label("__CODE__");
 
         if (_envConfig != null)
         {

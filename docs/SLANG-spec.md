@@ -76,6 +76,12 @@ OFFSET 定数式   コード生成時のオフセット
 `CONST __STACKTOP = 定数式;` で変えられる (Next の SLANG IDE と同じ名前・意味。SLANGINIT が `LD SP,__STACKTOP` する)。
 値は 0〜65535 の数でなければエラー (`CONST ASM`・CODE の CONST・小数・変数の名前もエラー)。ほかの環境では、ふつうの CONST のまま。
 
+env に `area_start`・`area_end`・`stack_size` がある環境 (いまは zxn だけ。8000H〜FCFFH、1024 バイト) では、slangbuild が組んだ後に、
+コード (ORG〜プログラムの終わり)・WORK (WORK〜IY の場所の終わり)・スタック (`__STACKTOP` − 1KB を 16 バイトに切り下げた所〜`__STACKTOP`) が、
+どれもその範囲に収まり、互いに重ならないことを調べる (ちょうど接するのは通す。FFFFH を越えて一周するものは拒む)。
+Next の SLANG IDE のリンク時の検査と同じで、エラーの文も同じ (コードが範囲を越えたら `Code does not fit`、ほかは `Areas overlap or leave 8000H-FCFFH`)。
+FD00H〜FFFFH は IDE の予約域。6000H〜7FFFH (タイルマップなど) は検査の外。`#MODULE` のモジュールと、slangc だけで ASM を作るときは調べない。
+
 ---
 
 ## 型
