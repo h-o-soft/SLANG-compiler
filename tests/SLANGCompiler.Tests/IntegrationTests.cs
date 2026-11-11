@@ -529,6 +529,39 @@ public class IntegrationTests : IDisposable
         CompileWithCli(PagedHead + "#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN FL(X); END;\n#END\n#MODULE $0010 PAGE 30\nFL(X) BEGIN RETURN X; END;\n#END\n", "zxn");
     }
 
+    private const string MapHead = "CONST __NOROM = 1; CONST __LOWRAM = 30; CONST __STACKTOP = $C000; WORK $A000; VAR R;\n";
+
+    [Fact]
+    public void ZxnModuleMap_TableAndCall()
+    {
+        // ZXN_MODULE(n): 本体に表 __MODTBL (モジュールごとに NextReg の番号 50H + 窓 とページ) を出し、NEXTREG で付ける
+        var asm = CompileWithCli(MapHead + "MAIN() BEGIN ZXN_MODULE(0); R = FA(1); ZXN_MODULE(2); R = FL(1); END;\n" +
+            "#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $A000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n#MODULE $0010 PAGE 30\nFL(X) BEGIN RETURN X; END;\n#END\n", "zxn");
+        Assert.Matches(@"(?m)^__MODTBL:\s*\nDB \$56,40\s*\nDB \$55,41\s*\nDB \$50,30\s*\nSLANG_PROG_END:", asm);
+        Assert.Matches(@"(?m)^ZXN_MODULE:", asm);
+        Assert.Contains("DB $ED,$92", asm);
+    }
+
+    [Fact]
+    public void ZxnModuleMap_NotUsed_NoTable()
+    {
+        var asm = CompileWithCli(MapHead + "MAIN() BEGIN R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n", "zxn");
+        Assert.DoesNotContain("__MODTBL", asm);
+    }
+
+    [Theory]
+    [InlineData("MAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000\nFA(X) BEGIN RETURN X; END;\n#END\n",
+                "ZXN_MODULE needs PAGE on every #MODULE (#MODULE 0 has none)")]
+    [InlineData("MAIN() BEGIN R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN ZXN_MODULE(0); RETURN X; END;\n#END\n",
+                "ZXN_MODULE is reached from #MODULE 0 (through FA); call it from the main program only")]
+    [InlineData("SW() BEGIN ZXN_MODULE(1); END;\nMAIN() BEGIN R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN SW(); RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
+                "ZXN_MODULE is reached from #MODULE 0 (through SW); call it from the main program only")]
+    public void ZxnModuleMap_Errors(string source, string message)
+    {
+        var stderr = CompileExpectError(MapHead + source, "zxn");
+        Assert.Contains(message, stderr);
+    }
+
     [Fact]
     public void VarAddress_RuntimeName_Errors()
     {

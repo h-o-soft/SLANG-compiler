@@ -217,7 +217,7 @@ Layer 2グラフィックス、タイルマップ、スプライト、パレッ�
 
 サンプルは examples/zxn フォルダにあります。`game.sl` (NextDAW を使う完全版) と `game_nomusic.sl` (NextDAW なし版) の 2 種類が含まれます。
 
-`slangbuild` (および `Makefile.dist build TARGET=examples/zxn/game ENV=zxn`) で `.bin` を出力できます。`slangbuild --emit nex` で、本体・`#MODULE $addr PAGE n` のモジュール・ソースの `//#PAGE ページ ファイル` のデータを入れた `.nex` を直接書けます (docs/SLANG-spec.md の「NEX」)。`.nex` 形式 (= CSpect 等の実行可能形式) への変換は外部ツール `nexcreator` を使い、`examples/zxn/Makefile` で flow が完結します。
+`slangbuild` (および `Makefile.dist build TARGET=examples/zxn/game ENV=zxn`) で `.bin` を出力できます。`slangbuild --emit nex` で、本体・`#MODULE $addr PAGE n` のモジュール・ソースの `//#PAGE ページ ファイル` のデータを入れた `.nex` を直接書けます (docs/SLANG-spec.md の「NEX」)。モジュールをページに入れて `ZXN_MODULE(n)` で付ける見本は `examples/zxn/MODULE.SL` (`make module`) です。`.nex` 形式 (= CSpect 等の実行可能形式) への変換は外部ツール `nexcreator` を使い、`examples/zxn/Makefile` で flow が完結します。
 
 > **注**: `examples/zxn/Makefile` の `make build` (default) は NextDAW なし版 (`game_nomusic.nex`) を build します。NextDAW を含む完全版 (`game.nex`) を build するには `make music` を使い、`examples/zxn/NextDAW_RuntimePlayer_E000.bin` (= NextDAW Runtime Player) を `examples/zxn/` 配下に配置してください。NextDAW ([https://nextdaw.biasillo.com/](https://nextdaw.biasillo.com/)) は外部製品のため配布物には含まれません。**2026-04-30 時点で公式サイトでの入手はできない状態**で、再公開された場合も driver の仕様変更等により `examples/zxn/game.cfg` や `game.sl` の修正が必要となる可能性があります。
 

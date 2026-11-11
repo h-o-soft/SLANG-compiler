@@ -21,6 +21,7 @@ public static class ModulePageChecker
     public static List<(string Message, SourceSpan Span)> Check(IrModule module, bool modulePages, int lowRam)
     {
         var errors = new List<(string, SourceSpan)>();
+        CheckModuleMap(module, errors);
         var paged = module.Overlays.Where(o => o.Page != null).ToList();
         if (paged.Count == 0) return errors;
         if (!modulePages)
@@ -60,6 +61,43 @@ public static class ModulePageChecker
 
         CheckCalls(module, paged, errors);
         return errors;
+    }
+
+    private const string ModuleMapName = "ZXN_MODULE";
+
+    private static bool CallsModuleMap(IrFunction f) => f.Instructions.Any(i =>
+        i.Op == IrOp.Call && i.Src1.Kind == IrOperandKind.Symbol && string.Equals(i.Src1.Name, ModuleMapName, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// ZXN_MODULE(n) を使うなら、全部のモジュールに PAGE が要る (表を作るため)。ZXN_MODULE は本体からだけ呼べる:
+    /// モジュールの関数から静的にたどって届くもの (本体の関数を通るものも) はエラー (自分の窓を付け替えると、戻る先が消えるため)
+    /// </summary>
+    private static void CheckModuleMap(IrModule module, List<(string, SourceSpan)> errors)
+    {
+        var all = module.Functions.Concat(module.Overlays.SelectMany(o => o.Functions)).ToList();
+        if (!all.Any(CallsModuleMap)) return;
+        foreach (var o in module.Overlays.Where(o => o.Page == null))
+            errors.Add(($"ZXN_MODULE needs PAGE on every #MODULE (#MODULE {o.Index} has none)", o.Span));
+
+        var funcs = all.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
+        foreach (var o in module.Overlays)
+        {
+            var seen = new HashSet<string>(o.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
+            var queue = new Queue<IrFunction>(o.Functions);
+            while (queue.Count > 0)
+            {
+                var f = queue.Dequeue();
+                if (CallsModuleMap(f))
+                {
+                    errors.Add(($"ZXN_MODULE is reached from #MODULE {o.Index} (through {f.Name}); call it from the main program only", o.Span));
+                    break;
+                }
+                foreach (var i in f.Instructions)
+                    if (i.Op == IrOp.Call && i.Src1.Kind == IrOperandKind.Symbol && i.Src1.Name != null
+                        && funcs.TryGetValue(i.Src1.Name, out var callee) && seen.Add(callee.Name))
+                        queue.Enqueue(callee);
+            }
+        }
     }
 
     /// <summary>窓が同じ PAGE のモジュールどうしの呼び出しを、呼び出しの表からたどる (直接の CALL だけ。CALL(番地)・#ASM・関数の番地はたどらない)</summary>
