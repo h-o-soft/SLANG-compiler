@@ -293,6 +293,65 @@ public class BuildIntegrationTests : IDisposable
         Assert.Equal(new byte[] { 0xF1, 0xC9 }, bin.AsSpan(trap + 56, 2).ToArray());
     }
 
+    [Theory]
+    [InlineData("", 0x8000)]
+    [InlineData("ORG $9000;", 0x9000)]
+    public void Zxs_EmitTape_WritesTapAndTzx(string head, int org)
+    {
+        // 素の ZX Spectrum のテープ: BASIC の読み込み口 (CLEAR・LOAD ""CODE・USR) と CODE。番地は組み上がった __CODE__
+        var slPath = Path.Combine(_tempDir, "zxtest.SL");
+        File.WriteAllText(slPath, head + "\nMAIN() BEGIN VAR X; X = 1; END;\n");
+        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "zxs", "--emit", "tape");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        var bin = File.ReadAllBytes(Path.Combine(_tempDir, "zxtest.bin"));
+        var tap = File.ReadAllBytes(Path.Combine(_tempDir, "zxtest.tap"));
+        var tzx = File.ReadAllBytes(Path.Combine(_tempDir, "zxtest.tzx"));
+        // TAP: 4 ブロック (長さ 19・BASIC・19・CODE)、各ブロックの XOR が 0
+        var blocks = new List<byte[]>();
+        for (int i = 0; i < tap.Length;)
+        {
+            int len = tap[i] | tap[i + 1] << 8;
+            blocks.Add(tap[(i + 2)..(i + 2 + len)]);
+            i += 2 + len;
+        }
+        Assert.Equal(4, blocks.Count);
+        foreach (var b in blocks) Assert.Equal(0, b.Aggregate(0, (x, c) => x ^ c));
+        Assert.Equal(19, blocks[0].Length);
+        Assert.Equal(new byte[] { 0x00, 0x00 }, blocks[0][..2]);                       // ヘッダ・BASIC
+        Assert.Equal("ZXTEST    ", System.Text.Encoding.ASCII.GetString(blocks[0][2..12]));
+        Assert.Equal(10, blocks[0][14] | blocks[0][15] << 8);                             // 行 10 から走る
+        var basic = System.Text.Encoding.Latin1.GetString(blocks[1][1..^1]);
+        Assert.Contains($"\u00FD\u00B0\"{org - 1}\":\u00EF\"\"\u00AF:\u00F9\u00C0\u00B0\"{org}\"\r", basic);
+        Assert.Equal(new byte[] { 0x00, 0x03 }, blocks[2][..2]);                       // ヘッダ・CODE
+        Assert.Equal(bin.Length, blocks[2][12] | blocks[2][13] << 8);
+        Assert.Equal(org, blocks[2][14] | blocks[2][15] << 8);
+        Assert.Equal(bin, blocks[3][1..^1]);
+        // TZX: 頭と、同じ 4 ブロックを ID 10H で包む
+        Assert.Equal(System.Text.Encoding.ASCII.GetBytes("ZXTape!\x1a\x01\x14"), tzx[..10]);
+        int p = 10;
+        foreach (var b in blocks)
+        {
+            Assert.Equal(0x10, tzx[p]);
+            Assert.Equal(1000, tzx[p + 1] | tzx[p + 2] << 8);
+            Assert.Equal(b.Length, tzx[p + 3] | tzx[p + 4] << 8);
+            Assert.Equal(b, tzx[(p + 5)..(p + 5 + b.Length)]);
+            p += 5 + b.Length;
+        }
+        Assert.Equal(tzx.Length, p);
+    }
+
+    [Theory]
+    [InlineData("--wav")]
+    [InlineData("--tape-load", "$9000")]
+    public void Zxs_EmitTape_RejectsX1Options(params string[] opt)
+    {
+        var slPath = Path.Combine(_tempDir, "zxtest.SL");
+        File.WriteAllText(slPath, "MAIN() BEGIN END;\n");
+        var (code, _, stderr) = RunSlangbuild(slPath, new[] { "-E", "zxs", "--emit", "tape" }.Concat(opt).ToArray());
+        Assert.NotEqual(0, code);
+        Assert.Contains("is not supported for the ZX Spectrum tape", stderr);
+    }
+
     private static int IndexOf(byte[] data, byte[] pattern)
     {
         for (int i = 0; i + pattern.Length <= data.Length; i++)

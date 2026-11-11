@@ -41,6 +41,8 @@ public class EnvironmentLoader
 
         config.NoRom = raw.NoRom;
         config.LowRam = raw.LowRam;
+        config.Variants = raw.Variants ?? new List<string>();
+        config.Features = raw.Features;
 
         // プログラムを置いてよい範囲 (area_start / area_end) と、検査でスタックに取る大きさ (stack_size)。3 つそろって使う
         bool hasAreaStart = !string.IsNullOrEmpty(raw.AreaStart), hasAreaEnd = !string.IsNullOrEmpty(raw.AreaEnd);
@@ -378,9 +380,14 @@ public class EnvironmentLoader
             config.Tape = new TapeConfig
             {
                 Name = raw.Tape.Name,
+                Format = raw.Tape.Format,
                 WavSampleRate = raw.Tape.WavSampleRate,
                 WavBits = raw.Tape.WavBits,
             };
+            if (raw.Tape.Format != null && raw.Tape.Format != "zx")
+                throw new InvalidDataException($"env tape.format must be zx (got '{raw.Tape.Format}')");
+            if (raw.Tape.Format == "zx" && (raw.Tape.Load != null || raw.Tape.Exec != null || raw.Tape.WavSampleRate != null || raw.Tape.WavBits != null))
+                throw new InvalidDataException("env tape.format zx takes no load, exec, wav_sample_rate or wav_bits (the address is the built code start)");
             // load/exec は "$XXXX" / "0xXXXX" 文字列 → int parse (= default_org と同流儀)
             if (!string.IsNullOrEmpty(raw.Tape.Load))
                 config.Tape.Load = ParseAddress(raw.Tape.Load);
@@ -538,6 +545,12 @@ public class EnvironmentLoader
         [YamlMember(Alias = "lowram")]
         public bool LowRam { get; set; }
 
+        [YamlMember(Alias = "variants")]
+        public List<string>? Variants { get; set; }
+
+        [YamlMember(Alias = "features")]
+        public List<string>? Features { get; set; }
+
         [YamlMember(Alias = "libraries")]
         public List<string>? Libraries { get; set; }
 
@@ -683,6 +696,9 @@ public class EnvironmentLoader
     {
         [YamlMember(Alias = "name")]
         public string? Name { get; set; }
+
+        [YamlMember(Alias = "format")]
+        public string? Format { get; set; }
 
         [YamlMember(Alias = "load")]
         public string? Load { get; set; }

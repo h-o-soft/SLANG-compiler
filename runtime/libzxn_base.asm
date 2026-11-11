@@ -51,6 +51,7 @@ JP INFLOOP
 
 
 ; @name ZXN_READ_REG
+; @requires next
 ; @resident shared
 ; @param_count 1
 ; L = NEXTREG register
@@ -66,6 +67,7 @@ RET
 
 
 ; @name ZXN_WRITE_REG
+; @requires next
 ; @resident shared
 ; @param_count 2
 LD A,L
@@ -93,6 +95,7 @@ RET
 
 
 ; @name ZXN_SET_BANK_8K
+; @requires next
 ; @resident shared
 ; HL = mmu(0〜7)
 ; DE = page
@@ -112,6 +115,7 @@ RET
 
 
 ; @name ZXN_SET_BANK_16K
+; @requires next
 ; @resident shared
 LD A,$50
 ADD A,L
@@ -144,6 +148,7 @@ RET
 
 
 ; @name ZXN_BANK_SET_ESX
+; @requires next
 ; @resident shared
 ; 最初の16kをROMにリセット
 ; NEXTREG $50,$FF
@@ -154,6 +159,7 @@ RET
 
 
 ; @name SET_CPU_SPEED
+; @requires next
 ; @resident shared
 ; @calls ZXN_WRITE_REG
 ; HL = 0 = 3.5MHz / 1 = 7MHz / 2 = 14MHz / 3 = 28MHz
@@ -163,6 +169,7 @@ JP ZXN_WRITE_REG
 
 
 ; @name ZXN_ULA_SET_SHADOW
+; @requires next
 ; @resident shared
 ; HL = 0 -> not shadow(bank 5) / 1 -> shadow(bank 7)
 SLA L
@@ -175,6 +182,7 @@ RET
 
 
 ; @name ULA_VISIBLE
+; @requires next
 ; @resident shared
 ; HL 0 = invisible / 1 = visible
 ; 0 <-> 1
@@ -192,6 +200,7 @@ RET
 
 
 ; @name SET_PAL
+; @requires next
 ; @resident shared
 ; HL = Selects palette for read or write($43)
 ; DE = IDX
@@ -220,6 +229,7 @@ RET
 
 
 ; @name SET_PALALL
+; @requires next
 ; @resident shared
 ; HL = Selects palette for read or write($43)
 ; DE = COLOR Address
@@ -250,6 +260,7 @@ RET
 
 
 ; @name SET_PAL9
+; @requires next
 ; @resident shared
 ; HL = Selects palette for read or write($43)
 ; DE = IDX
@@ -279,6 +290,7 @@ RET
 
 
 ; @name SET_PAL9ALL
+; @requires next
 ; @resident shared
 ; HL = Selects palette for read or write($43)
 ; DE = COLOR Address
@@ -313,6 +325,7 @@ RET
 
 
 ; @name L2_SCREEN
+; @requires next
 ; @resident shared
 ; HL 0 = 256x192 / 1 = 320x256 / 2 = 640x256(4bpp)
 SLA L
@@ -325,6 +338,7 @@ RET
 
 
 ; @name L2_VISIBLE
+; @requires next
 ; @resident shared
 ; @calls ZXNWORK
 ; HL 0 = invisible / 1 = visible
@@ -339,6 +353,7 @@ RET
 
 
 ; @name L2_SETRAM
+; @requires next
 ; @resident shared
 LD A,L
 DB $ED,$92,$12
@@ -346,6 +361,7 @@ RET
 
 
 ; @name L2_SETRAMSHADOW
+; @requires next
 ; @resident shared
 LD A,L
 DB $ED,$92,$13
@@ -353,6 +369,7 @@ RET
 
 
 ; @name L2_TRANSPARENCY
+; @requires next
 ; @resident shared
 LD A,L
 DB $ED,$92,$14
@@ -360,6 +377,7 @@ RET
 
 
 ; @name L2_OFFSET
+; @requires next
 ; @resident shared
 ; HL = X Offset
 ; DE = Y Offset
@@ -377,6 +395,7 @@ RET
 
 
 ; @name L2_CLIPWINDOW
+; @requires next
 ; @resident shared
 ; @calls ZXNWORK
 ; スタックには近い順に(RETADR),Y2,Y1,X2,X1が積まれている
@@ -414,6 +433,7 @@ RET
 
 
 ; @name TILE_INIT
+; @requires next
 ; @resident shared
 ; HL 0 = 40x32 / 1 = 80x32
 ; DE 0 = 2byte / 1 = 1byte
@@ -434,6 +454,7 @@ RET
 
 
 ; @name TILE_VISIBLE
+; @requires next
 ; @resident shared
 ; HL 0 = Invisible / 1 = Visible
 LD A,(TILE_CTRL)
@@ -447,6 +468,7 @@ RET
 
 
 ; @name TILE_GLOBALATR
+; @requires next
 ; @resident shared
 ; HL = Default Tilemap Attribute
 LD A,L
@@ -455,6 +477,7 @@ RET
 
 
 ; @name TILE_SETADR
+; @requires next
 ; @resident shared
 ; HL = tilemap address
 ; DE = tile address
@@ -471,6 +494,7 @@ RET
 
 
 ; @name TILE_CLIP
+; @requires next
 ; @resident shared
 ; @calls ZXNWORK
 ; スタックには近い順に(RETADR),Y2,Y1,X2,X1が積まれている
@@ -508,6 +532,7 @@ RET
 
 
 ; @name TILE_OFFSET
+; @requires next
 ; @resident shared
 ; HL = X Offset
 ; DE = Y Offset
@@ -527,6 +552,7 @@ RET
 
 
 ; @name TILE_DEFS
+; @requires next
 ; @resident shared
 ; HL = Index
 ; DE = Tile Address
@@ -577,6 +603,7 @@ RET
 
 
 ; @name TILE_DEF
+; @requires next
 ; @resident shared
 ; HL Tile Index
 ; DE Tile Data Address
@@ -614,6 +641,7 @@ RET
 
 
 ; @name TILE_SETMAP
+; @requires next
 ; @resident shared
 ; @calls MULHLDE
 ; HL = X
@@ -672,6 +700,7 @@ RET
 
 
 ; @name LAYER_PRIORITY
+; @requires next
 ; @resident shared
 ; HL
 ; 0 S L U
@@ -694,6 +723,7 @@ RET
 
 
 ; @name SPR_LOAD
+; @requires next
 ; @resident shared
 ; HL = index
 ; DE = address
@@ -726,6 +756,7 @@ DB %10000111
 
 
 ; @name SPR_VISIBLE
+; @requires next
 ; @resident shared
 ; @calls ZXNWORK
 LD A,(SPL_SYS)
@@ -737,6 +768,7 @@ RET
 
 
 ; @name SPR_SETID
+; @requires next
 ; @resident shared
 ; HL = Sprite Id
 LD A,L
@@ -746,6 +778,7 @@ RET
 
 
 ; @name SPR_SET
+; @requires next
 ; @resident shared
 ;
 ; スタックには近い順に(RETADR)PAT,Y,X,IDXが積まれている
@@ -783,6 +816,7 @@ RET
 
 
 ; @name SPR_MOVE
+; @requires next
 ; @resident shared
 ; HL = (low)spr num / (high)Attribute 2(7-4 pal offset, 3 flip X, 2 flip Y, 1 rotate)
 ; DE = X
@@ -808,6 +842,7 @@ RET
 
 
 ; @name SPR_STARTANCHOR
+; @requires next
 ; @resident shared
 ; SPR_SETの直後に呼び出すとSPR_SETしたスプライトが親スプライトになる
 ; SPR_SETの第四引数には$40をORする事 (Attribute 3 の 6 ビット目。Attribute 4 を使う印)
@@ -818,6 +853,7 @@ RET
 
 
 ; @name SPR_SETREL
+; @requires next
 ; @resident shared
 ; HL = X
 ; DE = Y
@@ -850,6 +886,7 @@ RET
 
 
 ; @name SPR_SCALE
+; @requires next
 ; @resident shared
 ; HL = (low)spr num  (high)7-6 H+N6(H->4bit sprite)
 ; DE = X scale factor(1x,2x,4x,8x)
@@ -872,6 +909,7 @@ RET
 
 
 ; @name SPR_CLIP
+; @requires next
 ; @resident shared
 ; @calls ZXNWORK
 ; スタックには近い順に(RETADR),Y2,Y1,X2,X1が積まれている
@@ -909,6 +947,7 @@ RET
 
 
 ; @name SPR_HIDE
+; @requires next
 ; @resident shared
 ; HL Sprite Num
 LD A,L
@@ -938,6 +977,7 @@ RET
 
 
 ; @name COPPER_SET
+; @requires next
 ; @resident shared
 ; HL = Copper Instructions Address
 ; DE = Copper Size
@@ -973,6 +1013,7 @@ RET
 
 
 ; @name ZXN_SETIM2
+; @requires next
 ; @resident shared
 ; @calls VSYNC_JP
 ; HL = InterrultHandler

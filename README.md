@@ -221,6 +221,16 @@ Layer 2グラフィックス、タイルマップ、スプライト、パレッ�
 
 > **注**: `examples/zxn/Makefile` の `make build` (default) は NextDAW なし版 (`game_nomusic.nex`) を build します。NextDAW を含む完全版 (`game.nex`) を build するには `make music` を使い、`examples/zxn/NextDAW_RuntimePlayer_E000.bin` (= NextDAW Runtime Player) を `examples/zxn/` 配下に配置してください。NextDAW ([https://nextdaw.biasillo.com/](https://nextdaw.biasillo.com/)) は外部製品のため配布物には含まれません。**2026-04-30 時点で公式サイトでの入手はできない状態**で、再公開された場合も driver の仕様変更等により `examples/zxn/game.cfg` や `game.sl` の修正が必要となる可能性があります。
 
+## zxs (ZX Spectrum)
+
+素の ZX Spectrum (48K の機械として動くもの。48K・128K・+2・+2A・+3) 用の環境です。
+
+`slangbuild -E zxs NAME.SL -o NAME --emit tape` で、BASIC の読み込み口と CODE の **TAP と TZX** (`NAME.tap`・`NAME.tzx`) を出力します。
+zxn の部品のうち、素の Spectrum でも動くもの (表示・キー・計算・FLOAT・`STOP`・`ZXN_VSYNC`・`STICK(0)`・`GETKEY(0〜7)`) が使えます。
+Layer 2・スプライト・ファイルなど Next だけの部品を使うと、コンパイルのときにエラーになります。
+
+ORG は $8000、ワーク領域は $D000、スタックの頭は $FD00 です。サンプルは examples/zxs フォルダにあります。詳しくは [docs/ZXS.md](docs/ZXS.md) を参照してください。
+
 ## c64 (Commodore 64 / oscar64)
 
 Commodore 64 (6502) 用の環境です。本環境のみ SLANG コンパイラは 6502 アセンブラを直接出力せず、**SLANG → C ソース → oscar64 → .prg** の二段変換で 6502 バイナリを生成します。oscar64 ([https://github.com/drmortalwombat/oscar64](https://github.com/drmortalwombat/oscar64)) は本配布物に含まれないため別途インストールが必要です。drmortalwombat 氏 + oscar64 project に感謝。
@@ -297,6 +307,8 @@ SLANG Compilerはランタイムライブラリとして、`runtime/` フォル�
 * libzxn_input.asm — 入力関連処理
 * libzxn_file.asm — esxDOSファイルアクセス
 * libzxn_nextdaw.asm — NextDAW音楽再生ドライバ
+* libzxn_norom.asm — ROM に頼らない部品 (`CONST __NOROM`・`CONST __LOWRAM`)
+* libzxs.asm — 素の ZX Spectrum (zxs) の部品 (ROM の字の PRT、素の Z80 の IM 2 の始まり)
 
 ## VGS-Zero関連ライブラリ
 * libvgs0_base.asm — VGS-Zero固有のライブラリ
@@ -421,6 +433,7 @@ make TARGET=examples/STARS ENV=x1 run
 | mz25iocs | MZ-2500 BASIC / IOCS 直接環境 (mzd88 で D88 作成) |
 | vgs0 | VGS-Zero |
 | zxn | ZX Spectrum Next |
+| zxs | ZX Spectrum (48K・128K・+2A。TAP・TZX 出力) |
 | cpm | CP/Mエミュレータ (RunCPM 同梱) |
 
 ### エミュレータの設定

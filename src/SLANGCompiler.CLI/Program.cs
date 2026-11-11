@@ -252,6 +252,10 @@ class Program
                     runtimeManager.ApplyVariant("__LOWRAM");
             }
 
+            // env がいつも当てる差し替え (zxs の variants: [__NOROM, __ZXS])。書いた順に
+            foreach (var variant in envConfig.Variants)
+                runtimeManager.ApplyVariant(variant);
+
             // Phase 5: Code Generation
 
             if (!irModule.OrgAddress.HasValue && envConfig.DefaultOrg > 0)
@@ -261,6 +265,28 @@ class Program
 
             var codeGen = new CodeGenerator(irModule, runtimeManager, envConfig, diagnostics);
             var (mainAsm, overlays) = codeGen.GenerateAll();
+
+            // 使う部品 (差し替えの後、依存とインラインの SLANGINIT も含む) の @requires が、env の features にあるか (features のある env だけ)
+            if (envConfig.Features != null && codeGen.RuntimePlan is { } plan)
+            {
+                var used = new HashSet<string>(plan.MainResidentFunctions, StringComparer.OrdinalIgnoreCase);
+                used.UnionWith(plan.MainInlineFunctions);
+                foreach (var set in plan.OverlayLocalFunctions.Values) used.UnionWith(set);
+                var missing = new List<string>();
+                foreach (var name in used.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+                {
+                    if (!runtimeManager.Functions.TryGetValue(name, out var func)) continue;
+                    foreach (var need in func.Requires)
+                        if (!envConfig.Features.Contains(need, StringComparer.OrdinalIgnoreCase))
+                            missing.Add($"slangc: error: {func.Name} needs {FeatureName(need)} (env {envConfig.Name})");
+                }
+                if (missing.Count > 0)
+                {
+                    diagnostics.WriteTo(Console.Error);
+                    foreach (var m in missing) Console.Error.WriteLine(m);
+                    return 1;
+                }
+            }
 
             if (diagnostics.HasErrors)
             {
@@ -293,6 +319,10 @@ class Program
 
         return diagnostics.HasErrors ? 1 : 0;
     }
+
+    /// <summary>@requires の機能の名前を、エラーの文の言い方にする</summary>
+    static string FeatureName(string feature) =>
+        feature.Equals("next", StringComparison.OrdinalIgnoreCase) ? "ZX Spectrum Next" : feature;
 
     static void PrintUsage()
     {

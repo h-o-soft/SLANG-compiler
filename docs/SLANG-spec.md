@@ -94,6 +94,10 @@ slangc がコード生成の前に、元の断片の中身をそれに差し替�
 
 値は 0 か 1 の数でなければエラー。0 か、書かなければ、いままでどおり ROM を使う (出力は変わらない)。ほかの環境では、ふつうの CONST のまま。
 
+env に `features` がある環境 (zxn は `[next]`、素の Spectrum の zxs は `[]`) では、部品の `; @requires 機能` の機能が env に無いと、その部品を使ったときに
+エラー (`slangc: error: SPR_MOVE needs ZX Spectrum Next (env zxs)`)。env の `variants` (zxs は `[__NOROM, __ZXS]`) は、`CONST` を書かなくても
+いつもその順に `X` を `X名前` に差し替える。zxs は [docs/ZXS.md](ZXS.md)。
+
 env に `lowram: true` がある環境 (いまは zxn だけ) では、大域の `CONST __LOWRAM = ページ;` で、0000H〜3FFFH を RAM にする
 (0000H〜1FFFH に 8K のページ n、2000H〜3FFFH に n+1)。単独の NEX のためのもの (Next の SLANG IDE の中では使えない)。
 - `CONST __NOROM = 1;` も要る (無ければエラー `CONST __LOWRAM needs CONST __NOROM = 1`)。

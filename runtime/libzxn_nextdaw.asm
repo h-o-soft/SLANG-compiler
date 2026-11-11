@@ -2,6 +2,7 @@
 ; SLANG Runtime Library (new format)
 
 ; @name ZXNDAWCALLS
+; @requires next
 ; @resident shared
 _NextDAW_PlayerAddr            EQU $E000                      ; Driver code address
 _NextDAW_InitSong              EQU _NextDAW_PlayerAddr+(3*0)    ; Initialize/set song to play.
@@ -20,6 +21,7 @@ _NextDAW_EnablePSGWrite        EQU _NextDAW_PlayerAddr+(3*12)   ; a: 0 = disable
 
 
 ; @name NextDAW_InitSystem
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 ; L = mmu1
@@ -37,6 +39,7 @@ RET
 
 
 ; @name NextDAW_InitSong
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 ; hl = data mapping table
@@ -57,6 +60,7 @@ RET
 
 
 ; @name NextDAW_UpdateSong
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
@@ -70,6 +74,7 @@ RET
 
 
 ; @name NextDAW_PlaySong
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
@@ -83,6 +88,7 @@ RET
 
 
 ; @name NextDAW_StopSong
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
@@ -96,6 +102,7 @@ RET
 
 
 ; @name NextDAW_StopSongHard
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
@@ -109,6 +116,7 @@ RET
 
 
 ; @name NextDAW_UpdateSongNoAY
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
@@ -122,6 +130,7 @@ RET
 
 
 ; @name NextDAW_UpdateAY
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
@@ -135,6 +144,7 @@ RET
 
 
 ; @name NextDAW_InitSFXBank
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 ; L = bank index [0..3]
@@ -160,6 +170,7 @@ RET
 
 
 ; @name NextDAW_PlaySFX
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 ; L = bank index [0..3]
@@ -179,6 +190,7 @@ RET
 
 
 ; @name NextDAW_UpdateSFX
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
@@ -192,6 +204,7 @@ RET
 
 
 ; @name NextDAW_GetPSGDataPtr
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX
@@ -205,6 +218,7 @@ RET
 
 
 ; @name NextDAW_EnablePSGWrite
+; @requires next
 ; @resident shared
 ; @calls ZXNDAWCALLS
 PUSH IX

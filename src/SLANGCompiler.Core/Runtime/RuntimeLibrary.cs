@@ -50,6 +50,7 @@ public class RuntimeFunction
     public string? ResultType { get; set; }                      // @result_type (float等)
     public List<string>? ParamTypes { get; set; }                // @param_types (float,int をカンマで。引数の型を変える)
     public RuntimeResidency Residency { get; set; } = RuntimeResidency.Local; // @resident shared|local
+    public List<string> Requires { get; set; } = new();          // @requires (機械の機能。next など。env の features に無ければ使えない)
 }
 
 /// <summary>
@@ -122,6 +123,7 @@ public class RuntimeManager
                 ResultType = v.ResultType,
                 ParamTypes = v.ParamTypes,
                 Residency = v.Residency,
+                Requires = v.Requires,
             };
             _functions[orig.Name] = merged;
             foreach (var alias in orig.Aliases)
@@ -336,6 +338,11 @@ public static class RuntimeParser
                     case "works_align":
                         if (current != null && int.TryParse(value, out int alignment))
                             current.WorksAlignment = alignment;
+                        break;
+
+                    case "requires":
+                        if (current != null)
+                            current.Requires.AddRange(value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
                         break;
 
                     case "init_code":
