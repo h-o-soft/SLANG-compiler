@@ -65,8 +65,33 @@ public static class ModulePageChecker
 
     private const string ModuleMapName = "ZXN_MODULE";
 
-    private static bool CallsModuleMap(IrFunction f) => f.Instructions.Any(i =>
-        i.Op == IrOp.Call && i.Src1.Kind == IrOperandKind.Symbol && string.Equals(i.Src1.Name, ModuleMapName, StringComparison.OrdinalIgnoreCase));
+    /// <summary>
+    /// 関数が呼ぶ名前: IR の呼び出しと、#ASM の中の `CALL 名前` の行 (コード生成がランタイムを選ぶのと同じ読み方)。
+    /// `CALL(番地)`・関数の番地を使う呼び出しは入らない
+    /// </summary>
+    private static IEnumerable<string> CalledNames(IrFunction f)
+    {
+        foreach (var i in f.Instructions)
+        {
+            if (i.Op == IrOp.Call && i.Src1.Kind == IrOperandKind.Symbol && i.Src1.Name != null)
+                yield return i.Src1.Name;
+            else if (i.Op == IrOp.InlineAsm)
+            {
+                var asm = i.Dest.Kind == IrOperandKind.Temp ? i.Src1.Name : i.Dest.Name;
+                if (asm == null) continue;
+                foreach (var line in asm.Split('\n'))
+                {
+                    var t = line.Trim();
+                    if (!t.StartsWith("CALL\t") && !t.StartsWith("CALL ")) continue;
+                    var name = t[5..].Trim().Split(';')[0].Trim();
+                    if (name.Length > 0) yield return name;
+                }
+            }
+        }
+    }
+
+    private static bool CallsModuleMap(IrFunction f) =>
+        CalledNames(f).Any(n => string.Equals(n, ModuleMapName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// ZXN_MODULE(n) を使うなら、全部のモジュールに PAGE が要る (表を作るため)。ZXN_MODULE は本体からだけ呼べる:
@@ -92,15 +117,14 @@ public static class ModulePageChecker
                     errors.Add(($"ZXN_MODULE is reached from #MODULE {o.Index} (through {f.Name}); call it from the main program only", o.Span));
                     break;
                 }
-                foreach (var i in f.Instructions)
-                    if (i.Op == IrOp.Call && i.Src1.Kind == IrOperandKind.Symbol && i.Src1.Name != null
-                        && funcs.TryGetValue(i.Src1.Name, out var callee) && seen.Add(callee.Name))
+                foreach (var n in CalledNames(f))
+                    if (funcs.TryGetValue(n, out var callee) && seen.Add(callee.Name))
                         queue.Enqueue(callee);
             }
         }
     }
 
-    /// <summary>窓が同じ PAGE のモジュールどうしの呼び出しを、呼び出しの表からたどる (直接の CALL だけ。CALL(番地)・#ASM・関数の番地はたどらない)</summary>
+    /// <summary>窓が同じ PAGE のモジュールどうしの呼び出しを、呼び出しの表からたどる (IR の呼び出しと #ASM の CALL の行。CALL(番地)・関数の番地はたどらない)</summary>
     private static void CheckCalls(IrModule module, List<OverlayModule> paged, List<(string, SourceSpan)> errors)
     {
         var owner = new Dictionary<string, OverlayModule?>(StringComparer.OrdinalIgnoreCase);
@@ -109,9 +133,7 @@ public static class ModulePageChecker
         foreach (var o in module.Overlays)
             foreach (var f in o.Functions) { owner[f.Name] = o; funcs[f.Name] = f; }
 
-        IEnumerable<string> Callees(IrFunction f) => f.Instructions
-            .Where(i => i.Op == IrOp.Call && i.Src1.Kind == IrOperandKind.Symbol && i.Src1.Name != null && funcs.ContainsKey(i.Src1.Name))
-            .Select(i => i.Src1.Name!);
+        IEnumerable<string> Callees(IrFunction f) => CalledNames(f).Where(funcs.ContainsKey);
 
         foreach (var a in paged)
         {

@@ -501,6 +501,7 @@ public class IntegrationTests : IDisposable
     [InlineData("#MODULE $C000 PAGE 40\nWORK $C800;\nFA(X) BEGIN RETURN X; END;\n#END\n", "WORK cannot be used in a #MODULE with PAGE")]
     [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN FA(X); END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]
     [InlineData("HOP(X) BEGIN RETURN FA(X); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN HOP(X); END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]
+    [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN\n#ASM\n CALL FA\n#END\nRETURN X; END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]   // #ASM の CALL も
     public void ZxnModulePage_Errors(string modules, string message)
     {
         var stderr = CompileExpectError(PagedHead + modules, "zxn");
@@ -558,6 +559,8 @@ public class IntegrationTests : IDisposable
                 "ZXN_MODULE is reached from #MODULE 0 (through SW); call it from the main program only")]
     [InlineData("MAIN() BEGIN\n#ASM\n LD HL,0\n CALL ZXN_MODULE\n#END\nR = FA(1); END;\n#MODULE $C000\nFA(X) BEGIN RETURN X; END;\n#END\n",
                 "ZXN_MODULE needs PAGE on every #MODULE (#MODULE 0 has none)")]   // #ASM の CALL で入っても
+    [InlineData("MAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000 PAGE 40 RESIDENT\nFA(X) BEGIN\n#ASM\n LD HL,1\n CALL ZXN_MODULE\n#END\nRETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
+                "ZXN_MODULE is reached from #MODULE 0 (through FA); call it from the main program only")]   // モジュールの #ASM の CALL も
     public void ZxnModuleMap_Errors(string source, string message)
     {
         var stderr = CompileExpectError(MapHead + source, "zxn");
