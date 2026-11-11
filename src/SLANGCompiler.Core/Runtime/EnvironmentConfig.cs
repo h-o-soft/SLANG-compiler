@@ -47,6 +47,8 @@ public class EnvironmentConfig
     public List<string>? Features { get; set; }
     /// <summary>`#MODULE $addr PAGE n` を使える env (module_pages: true)。いまは zxn だけ</summary>
     public bool ModulePages { get; set; }
+    /// <summary>slangbuild --emit nex で ZX Spectrum Next の NEX を書ける env (nex: true)。いまは zxn だけ</summary>
+    public bool Nex { get; set; }
     public List<string> Libraries { get; set; } = new();
     public string? OptimizeRules { get; set; }
     public bool CodeReadonly { get; set; }

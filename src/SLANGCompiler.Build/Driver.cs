@@ -218,6 +218,12 @@ public class Driver
         // Z80 backend + OutputFormat null/bin のみ許容、 cmt / c_source は reject。
         // Driver.RunOscarC は別 path で Z80 dispatch 前に分岐するため、 ここでは
         // Z80 backend 想定の OutputFormat check のみ。
+        if (_opts.EmitMode == "nex" && !envConfig.Nex)
+        {
+            Console.Error.WriteLine($"slangbuild: --emit nex requires an env with nex: true (zxn) (env: {envPath})");
+            return 1;
+        }
+
         if (_opts.EmitMode == "tape")
         {
             if (envConfig.OutputFormat != null)
@@ -507,6 +513,13 @@ public class Driver
 
             // === Step 4 (Phase B+): --emit tape → X1 .tap (+ optional .wav) 組み立て ===
             //  + 多段 tape (= #MODULE overlay の自動連結) 対応
+            // === Step 4 (zxn): --emit nex → NEX (本体・PAGE のモジュール・//#PAGE のデータ) ===
+            if (_opts.EmitMode == "nex")
+            {
+                int nexRc = WriteNex(mainBin, mainSym, modulesPath, renamedOverlayBins, outputBase);
+                if (nexRc != 0) return nexRc;
+            }
+
             if (_opts.EmitMode == "tape" && envConfig.Tape?.Format == "zx")
             {
                 int zxRc = WriteZxTape(envConfig, mainBin, mainSym, outputBase, renamedOverlayBins.Count);
@@ -880,6 +893,43 @@ public class Driver
             return 1;
         }
         return 0;
+    }
+
+    /// <summary>
+    /// ZX Spectrum Next の NEX を書く (--emit nex、env の nex)。本体 (PC = __CODE__、SP = __STACKTOP)、
+    /// #MODULE $addr PAGE n のモジュール (PAGE の無いモジュールはエラー)、ソースの //#PAGE ページ ファイル のデータ。NexImage を見る
+    /// </summary>
+    private int WriteNex(string mainBin, string mainSym, string modulesPath, List<string> overlayBins, string outputBase)
+    {
+        try
+        {
+            var syms = SymFileReader.ReadFile(mainSym);
+            int Sym(string name) => syms.TryGetValue(name, out var v) ? v
+                : throw new InvalidDataException($"NEX: symbol {name} not found in {Path.GetFileName(mainSym)}");
+            int lowRam = syms.TryGetValue("__LOWRAM", out var lr) ? lr : 0;
+            var pages = File.Exists(modulesPath)
+                ? File.ReadAllLines(modulesPath).Where(l => l.Trim().Length > 0).Select(l => l.Split(' '))
+                    .ToDictionary(f => int.Parse(f[0]), f => (Org: Convert.ToInt32(f[1].TrimStart('$'), 16), Page: int.Parse(f[2])))
+                : new();
+            var modules = new List<NexImage.Module>();
+            for (int i = 0; i < overlayBins.Count; i++)
+            {
+                if (!pages.TryGetValue(i, out var mp))
+                    throw new InvalidDataException($"NEX: #MODULE {i} has no PAGE (write #MODULE $addr PAGE n)");
+                modules.Add(new NexImage.Module(i, mp.Org, mp.Page, File.ReadAllBytes(overlayBins[i])));
+            }
+            var data = NexImage.ReadDataPages(_opts.InputPath);
+            var nex = NexImage.Build(File.ReadAllBytes(mainBin), Sym("__CODE__"), Sym("__STACKTOP"), Sym("__CODE__"), modules, data, lowRam);
+            File.WriteAllBytes(outputBase + ".nex", nex);
+            if (_opts.Verbose)
+                Console.Error.WriteLine($"slangbuild: wrote {outputBase}.nex ({(nex.Length - 512) / 0x4000} banks of 16K)");
+            return 0;
+        }
+        catch (InvalidDataException e)
+        {
+            Console.Error.WriteLine($"slangbuild: error: {e.Message}");
+            return 1;
+        }
     }
 
     /// <summary>本体のコード・WORK・スタックの範囲 (#278 の置き場の検査と同じ 3 つ。終わりは排他)</summary>
