@@ -246,8 +246,10 @@ JP INFLOOP
 ; @name ZXN_LOWRAM_RST8
 ; @resident shared
 ; SLANGINIT__LOWRAM の包み。RAM の 0008H の JP から来る (呼んだ所の次の 1 バイトが esxDOS の関数の番号)。
-; 呼ぶ間だけ MMU0・1 を ROM (FFH) に戻して本当の RST $08 を呼び、戻ったら RAM に戻す。A・BC・DE・HL・IX とフラグは、そのまま渡して返す
-; (割り込みの処理からファイルの関数を呼ばないこと: 関数の番号の置き場は 1 つ)
+; 呼ぶ前の MMU0・1 を NextReg から読んで控え、呼ぶ間だけ ROM (FFH) にして本当の RST $08 を呼び、戻ったら控えた値に戻す
+; (ページを決め打ちしないので、Next の SLANG IDE の始まりから来ても同じに使える)。A・BC・DE・HL・IX とフラグは、そのまま渡して返す
+; (割り込みの処理からファイルの関数を呼ばないこと: 関数の番号と控えの置き場は 1 つ。
+;  割り込みの処理からポート 243BH・253BH で NextReg を読み書きしないこと: 下で 50H・51H を選んでから読むまでの間に選び直されると、ほかのレジスタの値を控える)
 EX (SP),HL
 PUSH AF
 LD A,(HL)
@@ -256,6 +258,20 @@ LD (.fn),A
 POP AF
 EX (SP),HL
 PUSH AF
+PUSH BC
+LD BC,$243B         ; NextReg 50H・51H を読み、下の戻す NEXTREG の値に書く
+LD A,$50
+OUT (C),A
+INC B
+IN A,(C)
+LD (.mmu0),A
+DEC B
+LD A,$51
+OUT (C),A
+INC B
+IN A,(C)
+LD (.mmu1),A
+POP BC
 LD A,$FF
 DB $ED,$92,$50
 DB $ED,$92,$51
@@ -264,8 +280,12 @@ RST $08
 .fn
 DB 0
 PUSH AF
-DB $ED,$91,$50,__LOWRAM
-DB $ED,$91,$51,__LOWRAM+1
+DB $ED,$91,$50
+.mmu0
+DB 0
+DB $ED,$91,$51
+.mmu1
+DB 0
 POP AF
 RET
 
