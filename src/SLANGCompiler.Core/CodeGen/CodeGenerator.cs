@@ -532,12 +532,18 @@ public class CodeGenerator
         // アドレス解決を行う。AILZ80ASM 的にはコメントなので影響なし。
         EmitFunctionCrossRefs(overlayIndex: null);
 
-        // #MODULE のページの表 (ZXN_MODULE を使うときだけ)。モジュールごとに NextReg の番号 (50H + 窓) とページ
+        // #MODULE のページの表 (ZXN_MODULE を使うときだけ。直接の呼び出し・#ASM の CALL・番地の参照のどれで入っても)。
+        // モジュールごとに NextReg の番号 (50H + 窓) とページ。PAGE の無いモジュールがあればエラー
         if (_runtimePlan != null && _runtimePlan.MainResidentFunctions.Contains("ZXN_MODULE"))
         {
             _e.Label("__MODTBL");
             foreach (var o in _module.Overlays)
-                _e.Raw($"DB ${0x50 + (o.OrgAddress >> 13):X2},{o.Page ?? 0}");
+            {
+                if (o.Page == null)
+                    _diagnostics?.Error($"ZXN_MODULE needs PAGE on every #MODULE (#MODULE {o.Index} has none)", o.Span);
+                else
+                    _e.Raw($"DB ${0x50 + (o.OrgAddress >> 13):X2},{o.Page}");
+            }
         }
 
         // プログラム末尾マーカー

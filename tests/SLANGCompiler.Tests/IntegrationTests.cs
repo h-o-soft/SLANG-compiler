@@ -556,6 +556,8 @@ public class IntegrationTests : IDisposable
                 "ZXN_MODULE is reached from #MODULE 0 (through FA); call it from the main program only")]
     [InlineData("SW() BEGIN ZXN_MODULE(1); END;\nMAIN() BEGIN R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN SW(); RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
                 "ZXN_MODULE is reached from #MODULE 0 (through SW); call it from the main program only")]
+    [InlineData("MAIN() BEGIN\n#ASM\n LD HL,0\n CALL ZXN_MODULE\n#END\nR = FA(1); END;\n#MODULE $C000\nFA(X) BEGIN RETURN X; END;\n#END\n",
+                "ZXN_MODULE needs PAGE on every #MODULE (#MODULE 0 has none)")]   // #ASM の CALL で入っても
     public void ZxnModuleMap_Errors(string source, string message)
     {
         var stderr = CompileExpectError(MapHead + source, "zxn");
