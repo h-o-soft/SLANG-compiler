@@ -226,6 +226,11 @@ public class IrModule
     /// <summary>`__NOROM` という名前があるが、0 か 1 の数の CONST でない</summary>
     public bool NoRomInvalid { get; set; }
     public SourceSpan NoRomSpan { get; set; } = SourceSpan.Unknown;
+    /// <summary>`CONST __LOWRAM = ページ;` の値 (0、または 18〜222 の数のときだけ)。使うのは env に lowram のあるときだけ</summary>
+    public int? LowRam { get; set; }
+    /// <summary>`__LOWRAM` という名前があるが、0 か 18〜222 の数の CONST でない</summary>
+    public bool LowRamInvalid { get; set; }
+    public SourceSpan LowRamSpan { get; set; } = SourceSpan.Unknown;
     public List<OverlayModule> Overlays { get; } = new();
     public HashSet<string> AddressSymbolDeps { get; } = new(StringComparer.OrdinalIgnoreCase);
 

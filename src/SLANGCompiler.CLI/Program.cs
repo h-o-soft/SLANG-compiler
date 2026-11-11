@@ -233,6 +233,25 @@ class Program
                     runtimeManager.ApplyVariant("__NOROM");
             }
 
+            // 0000H〜3FFFH を RAM に (env の lowram、ソースの CONST __LOWRAM = ページ): __NOROM の後で X__LOWRAM に差し替える。
+            // 正しくない値はいつもエラー。0 か書いていなければ何もしない
+            if (envConfig.LowRam)
+            {
+                string? lowRamError = null;
+                if (irModule.LowRamInvalid)
+                    lowRamError = "CONST __LOWRAM must be 0 or a page from 18 to 222";
+                else if (irModule.LowRam > 0 && !irModule.NoRom)
+                    lowRamError = "CONST __LOWRAM needs CONST __NOROM = 1";
+                if (lowRamError != null)
+                {
+                    diagnostics.Error(lowRamError, irModule.LowRamSpan);
+                    diagnostics.WriteTo(Console.Error);
+                    return 1;
+                }
+                if (irModule.LowRam > 0)
+                    runtimeManager.ApplyVariant("__LOWRAM");
+            }
+
             // Phase 5: Code Generation
 
             if (!irModule.OrgAddress.HasValue && envConfig.DefaultOrg > 0)
