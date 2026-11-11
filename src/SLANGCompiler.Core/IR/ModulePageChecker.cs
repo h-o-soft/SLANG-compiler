@@ -21,7 +21,7 @@ public static class ModulePageChecker
     public static List<(string Message, SourceSpan Span)> Check(IrModule module, bool modulePages, int lowRam)
     {
         var errors = new List<(string, SourceSpan)>();
-        CheckModuleMap(module, errors);
+        if (modulePages) CheckModuleMap(module, errors);
         var paged = module.Overlays.Where(o => o.Page != null).ToList();
         if (paged.Count == 0) return errors;
         if (!modulePages)
@@ -81,9 +81,11 @@ public static class ModulePageChecker
                 if (asm == null) continue;
                 foreach (var line in asm.Split('\n'))
                 {
+                    // `CALL 名前`・`CALL Z,名前` (条件つきも)。大文字・小文字は問わない
                     var t = line.Trim();
-                    if (!t.StartsWith("CALL\t") && !t.StartsWith("CALL ")) continue;
-                    var name = t[5..].Trim().Split(';')[0].Trim();
+                    if (t.Length < 5 || !t.StartsWith("CALL", StringComparison.OrdinalIgnoreCase) || (t[4] != ' ' && t[4] != '\t')) continue;
+                    var operand = t[5..].Split(';')[0].Trim();
+                    var name = operand[(operand.LastIndexOf(',') + 1)..].Trim();
                     if (name.Length > 0) yield return name;
                 }
             }
@@ -94,12 +96,15 @@ public static class ModulePageChecker
         CalledNames(f).Any(n => string.Equals(n, ModuleMapName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
+    /// (module_pages のある env で、ランタイムの ZXN_MODULE のとき)
     /// ZXN_MODULE(n) を使うなら、全部のモジュールに PAGE が要る (表を作るため)。ZXN_MODULE は本体からだけ呼べる:
     /// モジュールの関数から静的にたどって届くもの (本体の関数を通るものも) はエラー (自分の窓を付け替えると、戻る先が消えるため)
     /// </summary>
     private static void CheckModuleMap(IrModule module, List<(string, SourceSpan)> errors)
     {
         var all = module.Functions.Concat(module.Overlays.SelectMany(o => o.Functions)).ToList();
+        // 利用者が ZXN_MODULE という名前の関数を書いたなら、それはランタイムの ZXN_MODULE ではない
+        if (all.Any(f => string.Equals(f.Name, ModuleMapName, StringComparison.OrdinalIgnoreCase))) return;
         if (!all.Any(CallsModuleMap)) return;
         foreach (var o in module.Overlays.Where(o => o.Page == null))
             errors.Add(($"ZXN_MODULE needs PAGE on every #MODULE (#MODULE {o.Index} has none)", o.Span));

@@ -544,6 +544,13 @@ public class IntegrationTests : IDisposable
     }
 
     [Fact]
+    public void ModuleMap_UserFunctionInOtherEnv_Unchanged()
+    {
+        // module_pages の無い env (lsx) で、利用者の ZXN_MODULE という関数と PAGE の無い #MODULE は、いままでどおり通る
+        CompileWithCli("VAR R; ZXN_MODULE(X) BEGIN RETURN X; END;\nMAIN() BEGIN R = ZXN_MODULE(1); R = FA(1); END;\n#MODULE $C000\nFA(X) BEGIN RETURN X; END;\n#END\n", "lsx");
+    }
+
+    [Fact]
     public void ZxnModuleMap_NotUsed_NoTable()
     {
         var asm = CompileWithCli(MapHead + "MAIN() BEGIN R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n", "zxn");
@@ -561,6 +568,8 @@ public class IntegrationTests : IDisposable
                 "ZXN_MODULE needs PAGE on every #MODULE (#MODULE 0 has none)")]   // #ASM の CALL で入っても
     [InlineData("MAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000 PAGE 40 RESIDENT\nFA(X) BEGIN\n#ASM\n LD HL,1\n CALL ZXN_MODULE\n#END\nRETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
                 "ZXN_MODULE is reached from #MODULE 0 (through FA); call it from the main program only")]   // モジュールの #ASM の CALL も
+    [InlineData("SW() BEGIN\n#ASM\n LD HL,1\n XOR A\n call z,ZXN_MODULE\n#END\nEND;\nMAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN SW(); RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
+                "ZXN_MODULE is reached from #MODULE 0 (through SW); call it from the main program only")]   // 条件つきの CALL・小文字も
     public void ZxnModuleMap_Errors(string source, string message)
     {
         var stderr = CompileExpectError(MapHead + source, "zxn");
