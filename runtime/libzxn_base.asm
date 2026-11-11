@@ -147,6 +147,26 @@ OUT (C),A
 RET
 
 
+
+; @name ZXN_MODULE
+; @requires next
+; @resident shared
+; @param_count 1
+; HL = モジュールの番号 (#MODULE の順、0 から)。そのモジュールの PAGE を、番地の窓に付ける。
+; 表 __MODTBL (slangc が本体に出す。モジュールごとに NextReg の番号 (50H + 窓) とページの 2 バイト) を引き、NEXTREG を 1 回 (下の 1 バイトに番号を書く)。
+; 本体からだけ呼ぶ (モジュールから届くものは slangc がエラーにする)。番号の範囲は調べない
+ADD HL,HL
+LD DE,__MODTBL
+ADD HL,DE
+LD A,(HL)
+LD (.reg),A
+INC HL
+LD A,(HL)
+DB $ED,$92
+.reg
+DB 0
+RET
+
 ; @name ZXN_BANK_SET_ESX
 ; @requires next
 ; @resident shared

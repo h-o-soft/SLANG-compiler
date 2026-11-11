@@ -30,6 +30,14 @@ build_music: game.nex
 %.nex: %.bin %.cfg
 	$(NEXCREATOR) $*.cfg $@
 
+# --- #MODULE を Next のページに入れる見本 (MODULE.SL) ---
+# slangbuild が NEX を直接書く (--emit nex。nexcreator を使わない)
+module: MODULE.nex
+	$(EMU) MODULE.nex
+
+MODULE.nex: MODULE.SL
+	$(SLANGBUILD) -E zxn MODULE.SL -o MODULE --emit nex
+
 # --- Arkos Tracker (AKM) の見本 (ARKOS.md) ---
 # 再生部 PSGAKM.bin を RASM で $E000 に組み、ARKOS.SL と曲・効果音と一緒に NEX にする。
 # 置き場: 本体 $8000〜 / 曲 BGM.AKM $B000 / 効果音 SE.AKX $C000 / ワーク $D000〜 / スタック $E000 から下 / 再生部 $E000〜

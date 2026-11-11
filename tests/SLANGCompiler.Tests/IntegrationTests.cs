@@ -501,6 +501,7 @@ public class IntegrationTests : IDisposable
     [InlineData("#MODULE $C000 PAGE 40\nWORK $C800;\nFA(X) BEGIN RETURN X; END;\n#END\n", "WORK cannot be used in a #MODULE with PAGE")]
     [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN FA(X); END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]
     [InlineData("HOP(X) BEGIN RETURN FA(X); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN HOP(X); END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]
+    [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN\n#ASM\n CALL FA\n#END\nRETURN X; END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]   // #ASM の CALL も
     public void ZxnModulePage_Errors(string modules, string message)
     {
         var stderr = CompileExpectError(PagedHead + modules, "zxn");
@@ -527,6 +528,52 @@ public class IntegrationTests : IDisposable
     {
         // 窓が違うモジュールどうしは呼べる (使う側が両方を付ける)
         CompileWithCli(PagedHead + "#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN FL(X); END;\n#END\n#MODULE $0010 PAGE 30\nFL(X) BEGIN RETURN X; END;\n#END\n", "zxn");
+    }
+
+    private const string MapHead = "CONST __NOROM = 1; CONST __LOWRAM = 30; CONST __STACKTOP = $C000; WORK $A000; VAR R;\n";
+
+    [Fact]
+    public void ZxnModuleMap_TableAndCall()
+    {
+        // ZXN_MODULE(n): 本体に表 __MODTBL (モジュールごとに NextReg の番号 50H + 窓 とページ) を出し、NEXTREG で付ける
+        var asm = CompileWithCli(MapHead + "MAIN() BEGIN ZXN_MODULE(0); R = FA(1); ZXN_MODULE(2); R = FL(1); END;\n" +
+            "#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $A000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n#MODULE $0010 PAGE 30\nFL(X) BEGIN RETURN X; END;\n#END\n", "zxn");
+        Assert.Matches(@"(?m)^__MODTBL:\s*\nDB \$56,40\s*\nDB \$55,41\s*\nDB \$50,30\s*\nSLANG_PROG_END:", asm);
+        Assert.Matches(@"(?m)^ZXN_MODULE:", asm);
+        Assert.Contains("DB $ED,$92", asm);
+    }
+
+    [Fact]
+    public void ModuleMap_UserFunctionInOtherEnv_Unchanged()
+    {
+        // module_pages の無い env (lsx) で、利用者の ZXN_MODULE という関数と PAGE の無い #MODULE は、いままでどおり通る
+        CompileWithCli("VAR R; ZXN_MODULE(X) BEGIN RETURN X; END;\nMAIN() BEGIN R = ZXN_MODULE(1); R = FA(1); END;\n#MODULE $C000\nFA(X) BEGIN RETURN X; END;\n#END\n", "lsx");
+    }
+
+    [Fact]
+    public void ZxnModuleMap_NotUsed_NoTable()
+    {
+        var asm = CompileWithCli(MapHead + "MAIN() BEGIN R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n", "zxn");
+        Assert.DoesNotContain("__MODTBL", asm);
+    }
+
+    [Theory]
+    [InlineData("MAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000\nFA(X) BEGIN RETURN X; END;\n#END\n",
+                "ZXN_MODULE needs PAGE on every #MODULE (#MODULE 0 has none)")]
+    [InlineData("MAIN() BEGIN R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN ZXN_MODULE(0); RETURN X; END;\n#END\n",
+                "ZXN_MODULE is reached from #MODULE 0 (through FA); call it from the main program only")]
+    [InlineData("SW() BEGIN ZXN_MODULE(1); END;\nMAIN() BEGIN R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN SW(); RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
+                "ZXN_MODULE is reached from #MODULE 0 (through SW); call it from the main program only")]
+    [InlineData("MAIN() BEGIN\n#ASM\n LD HL,0\n CALL ZXN_MODULE\n#END\nR = FA(1); END;\n#MODULE $C000\nFA(X) BEGIN RETURN X; END;\n#END\n",
+                "ZXN_MODULE needs PAGE on every #MODULE (#MODULE 0 has none)")]   // #ASM の CALL で入っても
+    [InlineData("MAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000 PAGE 40 RESIDENT\nFA(X) BEGIN\n#ASM\n LD HL,1\n CALL ZXN_MODULE\n#END\nRETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
+                "ZXN_MODULE is reached from #MODULE 0 (through FA); call it from the main program only")]   // モジュールの #ASM の CALL も
+    [InlineData("SW() BEGIN\n#ASM\n LD HL,1\n XOR A\n call z,ZXN_MODULE\n#END\nEND;\nMAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN SW(); RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
+                "ZXN_MODULE is reached from #MODULE 0 (through SW); call it from the main program only")]   // 条件つきの CALL・小文字も
+    public void ZxnModuleMap_Errors(string source, string message)
+    {
+        var stderr = CompileExpectError(MapHead + source, "zxn");
+        Assert.Contains(message, stderr);
     }
 
     [Fact]
