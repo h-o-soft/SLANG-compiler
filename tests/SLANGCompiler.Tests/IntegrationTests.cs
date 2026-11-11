@@ -479,6 +479,56 @@ public class IntegrationTests : IDisposable
         Assert.Matches(@"(?m)^SPR_MOVE:", asm);
     }
 
+    private const string PagedHead = "CONST __NOROM = 1; CONST __LOWRAM = 30; CONST __STACKTOP = $C000; WORK $A000; VAR R; MAIN() BEGIN R = FA(1); END;\n";
+
+    [Theory]
+    [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n#MODULE $0010 PAGE 30\nFL(X) BEGIN RETURN X; END;\n#END\n#MODULE $2000 PAGE 31 RESIDENT\nFM(X) BEGIN RETURN X; END;\n#END\n")]
+    [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\nPAGE() BEGIN END;\n#END\n")]   // PAGE() という名前の関数は今までどおり
+    public void ZxnModulePage_Ok(string modules)
+    {
+        CompileWithCli(PagedHead + modules, "zxn");
+    }
+
+    [Theory]
+    [InlineData("#MODULE $C000 PAGE 17\nFA(X) BEGIN RETURN X; END;\n#END\n", "PAGE must be 18 to 222")]
+    [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $A000 PAGE 40\nFB(X) BEGIN RETURN X; END;\n#END\n", "page 40 is already used by #MODULE 0")]
+    [InlineData("#MODULE $E000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n", "the window must be 0000H-5FFFH or 8000H-DFFFH")]
+    [InlineData("#MODULE $6000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n", "the window must be 0000H-5FFFH or 8000H-DFFFH")]
+    [InlineData("#MODULE $0010 PAGE 31\nFA(X) BEGIN RETURN X; END;\n#END\n", "must use the __LOWRAM page 30")]
+    [InlineData("#MODULE $0008 PAGE 30\nFA(X) BEGIN RETURN X; END;\n#END\n", "starts at 0010H or later")]
+    [InlineData("#MODULE $2000 PAGE 30\nFA(X) BEGIN RETURN X; END;\n#END\n", "the __LOWRAM page 30 is for 0000H-1FFFH")]
+    [InlineData("#MODULE $C000 PAGE 31\nFA(X) BEGIN RETURN X; END;\n#END\n", "the __LOWRAM pages 30 and 31 are for 0000H-3FFFH")]
+    [InlineData("#MODULE $C000 PAGE 40\nWORK $C800;\nFA(X) BEGIN RETURN X; END;\n#END\n", "WORK cannot be used in a #MODULE with PAGE")]
+    [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN FA(X); END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]
+    [InlineData("HOP(X) BEGIN RETURN FA(X); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN HOP(X); END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]
+    public void ZxnModulePage_Errors(string modules, string message)
+    {
+        var stderr = CompileExpectError(PagedHead + modules, "zxn");
+        Assert.Contains(message, stderr);
+    }
+
+    [Fact]
+    public void ZxnModulePage_LowWindowNeedsLowRam()
+    {
+        var stderr = CompileExpectError("VAR R; MAIN() BEGIN R = FA(1); END;\n#MODULE $0010 PAGE 30\nFA(X) BEGIN RETURN X; END;\n#END\n", "zxn");
+        Assert.Contains("a module at 0000H-3FFFH needs CONST __LOWRAM", stderr);
+    }
+
+    [Fact]
+    public void ModulePage_OtherEnvs_Errors()
+    {
+        // PAGE は module_pages のある env (zxn) だけ
+        var stderr = CompileExpectError("VAR R; MAIN() BEGIN R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n", "lsx");
+        Assert.Contains("#MODULE PAGE needs an env with module pages (zxn)", stderr);
+    }
+
+    [Fact]
+    public void ZxnModulePage_DifferentWindowsMayCall()
+    {
+        // 窓が違うモジュールどうしは呼べる (使う側が両方を付ける)
+        CompileWithCli(PagedHead + "#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN FL(X); END;\n#END\n#MODULE $0010 PAGE 30\nFL(X) BEGIN RETURN X; END;\n#END\n", "zxn");
+    }
+
     [Fact]
     public void VarAddress_RuntimeName_Errors()
     {

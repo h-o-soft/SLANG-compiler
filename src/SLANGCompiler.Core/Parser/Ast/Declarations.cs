@@ -61,12 +61,15 @@ public class ModuleBlock : AstNode
     public Expression Name { get; }
     public List<AstNode> Definitions { get; }
     public OverlayRuntimePolicy RuntimePolicy { get; }
+    /// <summary>`#MODULE $C000 PAGE 40` のページ (8K のページの番号の式)。無ければ null</summary>
+    public Expression? Page { get; }
     public ModuleBlock(Expression name, List<AstNode> definitions, SourceSpan span,
-                       OverlayRuntimePolicy runtimePolicy = OverlayRuntimePolicy.Local) : base(span)
+                       OverlayRuntimePolicy runtimePolicy = OverlayRuntimePolicy.Local, Expression? page = null) : base(span)
     {
         Name = name;
         Definitions = definitions;
         RuntimePolicy = runtimePolicy;
+        Page = page;
     }
     public override T Accept<T>(IAstVisitor<T> visitor) => visitor.VisitModuleBlock(this);
 }

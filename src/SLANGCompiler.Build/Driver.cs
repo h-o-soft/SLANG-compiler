@@ -381,6 +381,15 @@ public class Driver
                 if (areaRc != 0) return areaRc;
             }
 
+            // === Step 3.4b: #MODULE $addr PAGE n の窓の検査 (slangc が <base>.modules を書いたとき) ===
+            var modulesPath = outputBase + ".modules";
+            if (File.Exists(modulesPath))
+            {
+                intermediates.Add(modulesPath);
+                int modRc = CheckModuleWindows(envConfig, mainSym, modulesPath, outputDir, prefix);
+                if (modRc != 0) return modRc;
+            }
+
             // === Step 3.5a: overlay rename (env.OverlayName 指定時) ===
             // 旧 path: <output dir>/<prefix>._m{N}{overlayBinExt}
             // 新 path: <output dir>/<env.OverlayName で {index} 展開>
@@ -873,20 +882,69 @@ public class Driver
         return 0;
     }
 
-    private static int CheckAreas(EnvironmentConfig env, string mainSym)
+    /// <summary>本体のコード・WORK・スタックの範囲 (#278 の置き場の検査と同じ 3 つ。終わりは排他)</summary>
+    private static (string Name, long Lo, long Hi)[] MainAreas(EnvironmentConfig env, string mainSym)
     {
         var syms = SymFileReader.ReadFile(mainSym);
-        int start = env.AreaStart!.Value, end = env.AreaEnd!.Value;
         int Sym(string name) => syms.TryGetValue(name, out var v) ? v
             : throw new InvalidOperationException($"slangbuild: area check: symbol {name} not found in {Path.GetFileName(mainSym)}");
         int stackTop = Sym("__STACKTOP");
-        var areas = new (string Name, long Lo, long Hi)[]
+        return new (string Name, long Lo, long Hi)[]
         {
             ("code", Sym("__CODE__"), Sym("SLANG_PROG_END")),
             ("work", Sym("__WORK__"), Sym("__WORKEND__")),
             // __STACKTOP = 0 は 10000H の下から (SP は 0 から下へ積む)
             ("stack", ((stackTop == 0 ? 0x10000 : stackTop) - env.StackSize) & ~15L, stackTop == 0 ? 0x10000 : stackTop),
         };
+    }
+
+    /// <summary>
+    /// #MODULE $addr PAGE n の窓 (8K、番地の上 3 ビット) の検査。モジュールの頭〜__M&lt;N&gt;_END__ (コードと私有のワーク、排他) が窓に収まり、
+    /// 窓が本体のコード・WORK・スタックに重ならないこと。ページ・窓の種類・__LOWRAM・呼び出しは slangc が調べている
+    /// </summary>
+    private static int CheckModuleWindows(EnvironmentConfig env, string mainSym, string modulesPath, string outputDir, string prefix)
+    {
+        if (!env.AreaStart.HasValue || !env.AreaEnd.HasValue)
+        {
+            Console.Error.WriteLine("slangbuild: error: #MODULE PAGE needs an env with area_start / area_end / stack_size (zxn)");
+            return 1;
+        }
+        var areas = MainAreas(env, mainSym);
+        foreach (var line in File.ReadAllLines(modulesPath).Where(l => l.Trim().Length > 0))
+        {
+            var f = line.Split(' ');
+            int index = int.Parse(f[0]), org = Convert.ToInt32(f[1].TrimStart('$'), 16), page = int.Parse(f[2]);
+            var sym = Path.Combine(outputDir, $"{prefix}._m{index}.sym");
+            var syms = SymFileReader.ReadFile(sym);
+            if (!syms.TryGetValue($"__M{index}_END__", out var endValue))
+            {
+                Console.Error.WriteLine($"slangbuild: error: #MODULE {index}: symbol __M{index}_END__ not found in {Path.GetFileName(sym)}");
+                return 1;
+            }
+            long end = endValue;
+            long winLo = org & ~0x1FFFL, winHi = winLo + 0x2000;
+            string head = $"#MODULE {index} (${org:X4} PAGE {page})";
+            if (end < org || end > winHi)
+            {
+                Console.Error.WriteLine($"slangbuild: error: {head} does not fit the window {winLo:X4}H-{winHi - 1:X4}H (module ${org:X4}-${end:X4})");
+                return 1;
+            }
+            foreach (var a in areas)
+            {
+                if (a.Lo < winHi && winLo < a.Hi)
+                {
+                    Console.Error.WriteLine($"slangbuild: error: {head}: the window {winLo:X4}H-{winHi - 1:X4}H overlaps the main {a.Name} ${a.Lo:X4}-${a.Hi:X4} (move WORK / __STACKTOP / ORG out of the window)");
+                    return 1;
+                }
+            }
+        }
+        return 0;
+    }
+
+    private static int CheckAreas(EnvironmentConfig env, string mainSym)
+    {
+        int start = env.AreaStart!.Value, end = env.AreaEnd!.Value;
+        var areas = MainAreas(env, mainSym);
         string Range(long lo, long hi) => $"${lo:X4}-${hi:X4}";
         string detail = string.Join(", ", areas.Select(a => $"{a.Name} {Range(a.Lo, a.Hi)}"));
         string area = $"{start:X4}H-{end - 1:X4}H";

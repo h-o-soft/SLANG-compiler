@@ -45,6 +45,8 @@ public class EnvironmentConfig
     public List<string> Variants { get; set; } = new();
     /// <summary>その機械にある機能 (`features: [next]`)。null (鍵が無い) なら調べない。部品の `@requires` が無ければエラー</summary>
     public List<string>? Features { get; set; }
+    /// <summary>`#MODULE $addr PAGE n` を使える env (module_pages: true)。いまは zxn だけ</summary>
+    public bool ModulePages { get; set; }
     public List<string> Libraries { get; set; } = new();
     public string? OptimizeRules { get; set; }
     public bool CodeReadonly { get; set; }
