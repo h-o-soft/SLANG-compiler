@@ -253,11 +253,31 @@ public class IrGenerator : IAstVisitor<IrOperand>
         unit.Accept(this);
         ResolveStackTop();
         ResolveNoRom();
+        ResolveLowRam();
         return _module;
     }
 
     private const string StackTopName = "__STACKTOP";
     private const string NoRomName = "__NOROM";
+    private const string LowRamName = "__LOWRAM";
+
+    /// <summary>大域の `CONST __LOWRAM = ページ;` を読む。0 か 18〜222 の数でなければ印だけ付け、エラーにするかは CLI が env (lowram) を見て決める</summary>
+    private void ResolveLowRam()
+    {
+        var sym = _globalSymbols?.Resolve(LowRamName);
+        if (sym == null) return;
+        int? v = null;
+        if (sym.Kind == SymbolKind.Constant && !sym.IsCodeBlock && !sym.IsAsmEqu)
+        {
+            v = sym.ConstValue as int?;
+            if (v == null && sym.ConstAst != null)
+                v = new ConstEvaluator(_globalSymbols, followConstAst: true).Evaluate(sym.ConstAst);
+        }
+        if (v is 0 or (>= 18 and <= 222))
+            _module.LowRam = v;
+        else
+            _module.LowRamInvalid = true;
+    }
 
     /// <summary>大域の `CONST __NOROM = 0|1;` を読む。0 か 1 の数でなければ印だけ付け、エラーにするかは CLI が env (norom) を見て決める</summary>
     private void ResolveNoRom()
@@ -1029,6 +1049,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
         {
             if (ReferenceEquals(decl, _globalSymbols.Resolve(StackTopName))) _module.StackTopSpan = node.Span;
             if (ReferenceEquals(decl, _globalSymbols.Resolve(NoRomName))) _module.NoRomSpan = node.Span;
+            if (ReferenceEquals(decl, _globalSymbols.Resolve(LowRamName))) _module.LowRamSpan = node.Span;
         }
         // 関数の中の CONST: 意味解析で値が決まっている。宣言の順に見えるようにする
         if (_localConsts != null && _currentFuncInfo != null)

@@ -38,6 +38,9 @@ public class EnvironmentConfig
     /// <summary>ROM を使わない版の断片 (名前__NOROM) がある env (norom: true)。ソースの大域の `CONST __NOROM = 1;` で、
     /// コード生成の前に `X` の中身を `X__NOROM` のものに差し替える (いまは zxn だけ)</summary>
     public bool NoRom { get; set; }
+    /// <summary>0000H〜3FFFH を RAM にできる env (lowram: true)。ソースの大域の `CONST __LOWRAM = ページ;` (と `CONST __NOROM = 1;`) で、
+    /// `X` の中身を `X__NOROM` の後で `X__LOWRAM` のものに差し替える (いまは zxn だけ)</summary>
+    public bool LowRam { get; set; }
     public List<string> Libraries { get; set; } = new();
     public string? OptimizeRules { get; set; }
     public bool CodeReadonly { get; set; }

@@ -265,6 +265,26 @@ public class BuildIntegrationTests : IDisposable
         Assert.True(IndexOf(bin, new byte[] { 0x3E, (byte)(table >> 8), 0xED, 0x47, 0xED, 0x5E }) >= 0, "LD I,A / IM 2");
     }
 
+    [Fact]
+    public void Zxn_LowRam_SetsPagesAndTrap()
+    {
+        // CONST __LOWRAM = 30 の bin: NextReg B9H = 0、MMU0 = 30、MMU1 = 31、RAM の 0008H に JP 包み (C3 と包みの番地)
+        var slPath = Path.Combine(_tempDir, "lowram.SL");
+        File.WriteAllText(slPath, "CONST __NOROM = 1;\nCONST __LOWRAM = 30;\nARRAY BYTE MAP[16367]:$0010;\nMAIN() BEGIN MAP[5] = 1; END;\n");
+        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "zxn");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        var bin = File.ReadAllBytes(Path.Combine(_tempDir, "lowram.bin"));
+        Assert.True(IndexOf(bin, new byte[] { 0xED, 0x91, 0xB9, 0x00, 0xED, 0x91, 0x50, 30, 0xED, 0x91, 0x51, 31 }) >= 0, "NextReg B9H・50H・51H");
+        var jp = IndexOf(bin, new byte[] { 0x3E, 0xC3, 0x32, 0x08, 0x00, 0x21 });
+        Assert.True(jp >= 0, "LD A,C3 / LD (0008H),A / LD HL,包み");
+        Assert.Equal(new byte[] { 0x22, 0x09, 0x00 }, bin.AsSpan(jp + 8, 3).ToArray());
+        // 包みは MMU0・1 を FFH (ROM) にして RST $08、戻ったら 30・31 に戻す
+        var trap = (bin[jp + 6] | bin[jp + 7] << 8) - 0x8000;
+        Assert.Equal(new byte[] { 0xE3, 0xF5, 0x7E, 0x23, 0x32 }, bin.AsSpan(trap, 5).ToArray());
+        Assert.True(IndexOf(bin, new byte[] { 0x3E, 0xFF, 0xED, 0x92, 0x50, 0xED, 0x92, 0x51, 0xF1, 0xCF }) == trap + 10, "ROM に戻して RST $08");
+        Assert.True(IndexOf(bin, new byte[] { 0xF5, 0xED, 0x91, 0x50, 30, 0xED, 0x91, 0x51, 31, 0xF1, 0xC9 }) == trap + 21, "RAM に戻して RET");
+    }
+
     private static int IndexOf(byte[] data, byte[] pattern)
     {
         for (int i = 0; i + pattern.Length <= data.Length; i++)

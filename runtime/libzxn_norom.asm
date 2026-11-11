@@ -185,6 +185,91 @@ EI
 RETI
 
 
+; @name SLANGINIT__LOWRAM
+; @resident local
+; @calls ZXNWORK,ZXN_NOROM_ISR,ZXN_LOWRAM_RST8
+; @works ZXN_IM2TBL:32
+; @works_align 32
+; SLANGINIT__NOROM と同じことに加えて、0000H〜3FFFH を RAM (ページ __LOWRAM・__LOWRAM+1) にする (ソースの CONST __LOWRAM = ページ;)。
+; 使えるのは 0010H〜3FFFH (番地を指定した変数・配列)。RAM の 0008H に JP ZXN_LOWRAM_RST8 を置き、ファイルの関数の RST $08 を包みへ回す
+di
+
+; SP の初め: __STACKTOP (env の stack_top、ソースの CONST __STACKTOP で変えられる。既定 $E000)
+LD SP,__STACKTOP
+
+; NextReg B9H = 0: 0000H〜0038H の divMMC の入口を「ROM 3 が見えているときだけ」に (RAM の間は付かない。NextZXOS 2.10 と同じ値)
+DB $ED,$91,$B9,$00
+; MMU0・1 = ページ __LOWRAM・__LOWRAM+1
+DB $ED,$91,$50,__LOWRAM
+DB $ED,$91,$51,__LOWRAM+1
+; RAM の 0008H に JP ZXN_LOWRAM_RST8
+LD A,$C3
+LD ($0008),A
+LD HL,ZXN_LOWRAM_RST8
+LD ($0009),HL
+
+; WORK ZERO CLEAR
+XOR A
+LD HL,__WORK__
+LD DE,__WORK__+1
+LD BC,__WORKEND__-__WORK__-1
+LD (HL),A
+LDIR
+
+<<CALLINITIALIZER>>
+
+LD IY,__IYWORK
+
+; 表の ULA の所 (11 番 × 2) に処理の番地。NextReg C0H = (表の下 8 ビット AND E0H) OR 01H、I = 表の上 8 ビット
+LD HL,ZXN_NOROM_ISR
+LD (ZXN_IM2TBL+22),HL
+LD A,(ZXN_IM2TBL & $E0) | $01
+DB $ED,$92,$C0
+; 割り込み元は ULA だけ (C4H: ULA、C5H: CTC、C6H: UART)
+DB $ED,$91,$C4,$01
+DB $ED,$91,$C5,$00
+DB $ED,$91,$C6,$00
+LD A,ZXN_IM2TBL >> 8
+LD I,A
+IM 2
+
+ei
+call MAIN
+
+di
+halt
+
+INFLOOP:
+JP INFLOOP
+
+
+; @name ZXN_LOWRAM_RST8
+; @resident shared
+; SLANGINIT__LOWRAM の包み。RAM の 0008H の JP から来る (呼んだ所の次の 1 バイトが esxDOS の関数の番号)。
+; 呼ぶ間だけ MMU0・1 を ROM (FFH) に戻して本当の RST $08 を呼び、戻ったら RAM に戻す。A・BC・DE・HL・IX とフラグは、そのまま渡して返す
+; (割り込みの処理からファイルの関数を呼ばないこと: 関数の番号の置き場は 1 つ)
+EX (SP),HL
+PUSH AF
+LD A,(HL)
+INC HL
+LD (.fn),A
+POP AF
+EX (SP),HL
+PUSH AF
+LD A,$FF
+DB $ED,$92,$50
+DB $ED,$92,$51
+POP AF
+RST $08
+.fn
+DB 0
+PUSH AF
+DB $ED,$91,$50,__LOWRAM
+DB $ED,$91,$51,__LOWRAM+1
+POP AF
+RET
+
+
 ; @name ZXN_FONT
 ; @resident shared
 ; 32〜127 の 96 字 × 8 バイト。1 字は上の行から 8 バイト、1 バイト目は 0、2〜8 バイト目が 5x7 の字 (ビット 6〜2)。

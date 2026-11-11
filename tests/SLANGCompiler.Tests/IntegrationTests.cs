@@ -372,6 +372,65 @@ public class IntegrationTests : IDisposable
         Assert.DoesNotContain("ZXN_FONT", asm);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("CONST __LOWRAM = 0;")]
+    public void ZxnLowRam_Off_SameAsNoRom(string decl)
+    {
+        // CONST __LOWRAM が無いか 0 なら、__NOROM のまま (0000H〜3FFFH は ROM)
+        var asm = CompileWithCli("CONST __NOROM = 1; " + decl + NoRomProgram, "zxn");
+        Assert.Equal(CompileWithCli("CONST __NOROM = 1; " + NoRomProgram, "zxn"), asm);
+        Assert.DoesNotContain("__LOWRAM EQU", asm);
+        Assert.DoesNotContain("ZXN_LOWRAM_RST8", asm);
+    }
+
+    [Fact]
+    public void ZxnLowRam_On_MapsPagesAndTrap()
+    {
+        // CONST __LOWRAM = ページ で、SLANGINIT が MMU0・1 をそのページにし、RAM の 0008H に包みへの JP を置く
+        var asm = CompileWithCli("CONST __NOROM = 1; CONST __LOWRAM = 30; " + NoRomProgram, "zxn");
+        Assert.Contains("__LOWRAM EQU 30", asm);
+        Assert.Contains("DB $ED,$91,$B9,$00", asm);
+        Assert.Contains("DB $ED,$91,$50,__LOWRAM", asm);
+        Assert.Contains("DB $ED,$91,$51,__LOWRAM+1", asm);
+        Assert.Matches(@"LD A,\$C3\s*\nLD \(\$0008\),A\s*\nLD HL,ZXN_LOWRAM_RST8\s*\nLD \(\$0009\),HL", asm);
+        Assert.Matches(@"(?m)^ZXN_LOWRAM_RST8:", asm);
+        Assert.Matches(@"(?m)^INFLOOP:", asm);
+        Assert.Matches(@"IM 2", asm);
+        Assert.Matches(@"(?m)^ZXN_FONT:", asm);
+    }
+
+    [Fact]
+    public void ZxnLowRam_WithoutNoRom_Errors()
+    {
+        var stderr = CompileExpectError("CONST __LOWRAM = 30; MAIN() BEGIN END;", "zxn");
+        Assert.Contains("CONST __LOWRAM needs CONST __NOROM = 1", stderr);
+        stderr = CompileExpectError("CONST __NOROM = 0; CONST __LOWRAM = 30; MAIN() BEGIN END;", "zxn");
+        Assert.Contains("CONST __LOWRAM needs CONST __NOROM = 1", stderr);
+    }
+
+    [Theory]
+    [InlineData("CONST __LOWRAM = 17;")]
+    [InlineData("CONST __LOWRAM = 223;")]
+    [InlineData("CONST __LOWRAM = -1;")]
+    [InlineData("CONST __LOWRAM = 30.5;")]
+    [InlineData("VAR __LOWRAM;")]
+    [InlineData("CONST ASM __LOWRAM = 30;")]
+    public void ZxnLowRam_BadPage_Errors(string decl)
+    {
+        // 正しくない値は、__NOROM が無くても先にエラー
+        var stderr = CompileExpectError(decl + " MAIN() BEGIN END;", "zxn");
+        Assert.Contains("CONST __LOWRAM must be 0 or a page from 18 to 222", stderr);
+    }
+
+    [Fact]
+    public void LowRam_OtherEnvsUnchanged()
+    {
+        // lowram の無い env (zxn 以外) では、__LOWRAM はふつうの名前のまま
+        var asm = CompileWithCli("CONST __LOWRAM = 5; MAIN() BEGIN PRINT(1); END;", "lsx");
+        Assert.DoesNotContain("ZXN_LOWRAM_RST8", asm);
+    }
+
     [Fact]
     public void VarAddress_RuntimeName_Errors()
     {

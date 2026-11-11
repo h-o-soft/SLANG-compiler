@@ -40,6 +40,7 @@ public class EnvironmentLoader
             config.StackTop = ParseAddress(raw.StackTop);
 
         config.NoRom = raw.NoRom;
+        config.LowRam = raw.LowRam;
 
         // プログラムを置いてよい範囲 (area_start / area_end) と、検査でスタックに取る大きさ (stack_size)。3 つそろって使う
         bool hasAreaStart = !string.IsNullOrEmpty(raw.AreaStart), hasAreaEnd = !string.IsNullOrEmpty(raw.AreaEnd);
@@ -533,6 +534,9 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "norom")]
         public bool NoRom { get; set; }
+
+        [YamlMember(Alias = "lowram")]
+        public bool LowRam { get; set; }
 
         [YamlMember(Alias = "libraries")]
         public List<string>? Libraries { get; set; }

@@ -352,6 +352,10 @@ public class CodeGenerator
                     _diagnostics?.Error("CONST __STACKTOP must be a number from 0 to 65535", _module.StackTopSpan);
                 _e.Raw($"__STACKTOP EQU ${(_module.StackTop ?? _envConfig.StackTop.Value):X4}");
             }
+
+            // 0000H〜1FFFH に置くページ (env に lowram のあるときで、CONST __LOWRAM が 18〜222 のときだけ)
+            if (_envConfig.LowRam && _module.LowRam > 0)
+                _e.Raw($"__LOWRAM EQU {_module.LowRam}");
         }
 
         // === Phase 4: エントリポイント生成 ===
