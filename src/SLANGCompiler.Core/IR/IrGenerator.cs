@@ -3019,6 +3019,12 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitWorkDirective(WorkDirective node)
     {
+        // PAGE のあるモジュールの私有のワークは、いつもコードの直後 (自分のコードと重なる置き方を作らせない)。式を評価する前に止める
+        if (_currentOverlay?.Page != null)
+        {
+            _diagnostics?.Error("WORK cannot be used in a #MODULE with PAGE (the private work follows the code)", node.Span);
+            return IrOperand.None;
+        }
         int? addr = EvaluateAddress(node.Value);
         if (!addr.HasValue) return IrOperand.None;
 
@@ -3076,7 +3082,17 @@ public class IrGenerator : IAstVisitor<IrOperand>
             Index = _module.Overlays.Count,
             OrgAddress = orgAddr,
             RuntimePolicy = policy,
+            Span = node.Span,
         };
+        if (node.Page != null)
+        {
+            overlay.Page = EvaluateAddress(node.Page);
+            if (overlay.Page == null)
+            {
+                _diagnostics?.Error("#MODULE PAGE must be a constant number", node.Span);
+                overlay.Page = -1;   // 後の検査で範囲の外として止まる
+            }
+        }
 
         // VAR/ARRAY/WORK の振り分け先を切り替え
         var prevOverlay = _currentOverlay;

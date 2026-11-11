@@ -352,6 +352,33 @@ public class BuildIntegrationTests : IDisposable
         Assert.Contains("is not supported for the ZX Spectrum tape", stderr);
     }
 
+    private const string ModuleBuildHead = "CONST __NOROM = 1; CONST __STACKTOP = $C000; WORK $A000; VAR R; MAIN() BEGIN R = FA(1); END;\n";
+
+    [Theory]
+    [InlineData(ModuleBuildHead + "#MODULE $C000 PAGE 40\nVAR CNT;\nFA(X) BEGIN CNT++; RETURN X; END;\n#END\n", null)]
+    [InlineData("VAR R; MAIN() BEGIN R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n",
+                "the window C000H-DFFFH overlaps the main work $D000")]   // 既定の WORK (D000H) と窓が重なる
+    [InlineData(ModuleBuildHead + "#MODULE $C000 PAGE 40\nARRAY BYTE BIG[8200];\nFA(X) BEGIN BIG[0] = 1; RETURN X; END;\n#END\n",
+                "does not fit the window C000H-DFFFH")]                   // コードと私有のワークが 8K を越える
+    public void Zxn_ModulePage_WindowCheck(string source, string? error)
+    {
+        // #MODULE $addr PAGE n: 組んだ後に、モジュール (コード + 私有のワーク) が窓に収まり、窓が本体と重ならないこと
+        var slPath = Path.Combine(_tempDir, "mod.SL");
+        File.WriteAllText(slPath, source);
+        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "zxn");
+        if (error == null)
+        {
+            Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+            Assert.True(File.Exists(Path.Combine(_tempDir, "mod._m0.bin")));
+            Assert.False(File.Exists(Path.Combine(_tempDir, "mod.modules")));   // 中間のファイルは消える
+        }
+        else
+        {
+            Assert.NotEqual(0, code);
+            Assert.Contains(error, stderr);
+        }
+    }
+
     private static int IndexOf(byte[] data, byte[] pattern)
     {
         for (int i = 0; i + pattern.Length <= data.Length; i++)

@@ -178,6 +178,15 @@ public class Parser
         // アドレス式（#MODULE $8000）
         var addr = ParseNcExpr();
 
+        // ページ (optional): `#MODULE $C000 PAGE 40`。直後が `(` なら関数 PAGE() の定義として扱う
+        Expression? page = null;
+        if (Check(TokenKind.Identifier) && string.Equals(Current.StringValue, "PAGE", StringComparison.OrdinalIgnoreCase)
+            && Peek(1).Kind != TokenKind.LParen)
+        {
+            Advance();
+            page = ParseNcExpr();
+        }
+
         // ヘッダ位置のランタイム集約ポリシー (optional)
         // 例: `#MODULE $8000 RESIDENT`。Lexer で予約語化済みなのでトークン種別で判定。
         // 未知識別子 (例: `RESIDNT` typo) はヘッダ直後 + 直後が `(` でない場合に
@@ -229,7 +238,7 @@ public class Parser
                 Advance();
         }
 
-        return new ModuleBlock(addr, defs, start, policy);
+        return new ModuleBlock(addr, defs, start, policy, page);
     }
 
     // ==== CONST declaration ====

@@ -43,6 +43,7 @@ public class EnvironmentLoader
         config.LowRam = raw.LowRam;
         config.Variants = raw.Variants ?? new List<string>();
         config.Features = raw.Features;
+        config.ModulePages = raw.ModulePages;
 
         // プログラムを置いてよい範囲 (area_start / area_end) と、検査でスタックに取る大きさ (stack_size)。3 つそろって使う
         bool hasAreaStart = !string.IsNullOrEmpty(raw.AreaStart), hasAreaEnd = !string.IsNullOrEmpty(raw.AreaEnd);
@@ -550,6 +551,9 @@ public class EnvironmentLoader
 
         [YamlMember(Alias = "features")]
         public List<string>? Features { get; set; }
+
+        [YamlMember(Alias = "module_pages")]
+        public bool ModulePages { get; set; }
 
         [YamlMember(Alias = "libraries")]
         public List<string>? Libraries { get; set; }

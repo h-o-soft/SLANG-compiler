@@ -220,6 +220,15 @@ public class CodeGenerator
             _e.Raw($"__WORKEND_M{overlay.Index}__ EQU ({workLabel} + {offset})");
         }
 
+        // PAGE のあるモジュールの終わり (排他。slangbuild が窓に収まるかを調べる)。私有のワークがあればその終わり、無ければコードの終わり
+        if (overlay.Page != null)
+        {
+            if (overlay.LocalVars.Count > 0)
+                _e.Raw($"__M{overlay.Index}_END__ EQU __WORKEND_M{overlay.Index}__");
+            else
+                _e.Label($"__M{overlay.Index}_END__");
+        }
+
         // PR-B2: User function cross-reference セクション (Exports + Imports)
         EmitFunctionCrossRefs(overlay.Index);
 

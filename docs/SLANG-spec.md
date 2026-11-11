@@ -944,6 +944,43 @@ ORG を明示できる:
 
 ---
 
+### Next のページ (`#MODULE $addr PAGE n`、zxn)
+
+env に `module_pages: true` がある環境 (いまは zxn だけ) では、モジュールを入れる 8K のページを `#MODULE` の行に書ける:
+
+```slang
+CONST __STACKTOP = $C000;      /* 本体のスタックと WORK を、窓 (C000H〜DFFFH) の外へ */
+WORK $A000;
+MAIN()
+BEGIN
+    ZXN_SET_BANK_8K(6, 40);    /* モジュールのページを窓に付けてから呼ぶ */
+    FA(1);
+    ZXN_SET_BANK_8K(6, 41);
+    FB(2);
+END;
+
+#MODULE $C000 PAGE 40
+    VAR CNT;                   /* 私有の変数はページの中 (入れ替えても残る) */
+    FA(X) BEGIN CNT++; END;
+#END
+#MODULE $C000 PAGE 41 RESIDENT
+    FB(X) BEGIN ... END;
+#END
+```
+
+- `PAGE` は `RESIDENT` より前に書く。書かなければ、いままでどおり (ページを決めない別の bin)。**Next の SLANG IDE では `PAGE` が要る** (IDE はページにしか書き出さない)
+- 1 つのモジュールは **8K の窓 1 つ** に収める (コード・Local のランタイム・私有のワーク)。窓は番地の上 3 ビット。
+  使える窓は **0000H〜5FFFH と 8000H〜DFFFH** (6000H〜7FFFH と E000H〜FFFFH は使えない。IDE と同じ)。4000H〜5FFFH は ULA の画面と NextZXOS の変数なので、付けている間は `PRINT`・ファイルの関数を呼ばない
+- ページは 18〜222 (0〜17 は NextZXOS)。**人に渡すプログラムは 30〜55** (IDE のユーザーのページ。1MB 機でも 2MB 機でも同じ番号) から選ぶとよい。モジュールどうしで同じページはエラー
+- 0000H〜3FFFH の窓は `CONST __LOWRAM = n` が要る (コードを 0000H〜3FFFH に置ける)。0000H〜1FFFH のモジュールは 0010H から (0000H〜000FH はランタイム) で、ページは n。
+  2000H〜3FFFH のモジュールは n 以外。ほかの窓は n と n+1 を使えない (始まりで n の 0008H に JP を書くため)
+- PAGE のあるモジュールの中で `WORK` は書けない (私有のワークはコードの直後)
+- **窓が同じモジュールどうしの呼び出しはエラー** (本体の関数を通って届くものも)。窓が違うモジュールどうしは呼べる (両方を付けておく)。
+  `CALL(番地)`・`#ASM` の中の呼び出し・関数の番地を使う呼び出しは調べないので、窓が同じモジュールへは使わない
+- slangbuild は組んだ後に、モジュール (コードと私有のワーク) が窓に収まること、窓が本体のコード・WORK・スタックと重ならないことを調べる。
+  zxn の既定 (WORK D000H、スタック E000H から下) は C000H〜DFFFH の窓と重なるので、その窓を使うなら `WORK`・`CONST __STACKTOP` で外へ動かす
+- ページに入れるのと窓に付けるのは、いまは使う側 (nexcreator の .cfg の `!MMU` 行、`ZXN_SET_BANK_8K`)
+
 ### ランタイム集約ポリシー (`#MODULE $addr RESIDENT`)
 
 `#MODULE` ヘッダに optional のポリシー識別子を書ける:

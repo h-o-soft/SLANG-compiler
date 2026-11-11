@@ -304,6 +304,9 @@ public class OverlayModule
     public int? WorkAddress { get; set; }
     /// <summary>ランタイム集約ポリシー (#MODULE ヘッダの RESIDENT/SELFCONTAIN/AUTO)。default=Local</summary>
     public OverlayRuntimePolicy RuntimePolicy { get; set; } = OverlayRuntimePolicy.Local;
+    /// <summary>`#MODULE $addr PAGE n` のページ (zxn の 8K のページ)。無ければ null</summary>
+    public int? Page { get; set; }
+    public SourceSpan Span { get; set; } = SourceSpan.Unknown;
     public List<IrFunction> Functions { get; } = new();
     public List<GlobalVarInfo> LocalVars { get; } = new();
     public Dictionary<string, string> StringTable { get; } = new();

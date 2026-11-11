@@ -252,6 +252,16 @@ class Program
                     runtimeManager.ApplyVariant("__LOWRAM");
             }
 
+            // #MODULE $addr PAGE n (zxn): コンパイルのときに分かる決まり (ページ・窓・__LOWRAM・窓が同じモジュールどうしの呼び出し)
+            var pageErrors = ModulePageChecker.Check(irModule, envConfig.ModulePages,
+                envConfig.LowRam && irModule.LowRam is > 0 ? irModule.LowRam.Value : 0);
+            if (pageErrors.Count > 0)
+            {
+                foreach (var (msg, span) in pageErrors) diagnostics.Error(msg, span);
+                diagnostics.WriteTo(Console.Error);
+                return 1;
+            }
+
             // env がいつも当てる差し替え (zxs の variants: [__NOROM, __ZXS])。書いた順に
             foreach (var variant in envConfig.Variants)
                 runtimeManager.ApplyVariant(variant);
@@ -298,6 +308,17 @@ class Program
             var outPath = outputPath ?? Path.ChangeExtension(filePath, ".ASM");
             File.WriteAllText(outPath, mainAsm);
             Console.Error.WriteLine($"; Output: {outPath}");
+
+            // PAGE のあるモジュールの表 (slangbuild が組んだ後に、窓の大きさと本体との重なりを調べる)。PAGE が無ければ書かず、前の残りは消す
+            var modulesPath = Path.ChangeExtension(outPath, ".modules");
+            if (irModule.Overlays.Any(o => o.Page != null))
+            {
+                File.WriteAllLines(modulesPath, irModule.Overlays.Where(o => o.Page != null)
+                    .Select(o => $"{o.Index} ${o.OrgAddress:X4} {o.Page}"));
+                Console.Error.WriteLine($"; Output: {modulesPath} (module pages)");
+            }
+            else if (File.Exists(modulesPath))
+                File.Delete(modulesPath);
 
             if (overlays.Count > 0)
             {
