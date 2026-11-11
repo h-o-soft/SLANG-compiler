@@ -278,11 +278,19 @@ public class BuildIntegrationTests : IDisposable
         var jp = IndexOf(bin, new byte[] { 0x3E, 0xC3, 0x32, 0x08, 0x00, 0x21 });
         Assert.True(jp >= 0, "LD A,C3 / LD (0008H),A / LD HL,包み");
         Assert.Equal(new byte[] { 0x22, 0x09, 0x00 }, bin.AsSpan(jp + 8, 3).ToArray());
-        // 包みは MMU0・1 を FFH (ROM) にして RST $08、戻ったら 30・31 に戻す
+        // 包みは呼ぶ前の MMU0・1 を読んで控え (戻す NEXTREG の値に書く)、FFH (ROM) にして RST $08、戻ったら控えた値に戻す (ページを決め打ちしない)
         var trap = (bin[jp + 6] | bin[jp + 7] << 8) - 0x8000;
         Assert.Equal(new byte[] { 0xE3, 0xF5, 0x7E, 0x23, 0x32 }, bin.AsSpan(trap, 5).ToArray());
-        Assert.True(IndexOf(bin, new byte[] { 0x3E, 0xFF, 0xED, 0x92, 0x50, 0xED, 0x92, 0x51, 0xF1, 0xCF }) == trap + 10, "ROM に戻して RST $08");
-        Assert.True(IndexOf(bin, new byte[] { 0xF5, 0xED, 0x91, 0x50, 30, 0xED, 0x91, 0x51, 31, 0xF1, 0xC9 }) == trap + 21, "RAM に戻して RET");
+        Assert.Equal(new byte[] { 0xC5, 0x01, 0x3B, 0x24, 0x3E, 0x50, 0xED, 0x79, 0x04, 0xED, 0x78, 0x32 }, bin.AsSpan(trap + 10, 12).ToArray());
+        var mmu0 = bin[trap + 22] | bin[trap + 23] << 8;
+        Assert.Equal(new byte[] { 0x05, 0x3E, 0x51, 0xED, 0x79, 0x04, 0xED, 0x78, 0x32 }, bin.AsSpan(trap + 24, 9).ToArray());
+        var mmu1 = bin[trap + 33] | bin[trap + 34] << 8;
+        Assert.Equal(new byte[] { 0xC1, 0x3E, 0xFF, 0xED, 0x92, 0x50, 0xED, 0x92, 0x51, 0xF1, 0xCF }, bin.AsSpan(trap + 35, 11).ToArray());
+        Assert.Equal(new byte[] { 0xF5, 0xED, 0x91, 0x50 }, bin.AsSpan(trap + 47, 4).ToArray());
+        Assert.Equal(0x8000 + trap + 51, mmu0);                    // 読んだ MMU0 は、戻す NEXTREG 50H の値の所へ
+        Assert.Equal(new byte[] { 0xED, 0x91, 0x51 }, bin.AsSpan(trap + 52, 3).ToArray());
+        Assert.Equal(0x8000 + trap + 55, mmu1);
+        Assert.Equal(new byte[] { 0xF1, 0xC9 }, bin.AsSpan(trap + 56, 2).ToArray());
     }
 
     private static int IndexOf(byte[] data, byte[] pattern)

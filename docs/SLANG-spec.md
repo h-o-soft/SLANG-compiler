@@ -110,7 +110,7 @@ env に `lowram: true` がある環境 (いまは zxn だけ) では、大域の
   - 0000H〜3FFFH の見え方を変えない: MMU0・1 の付け替え (`ZXN_SET_BANK_8K(0 か 1, …)` など)、`ZXN_BANK_SET_ESX`、`ZXN_ULA_SET_SHADOW` と
     7FFDH・DFFDH・1FFDH・EFF7H への書き込み (Next はこれで MMU0・1 を ROM に戻す)、Layer 2 の読み書きの窓を 0000H〜3FFFH に開くこと。
   - `ZXN_SETIM2` で自分の IM 2 にするなら、表と割り込みの処理は 4000H 以上に置き、割り込みの処理から 0000H〜3FFFH を読み書きせず、ファイルの関数を呼ばない
-    (ファイルの関数の間は 0000H〜3FFFH が ROM。包みの関数の番号の置き場は 1 つ)。
+    (ファイルの関数の間は 0000H〜3FFFH が ROM。包みの関数の番号と、呼ぶ前の MMU0・1 の控えの置き場は 1 つ)。
 
 ---
 
