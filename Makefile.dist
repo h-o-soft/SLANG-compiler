@@ -181,6 +181,13 @@ else ifeq ($(ENV), zxn)
   BIN_EXT_ENV = .bin
   SRC_EXT = .sl
   DISK_IMAGE = $(OUTPROG)
+else ifeq ($(ENV), zxs)
+  # 素の ZX Spectrum 用 (raw bin 出力)。TAP・TZX は slangbuild -E zxs --emit tape
+  # で作る (docs/ZXS.md)。disk image なし、`disk_image` target は OUTPROG そのもの。
+  EMU = @echo "ZX Spectrum emulator not configured. Set EMU variable" \#
+  BIN_EXT = .bin
+  BIN_EXT_ENV = .bin
+  DISK_IMAGE = $(OUTPROG)
 else ifeq ($(ENV), msxrom)
   EMU = @echo "Set EMU variable for your emulator" \#
   BIN_EXT_ENV = $(BIN_EXT)
@@ -274,6 +281,9 @@ disk_image: $(OUTPROG)
 else ifeq ($(ENV), zxn)
 # zxn は raw bin 出力 (= disk image なし)。.nex 化は外部 nexcreator で
 # ユーザー側。disk_image target は OUTPROG (= PROG.bin) そのもの。
+disk_image: $(OUTPROG)
+else ifeq ($(ENV), zxs)
+# zxs は raw bin 出力 (= disk image なし)。TAP・TZX は slangbuild --emit tape。
 disk_image: $(OUTPROG)
 else ifeq ($(ENV), sos)
 # sos / sosx1 は slangbuild --emit disk + HuDisk 経路。template
@@ -404,6 +414,6 @@ help:
 	@echo "  PREFIX=path        - Installation prefix (default: ~/.local on Unix,"
 	@echo '                       %USERPROFILE%\.local\bin on Windows)'
 	@echo "  TARGET=path        - Sample source file (without extension)"
-	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/sosmz2500/mz25iocs/pc88mk2sr/pc80mk2/pc80mk2x/pc80mk2xsd/vgs0/zxn/msx2/msxrom/cpm)"
+	@echo "  ENV=env            - Target environment (lsx/x1/sos/sosx1/sosmz2500/mz25iocs/pc88mk2sr/pc80mk2/pc80mk2x/pc80mk2xsd/vgs0/zxn/zxs/msx2/msxrom/cpm)"
 	@echo ""
 	@echo "Detected OS: $(DETECTED_OS)"

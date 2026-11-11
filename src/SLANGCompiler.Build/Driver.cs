@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using SLANGCompiler.Runtime;
+using SLANGCompiler.Build.TapeFormats;
 
 namespace SLANGCompiler.Build;
 
@@ -497,7 +498,12 @@ public class Driver
 
             // === Step 4 (Phase B+): --emit tape → X1 .tap (+ optional .wav) 組み立て ===
             //  + 多段 tape (= #MODULE overlay の自動連結) 対応
-            if (_opts.EmitMode == "tape")
+            if (_opts.EmitMode == "tape" && envConfig.Tape?.Format == "zx")
+            {
+                int zxRc = WriteZxTape(envConfig, mainBin, mainSym, outputBase, renamedOverlayBins.Count);
+                if (zxRc != 0) return zxRc;
+            }
+            else if (_opts.EmitMode == "tape")
             {
                 var binBytes = File.ReadAllBytes(mainBin);
                 var mainCfg = TapeImageBuilder.MergeTapeConfig(envConfig, _opts, outputBase);
@@ -828,6 +834,45 @@ public class Driver
     /// ちょうど接するのは通す。FFFFH を越えて一周するものは拒む。Next の SLANG IDE のリンク時の検査と同じで、
     /// エラーの文も IDE と同じ (コードが範囲の終わりを越えたら「Code does not fit」、ほかは「Areas overlap or leave ...」)。
     /// </summary>
+    /// <summary>
+    /// 素の ZX Spectrum のテープ (env の tape.format: zx)。NAME.tap と NAME.tzx を書く。
+    /// 番地は組み上がった __CODE__ だけから (CODE の読み込む番地、CLEAR、USR)。番地を外から指定するもの・--wav・--tape-add・多段はエラー
+    /// </summary>
+    private int WriteZxTape(EnvironmentConfig env, string mainBin, string mainSym, string outputBase, int overlayCount)
+    {
+        string? bad = overlayCount > 0 ? "#MODULE (multi-stage tape)"
+            : _opts.EmitWav ? "--wav"
+            : _opts.TapeAddSpecs.Count > 0 ? "--tape-add"
+            : _opts.TapeLoad.HasValue ? "--tape-load"
+            : _opts.TapeExec.HasValue ? "--tape-exec" : null;
+        if (bad != null)
+        {
+            Console.Error.WriteLine($"slangbuild: error: {bad} is not supported for the ZX Spectrum tape (env tape.format zx)");
+            return 1;
+        }
+        var syms = SymFileReader.ReadFile(mainSym);
+        if (!syms.TryGetValue("__CODE__", out var org))
+        {
+            Console.Error.WriteLine($"slangbuild: error: ZX Spectrum tape: symbol __CODE__ not found in {Path.GetFileName(mainSym)}");
+            return 1;
+        }
+        try
+        {
+            var name = ZxSpectrumTape.NormalizeName(_opts.TapeName ?? env.Tape?.Name ?? Path.GetFileNameWithoutExtension(outputBase));
+            var blocks = ZxSpectrumTape.Blocks(File.ReadAllBytes(mainBin), org, name);
+            File.WriteAllBytes(outputBase + ".tap", ZxSpectrumTape.Tap(blocks));
+            File.WriteAllBytes(outputBase + ".tzx", ZxSpectrumTape.Tzx(blocks));
+            if (_opts.Verbose)
+                Console.Error.WriteLine($"slangbuild: ZX Spectrum tape {name} ${org:X4} → {outputBase}.tap / .tzx");
+        }
+        catch (ArgumentException e)
+        {
+            Console.Error.WriteLine($"slangbuild: error: ZX Spectrum tape: {e.Message}");
+            return 1;
+        }
+        return 0;
+    }
+
     private static int CheckAreas(EnvironmentConfig env, string mainSym)
     {
         var syms = SymFileReader.ReadFile(mainSym);

@@ -41,6 +41,10 @@ public class EnvironmentConfig
     /// <summary>0000H〜3FFFH を RAM にできる env (lowram: true)。ソースの大域の `CONST __LOWRAM = ページ;` (と `CONST __NOROM = 1;`) で、
     /// `X` の中身を `X__NOROM` の後で `X__LOWRAM` のものに差し替える (いまは zxn だけ)</summary>
     public bool LowRam { get; set; }
+    /// <summary>その env でいつも当てる差し替え (`variants: [__NOROM, __ZXS]`)。書いた順に `X` の中身を `X名前` のものにする (zxs)</summary>
+    public List<string> Variants { get; set; } = new();
+    /// <summary>その機械にある機能 (`features: [next]`)。null (鍵が無い) なら調べない。部品の `@requires` が無ければエラー</summary>
+    public List<string>? Features { get; set; }
     public List<string> Libraries { get; set; } = new();
     public string? OptimizeRules { get; set; }
     public bool CodeReadonly { get; set; }
@@ -324,6 +328,9 @@ public class TapeConfig
     /// <summary>X1InfoBlock.FileName (= 13 char ASCII printable max)。 null なら
     /// CLI / output basename から derive (TapeImageBuilder.MergeTapeConfig)。</summary>
     public string? Name { get; set; }
+
+    /// <summary>テープの形。null は X1、"zx" は素の ZX Spectrum (TAP と TZX。番地は組み上がった __CODE__ から。load・exec・wav は使えない)</summary>
+    public string? Format { get; set; }
 
     /// <summary>X1InfoBlock.LoadAddress (16-bit、 $XXXX or 0xXXXX 文字列 → int parse)。
     /// null なら CLI override or EnvironmentConfig.DefaultOrg。</summary>

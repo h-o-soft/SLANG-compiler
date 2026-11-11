@@ -432,6 +432,54 @@ public class IntegrationTests : IDisposable
     }
 
     [Fact]
+    public void Zxs_UsesPlainIm2RomFontAndPortKeys()
+    {
+        // 素の ZX Spectrum: zxn の部品を __NOROM の後で __ZXS に差し替える (CONST を書かなくても)
+        var asm = CompileWithCli("VAR X; MAIN() BEGIN X = INKEY(0); PRINT(HEX4$(X), /); END;", "zxs");
+        Assert.DoesNotContain("$ED,$9", asm);            // NextReg・PIXELAD を使わない
+        Assert.DoesNotContain("KEY_SCAN", asm);           // ROM のキーを使わない
+        Assert.DoesNotContain("ZXN_FONT", asm);           // 字は ROM の 3D00H
+        Assert.Contains("LD DE,$3D00", asm);
+        Assert.Matches(@"(?m)^ZXN_KEYMAP:", asm);
+        Assert.Matches(@"LD HL,\$FE00\s*\nLD DE,\$FE01\s*\nLD BC,256\s*\nLD \(HL\),\$FD\s*\nLDIR", asm);
+        Assert.Contains("LD ($FDFD),A", asm);
+        Assert.Contains("LD HL,$4DED", asm);
+        Assert.Matches(@"IM 2", asm);
+        Assert.Contains("__STACKTOP EQU $FD00", asm);
+        Assert.Contains("ENV_TYPE EQU 8", asm);
+        Assert.Matches(@"CALL SASC\s*\nPRT:\s*\n", asm);   // PHEX は隣の PRT へ
+    }
+
+    [Theory]
+    [InlineData("SPR_MOVE(1, 2, 3);", "SPR_MOVE")]
+    [InlineData("SET_CPU_SPEED(3);", "SET_CPU_SPEED")]
+    [InlineData("L2_VISIBLE(1);", "L2_VISIBLE")]
+    [InlineData("X = FOPEN(\"A\", 1);", "FOPEN")]
+    [InlineData("ZXN_SETIM2(0, 0, 0);", "ZXN_SETIM2")]
+    public void Zxs_NextOnly_Errors(string stmt, string name)
+    {
+        var stderr = CompileExpectError("VAR X; MAIN() BEGIN " + stmt + " END;", "zxs");
+        Assert.Contains($"{name} needs ZX Spectrum Next (env zxs)", stderr);
+    }
+
+    [Fact]
+    public void Zxs_PortableFunctionsCompile()
+    {
+        // 素の Spectrum でも動くもの: STOP・ZXN_VSYNC (HALT)・STICK(0) (Kempston)・GETKEY(0〜7)・FLOAT
+        var asm = CompileWithCli("VAR K; VAR FLOAT F; MAIN() BEGIN ZXN_VSYNC(); K = STICK(0) + GETKEY(7); F = 1.5; PRINT(FL$(F * 2.0)); STOP(); END;", "zxs");
+        Assert.Matches(@"(?m)^ZXN_VSYNC:", asm);
+        Assert.Matches(@"(?m)^STICK:", asm);
+    }
+
+    [Fact]
+    public void Zxn_NextFunctionsStillCompile()
+    {
+        // zxn (features: [next]) では、いままでどおり使える
+        var asm = CompileWithCli("MAIN() BEGIN SPR_MOVE(1, 2, 3); SET_CPU_SPEED(3); END;", "zxn");
+        Assert.Matches(@"(?m)^SPR_MOVE:", asm);
+    }
+
+    [Fact]
     public void VarAddress_RuntimeName_Errors()
     {
         // ランタイムの名前は、別名 (ITOF → i16tof24)・名前空間を解決しないので、VAR の番地の式には使えない

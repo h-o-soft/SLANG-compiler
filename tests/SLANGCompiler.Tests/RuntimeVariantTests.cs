@@ -67,6 +67,18 @@ RET
     }
 
     [Fact]
+    public void ApplyVariant_ReplacesRequires()
+    {
+        // @requires は差し替え先の値で置き換える (元の値と合わせない)
+        var rm = new RuntimeManager();
+        rm.LoadFromString("; @name S\n; @requires next\nRET\n\n; @name S__ZXS\nRET\n\n; @name T\nRET\n\n; @name T__ZXS\n; @requires ay, next\nRET\n");
+        Assert.Equal(new[] { "next" }, rm.Functions["S"].Requires);
+        rm.ApplyVariant("__ZXS");
+        Assert.Empty(rm.Functions["S"].Requires);
+        Assert.Equal(new[] { "ay", "next" }, rm.Functions["T"].Requires);
+    }
+
+    [Fact]
     public void ApplyVariant_Orphan_Errors()
     {
         // 元の名前の断片が無い X__NOROM はランタイムの書き誤り

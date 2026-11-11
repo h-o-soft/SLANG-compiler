@@ -132,6 +132,7 @@ RET
 
 
 ; @name SLANGINIT__NOROM
+; @requires next
 ; @resident local
 ; @calls ZXNWORK,ZXN_NOROM_ISR
 ; @works ZXN_IM2TBL:32
@@ -179,6 +180,7 @@ JP INFLOOP
 
 
 ; @name ZXN_NOROM_ISR
+; @requires next
 ; @resident shared
 ; SLANGINIT__NOROM の割り込みの処理 (何もしない。HALT を解くだけ)
 EI
@@ -186,6 +188,7 @@ RETI
 
 
 ; @name SLANGINIT__LOWRAM
+; @requires next
 ; @resident local
 ; @calls ZXNWORK,ZXN_NOROM_ISR,ZXN_LOWRAM_RST8
 ; @works ZXN_IM2TBL:32
@@ -244,6 +247,7 @@ JP INFLOOP
 
 
 ; @name ZXN_LOWRAM_RST8
+; @requires next
 ; @resident shared
 ; SLANGINIT__LOWRAM の包み。RAM の 0008H の JP から来る (呼んだ所の次の 1 バイトが esxDOS の関数の番号)。
 ; 呼ぶ前の MMU0・1 を NextReg から読んで控え、呼ぶ間だけ ROM (FFH) にして本当の RST $08 を呼び、戻ったら控えた値に戻す

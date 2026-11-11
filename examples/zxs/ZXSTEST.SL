@@ -1,0 +1,42 @@
+// ZXSTEST.SL - 素の ZX Spectrum (-E zxs) の確かめ。48K・128K・+2A で、BASIC の読み込み口から起動する
+//   slangbuild -E zxs ZXSTEST.SL -o ZXSTEST --emit tape   → ZXSTEST.tap と ZXSTEST.tzx
+// 1〜6 の行が OK なら成功。最後の行はキーを押すと値が変わる (A を押すと KEY=61)
+VAR I, K, NG;
+VAR FLOAT FX, FLOAT FY;
+
+OKNG(B) BEGIN IF B THEN BEGIN PRINT(" NG", /); NG = 1; END ELSE PRINT(" OK", /); END;
+
+MAIN()
+BEGIN
+	FOR I=0 TO 6143 BEGIN MEM[$4000+I] = 0; END;
+	FOR I=0 TO 767 BEGIN MEM[$5800+I] = $38; END;
+	NG = 0;
+	PRINT("SLANG ZXS CHECK", /);
+	FOR I=32 TO 127 BEGIN PRINT(CHR$(I)); END;
+	PRINT(/);
+	PRINT("1 ROM 0000=", HEX2$(MEM[0]), HEX2$(MEM[1]), HEX2$(MEM[2]));
+	OKNG(MEM[0] != $F3 OR MEM[1] != $AF OR MEM[2] != $11);
+	PRINT("2 FONT 3D08=", HEX2$(MEM[$3D08]), HEX2$(MEM[$3D09]), HEX2$(MEM[$3D0E]));
+	OKNG(MEM[$3D08] != 0 OR MEM[$3D09] != $10 OR MEM[$3D0E] != $10);
+	I = 1000 / 7;
+	PRINT("3 1000/7=", I, " ", PN$(-5), " ", HEX4$($1234));
+	OKNG(I != 142);
+	FX = 1.5;
+	FY = FX * 3.0 + 0.25;
+	PRINT("4 1.5*3+0.25=", FL$(FY));
+	OKNG(FY != 4.75);
+	FOR I=0 TO 49 BEGIN ZXN_VSYNC(); END;
+	PRINT("5 HALT X50");
+	OKNG(0);
+	PRINT("6 IM2 FDFE=", HEX4$(MEMW[$FDFE]));
+	OKNG(MEMW[$FDFE] != $4DED);
+	PRINT(/);
+	IF NG THEN PRINT("RESULT: NG", /) ELSE PRINT("RESULT: ALL OK", /);
+	PRINT(/, "KEY=   ROW7=   STICK=");
+	LOOP {
+		LOCATE(4, 14); PRINT(HEX2$(INKEY(0)));
+		LOCATE(12, 14); PRINT(HEX2$(GETKEY(7)));
+		LOCATE(21, 14); PRINT(HEX2$(STICK(0)));
+		ZXN_VSYNC();
+	}
+END;

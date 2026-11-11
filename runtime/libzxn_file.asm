@@ -5,6 +5,7 @@
 ; EXX はしない (前は各関数に EXX があり、モード・数・位置が届いていなかった。注釈にした M_P3DOS ($94) の呼び方の名残)。
 
 ; @name FOPEN
+; @requires next
 ; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = fname addr, DE = mode
@@ -98,6 +99,7 @@ RET
 
 
 ; @name FCLOSE
+; @requires next
 ; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = File Handle
@@ -133,6 +135,7 @@ RET
 
 
 ; @name FSEEK
+; @requires next
 ; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = file handle, DE = bytes to seek address, BC = mode
@@ -164,6 +167,7 @@ RET
 
 
 ; @name FSTAT
+; @requires next
 ; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = file handle, DE = stat address
@@ -181,6 +185,7 @@ RET
 
 
 ; @name FREAD
+; @requires next
 ; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = file handle, DE = address, BC = size
@@ -197,6 +202,7 @@ RET
 
 
 ; @name FWRITE
+; @requires next
 ; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = file handle, DE = address, BC = size
