@@ -379,6 +379,39 @@ public class BuildIntegrationTests : IDisposable
         }
     }
 
+    [Fact]
+    public void Zxn_EmitNex_MainModulesAndData()
+    {
+        // --emit nex: 本体・PAGE のモジュール・//#PAGE のデータを 1 つの NEX に (nexcreator を使わない)
+        var slPath = Path.Combine(_tempDir, "nx.SL");
+        File.WriteAllText(Path.Combine(_tempDir, "D.BIN"), "HELLO");
+        File.WriteAllText(slPath, "//#PAGE 42 D.BIN\nCONST __NOROM = 1; CONST __STACKTOP = $C000; WORK $A000; VAR R; MAIN() BEGIN R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X + 1; END;\n#END\n");
+        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "zxn", "--emit", "nex");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        var nex = File.ReadAllBytes(Path.Combine(_tempDir, "nx.nex"));
+        Assert.Equal("NextV1.2"u8.ToArray(), nex[..8]);
+        Assert.Equal(0x8000, nex[14] | nex[15] << 8);                          // PC = __CODE__
+        Assert.Equal(0xC000, nex[12] | nex[13] << 8);                          // SP = __STACKTOP
+        Assert.Equal(new[] { 0, 2, 20, 21 }, Enumerable.Range(0, 112).Where(b => nex[18 + b] != 0));
+        var bin = File.ReadAllBytes(Path.Combine(_tempDir, "nx.bin"));
+        Assert.Equal(bin, nex[512..(512 + bin.Length)]);                        // NEX の順: バンク 2 (8000H〜)・0・20・21
+        var m0 = File.ReadAllBytes(Path.Combine(_tempDir, "nx._m0.bin"));
+        Assert.Equal(m0, nex[(512 + 2 * 0x4000)..(512 + 2 * 0x4000 + m0.Length)]);   // バンク 20 の前半 = ページ 40
+        Assert.Equal("HELLO"u8.ToArray(), nex[(512 + 3 * 0x4000)..(512 + 3 * 0x4000 + 5)]);   // バンク 21 の前半 = ページ 42
+    }
+
+    [Theory]
+    [InlineData("zxn", "MAIN() BEGIN END;\n#MODULE $8000\nFA(X) BEGIN RETURN X; END;\n#END\n", "#MODULE 0 has no PAGE")]
+    [InlineData("lsx", "MAIN() BEGIN END;\n", "--emit nex requires an env with nex: true")]
+    public void EmitNex_Errors(string env, string source, string message)
+    {
+        var slPath = Path.Combine(_tempDir, "nx.SL");
+        File.WriteAllText(slPath, source);
+        var (code, _, stderr) = RunSlangbuild(slPath, "-E", env, "--emit", "nex");
+        Assert.NotEqual(0, code);
+        Assert.Contains(message, stderr);
+    }
+
     private static int IndexOf(byte[] data, byte[] pattern)
     {
         for (int i = 0; i + pattern.Length <= data.Length; i++)

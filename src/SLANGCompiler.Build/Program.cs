@@ -138,10 +138,10 @@ internal class Program
         }
 
         // option validation
-        if (opts.EmitMode != "bin" && opts.EmitMode != "disk" && opts.EmitMode != "tape")
+        if (opts.EmitMode != "bin" && opts.EmitMode != "disk" && opts.EmitMode != "tape" && opts.EmitMode != "nex")
         {
             Console.Error.WriteLine(
-                $"slangbuild: --emit must be 'bin' / 'disk' / 'tape' (got: {opts.EmitMode})");
+                $"slangbuild: --emit must be 'bin' / 'disk' / 'tape' / 'nex' (got: {opts.EmitMode})");
             return 1;
         }
         if (opts.EmitMode != "disk" && !string.IsNullOrEmpty(opts.DiskImagePath))
@@ -242,7 +242,7 @@ internal class Program
         Console.Error.WriteLine("  --mzd88 <path>  mzd88 executable path (override resolution; --emit disk + tool=mzd88)");
         Console.Error.WriteLine("  --oscar-path <p> oscar64 executable path (override resolution; backend=oscar_c env)");
         Console.Error.WriteLine("  --c-source <p>  Extra C source file passed to oscar64 (repeatable; backend=oscar_c only)");
-        Console.Error.WriteLine("  --emit <mode>   Output mode: 'bin' (default) / 'disk' (build d88) / 'tape' (build .tap)");
+        Console.Error.WriteLine("  --emit <mode>   Output mode: 'bin' (default) / 'disk' (build d88) / 'tape' (build .tap) / 'nex' (ZX Spectrum Next .nex)");
         Console.Error.WriteLine("  --disk-image <p> Output disk image path (default: <output_prefix>.d88)");
         Console.Error.WriteLine("  --disk-template <p> Override env's disk.template path (--emit disk)");
         Console.Error.WriteLine("  --wav           Also emit .wav (--emit tape only、 48kHz/8bit/mono default)");

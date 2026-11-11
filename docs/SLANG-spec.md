@@ -979,7 +979,23 @@ END;
   `CALL(番地)`・`#ASM` の中の呼び出し・関数の番地を使う呼び出しは調べないので、窓が同じモジュールへは使わない
 - slangbuild は組んだ後に、モジュール (コードと私有のワーク) が窓に収まること、窓が本体のコード・WORK・スタックと重ならないことを調べる。
   zxn の既定 (WORK D000H、スタック E000H から下) は C000H〜DFFFH の窓と重なるので、その窓を使うなら `WORK`・`CONST __STACKTOP` で外へ動かす
-- ページに入れるのと窓に付けるのは、いまは使う側 (nexcreator の .cfg の `!MMU` 行、`ZXN_SET_BANK_8K`)
+- 窓に付けるのは、いまは使う側 (`ZXN_SET_BANK_8K`)。ページに入れるのは `slangbuild --emit nex` (下)
+
+#### NEX (`slangbuild --emit nex`、zxn)
+
+env に `nex: true` がある環境 (zxn) では、`slangbuild -E zxn NAME.SL -o NAME --emit nex` で、NextZXOS のブラウザから起動できる `NAME.nex` (NEX 1.2) を書く。
+Next の SLANG IDE の EXTEND W と同じ形:
+
+- 本体の bin を、番地でバンク 2 (8000H〜BFFFH)・0 (C000H〜FFFFH) に入れる。PC = コードの頭 (`SLANGINIT`)、SP = `__STACKTOP`
+- `#MODULE $addr PAGE n` のモジュールを、ページ n の `addr AND 1FFFH` から入れる。**PAGE の無いモジュールはエラー**
+- ソースの `//#PAGE ページ ファイル` の行 (IDE の A+ と同じ。slangc には注釈) のファイルを、ページの頭から入れる (8K を越えたら次のページへ):
+  - 行の頭から `//#PAGE`、空白、ページ (10 進、**30〜55**)、空白、ファイル名 (名前だけ、34 文字まで。ソースと同じフォルダから読む)。16 行まで。`#INCLUDE` したファイルの中は見ない
+  - エラーは IDE と同じ文 (`//#PAGE line n: write //#PAGE page name, page 30-55, a name only.`、`Data file NAME: cannot be read.`、`goes past page 55.`、`overlaps another //#PAGE.`)。
+    モジュールのページや `__LOWRAM` の n・n+1 と重なるときは `Data file NAME: overlaps #MODULE n (page p).` など
+- 入れたページを含む 16K のバンクだけを入れ、バンクの残り (同じバンクのもう半分も) は 0
+- 頭: 要る RAM は、使うページ (モジュール・データ・`__LOWRAM` の n+1) が 96 以上なら 1792K (2MB)、ほかは 768K。枠の色 7、要るコアの版 3.1.10 (IDE と同じ)
+- nexcreator の `.cfg` の `!PCSP` と `!MMU file,page,$0000` (ページの頭から) に当たる。**ページの途中や本体のバンクの番地 (`file,bank,offset`) に置くもの、
+  30〜55 の外のページのデータ** は書けないので、そのときは今までどおり nexcreator を使う
 
 ### ランタイム集約ポリシー (`#MODULE $addr RESIDENT`)
 
