@@ -826,6 +826,18 @@ LP: DB 0
     }
 
     [Fact]
+    public void Prelink_ExportMovedBetweenPasses_IsError()
+    {
+        // モジュールの DS の大きさが本体の EQU で決まる: Pass 1 ($0000) と本番で FB の番地がずれるので、黙って組まずにエラー
+        var slPath = Path.Combine(_tempDir, "moved.SL");
+        File.WriteAllText(slPath, "VAR R;\nMAIN() BEGIN R = FB(); END;\n#MODULE $3000\nFA()\nBEGIN\n#ASM\n DS PAD+1\n#END\nEND;\n"
+            + "FB() BEGIN END;\n#END\n#ASM\nPAD EQU $10\n#END\n");
+        var (code, _, stderr) = RunSlangbuild(slPath);
+        Assert.NotEqual(0, code);
+        Assert.Contains("FB moved between prelink passes ($3002 -> $3012)", stderr);
+    }
+
+    [Fact]
     public void MissingInputFile_ReportsError()
     {
         var (code, _, stderr) = RunSlangbuild(Path.Combine(_tempDir, "nonexistent.SL"));
