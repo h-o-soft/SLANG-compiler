@@ -795,6 +795,19 @@ LP: DB 0
         Assert.InRange(At(0xC3), 0x3000, 0x30FF);  // JP LP はモジュールの中
     }
 
+    [Theory]
+    // ラベルの式の中の名前がほかのモジュールの関数 (User Function References で借りる。本体の Pass 1 の記号では $0000)
+    [InlineData("VAR P:TARGET;\nMAIN() BEGIN R = TARGET(1); END;\n#MODULE $3000\nTARGET(X) BEGIN RETURN X; END;\n#END\n#MODULE $4000\nG(X) BEGIN RETURN TARGET(X); END;\n#END\n")]
+    // 本体の #ASM のラベルが、モジュールの中でコンパイラが決めるラベル (GOTO の行き先) と同じ名前
+    [InlineData("MAIN() BEGIN R = F(); END;\n#MODULE $3000\nF() BEGIN GOTO DONE; DONE: RETURN 1; END;\n#END\n#ASM\n_LBL_DONE: DB 0\n#END\n")]
+    public void Overlay_BorrowedNamesDoNotClash(string source)
+    {
+        var slPath = Path.Combine(_tempDir, "clash.SL");
+        File.WriteAllText(slPath, "VAR R;\n" + source);
+        var (code, _, stderr) = RunSlangbuild(slPath);
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+    }
+
     [Fact]
     public void MissingInputFile_ReportsError()
     {

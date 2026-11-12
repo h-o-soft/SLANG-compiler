@@ -161,7 +161,6 @@ public class CodeGenerator
         // TODO: オーバーレイ固有の文字列テーブル分離
 
         // ランタイム関数の結合（このモジュール固有の呼び出しのみ解決）
-        var overlayRuntimeNames = new List<string>();
         if (_runtimeManager != null)
         {
             var userFuncs = new HashSet<string>(overlay.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
@@ -174,7 +173,6 @@ public class CodeGenerator
             var overlayRuntime = _runtimePlan != null
                 ? _runtimePlan.GetOverlayOutputFunctions(overlay.Index).ToList()
                 : _runtimeManager.ResolveForNames(_calledFunctions, userFuncs).ToList();
-            overlayRuntimeNames.AddRange(overlayRuntime.Select(f => f.Name));
             if (overlayRuntime.Count > 0)
             {
                 _e.Blank();
@@ -268,15 +266,17 @@ public class CodeGenerator
                 _e.Raw($"; EXTERN {gv.AsmLabel}  ; address resolved at link time");
         }
         // 本体で決まるほかの名前: レジスタの置き場 (^HL・GETREG() など)、ラベルの式 (VAR X:LABEL など) の中の名前、
-        // 本体の #ASM のラベル。このモジュールの中で決める名前 (関数・ランタイムの写し・変数・#ASM のラベル) は除く
-        var definedHere = new HashSet<string>(overlay.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
-        definedHere.UnionWith(overlayRuntimeNames);
-        definedHere.UnionWith(overlay.LocalVars.Select(v => v.AsmLabel));
+        // 本体の #ASM のラベル。このモジュールがここまでに行の頭で決めた名前 (関数・ランタイムの写し・変数・GOTO のラベル・
+        // #ASM のラベルなど) と、大域の変数 (上で書いた) と、モジュールの関数 (上の User Function References で借りる) は除く
+        var definedHere = new HashSet<string>(
+            AsmLineLabels(_e.ToAssembly().Split('\n')), StringComparer.OrdinalIgnoreCase);
         definedHere.UnionWith(_module.GlobalVars.Select(v => v.AsmLabel));
-        definedHere.UnionWith(AsmLineLabels(overlay.Functions.SelectMany(f => f.Instructions)));
+        definedHere.UnionWith(_module.Overlays.SelectMany(o => o.Functions).Select(f => f.Name));
         var borrowed = SystemRegisterWorks.Select(w => w.Label).Append("_A")
             .Concat(_module.AddressSymbolDeps.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
-            .Concat(AsmLineLabels(_module.GlobalData))
+            .Concat(AsmLineLabels(_module.GlobalData
+                .Where(i => i.Op == IrOp.InlineAsm && i.Dest.Kind == IrOperandKind.AsmString)
+                .SelectMany(i => i.Dest.Name!.Split('\n'))))
             .Where(n => !definedHere.Contains(n))
             .Distinct(StringComparer.OrdinalIgnoreCase);
         foreach (var name in borrowed)
@@ -630,10 +630,8 @@ public class CodeGenerator
     private static readonly System.Text.RegularExpressions.Regex AsmLineLabel =
         new(@"^([A-Za-z_][A-Za-z0-9_]*)(?::|\s+EQU\b)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-    private static IEnumerable<string> AsmLineLabels(IEnumerable<IrInstruction> insts) =>
-        insts.Where(i => i.Op == IrOp.InlineAsm)
-             .SelectMany(i => ((i.Dest.Kind == IrOperandKind.Temp ? i.Src1.Name : i.Dest.Name) ?? "").Split('\n'))
-             .Select(line => AsmLineLabel.Match(line))
+    private static IEnumerable<string> AsmLineLabels(IEnumerable<string> lines) =>
+        lines.Select(line => AsmLineLabel.Match(line))
              .Where(m => m.Success)
              .Select(m => m.Groups[1].Value);
 
