@@ -808,6 +808,23 @@ LP: DB 0
         Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
     }
 
+    [Theory]
+    // 本体の EQU がモジュールの関数を使う: Pass 1 の $0000 ではなく本番の番地 (FA は $3000)
+    [InlineData("ASMK EQU FA", "", 0x3000)]
+    // モジュールの #ASM が前に空白を置いて同じ名前を決める: モジュールの中ではそちら
+    [InlineData("ASMK EQU $5678", "    ASMK EQU $1234\n", 0x1234)]
+    public void Overlay_AsmEquValue(string mainAsm, string moduleAsm, int expected)
+    {
+        var slPath = Path.Combine(_tempDir, "asmequ.SL");
+        File.WriteAllText(slPath, "VAR R;\nMAIN() BEGIN R = FA(); END;\n#MODULE $3000\nFA() BEGIN END;\nGA()\nBEGIN\n#ASM\n"
+            + moduleAsm + " LD DE,ASMK\n#END\nEND;\n#END\n#ASM\n" + mainAsm + "\n#END\n");
+        var (code, _, stderr) = RunSlangbuild(slPath, "--keep-asm");
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+        var ovBin = File.ReadAllBytes(Path.Combine(_tempDir, "asmequ._m0.bin"));
+        Assert.Contains(Enumerable.Range(0, ovBin.Length - 2).Where(i => ovBin[i] == 0x11),
+            i => (ovBin[i + 1] | ovBin[i + 2] << 8) == expected);   // LD DE,nn
+    }
+
     [Fact]
     public void MissingInputFile_ReportsError()
     {

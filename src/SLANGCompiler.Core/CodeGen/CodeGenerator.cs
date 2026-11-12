@@ -626,9 +626,9 @@ public class CodeGenerator
         }
     }
 
-    // #ASM の行の頭で決めるラベル (`名前:` と `名前 EQU`)。AILZ80ASM の書き方を全部は追わない (拾えない書き方はアセンブルのエラーのまま)
+    // #ASM の行の頭で決めるラベル (`名前:` と `名前 EQU`。前の空白はよい)。AILZ80ASM の書き方を全部は追わない (拾えない書き方はアセンブルのエラーのまま)
     private static readonly System.Text.RegularExpressions.Regex AsmLineLabel =
-        new(@"^([A-Za-z_][A-Za-z0-9_]*)(?::|\s+EQU\b)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        new(@"^\s*([A-Za-z_][A-Za-z0-9_]*)(?::|\s+EQU\b)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     private static IEnumerable<string> AsmLineLabels(IEnumerable<string> lines) =>
         lines.Select(line => AsmLineLabel.Match(line))

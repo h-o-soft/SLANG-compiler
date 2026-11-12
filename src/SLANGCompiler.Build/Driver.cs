@@ -836,6 +836,8 @@ public class Driver
                 return result.ExitCode;
             }
             if (t.Label != "main") intermediates.Add(outSym);
+            // main は先頭。モジュールには本番の main の記号を渡す (Pass 1 の記号は、モジュールの関数を使う EQU が $0000 のまま)
+            else mainPass1Sym = SymFileReader.ReadFile(outSym);
         }
         intermediates.Add(mainSym);
         return 0;
