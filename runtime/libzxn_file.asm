@@ -189,6 +189,7 @@ RET
 ; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = file handle, DE = address, BC = size
+; 値 (HL) は読んだバイトの数 (ファイルの終わりは 0)。失敗は Fc = 1 (GETREG() の後の ^CARRY)
 PUSH IX
 LD A,L
 PUSH DE
@@ -197,6 +198,8 @@ POP IX
 RST $08
 DB $9D    ; F_READ
 
+LD H,B    ; 値 = 読んだ数 (BC)。失敗 (Fc = 1、A = エラーの番号) でも BC はそこまでの数
+LD L,C
 POP IX;
 RET
 
@@ -206,6 +209,7 @@ RET
 ; @resident shared
 ; @calls ZXNCALLS,ZXNWORK
 ; HL = file handle, DE = address, BC = size
+; 値 (HL) は書いたバイトの数。失敗は Fc = 1 (GETREG() の後の ^CARRY)
 PUSH IX
 LD A,L
 PUSH DE
@@ -214,6 +218,8 @@ POP IX
 RST $08
 DB $9E    ; F_WRITE
 
+LD H,B    ; 値 = 書いた数 (BC)。失敗 (Fc = 1、A = エラーの番号) でも BC はそこまでの数
+LD L,C
 POP IX;
 RET
 

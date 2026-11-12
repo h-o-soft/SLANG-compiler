@@ -98,6 +98,10 @@ env に `features` がある環境 (zxn は `[next]`、素の Spectrum の zxs �
 エラー (`slangc: error: SPR_MOVE needs ZX Spectrum Next (env zxs)`)。env の `variants` (zxs は `[__NOROM, __ZXS]`) は、`CONST` を書かなくても
 いつもその順に `X` を `X名前` に差し替える。zxs は [docs/ZXS.md](ZXS.md)。
 
+zxn のファイルの関数 (`runtime/libzxn_file.asm`、NextZXOS の `RST $08`) の `FREAD(ハンドル, 番地, 数)`・`FWRITE(…)` は、読んだ・書いたバイトの数を返す
+(ファイルの終わりは 0)。失敗すると、そこまでの数を返し、直後の `GETREG()` の `^CARRY` が 1 (`^A` はエラーの番号)。
+読み終わりは「要求した数が 1 以上で、値が 0、`^CARRY` が 0」。
+
 env に `lowram: true` がある環境 (いまは zxn だけ) では、大域の `CONST __LOWRAM = ページ;` で、0000H〜3FFFH を RAM にする
 (0000H〜1FFFH に 8K のページ n、2000H〜3FFFH に n+1)。単独の NEX のためのもの (Next の SLANG IDE の中では使えない)。
 - `CONST __NOROM = 1;` も要る (無ければエラー `CONST __LOWRAM needs CONST __NOROM = 1`)。

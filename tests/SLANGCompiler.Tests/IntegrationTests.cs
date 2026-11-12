@@ -315,6 +315,15 @@ public class IntegrationTests : IDisposable
         Assert.DoesNotContain("__STACKTOP EQU", asm);
     }
 
+    [Fact]
+    public void ZxnFreadFwrite_ReturnCount()
+    {
+        // NextZXOS の F_READ・F_WRITE は数を BC に返す。値 (HL) はその数 (フラグと A は残す)
+        var asm = CompileWithCli("ARRAY BYTE B[9]; VAR N; MAIN() BEGIN N = FREAD(1, B, 10); N = FWRITE(1, B, 10); END;", "zxn");
+        Assert.Matches(@"DB \$9D[^\n]*\n\s*LD H,B[^\n]*\n\s*LD L,C\s*\n\s*POP IX;?\s*\n\s*RET", asm);
+        Assert.Matches(@"DB \$9E[^\n]*\n\s*LD H,B[^\n]*\n\s*LD L,C\s*\n\s*POP IX;?\s*\n\s*RET", asm);
+    }
+
     private const string NoRomProgram = "VAR X; MAIN() BEGIN X = $1234; PRINT(HEX4$(X), X, /); X = INKEY(0); END;";
 
     [Theory]
