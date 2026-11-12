@@ -84,8 +84,13 @@ jp nc, .EMPTY_INKEY
 dec d	; D is expected to be FLAGS so set bit 3 $FF
 ; 'L' Mode so no keywords.
 ld e, a	; main key to A
-; C is MODE 0 'KLC' from above still.
+; C は KEY_SCAN が入れた FEH のまま (KEY_CODE の DEC C で負になり、K/L/C の道へ)
+; KEY_CODE は字のキーで BIT 3,(IY+$30) (ROM の FLAGS2 の CAPS LOCK) を見る。SLANG の IY は局所の変数の場所なので、
+; 呼ぶ間だけ 0 のバイトを指させる (いつも CAPS LOCK が切れているときの値。GETC__NOROM と同じ)
+push iy
+ld iy, .caps_off-$30
 call KEY_CODE ; routine K-DECODE
+pop iy
 
 ld l,a
 ret
@@ -94,6 +99,9 @@ ret
 xor a
 ld l,a
 ret
+
+.caps_off
+db 0
 
 
 ; @name GETKEY
