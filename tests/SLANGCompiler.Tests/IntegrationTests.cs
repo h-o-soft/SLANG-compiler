@@ -510,8 +510,9 @@ public class IntegrationTests : IDisposable
     [Theory]
     [InlineData("#MODULE $C000 PAGE 17\nFA(X) BEGIN RETURN X; END;\n#END\n", "PAGE must be 18 to 222")]
     [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $A000 PAGE 40\nFB(X) BEGIN RETURN X; END;\n#END\n", "page 40 is already used by #MODULE 0")]
-    [InlineData("#MODULE $E000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n", "the window must be 0000H-5FFFH or 8000H-DFFFH")]
-    [InlineData("#MODULE $6000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n", "the window must be 0000H-5FFFH or 8000H-DFFFH")]
+    [InlineData("#MODULE $E000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n", "the window must be 0000H-3FFFH or 8000H-DFFFH")]
+    [InlineData("#MODULE $6000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n", "the window must be 0000H-3FFFH or 8000H-DFFFH")]
+    [InlineData("#MODULE $4000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n", "the window must be 0000H-3FFFH or 8000H-DFFFH")]   // 割り込みが 5C00H〜を書く
     [InlineData("#MODULE $0010 PAGE 31\nFA(X) BEGIN RETURN X; END;\n#END\n", "must use the __LOWRAM page 30")]
     [InlineData("#MODULE $0008 PAGE 30\nFA(X) BEGIN RETURN X; END;\n#END\n", "starts at 0010H or later")]
     [InlineData("#MODULE $2000 PAGE 30\nFA(X) BEGIN RETURN X; END;\n#END\n", "the __LOWRAM page 30 is for 0000H-1FFFH")]

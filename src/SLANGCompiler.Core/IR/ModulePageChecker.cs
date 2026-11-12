@@ -42,8 +42,9 @@ public static class ModulePageChecker
             else
                 usedPages[page] = o.Index;
 
-            if (o.OrgAddress < 0 || o.OrgAddress > 0xFFFF || slot == 3 || slot == 7)
-                errors.Add(($"{head}: the window must be 0000H-5FFFH or 8000H-DFFFH", o.Span));
+            // 4000H-5FFFH: ULA の画面と NextZXOS の変数。IM 1 の割り込みが毎フレーム 5C00H〜を書くので、付けたページが壊れる
+            if (o.OrgAddress < 0 || o.OrgAddress > 0xFFFF || slot == 2 || slot == 3 || slot == 7)
+                errors.Add(($"{head}: the window must be 0000H-3FFFH or 8000H-DFFFH", o.Span));
             else if (slot <= 1)
             {
                 if (lowRam == 0)
