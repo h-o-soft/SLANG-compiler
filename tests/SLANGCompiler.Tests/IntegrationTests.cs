@@ -324,6 +324,15 @@ public class IntegrationTests : IDisposable
         Assert.Matches(@"DB \$9E[^\n]*\n\s*LD H,B[^\n]*\n\s*LD L,C\s*\n\s*POP IX;?\s*\n\s*RET", asm);
     }
 
+    [Fact]
+    public void ZxnGetc_KeyCodeSeesCapsLockOff()
+    {
+        // ROM の KEY_CODE は (IY+30H) を CAPS LOCK として読む。呼ぶ間だけ IY を GETC の中の 0 のバイトに向け、後で戻す
+        var asm = CompileWithCli("VAR K; MAIN() BEGIN K = INKEY(0); END;", "zxn");
+        Assert.Matches(@"push iy\s*\n\s*ld iy, \.caps_off-\$30\s*\n\s*call KEY_CODE[^\n]*\n\s*pop iy", asm);
+        Assert.Matches(@"(?m)^\.caps_off\s*\n\s*db 0\s*$", asm);
+    }
+
     private const string NoRomProgram = "VAR X; MAIN() BEGIN X = $1234; PRINT(HEX4$(X), X, /); X = INKEY(0); END;";
 
     [Theory]

@@ -93,6 +93,8 @@ slangc がコード生成の前に、元の断片の中身をそれに差し替�
   割り込みは ULA (フレーム) だけで、処理は何もしない (`HALT` を解くだけ)。`ZXN_SETIM2` で自分の IM 2 に替えてよい
 
 値は 0 か 1 の数でなければエラー。0 か、書かなければ、いままでどおり ROM を使う (出力は変わらない)。ほかの環境では、ふつうの CONST のまま。
+ROM を使う `GETC` も、字のキーの値は CAPS LOCK が切れているときのもの (ROM の `KEY_CODE` は CAPS LOCK を `(IY+30H)` で見るので、
+呼ぶ間だけ IY を 0 のバイトに向ける。前は、そこにある局所の変数しだいで大文字・小文字が変わった)。
 
 env に `features` がある環境 (zxn は `[next]`、素の Spectrum の zxs は `[]`) では、部品の `; @requires 機能` の機能が env に無いと、その部品を使ったときに
 エラー (`slangc: error: SPR_MOVE needs ZX Spectrum Next (env zxs)`)。env の `variants` (zxs は `[__NOROM, __ZXS]`) は、`CONST` を書かなくても
