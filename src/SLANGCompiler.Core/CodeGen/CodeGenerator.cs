@@ -267,14 +267,16 @@ public class CodeGenerator
             else
                 _e.Raw($"; EXTERN {gv.AsmLabel}  ; address resolved at link time");
         }
-        // 本体で決まるほかの名前: レジスタの置き場 (^HL・GETREG() など) と、ラベルの式 (VAR X:LABEL など) の中の名前。
-        // このモジュールの中で決める名前 (関数・ランタイムの写し・変数) は除く
+        // 本体で決まるほかの名前: レジスタの置き場 (^HL・GETREG() など)、ラベルの式 (VAR X:LABEL など) の中の名前、
+        // 本体の #ASM のラベル。このモジュールの中で決める名前 (関数・ランタイムの写し・変数・#ASM のラベル) は除く
         var definedHere = new HashSet<string>(overlay.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
         definedHere.UnionWith(overlayRuntimeNames);
         definedHere.UnionWith(overlay.LocalVars.Select(v => v.AsmLabel));
         definedHere.UnionWith(_module.GlobalVars.Select(v => v.AsmLabel));
+        definedHere.UnionWith(AsmLineLabels(overlay.Functions.SelectMany(f => f.Instructions)));
         var borrowed = SystemRegisterWorks.Select(w => w.Label).Append("_A")
             .Concat(_module.AddressSymbolDeps.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+            .Concat(AsmLineLabels(_module.GlobalData))
             .Where(n => !definedHere.Contains(n))
             .Distinct(StringComparer.OrdinalIgnoreCase);
         foreach (var name in borrowed)
@@ -623,6 +625,17 @@ public class CodeGenerator
             }
         }
     }
+
+    // #ASM の行の頭で決めるラベル (`名前:` と `名前 EQU`)。AILZ80ASM の書き方を全部は追わない (拾えない書き方はアセンブルのエラーのまま)
+    private static readonly System.Text.RegularExpressions.Regex AsmLineLabel =
+        new(@"^([A-Za-z_][A-Za-z0-9_]*)(?::|\s+EQU\b)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private static IEnumerable<string> AsmLineLabels(IEnumerable<IrInstruction> insts) =>
+        insts.Where(i => i.Op == IrOp.InlineAsm)
+             .SelectMany(i => ((i.Dest.Kind == IrOperandKind.Temp ? i.Src1.Name : i.Dest.Name) ?? "").Split('\n'))
+             .Select(line => AsmLineLabel.Match(line))
+             .Where(m => m.Success)
+             .Select(m => m.Groups[1].Value);
 
     /// <summary>トップレベルのインラインASM（#ASMブロック）を出力</summary>
     private void EmitGlobalPlainAsm()

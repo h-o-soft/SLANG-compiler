@@ -754,6 +754,48 @@ ASMV: DW 1000
     }
 
     [Fact]
+    public void Overlay_AsmUsesMainAsmLabels()
+    {
+        // モジュールの #ASM が、本体の #ASM の行の頭のラベル (名前: と 名前 EQU) を使う。
+        // モジュールの #ASM が自分で決める名前 (LP) は、本体に同じ名前があっても自分のもの
+        var slPath = Path.Combine(_tempDir, "asmlbl.SL");
+        File.WriteAllText(slPath, @"VAR R;
+MAIN() BEGIN R = F(2); END;
+#MODULE $3000
+F(X)
+BEGIN
+#ASM
+ LD HL,(ASMTAB)
+ LD DE,ASMK
+ CALL ASMSUB
+LP:
+ JP LP
+#END
+END;
+#END
+#ASM
+ASMSUB: RET
+ASMTAB: DW 9
+ASMK EQU $1234
+LP: DB 0
+#END
+");
+        var (code, _, stderr) = RunSlangbuild(slPath, "--keep-asm");
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+
+        var sym = File.ReadAllText(Path.Combine(_tempDir, "asmlbl.sym"));
+        int Addr(string name) => Convert.ToInt32(System.Text.RegularExpressions.Regex.Match(sym,
+            $@"(?m)^{name}\s+equ\s+\$([0-9A-Fa-f]+)").Groups[1].Value, 16);
+        var ovBin = File.ReadAllBytes(Path.Combine(_tempDir, "asmlbl._m0.bin"));
+        int At(byte op) => Enumerable.Range(0, ovBin.Length - 2).Where(i => ovBin[i] == op)
+            .Select(i => ovBin[i + 1] | ovBin[i + 2] << 8).First();
+        Assert.Equal(Addr("ASMTAB"), At(0x2A));    // LD HL,(nn)
+        Assert.Equal(0x1234, At(0x11));            // LD DE,nn
+        Assert.Equal(Addr("ASMSUB"), At(0xCD));    // CALL nn
+        Assert.InRange(At(0xC3), 0x3000, 0x30FF);  // JP LP はモジュールの中
+    }
+
+    [Fact]
     public void MissingInputFile_ReportsError()
     {
         var (code, _, stderr) = RunSlangbuild(Path.Combine(_tempDir, "nonexistent.SL"));
