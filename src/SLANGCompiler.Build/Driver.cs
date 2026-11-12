@@ -836,6 +836,24 @@ public class Driver
                 return result.ExitCode;
             }
             if (t.Label != "main") intermediates.Add(outSym);
+            // main は先頭。モジュールには本番の main の記号を渡す (Pass 1 の記号は、モジュールの関数を使う EQU が $0000 のまま)
+            else mainPass1Sym = SymFileReader.ReadFile(outSym);
+        }
+
+        // Pass 1 の番地で渡した関数が、本番で動いていないか (借りた EQU で DS の大きさが変わったときなど)。動いたらエラー
+        foreach (var t in plan.Targets)
+        {
+            var finalSym = SymFileReader.ReadFile(t.Label == "main"
+                ? mainSym : Path.Combine(outputDir, Path.GetFileNameWithoutExtension(t.AsmPath) + ".sym"));
+            foreach (var name in t.Exports)
+            {
+                if (pass1Symbols[t.Label].TryGetValue(name, out var a1) && finalSym.TryGetValue(name, out var a3) && a1 != a3)
+                {
+                    Console.Error.WriteLine($"slangbuild: error: {t.Label}: {name} moved between prelink passes "
+                        + $"(${a1:X4} -> ${a3:X4}); an EQU from another target changes the code size (DS etc.)");
+                    return 1;
+                }
+            }
         }
         intermediates.Add(mainSym);
         return 0;

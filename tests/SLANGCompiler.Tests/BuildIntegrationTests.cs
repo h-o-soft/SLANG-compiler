@@ -724,6 +724,119 @@ MYSUB() BEGIN END;
             "Single-stage mode expected; pass1 sym should not be produced");
     }
 
+    [Theory]
+    [InlineData("R = F(2);")]   // prelink
+    [InlineData("")]            // 二段 (関数の cross-ref が無い)
+    public void Overlay_BorrowsMainNames(string mainBody)
+    {
+        // モジュールが本体の名前を使う: レジスタの置き場 (^HL・GETREG() の ^CARRY) と、本体の #ASM のラベルに置いた VAR
+        var slPath = Path.Combine(_tempDir, "borrow.SL");
+        File.WriteAllText(slPath, "VAR R;\nVAR AV:ASMV;\nMAIN() BEGIN " + mainBody + @" END;
+#MODULE $3000
+F(X) BEGIN GETREG(); ^HL = X + AV; RETURN ^CARRY; END;
+#END
+#ASM
+ASMV: DW 1000
+#END
+");
+        var (code, _, stderr) = RunSlangbuild(slPath, "--keep-asm");
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+
+        var sym = File.ReadAllText(Path.Combine(_tempDir, "borrow.sym"));
+        int Addr(string name) => Convert.ToInt32(System.Text.RegularExpressions.Regex.Match(sym,
+            $@"(?m)^{name}\s+equ\s+\$([0-9A-Fa-f]+)").Groups[1].Value, 16);
+        var ovBin = File.ReadAllBytes(Path.Combine(_tempDir, "borrow._m0.bin"));
+        bool Has(byte op, int addr) => Enumerable.Range(0, ovBin.Length - 2)
+            .Any(i => ovBin[i] == op && ovBin[i + 1] == (addr & 0xFF) && ovBin[i + 2] == addr >> 8);
+        Assert.True(Has(0x5B, Addr("ASMV")), "overlay should read AV at ASMV in main (LD DE,(nn))");
+        Assert.True(Has(0x22, Addr("_HL")), "overlay should write ^HL to _HL in main (LD (nn),HL)");
+        Assert.True(Has(0x2A, Addr("_CARRY")), "overlay should read ^CARRY from _CARRY in main (LD HL,(nn))");
+    }
+
+    [Fact]
+    public void Overlay_AsmUsesMainAsmLabels()
+    {
+        // モジュールの #ASM が、本体の #ASM の行の頭のラベル (名前: と 名前 EQU) を使う。
+        // モジュールの #ASM が自分で決める名前 (LP) は、本体に同じ名前があっても自分のもの
+        var slPath = Path.Combine(_tempDir, "asmlbl.SL");
+        File.WriteAllText(slPath, @"VAR R;
+MAIN() BEGIN R = F(2); END;
+#MODULE $3000
+F(X)
+BEGIN
+#ASM
+ LD HL,(ASMTAB)
+ LD DE,ASMK
+ CALL ASMSUB
+LP:
+ JP LP
+#END
+END;
+#END
+#ASM
+ASMSUB: RET
+ASMTAB: DW 9
+ASMK EQU $1234
+LP: DB 0
+#END
+");
+        var (code, _, stderr) = RunSlangbuild(slPath, "--keep-asm");
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+
+        var sym = File.ReadAllText(Path.Combine(_tempDir, "asmlbl.sym"));
+        int Addr(string name) => Convert.ToInt32(System.Text.RegularExpressions.Regex.Match(sym,
+            $@"(?m)^{name}\s+equ\s+\$([0-9A-Fa-f]+)").Groups[1].Value, 16);
+        var ovBin = File.ReadAllBytes(Path.Combine(_tempDir, "asmlbl._m0.bin"));
+        int At(byte op) => Enumerable.Range(0, ovBin.Length - 2).Where(i => ovBin[i] == op)
+            .Select(i => ovBin[i + 1] | ovBin[i + 2] << 8).First();
+        Assert.Equal(Addr("ASMTAB"), At(0x2A));    // LD HL,(nn)
+        Assert.Equal(0x1234, At(0x11));            // LD DE,nn
+        Assert.Equal(Addr("ASMSUB"), At(0xCD));    // CALL nn
+        Assert.InRange(At(0xC3), 0x3000, 0x30FF);  // JP LP はモジュールの中
+    }
+
+    [Theory]
+    // ラベルの式の中の名前がほかのモジュールの関数 (User Function References で借りる。本体の Pass 1 の記号では $0000)
+    [InlineData("VAR P:TARGET;\nMAIN() BEGIN R = TARGET(1); END;\n#MODULE $3000\nTARGET(X) BEGIN RETURN X; END;\n#END\n#MODULE $4000\nG(X) BEGIN RETURN TARGET(X); END;\n#END\n")]
+    // 本体の #ASM のラベルが、モジュールの中でコンパイラが決めるラベル (GOTO の行き先) と同じ名前
+    [InlineData("MAIN() BEGIN R = F(); END;\n#MODULE $3000\nF() BEGIN GOTO DONE; DONE: RETURN 1; END;\n#END\n#ASM\n_LBL_DONE: DB 0\n#END\n")]
+    public void Overlay_BorrowedNamesDoNotClash(string source)
+    {
+        var slPath = Path.Combine(_tempDir, "clash.SL");
+        File.WriteAllText(slPath, "VAR R;\n" + source);
+        var (code, _, stderr) = RunSlangbuild(slPath);
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+    }
+
+    [Theory]
+    // 本体の EQU がモジュールの関数を使う: Pass 1 の $0000 ではなく本番の番地 (FA は $3000)
+    [InlineData("ASMK EQU FA", "", 0x3000)]
+    // モジュールの #ASM が前に空白を置いて同じ名前を決める: モジュールの中ではそちら
+    [InlineData("ASMK EQU $5678", "    ASMK EQU $1234\n", 0x1234)]
+    public void Overlay_AsmEquValue(string mainAsm, string moduleAsm, int expected)
+    {
+        var slPath = Path.Combine(_tempDir, "asmequ.SL");
+        File.WriteAllText(slPath, "VAR R;\nMAIN() BEGIN R = FA(); END;\n#MODULE $3000\nFA() BEGIN END;\nGA()\nBEGIN\n#ASM\n"
+            + moduleAsm + " LD DE,ASMK\n#END\nEND;\n#END\n#ASM\n" + mainAsm + "\n#END\n");
+        var (code, _, stderr) = RunSlangbuild(slPath, "--keep-asm");
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+        var ovBin = File.ReadAllBytes(Path.Combine(_tempDir, "asmequ._m0.bin"));
+        Assert.Contains(Enumerable.Range(0, ovBin.Length - 2).Where(i => ovBin[i] == 0x11),
+            i => (ovBin[i + 1] | ovBin[i + 2] << 8) == expected);   // LD DE,nn
+    }
+
+    [Fact]
+    public void Prelink_ExportMovedBetweenPasses_IsError()
+    {
+        // モジュールの DS の大きさが本体の EQU で決まる: Pass 1 ($0000) と本番で FB の番地がずれるので、黙って組まずにエラー
+        var slPath = Path.Combine(_tempDir, "moved.SL");
+        File.WriteAllText(slPath, "VAR R;\nMAIN() BEGIN R = FB(); END;\n#MODULE $3000\nFA()\nBEGIN\n#ASM\n DS PAD+1\n#END\nEND;\n"
+            + "FB() BEGIN END;\n#END\n#ASM\nPAD EQU $10\n#END\n");
+        var (code, _, stderr) = RunSlangbuild(slPath);
+        Assert.NotEqual(0, code);
+        Assert.Contains("FB moved between prelink passes ($3002 -> $3012)", stderr);
+    }
+
     [Fact]
     public void MissingInputFile_ReportsError()
     {
