@@ -724,6 +724,35 @@ MYSUB() BEGIN END;
             "Single-stage mode expected; pass1 sym should not be produced");
     }
 
+    [Theory]
+    [InlineData("R = F(2);")]   // prelink
+    [InlineData("")]            // 二段 (関数の cross-ref が無い)
+    public void Overlay_BorrowsMainNames(string mainBody)
+    {
+        // モジュールが本体の名前を使う: レジスタの置き場 (^HL・GETREG() の ^CARRY) と、本体の #ASM のラベルに置いた VAR
+        var slPath = Path.Combine(_tempDir, "borrow.SL");
+        File.WriteAllText(slPath, "VAR R;\nVAR AV:ASMV;\nMAIN() BEGIN " + mainBody + @" END;
+#MODULE $3000
+F(X) BEGIN GETREG(); ^HL = X + AV; RETURN ^CARRY; END;
+#END
+#ASM
+ASMV: DW 1000
+#END
+");
+        var (code, _, stderr) = RunSlangbuild(slPath, "--keep-asm");
+        Assert.True(code == 0, $"slangbuild failed (exit {code}). stderr: {stderr}");
+
+        var sym = File.ReadAllText(Path.Combine(_tempDir, "borrow.sym"));
+        int Addr(string name) => Convert.ToInt32(System.Text.RegularExpressions.Regex.Match(sym,
+            $@"(?m)^{name}\s+equ\s+\$([0-9A-Fa-f]+)").Groups[1].Value, 16);
+        var ovBin = File.ReadAllBytes(Path.Combine(_tempDir, "borrow._m0.bin"));
+        bool Has(byte op, int addr) => Enumerable.Range(0, ovBin.Length - 2)
+            .Any(i => ovBin[i] == op && ovBin[i + 1] == (addr & 0xFF) && ovBin[i + 2] == addr >> 8);
+        Assert.True(Has(0x5B, Addr("ASMV")), "overlay should read AV at ASMV in main (LD DE,(nn))");
+        Assert.True(Has(0x22, Addr("_HL")), "overlay should write ^HL to _HL in main (LD (nn),HL)");
+        Assert.True(Has(0x2A, Addr("_CARRY")), "overlay should read ^CARRY from _CARRY in main (LD HL,(nn))");
+    }
+
     [Fact]
     public void MissingInputFile_ReportsError()
     {

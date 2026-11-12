@@ -161,6 +161,7 @@ public class CodeGenerator
         // TODO: オーバーレイ固有の文字列テーブル分離
 
         // ランタイム関数の結合（このモジュール固有の呼び出しのみ解決）
+        var overlayRuntimeNames = new List<string>();
         if (_runtimeManager != null)
         {
             var userFuncs = new HashSet<string>(overlay.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
@@ -173,6 +174,7 @@ public class CodeGenerator
             var overlayRuntime = _runtimePlan != null
                 ? _runtimePlan.GetOverlayOutputFunctions(overlay.Index).ToList()
                 : _runtimeManager.ResolveForNames(_calledFunctions, userFuncs).ToList();
+            overlayRuntimeNames.AddRange(overlayRuntime.Select(f => f.Name));
             if (overlayRuntime.Count > 0)
             {
                 _e.Blank();
@@ -265,6 +267,18 @@ public class CodeGenerator
             else
                 _e.Raw($"; EXTERN {gv.AsmLabel}  ; address resolved at link time");
         }
+        // 本体で決まるほかの名前: レジスタの置き場 (^HL・GETREG() など) と、ラベルの式 (VAR X:LABEL など) の中の名前。
+        // このモジュールの中で決める名前 (関数・ランタイムの写し・変数) は除く
+        var definedHere = new HashSet<string>(overlay.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
+        definedHere.UnionWith(overlayRuntimeNames);
+        definedHere.UnionWith(overlay.LocalVars.Select(v => v.AsmLabel));
+        definedHere.UnionWith(_module.GlobalVars.Select(v => v.AsmLabel));
+        var borrowed = SystemRegisterWorks.Select(w => w.Label).Append("_A")
+            .Concat(_module.AddressSymbolDeps.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+            .Where(n => !definedHere.Contains(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in borrowed)
+            _e.Raw($"; EXTERN {name}");
 
         // 文字列テーブル参照（メイン部の文字列ラベルをEXTERN）
         if (_module.StringTable.Count > 0)
