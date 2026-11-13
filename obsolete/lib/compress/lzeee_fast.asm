@@ -23,6 +23,10 @@
 ;   3. This notice may not be removed or altered from any source
 ;   distribution.
 ;
+; Changed for SLANG by H.O SOFT / OGINO Hiroshi: added #LIB/#ENDLIB for the old
+; SLANG library format; the OBSOLETED_F4 conditional was commented out (the
+; IFNDEF side is kept); "add a" and "adc a" are written as "add a,a" and "adc a,a".
+;
 
 	;DEFINE	OBSOLETED_F4
 

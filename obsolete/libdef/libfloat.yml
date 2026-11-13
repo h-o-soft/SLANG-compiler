@@ -1,3 +1,21 @@
+# This file is derived from z80float (https://github.com/Zeda/z80float):
+#   Copyright 2018 Zeda A.K. Thomas
+#   Licensed under the Apache License, Version 2.0 (see LICENSE-APACHE-2.0.txt)
+#   mul16 is z80float's common/mul16.z80 (made by Runer112, see its comment).
+#
+# Changed for SLANG by H.O SOFT / OGINO Hiroshi and contributors:
+#   - z80float's f24/, conversion/ and common/ routines were merged into this
+#     file in the YAML format of the old SLANG runtime library (code, calls, works)
+#   - SLANG entry names were added (FABS, FSIN, FTOI, ...)
+#   - PFLOAT was added; FRAND (z80float's f24rand) got an entry and an
+#     initialize_code that seeds z80rand
+#
+# The changes and additions made for SLANG:
+#   Copyright (c) 2022-2026 H.O SOFT / OGINO Hiroshi and contributors
+# This whole file, including those changes and additions, is licensed under
+# the Apache License, Version 2.0. It is not covered by the MIT License of
+# SLANG-compiler.
+# (This old file is kept for reference; the current one is runtime/libfloat.asm.)
 
 mul16:
   code: |

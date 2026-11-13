@@ -151,6 +151,7 @@ createRelease() {
   cp ../../README.md .
   cp ../../CHANGELOG.md .
   cp ../../LICENSE .
+  cp ../../LICENSE-APACHE-2.0.txt .
   cp ../../THIRD_PARTY_NOTICES.md .
   cp ../../setupenv.bat .
   cp ../../setupenv.sh .

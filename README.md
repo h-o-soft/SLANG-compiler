@@ -488,4 +488,8 @@ Copyright (c) 2022-2026 H.O SOFT / OGINO Hiroshi and contributors
 
 詳細は [LICENSE](LICENSE) ファイルを参照してください。
 
+ただし `runtime/libfloat.asm` (と古い `obsolete/libdef/libfloat.yml`) は z80float (https://github.com/Zeda/z80float) を元にしたもので、slang で変えた所も含めてファイルごと Apache License 2.0 です。全文は [LICENSE-APACHE-2.0.txt](LICENSE-APACHE-2.0.txt) にあります。それ以外の slang 独自の部分は MIT、第三者由来の部分はそれぞれの表示に従います ([LICENSE](LICENSE) の頭と [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を見てください)。
+
+FLOAT の計算や表示 (hubasic2sl で変換したプログラムの浮動小数・`RND` を含む) を使ったプログラムには、`runtime/libfloat.asm` のコードが入ります。そのプログラムを配るときは、`LICENSE` (全体) と `LICENSE-APACHE-2.0.txt` を添えてください。
+
 配布物に同梱される第三者由来の成果物 (= Bookworm's Library / XBIOS / LSXPROG 等) の出典・許諾情報は [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) に記載しています。RunCPM や UI フォントのように LICENSE 全文を別ファイルで同梱しているもの (= `tools/runcpm/LICENSE` / `assets/ui/LICENSE.font`) は各 LICENSE ファイルを参照してください。

@@ -23,6 +23,10 @@
 ;   3. This notice may not be removed or altered from any source
 ;   distribution.
 ;
+; Changed for SLANG by H.O SOFT / OGINO Hiroshi: added #LIB for the old SLANG
+; library format; the ALLOW_INLINE_GETBIT conditional and the GET_BIT macro
+; were commented out and GET_BIT was replaced with "call getbit".
+;
 
 	;DEFINE	ALLOW_LDIR_UNROLLING
 	;DEFINE	ALLOW_INLINE_GETBIT

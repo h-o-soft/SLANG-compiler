@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- ライセンスの表示を足した (コードの動きは変わらない) — `runtime/libfloat.asm` が z80float 由来であることと、slang で変えた所も含めてファイルごと Apache License 2.0 であることを、`LICENSE` の頭・z80float の項・ファイルの頭に書き、全文 `LICENSE-APACHE-2.0.txt` を足した (配布 zip とブラウザ向けの束にも入れる)。 LZE の展開 (zlib、uniabis) の著作権の行と変えたことの注釈、ZX0 の帰属の注釈、mzd88 (MIT) の許諾の文も足した。 FLOAT を使ったプログラムを配るときの案内は README の「ライセンス」の節
 - X1 の HuBASIC のテキストを SLANG に変換するツールを同梱 (アルファ版、 版は 0.1.0-alpha で SLANG compiler とは別に数える)。 変換した SLANG は `x1native` / `x1native_slfs` で組み立てる。 ランタイム `libx1_basic` を追加。 使い方・対応している命令・HuBASIC との違いは [docs/HUBASIC.md](docs/HUBASIC.md)、 サンプルは `examples/hubasic/`
 - ランタイムに `TATTR(ATTR)` を追加 — 現在のテキストカーソル位置のセルのテキスト属性を 1 バイト設定する (`x1` / `sosx1` / `x1native` / `x1native_slfs`)。 `LOCATE(X,Y)` → `TATTR(ATTR)` → `PRINT(...)` の順で使う。 戻り値は成功 1 / 検証失敗 0。
   - ビット割当は bit7=横倍角 / bit6=縦倍角 / bit5=PCG 選択 / bit4=点滅 / bit3=反転 / bit2-0=BRG 色。 `$00`-`$FF` をマスクせずそのまま書き込む (`$0100` 以上は書き込まず 0 を返す)。

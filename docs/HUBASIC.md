@@ -93,6 +93,8 @@ scripts/build-hubasic-wasm.sh out/hubasic-wasm
 - `_framework/`: wasm の一式 (`dotnet.js` から読む)
 - `runtime/`: `x1native`・`x1native_slfs`・`x1native_hufs` の env の libraries の `.asm` (LSX 用は入りません。混ぜないでください)
 - `env/`: 3 つの env ファイルの写し
+- `LICENSE`・`LICENSE-APACHE-2.0.txt`: ライセンスの表示 (`runtime/libfloat.asm` は Apache License 2.0、ほかは `LICENSE` を見てください)。
+  束を配るとき・取り込むときは、この 2 本も一緒に置きます
 - `testdata/`: 試験用のプログラム 4 本 (HELLO・GRAPH・MUSIC・FLOAT) の `.BAS`・`.SL`・`.bin`・`.LST`・`.d88`。
   同じ木の hubasic2sl・slangbuild (`--emit disk -E x1native_slfs`)・slangc で作ったもので、ブラウザの側の道具と比べるのに使う
   (D88 は日付が 0 で、同じ入力からは同じバイトになる)

@@ -1,5 +1,39 @@
 ; Converted from lib/libdef/libcompress.yml
 ; SLANG Runtime Library (new format)
+; ----------------------------------------------------------------------------
+; LZE_DECODE, LZEE_DECODE and LZEEE_DECODE are derived from LZEe by uniabis
+; (https://github.com/uniabis/lzee):
+;   dlze_small.asm and dlzee_small.asm: Copyright (c) 2019 uniabis
+;   dlzeee_fast.asm: Copyright (c) 2020 uniabis
+; They were changed for SLANG by H.O SOFT / OGINO Hiroshi: converted to the
+; SLANG runtime library format (; @name ...); the file header (restored here),
+; the DEFINE options and the GET_BIT macro definitions were removed; GET_BIT
+; was replaced with "call getbit"; the conditionals in the code were commented
+; out (one side kept); "add a"/"adc a" are written as "add a,a"/"adc a,a".
+; Their license (zlib license):
+;
+; This software is provided 'as-is', without any express or implied
+; warranty. In no event will the authors be held liable for any damages
+; arising from the use of this software.
+;
+; Permission is granted to anyone to use this software for any purpose,
+; including commercial applications, and to alter it and redistribute it
+; freely, subject to the following restrictions:
+;
+;   1. The origin of this software must not be misrepresented; you must not
+;   claim that you wrote the original software. If you use this software
+;   in a product, an acknowledgment in the product documentation would be
+;   appreciated but is not required.
+;
+;   2. Altered source versions must be plainly marked as such, and must not be
+;   misrepresented as being the original software.
+;
+;   3. This notice may not be removed or altered from any source
+;   distribution.
+;
+; ZX0_DECODE is the ZX0 decoder by Einar Saukas & Urusergi ("Standard" version,
+; https://github.com/einar-saukas/ZX0), BSD 3-Clause License (see LICENSE).
+; ----------------------------------------------------------------------------
 
 ; @name LZE_DECODE
 ; @resident shared

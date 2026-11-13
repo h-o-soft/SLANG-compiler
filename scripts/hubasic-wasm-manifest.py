@@ -3,7 +3,7 @@
 
 使い方 (python3 -I で動かす):
   hubasic-wasm-manifest.py envs   <repo>                      env の値と組の印の番号を JSON で stdout に出す (テストが使う)
-  hubasic-wasm-manifest.py copy   <repo> <out>                runtime/ (3 つの env の libraries の和集合の .asm) と env/ を写す
+  hubasic-wasm-manifest.py copy   <repo> <out>                runtime/ (3 つの env の libraries の和集合の .asm)・env/・LICENSE・LICENSE-APACHE-2.0.txt を写す
   hubasic-wasm-manifest.py write  <repo> <out> <sha> <dirty> <version> <asm> <asm-version> <case,...>
                                                               束の全部のファイルを数えて <out>/manifest.json を書く
   hubasic-wasm-manifest.py verify <out>                       束と manifest が合っているかを確かめる
@@ -19,6 +19,8 @@ import shutil
 import sys
 
 ENVS = ["x1native_slfs", "x1native", "x1native_hufs"]
+# 束の根に写すライセンスの表示 (runtime/ の .asm を配るので要る。libfloat.asm は Apache 2.0)
+LICENSE_FILES = ["LICENSE", "LICENSE-APACHE-2.0.txt"]
 TESTDATA_ENV = "x1native_slfs"
 TESTDATA_EXTS = ["bas", "sl", "bin", "lst", "d88"]
 
@@ -182,6 +184,8 @@ def cmd_copy(repo, out):
                 done.add(lib)
     for name in ENVS:
         shutil.copyfile(os.path.join(repo, "runtime", "env", name + ".env"), os.path.join(out, "env", name + ".env"))
+    for name in LICENSE_FILES:
+        shutil.copyfile(os.path.join(repo, name), os.path.join(out, name))
 
 
 def cmd_write(repo, out, sha, dirty, version, asm, asm_version, cases):
@@ -228,6 +232,9 @@ def cmd_verify(out):
         if os.path.getsize(p) != e["size"] or sha256(p) != e["sha256"]:
             fail(f"{e['path']} の大きさか sha256 が manifest と合いません")
     listed = set(paths)
+    for name in LICENSE_FILES:
+        if name not in listed:
+            fail(f"{name} が束にありません")
     if not m["testdata"]["cases"]:
         fail("testdata が空です")
     for case in m["testdata"]["cases"]:
