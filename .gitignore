@@ -155,6 +155,3 @@ src/src.sln
 # HuBASIC の変換のサンプル: 変換した SLANG は置かない (examples/hubasic/README.md)
 examples/hubasic/*.SL
 examples/hubasic/*.sl
-
-# 作業の仕組みのファイル (共有しない)
-.secretary-system/
