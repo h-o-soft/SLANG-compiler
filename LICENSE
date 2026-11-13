@@ -1,5 +1,17 @@
 SLANG-compiler
 ------
+The following files are licensed under the Apache License, Version 2.0, not
+under the MIT License below. This includes the changes and additions made for
+SLANG in these files. See "z80float" below and LICENSE-APACHE-2.0.txt.
+
+  runtime/libfloat.asm
+  obsolete/libdef/libfloat.yml
+
+Except for the two files above and third-party materials, SLANG-compiler
+(including code that calls the routines in these files) is licensed under the
+MIT License below. For third-party materials, see the notices below,
+THIRD_PARTY_NOTICES.md, and the notices accompanying those materials.
+
 MIT License
 
 Copyright (c) 2022-2026 H.O SOFT / OGINO Hiroshi and contributors
@@ -123,7 +135,8 @@ UTF Unknown
 ------
 The library is subject to the Mozilla Public License Version 1.1 (the "License"). Alternatively, it may be used under the terms of either the GNU General Public License Version 2 or later (the "GPL"), or the GNU Lesser General Public License Version 2.1 or later (the "LGPL").
 
-z80float
+z80float (runtime/libfloat.asm, obsolete/libdef/libfloat.yml)
+https://github.com/Zeda/z80float
 ------
    Copyright 2018 Zeda A.K. Thomas
 
@@ -138,6 +151,16 @@ z80float
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+The full text of the Apache License, Version 2.0 is in LICENSE-APACHE-2.0.txt.
+runtime/libfloat.asm and obsolete/libdef/libfloat.yml are modified versions of
+z80float's f24/, conversion/ and common/ sources (merged into one file and
+converted to the SLANG runtime library format, with additions and bug fixes).
+The changes and additions made for SLANG:
+   Copyright (c) 2022-2026 H.O SOFT / OGINO Hiroshi and contributors
+These changes and additions are also licensed under the Apache License,
+Version 2.0.
+See the comment at the top of each file.
 
 LSX-Dodgers
 ------
@@ -232,10 +255,19 @@ SOFTWARE.
 
  LZEe - LZE enhancement for Z80 by uniabis
  https://github.com/uniabis/lzee
+ (runtime/libcompress.asm: LZE_DECODE, LZEE_DECODE, LZEEE_DECODE;
+  obsolete/lib/compress/dlze_small.asm, dlzee_small.asm, lzeee_fast.asm.
+  These are changed for SLANG; see the comment at the top of each file.)
 ------
 
  LZE
  Copyright (C)1995,2008 GORRY.
+
+ lze / lzee depackers for Z80 (dlze_small.asm, dlzee_small.asm)
+ Copyright (c) 2019 uniabis
+
+ LZEee depacker for Z80 (dlzeee_fast.asm)
+ Copyright (c) 2020 uniabis
 
  License:zlib license or original LZE license
 
@@ -471,3 +503,23 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+mzd88 (tools/mzd88-*)
+https://github.com/issaUt/mz2500-tools
+------
+MITライセンス
+
+Copyright (c) 2026 issaUt
+
+本ソフトウェアおよび関連する文書ファイル（以下「本ソフトウェア」）の複製を取得するすべての人に対し、
+本ソフトウェアを無償で扱うことを許可します。これには、使用、複製、変更、結合、公開、配布、
+サブライセンス、および販売を含むがこれらに限定されない権利、ならびに本ソフトウェアを提供された人に
+同様の行為を許可する権利を含みます。ただし、以下の条件に従うものとします。
+
+上記の著作権表示および本許可表示は、本ソフトウェアのすべての複製または重要な部分に記載するものとします。
+
+本ソフトウェアは「現状のまま」提供されるものであり、明示または黙示を問わず、
+商品性、特定目的への適合性、権利非侵害に関する保証を含め、いかなる保証もありません。
+著作者または著作権者は、契約、不法行為、その他の行為であるかを問わず、本ソフトウェアまたは
+本ソフトウェアの使用もしくはその他の取扱いに起因または関連して発生した、いかなる請求、損害、
+その他の責任についても責任を負わないものとします。

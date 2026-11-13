@@ -5,7 +5,7 @@
 scope:
 - 含まれる: 外部由来のバイナリ blob (= `tools/udostool.exe`、`runtime/templates/XBIOS.CMT`、`images/templates/*.D88`、Bookworm's Library 由来の `runtime/pc88mk2sr/*.bin` 等)、および明示的な利用許諾を著者から得た third-party source (= PCG 8253 サウンドドライバ等)
 - 含まれない: 黙示的に利用してきた runtime code 中の third-party 由来ライブラリ (= MSX SPDRV、X1 SGL 等)。これらの attribution は `LICENSE` ファイルおよび各 ASM source の header コメントを参照してください
-- LICENSE 全文を別ファイルで同梱している成果物 (= RunCPM、UI フォント等) については末尾の「LICENSE 別途同梱物」section を参照
+- LICENSE 全文を別ファイルで同梱している成果物 (= RunCPM、UI フォント、z80float 由来の浮動小数等) については末尾の「LICENSE 別途同梱物」section を参照
 
 各エントリには判明している範囲で以下を記載します:
 - 配布物名
@@ -81,7 +81,7 @@ MZ-2500 用 BASIC システム / IOCS 環境 (`-E mz25iocs`) の `slangbuild --e
 
 **取得元**: `https://github.com/issaUt/mz2500-tools` (= `mzd88.c` の C 実装)
 
-**License**: MIT License (= `LICENSE` ファイルあり、Copyright (c) 2026 issaUt)
+**License**: MIT License (= `LICENSE` ファイルあり、Copyright (c) 2026 issaUt)。許諾の文の全文は repo root の `LICENSE` の mzd88 の項
 
 **用途**: MZ-2500 用 D88 disk image を `slangbuild --emit disk -E mz25iocs` で生成する際に、`mzd88 -blank` で空 D88 を作成し、`mzd88 -add` で main bin (`PROG.OBJ`) と起動用 BASIC ローダ (`runtime/mz2500/J8000.bas.bsd`) を格納します。
 
@@ -141,3 +141,4 @@ zxn の `CONST __NOROM = 1;` で PRINT が使う字の形 (`runtime/libzxn_norom
 |---|---|---|
 | RunCPM (`tools/runcpm/RunCPM-*` + `tools/runcpm/cpm/EXIT.COM` + `tools/runcpm/cpm/SUBMIT.COM`) | `tools/runcpm/LICENSE` | CP/M 2.2 互換エミュレータ |
 | `assets/ui/` 配下の UI フォント | `assets/ui/LICENSE.font` | UILIB 用ピクセルフォント |
+| z80float 由来の浮動小数 (`runtime/libfloat.asm`、`obsolete/libdef/libfloat.yml`。slang で変えた所も含めてファイルごと Apache 2.0) | `LICENSE-APACHE-2.0.txt` | Apache License 2.0 の全文。境目・著作権の行・変えたことは `LICENSE` の頭と z80float の項、各ファイルの頭 |
