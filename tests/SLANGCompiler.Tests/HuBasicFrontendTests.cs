@@ -468,6 +468,7 @@ public class HuBasicFrontendTests
     [InlineData("10 N=-32768:N=5:DIM A(N)", "A!", 5)]     // -32768 は使える (実行したときの上限は負で Subscript out of range)
     [InlineData("10 DIM A(2+N):N=4", "A!", 6)]
     [InlineData("10 N=10.0:DIM A(N)", "A!", 10)]          // 整数の値の浮動小数の定数
+    [InlineData("10 N=-(-10.0):DIM A(N)", "A!", 10)]      // 入れ子の符号
     [InlineData("10 N=2:DIM A(N):IF X THEN DIM A(7)", "A!", 7)]   // 定数の DIM とも大きい方
     public void Analyzer_VariableDimBound(string program, string key, int storage)
     {

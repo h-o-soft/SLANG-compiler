@@ -58,7 +58,7 @@ RET
 
 ; ============================================================ 組の印
 
-; @name BAS_ABI_2
+; @name BAS_ABI_3
 ; @resident shared
 ; @param_count 0
 ; hubasic2sl の出力とこのランタイムの組の印 (何もしない)。出力は MAIN の最初に BAS_ABI_<n>() を呼ぶので、

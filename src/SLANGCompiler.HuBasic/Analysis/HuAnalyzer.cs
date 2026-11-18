@@ -388,14 +388,14 @@ public sealed class HuAnalyzer
     private static long? IntegralConst(HuExpr e)
     {
         if (!ContainsFloat(e)) return ConstExprOnly(e) ? ConstValue(e) : null;
-        double? d = e switch
+        static double? Signed(HuExpr x) => x switch
         {
             HuFloat f => f.Value,
-            HuUnary { Op: "-", Operand: HuFloat f } => -f.Value,
-            HuUnary { Op: "+", Operand: HuFloat f } => f.Value,
+            HuUnary { Op: "-" } u => -Signed(u.Operand),
+            HuUnary { Op: "+" } u => Signed(u.Operand),
             _ => null,
         };
-        return d is double x && x == Math.Floor(x) && Math.Abs(x) <= 1e6 ? (long)x : null;
+        return Signed(e) is double x && x == Math.Floor(x) && Math.Abs(x) <= 1e6 ? (long)x : null;
     }
 
     /// <summary>
