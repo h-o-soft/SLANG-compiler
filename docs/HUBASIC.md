@@ -191,8 +191,9 @@ FOR … TO … STEP / NEXT [変数,…]  REPEAT / UNTIL  WHILE / WEND  END
 DIM  DEFINT/DEFSNG/DEFDBL/DEFSTR  DATA  READ  RESTORE [行]
 PRINT (; , SPC() TAB() USING)  PRINT#0  PRINT#n  LOCATE x,y  CLS [n]  COLOR [前景][,背景]  WIDTH 40/80[,行[,a,b]]
 CONSOLE [ys,yl[,xs,xl]]   (テキストの窓。下の説明)
-CFLASH [n]  CSIZE [n]  CGEN [n]  DEFCHR$(n)=文字列  LINE (x1,y1)-(x2,y2),"文字"[,B|BF]
-LINE (x1,y1)-(x2,y2),PSET|PRESET[,色][,B|BF]   (グラフィック画面の線・箱・塗りつぶした箱)
+CFLASH [n]  CSIZE [n]  CGEN [n]  DEFCHR$(n)=文字列  LINE [(x1,y1)]-(x2,y2),"文字"[,B|BF]
+LINE [(x1,y1)]-(x2,y2),PSET|PRESET[,色][,B|BF]   (グラフィック画面の線・箱・塗りつぶした箱。始点を省くと最後の点から)
+PSET(x,y[,色])  PRESET(x,y[,色])   (グラフィック画面の点。色は括弧の中)
 PAINT (x,y),色[,境界色 (7 つまで)]
 MID$(変数,位置[,長さ])=文字列  INPUT ["案内";|,] 変数,…  SWAP a,b  CLEAR [番地]
 OUT ポート,値  INIT  CLICK ON/OFF  REPEAT ON/OFF  PALET [c,p]  PRW [n]
@@ -252,6 +253,14 @@ KEYLIST n・KLIST n・KMODE n   (X1turbo の形。何もしない。0 以外は 
   n は数の引数と同じく整数にし、0 以下なら待ちません。`VSYNC` を書いたプログラムは本物の HuBASIC では動きません
   (本物でも動かしたいときは、コメントの `'#VSYNC n` と `--wait frame` を使ってください)。
   `VSYNC` が予約語なので、`VSYNC` で始まる名前は使えません (`VSYNCX=1` は `VSYNC` の文として読まれます)。
+- `PSET(x,y[,色])` は点を色で、`PRESET(x,y[,色])` は色のビットを落として描きます (HuBASIC と同じく、色は括弧の中。
+  `PSET (x,y),色` は HuBASIC も Syntax error)。色を書かなければ、今の前景色 (`COLOR`) を使います (`PRESET` は前景色のビットを落とす)。
+  画面の外の点は何もしません。色が 0〜7 の外なら Illegal function call。`POINT(x,y)` はその点の色 (0〜7)、画面の外なら -1。
+  どれも HuBASIC で測った動きです (320 ドット・640 ドットの両方)。
+- `LINE -(x2,y2)` (始点を省いた形) は、最後に引いた `LINE` (グラフィックの `LINE` もテキストの `LINE` も同じ点を使う) の終点から引きます。
+  始めの点は (10,15) です (HuBASIC の起動直後と同じ)。`PSET`・`PRESET`・`PAINT`・`CLS`・`WIDTH`・`INIT`・`CLEAR` では変わりません。
+  始点を省いた `LINE` を使うプログラムは、どの `LINE` もその点を覚える入口を通ります (使わなければ今までと同じ出力)。
+- `STEP` (`PSET STEP(…)`・`LINE (…)-STEP(…)`) は HuBASIC (CZ-8FB01) にない書き方で、こちらも error です。
 - `PAINT` は `libx1_grp` の塗りを使います (使うと約 1.3KB と作業領域 1KB が増えます)。境界色を書かなければ塗る色だけが境界。
   塗り始めが画面の外なら何もしません。HuBASIC よりずっと速く塗ります。
 
@@ -261,7 +270,7 @@ KEYLIST n・KLIST n・KMODE n   (X1turbo の形。何もしない。0 以外は 
 ASC  CHR$(a[,b,…])  MID$(s,n[,m])  LEFT$  RIGHT$  STRING$(n,s または 文字コード)  VAL  STR$  HEXCHR$  MIRROR$  CGPAT$
 CHARACTER$(x,y)  INKEY$  INKEY$(0)  INPUT$(n)  INP  STICK  STRIG  RND  INT
 ABS  SGN  SQR  SIN  COS  TAN  ATN  LOG  EXP  FIX  CINT  FRAC  CSNG  CDBL  PAI  RAD
-LEN  INSTR([n,]a$,b$)  HEX$  BIN$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート)  TIME
+LEN  INSTR([n,]a$,b$)  HEX$  BIN$  SPACE$  SCRN$(x,y,n)  PEEK(番地)  PEEK@(ポート)  TIME  POINT(x,y)
 ```
 
 - 数学の関数は FLOAT の精度で、HuBASIC とふつう 4〜5 桁合います。大きな引数の `SIN`・`COS`、0 に近い引数の `SIN`、1 に近い引数の `LOG` は合う桁が少なくなります。
@@ -392,7 +401,7 @@ FILES [ディスクリプタ]   DEVI$ ディスクリプタ,レコード,文字�
 
 ## まだないもの (変換のときの error)
 
-- 命令: `CIRCLE`・`PSET`・`POLY` などほかのグラフィックの命令、`LINE -(x,y)`・`STEP`、`DEF FN`、`ON ERROR`、`USR`、`ERASE`、
+- 命令: `CIRCLE`・`POLY` などほかのグラフィックの命令、`DEF FN`、`ON ERROR`、`USR`、`ERASE`、
   `CLEAR` の 2 つの引数の形 (`CLEAR 1,&HDFFF`)、`LOADM`・`RUN "ファイル"`、`TIME$`、キーボードからの `LINE INPUT`、
   `LOAD`/`SAVE` などのディスク・テープの命令 (error HB0301)
 - 関数: `OCT$`・`MKI$`・`CVI` など (error HB0302)
@@ -460,7 +469,7 @@ FILES [ディスクリプタ]   DEVI$ ディスクリプタ,レコード,文字�
 
 合わせてあるもの (比べて確かめたもの): 実行時エラーの表示 (既定では「<メッセージ> in <行番号>」と「Ok」)、`PLAY` の音程・長さ・テンポ、`BEEP`、
 文字の装飾と色、右端での折り返しとスクロール、`PRINT USING` の書式、テキストの `LINE` の点の置き方、グラフィックの `LINE` の点の置き方
-(画面の中の線と箱、`BF`、はみ出す線)、`PAINT` の塗り方。
+(画面の中の線と箱、`BF`、はみ出す線)、`PAINT` の塗り方、`PSET`・`PRESET` の点と色、`POINT` の値、`LINE -(x,y)` の始点。
 
 ## 変換のときに出るもの (番号の分類)
 

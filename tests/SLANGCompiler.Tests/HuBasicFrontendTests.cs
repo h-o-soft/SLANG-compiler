@@ -1035,6 +1035,47 @@ public class HuBasicFrontendTests
         Assert.True(g[3] is { Box: true, Color: null });
     }
 
+    /// <summary>
+    /// 点の命令: PSET(x,y[,色])・PRESET(x,y[,色])・POINT(x,y)・始点を省いた LINE -(x,y) (グラフィックとテキスト)
+    /// </summary>
+    [Fact]
+    public void Parser_PointCommands()
+    {
+        var prog = AnalyzeOk("10 PSET(10,20):PSET(X,Y+1,C):PRESET(1,2):PRESET(1,2,5):A=POINT(3,4)+1\n" +
+                             "20 LINE -(100,50),PSET,2:LINE -(5,6),PRESET:LINE -(1,1),\"*\":LINE(0,0)-(1,1),PSET");
+        var all = SLANGCompiler.HuBasic.Analysis.HuAnalyzer.AllStatements(prog.Lines).ToList();
+        var ps = all.OfType<HuPset>().ToList();
+        Assert.Equal(4, ps.Count);
+        Assert.True(ps[0] is { Preset: false, Color: null, X: HuNum { Value: 10 }, Y: HuNum { Value: 20 } });
+        Assert.True(ps[1] is { Preset: false, Color: HuVar { Name: "C" } });
+        Assert.True(ps[2] is { Preset: true, Color: null });
+        Assert.True(ps[3] is { Preset: true, Color: HuNum { Value: 5 } });
+        var g = all.OfType<HuLineGraphic>().ToList();
+        Assert.Equal(new[] { true, true, false }, g.Select(x => x.StartOmitted));
+        Assert.True(g[0] is { X2: HuNum { Value: 100 }, Y2: HuNum { Value: 50 }, Color: HuNum { Value: 2 } });
+        Assert.True(g[1] is { Preset: true });
+        Assert.True(Assert.Single(all.OfType<HuLineText>()).StartOmitted);
+        var assign = all.OfType<HuAssign>().Single();
+        Assert.True(assign.Value is HuBinary { Left: HuCall { Name: "POINT", Args.Count: 2 } });
+    }
+
+    /// <summary>
+    /// HuBASIC の実測で Syntax error の形 (色を括弧の外に書いた PSET、STEP) と、引数の数の誤り
+    /// </summary>
+    [Theory]
+    [InlineData("10 PSET (10,90),4", "HB0203")]                // 本物も Syntax error (色は括弧の中)
+    [InlineData("10 PRESET(1,2),3", "HB0203")]
+    [InlineData("10 PSET STEP(5,5)", "HB0203")]               // 本物に STEP はない
+    [InlineData("10 LINE STEP(10,10)-STEP(20,0),PSET,2", "HB0203")]
+    [InlineData("10 LINE (10,100)-STEP(20,0),PSET,2", "HB0203")]
+    [InlineData("10 PSET(1)", "HB0203")]
+    [InlineData("10 PSET(1,2,3,4)", "HB0203")]
+    [InlineData("10 A=POINT(1)", "HB0212")]                     // 引数 1 つの POINT はない (本物はこの形で止まった)
+    [InlineData("10 PSET(A$,1)", "HB0404")]
+    [InlineData("10 PSET(1,1,C$)", "HB0404")]
+    [InlineData("10 A=POINT(1,B$)", "HB0404")]
+    public void Parser_PointCommandErrors(string program, string code) => AssertError(program, code);
+
     [Theory]
     [InlineData("10 LINE(0,0)-(1,1),PSET,7,X", "HB0203")]      // 箱の印の位置は B・BF だけ
     [InlineData("10 LINE(0,0)-(1,1),PSET,,X", "HB0203")]

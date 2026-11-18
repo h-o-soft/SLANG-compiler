@@ -249,6 +249,30 @@ public class HuBasicEmitTests
         Assert.Contains("H_UB2_C=((V_M)+(1));", sl);
     }
 
+    /// <summary>
+    /// 点の命令: PSET・PRESET は BAS_GPSET(x, y, 色, 形 (bit 1 = PRESET、bit 2 = 色なし))。POINT は BAS_POINT。
+    /// 始点を省いた LINE があるプログラムは、どの LINE も BAS_GLINEP・BAS_TLINEP (形の bit 4 = 始点を省いた)。なければ今までどおり
+    /// </summary>
+    [Fact]
+    public void Lowering_PointCommands()
+    {
+        static List<string> Calls(string program) => Transpile(program).Flat!.Ops.OfType<FCall>()
+            .Where(c => c.Function is "BAS_GPSET" or "BAS_GLINE" or "BAS_GLINEP" or "BAS_TLINE" or "BAS_TLINEP")
+            .Select(c => c.Function + "(" + string.Join(",", c.Args.Select(a => a is FIntArg i ? i.Value.ToString() : "e")) + ")")
+            .ToList();
+        Assert.Equal(new[] { "BAS_GPSET(e,e,0,4)", "BAS_GPSET(e,e,e,0)", "BAS_GPSET(e,e,0,6)", "BAS_GPSET(e,e,e,2)" },
+            Calls("10 DEFINT A-Z:PSET(1,2):PSET(1,2,C):PRESET(1,2):PRESET(1,2,3)"));
+        // 始点を省いた LINE がなければ BAS_GLINE・BAS_TLINE のまま (今までの出力と同じ)
+        Assert.Equal(new[] { "BAS_GLINE(e,e,e,e,e,0)", "BAS_TLINE(e,e,e,e,e,0)" },
+            Calls("10 DEFINT A-Z:LINE(0,0)-(1,1),PSET,2:LINE(0,0)-(1,1),\"*\""));
+        // あれば、どの LINE も最後の点を覚える入口。始点を省いたものは bit 4 (x1・y1 は 0 を渡す)
+        Assert.Equal(new[] { "BAS_GLINEP(e,e,e,e,e,0)", "BAS_GLINEP(e,e,e,e,0,22)", "BAS_TLINEP(e,e,e,e,e,17)" },
+            Calls("10 DEFINT A-Z:LINE(0,0)-(1,1),PSET,2:LINE -(5,6),PRESET:LINE -(3,4),\"*\",B"));
+        Assert.Contains("BAS_GLINEP(0, 0, 5, 6, 0, 22);", Transpile("10 DEFINT A-Z:LINE -(5,6),PRESET").Output!);   // 始点は 0 の置き物
+        var sl = Transpile("10 DEFINT A-Z:A=POINT(X,Y+1)").Output!;
+        Assert.Contains("BAS_POINT(V_X, ((V_Y)+(1)))", sl);
+    }
+
     /// <summary>CLEAR 番地: 頭のコメントと CONST ASM に、いちばん小さい番地 (最後に使える番地) を書く。なければどちらも書かない</summary>
     [Fact]
     public void Emit_ClearTopMarkAndSymbol()
@@ -1866,7 +1890,8 @@ public class HuBasicEmitTests
         try
         {
             var sl = Path.Combine(dir, "CLR.SL");
-            File.WriteAllText(sl, Transpile("10 CLEAR &HDFFF:A=4:DIM B(3):B(1)=9:N=3:DIM C(N,N+1)\n20 FOR I=1 TO 2:PRINT A;B(1):CLEAR:NEXT\n30 DATA 1").Output!);
+            File.WriteAllText(sl, Transpile("10 CLEAR &HDFFF:A=4:DIM B(3):B(1)=9:N=3:DIM C(N,N+1)\n20 FOR I=1 TO 2:PRINT A;B(1):CLEAR:NEXT\n30 DATA 1\n" +
+                "40 PSET(1,2,3):PRESET(4,5):A=POINT(1,2):LINE(0,0)-(9,9),PSET:LINE -(5,5),PRESET,2:LINE -(1,1),\"*\"").Output!);
             var outBase = Path.Combine(dir, "CLR");
             RunSlangbuild(root, dir, sl, asmPath, outBase);
             AssertBuilt(outBase);

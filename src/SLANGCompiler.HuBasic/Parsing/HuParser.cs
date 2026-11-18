@@ -27,6 +27,7 @@ public sealed class HuParser
         ["RAD"] = (1, 1), ["LEN"] = (1, 1), ["INSTR"] = (2, 3), ["HEX$"] = (1, 1), ["BIN$"] = (1, 1), ["SPACE$"] = (1, 1),
         ["SCRN$"] = (3, 3), ["PEEK"] = (1, 1), ["PEEK@"] = (1, 1),
         ["EOF"] = (1, 1), ["LOC"] = (1, 1), ["LOF"] = (1, 1),
+        ["POINT"] = (2, 2),
     };
 
 
@@ -555,6 +556,23 @@ public sealed class HuParser
                 return ParseLine(pos);
             case "PAINT":
                 return ParsePaint(pos);
+            case "PSET":
+            case "PRESET":
+            {
+                // PSET(x,y[,色])。色は括弧の中 (HuBASIC の実測: PSET (x,y),色 と PSET STEP(…) は Syntax error)
+                ExpectSymbol("(");
+                var x = ParseExpr();
+                ExpectSymbol(",");
+                var y = ParseExpr();
+                HuExpr? color = AcceptSymbol(",") ? ParseExpr() : null;
+                ExpectSymbol(")");
+                if (Peek.IsSymbol(","))
+                {
+                    Error("HB0203", $"{t.Text} の色は括弧の中に書きます ({t.Text}(x,y,色)。HuBASIC も {t.Text} (x,y),色 は Syntax error)");
+                    SkipToStatementEnd();
+                }
+                return new HuPset(x, y, color, t.Text == "PRESET", pos);
+            }
             case "MID$":
             {
                 // MID$(変数, 位置[, 長さ]) = 文字列
@@ -989,11 +1007,35 @@ public sealed class HuParser
 
     private HuStmt ParseLine(HuPos pos)
     {
-        ExpectSymbol("(");
-        var x1 = ParseExpr();
-        ExpectSymbol(",");
-        var y1 = ParseExpr();
-        ExpectSymbol(")");
+        // LINE -(x2,y2) は始点を省いた形 (始点は最後に引いた LINE の終点。HuBASIC の実測。テキストの LINE も同じ)。
+        // STEP は HuBASIC にない (LINE STEP(…)・LINE (…)-STEP(…) は Syntax error)
+        bool startOmitted = Peek.IsSymbol("-");
+        HuExpr x1, y1;
+        if (startOmitted)
+        {
+            x1 = new HuNum(0, pos);
+            y1 = new HuNum(0, pos);
+        }
+        else
+        {
+            ExpectSymbol("(");
+            x1 = ParseExpr();
+            ExpectSymbol(",");
+            y1 = ParseExpr();
+            ExpectSymbol(")");
+        }
+        var line = ParseLineEnd(x1, y1, pos);
+        return line switch
+        {
+            HuLineGraphic g => g with { StartOmitted = startOmitted },
+            HuLineText tx => tx with { StartOmitted = startOmitted },
+            _ => line,
+        };
+    }
+
+    /// <summary>LINE の "-" から後ろ (終点と、PSET|PRESET か文字)</summary>
+    private HuStmt ParseLineEnd(HuExpr x1, HuExpr y1, HuPos pos)
+    {
         ExpectSymbol("-");
         ExpectSymbol("(");
         var x2 = ParseExpr();

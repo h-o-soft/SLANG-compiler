@@ -20,7 +20,7 @@ public sealed class SlangBackend : IHuBackend
     /// 出力とランタイム (libx1_basic.asm の BAS_ABI_n) の組の印の番号。出力は MAIN の最初に BAS_ABI_n() を呼ぶ。
     /// 出力とランタイムの約束を変えたら、ランタイムの印と一緒に 1 つ上げる
     /// </summary>
-    public const int BasAbi = 3;
+    public const int BasAbi = 4;
 
     /// <summary>CLEAR 番地の最後に使える番地を書く、出力の頭のコメントの印 (`// clear-top: $DFFF`。ブラウザの口が読む)</summary>
     public const string ClearTopMark = "clear-top:";
@@ -503,6 +503,7 @@ public sealed class SlangBackend : IHuBackend
                 {
                     "INP" or "PEEK@" => $"PORT[{Int(c.Args[0])}]",
                     "PEEK" => $"MEM[{Int(c.Args[0])}]",
+                    "POINT" => $"BAS_POINT({Int(c.Args[0])}, {Int(c.Args[1])})",
                     "ASC" => $"BAS_SASC({Str(c.Args[0])})",
                     "STICK" => $"BAS_STICK({Int(c.Args[0])})",
                     "STRIG" => $"BAS_STRIG({Int(c.Args[0])})",

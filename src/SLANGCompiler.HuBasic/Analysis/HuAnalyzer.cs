@@ -834,6 +834,11 @@ public sealed class HuAnalyzer
             case "PEEK@":
                 ExpectNum(a[0], intConv: true);
                 return HuType.Int;
+            case "POINT":
+                // POINT(x,y): その点の色 (0〜7)。画面の外は -1 (HuBASIC の実測)
+                ExpectNum(a[0], intConv: true);
+                ExpectNum(a[1], intConv: true);
+                return HuType.Int;
             case "TIME":
                 return HuType.Float;
             case "ASC":
@@ -1060,6 +1065,11 @@ public sealed class HuAnalyzer
                 ExpectNum(lg.X2, true);
                 ExpectNum(lg.Y2, true);
                 if (lg.Color != null) ExpectNum(lg.Color, true);
+                break;
+            case HuPset ps:
+                ExpectNum(ps.X, true);
+                ExpectNum(ps.Y, true);
+                if (ps.Color != null) ExpectNum(ps.Color, true);
                 break;
             case HuPaint pt:
                 ExpectNum(pt.X, true);
