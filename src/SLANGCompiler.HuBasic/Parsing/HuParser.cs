@@ -578,10 +578,12 @@ public sealed class HuParser
                 try { top = ParseExpr(); }
                 finally { _exactDecimal = false; }
                 // 小数の綴り (57342.9・1E4・57343!) は、浮動小数に丸める前の字句で見分ける (丸めると整数に見えることがある)。
-                // 括弧の中 (CLEAR (57342.9)) も含め、式に使った字句をすべて見る
-                if (_tokens.Skip(from).Take(_p - from).Any(k => k.Kind == HuTokenKind.Float && !k.Text.All(char.IsAsciiDigit)))
+                // 括弧の中 (CLEAR (57342.9)) も含め、式に使った字句をすべて見る。番地の式の中の数は 0〜65535 に限る
+                // (それより大きな 10 進の数は、途中の値が大きな式を受けるための端の形なのでエラーにする)
+                if (_tokens.Skip(from).Take(_p - from).Any(k => k.Kind == HuTokenKind.Float
+                        && (!k.Text.All(char.IsAsciiDigit) || !long.TryParse(k.Text, out var n) || n > 0xFFFF)))
                 {
-                    _diag.Error("HB0317", "CLEAR の番地は整数の定数で書いてください (小数は未対応)", pos);
+                    _diag.Error("HB0317", "CLEAR の番地は整数の定数で書いてください (式の中の数は 0〜65535。小数は未対応)", pos);
                     SkipToStatementEnd();
                     return null;
                 }
@@ -1235,7 +1237,7 @@ public sealed class HuParser
             case HuTokenKind.Number:
                 Next();
                 return new HuNum(t.Value, pos);
-            case HuTokenKind.Float when _exactDecimal && t.Text.All(char.IsAsciiDigit) && long.TryParse(t.Text, out var exact) && exact <= int.MaxValue:
+            case HuTokenKind.Float when _exactDecimal && t.Text.All(char.IsAsciiDigit) && long.TryParse(t.Text, out var exact) && exact <= 0xFFFF:
                 Next();
                 return new HuNum((int)exact, pos);
             case HuTokenKind.Float:

@@ -470,7 +470,8 @@ public class HuBasicFrontendTests
         Assert.Equal(0xFFFF, AnalyzeOk("10 CLEAR 65535").ClearTop);
         Assert.Equal(0xDFFF, AnalyzeOk("10 CLEAR (57343)").ClearTop);
         Assert.Equal(0xD000, AnalyzeOk("10 CLEAR 49152+4096").ClearTop);      // 32767 を越える 10 進の数も、式の中で整数のまま畳み込む
-        Assert.Equal(0xFFFF, AnalyzeOk("10 CLEAR 70000-4465").ClearTop);      // 途中が 65535 を越えても (浮動小数に丸めない)
+        Assert.Equal(0xFFFF, AnalyzeOk("10 CLEAR 65000+535").ClearTop);       // 浮動小数に丸めない
+        Assert.Equal(0xC000, AnalyzeOk("10 CLEAR 49152*2-49152").ClearTop);   // 途中の値が 65535 を越えてもよい
         Assert.Equal(0xC000, AnalyzeOk("10 CLEAR 2*24576").ClearTop);
         Assert.Null(AnalyzeOk("10 CLEAR 'RESET\n20 CLEAR:REM X").ClearTop);  // 後ろのコメント
     }
@@ -486,6 +487,8 @@ public class HuBasicFrontendTests
     [InlineData("10 CLEAR (5E4)", "HB0317")]
     [InlineData("10 CLEAR ((57343!))", "HB0317")]
     [InlineData("10 CLEAR 49152+0.5", "HB0317")]
+    [InlineData("10 CLEAR 70000-4465", "HB0317")]                  // 式の中の数は 0〜65535
+    [InlineData("10 CLEAR 2147483648-2147434496", "HB0317")]
     [InlineData("10 CLEAR 49152+4096.0", "HB0317")]
     [InlineData("10 CLEAR -57343", "HB0317")]
     [InlineData("10 CLEAR -1", "HB0317")]

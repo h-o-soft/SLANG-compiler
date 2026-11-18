@@ -225,6 +225,12 @@ public class HuBasicEmitTests
         var top = Calls(Transpile("10 A=1:CLEAR &HDFFF:PRINT A"));
         Assert.DoesNotContain("BAS_CLRSTK", top);
         Assert.DoesNotContain("BAS_FCLR", top);
+        // 数の変数: 引数のない CLEAR は整数・浮動小数の変数に 0 を入れる。CLEAR 番地は入れない
+        static List<string> ZeroAssigns(HuTranspileResult r) => r.Flat!.Ops.OfType<FAssign>()
+            .Where(a => a.Value is SLANGCompiler.HuBasic.Parsing.HuNum { Value: 0 } or SLANGCompiler.HuBasic.Parsing.HuFloat { Value: 0 })
+            .Select(a => ((SLANGCompiler.HuBasic.Parsing.HuVar)a.Target).Name).OrderBy(n => n).ToList();
+        Assert.Equal(new[] { "A%", "B!" }, ZeroAssigns(Transpile("10 A%=1:B!=2.5:CLEAR")));
+        Assert.Empty(ZeroAssigns(Transpile("10 A%=1:B!=2.5:CLEAR &HDFFF")));
     }
 
     /// <summary>CLEAR 番地: 頭のコメントと CONST ASM に、いちばん小さい番地 (最後に使える番地) を書く。なければどちらも書かない</summary>

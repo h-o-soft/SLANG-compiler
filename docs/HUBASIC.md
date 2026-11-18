@@ -211,7 +211,7 @@ KEYLIST n・KLIST n・KMODE n   (X1turbo の形。何もしない。0 以外は 
   (後の `NEXT`・`RETURN` は NEXT without FOR・RETURN without GOSUB)、`DATA` の読む位置を始めに戻し、開いているファイルを閉じます。
   `CLEAR 番地` は、HuBASIC と同じく変数を消さず、BASIC が使うメモリの上限 (最後に使える番地) を決めるだけです。
   番地は整数の定数だけ書けます (`CLEAR &HDFFF`、`CLEAR 57343`、整数の定数の足し引き・掛け算の式 `CLEAR &H7000+&H1000` も可。
-  変数を使った式・小数 (`CLEAR 57342.9`、`CLEAR 5E4`) は error HB0317)。2 つ以上あれば、いちばん小さい番地を使います。
+  式の中の数は 0〜65535。変数を使った式・小数 (`CLEAR 57342.9`、`CLEAR 5E4`) は error HB0317)。2 つ以上あれば、いちばん小さい番地を使います。
   変換したプログラムは $1000 から置くので、$1000 より前の番地は error HB0317 です。組み立てた後の大きさの検査 (`--emit` と `--check-bin`) で、
   プログラムの終わりがその番地を越えたら error HB0318 で止まります (ブラウザでは `CheckLayoutClear`)。
 - `POKE@`・`PEEK@` は I/O 空間 (テキスト VRAM `&H3000`〜・属性 `&H2000`〜 など) の読み書きです。値は 0〜255 (外なら Illegal function call。`POKE` も同じ。
