@@ -279,6 +279,7 @@ class Program
     /// 組み立て後のプログラムが、配置先から予約領域の手前に収まるか。
     /// bin の大きさだけでなく、ファイルに含まれない作業領域 (SLANG の __WORK__ から __WORKEND__ まで。
     /// 起動時に 0 で埋められる) の終わりも見る。__WORKEND__ はアセンブラの LST (既定は bin と同じ名前の .LST) から読む。
+    /// CLEAR 番地を書いたプログラムは、LST の H_CLRTOP (最後に使える番地) も読み、終わりがそれを越えないかを見る。
     /// </summary>
     static int CheckBin(string path, string? lstPath)
     {
@@ -290,7 +291,8 @@ class Program
         var workEnd = ReadWorkEnd(lstPath);
         if (workEnd == null)
             return Fail($"{lstPath} に __WORKEND__ が見つかりません");
-        var (fits, message) = HuLayout.Check(binLength, workEnd.Value);
+        var clearTop = ReadEqu(lstPath, SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.ClearTopSymbol);
+        var (fits, message) = HuLayout.Check(binLength, workEnd.Value, clearTop);
         if (!fits)
         {
             Console.Error.WriteLine(message);
@@ -301,9 +303,13 @@ class Program
     }
 
     /// <summary>AILZ80ASM の LST の「<番地>  __WORKEND__ EQU ...」の行から番地を読む</summary>
-    internal static long? ReadWorkEnd(string lstPath)
+    internal static long? ReadWorkEnd(string lstPath) => ReadEqu(lstPath, "__WORKEND__");
+
+    /// <summary>AILZ80ASM の LST の「<値>  名前 EQU ...」の行から値 (4 桁の 16 進) を読む。なければ null</summary>
+    internal static long? ReadEqu(string lstPath, string name)
     {
-        var re = new System.Text.RegularExpressions.Regex(@"^\s*(?:[0-9A-F]{6}\s+)?([0-9A-F]{4})\s+__WORKEND__\s+EQU\b");
+        var re = new System.Text.RegularExpressions.Regex(
+            @"^\s*(?:[0-9A-F]{6}\s+)?([0-9A-F]{4})\s+" + System.Text.RegularExpressions.Regex.Escape(name) + @"\s+EQU\b");
         foreach (var line in File.ReadLines(lstPath))
         {
             var m = re.Match(line);

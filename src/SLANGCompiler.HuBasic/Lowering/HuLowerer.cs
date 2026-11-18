@@ -196,6 +196,19 @@ public sealed class HuLowerer
         InitArrayStates();
     }
 
+    /// <summary>
+    /// 引数のない CLEAR。HuBASIC の実測: 開いているファイルを閉じ、変数と配列を消し (配列はもう一度 DIM できる)、
+    /// FOR・GOSUB の積み上げを空にし (後の NEXT・RETURN はエラー)、DATA の読む位置を始めに戻す
+    /// </summary>
+    private void ClearAll(HuPos pos)
+    {
+        if (_prog.UsesFiles) Call("BAS_FCLOSEA");
+        ClearVariables(pos);
+        if (_prog.UsesRandom) RandomInit();
+        Call("BAS_CLRSTK");
+        if (_prog.DataBytes.Length > 0) Call("BAS_RESTORE", I(0));
+    }
+
     private void LowerStatements(IEnumerable<HuStmt> stmts)
     {
         foreach (var s in stmts) LowerStatement(s);
@@ -297,6 +310,12 @@ public sealed class HuLowerer
                 break;
             case HuInit:
                 Call("BAS_INIT2");
+                break;
+            case HuClear { Top: null } cl:
+                ClearAll(cl.Pos);
+                break;
+            case HuClear:
+                // CLEAR 番地: メモリの上限を決めるだけ (変数は消さない。HuBASIC の実測)。上限は組み立ての後の大きさの検査で見る
                 break;
             case HuDim d:
                 foreach (var (name, bound, bound2) in d.Arrays)
@@ -759,6 +778,7 @@ public sealed class HuLowerer
                 yield return dv.Second;
                 break;
             case HuMaxFiles mf: yield return mf.Count; break;
+            case HuClear { Top: not null } cl: yield return cl.Top; break;
             case HuField fd:
                 yield return fd.Number;
                 foreach (var (width, target) in fd.Items)

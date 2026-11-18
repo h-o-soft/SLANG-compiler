@@ -69,6 +69,8 @@ public sealed class HuAnalyzer
     /// <summary>ファイルの緩衝を取る本数 (定数のファイル番号と MAXFILES の最大。2 未満なら 2)。式があれば 15</summary>
     private int _fileCap = 2;
     private bool _fileCapDynamic;
+    /// <summary>CLEAR 番地のいちばん小さい番地 (最後に使える番地)。CLEAR 番地がなければ null</summary>
+    private int? _clearTop;
     /// <summary>ランダム (FIELD・GET・PUT・LSET・RSET か、OPEN のモードが "R" か式) を使うか</summary>
     private bool _usesRandom;
     /// <summary>レコードの緩衝を取る番号の上限 (ランダムに使う定数の番号の最大)。式があればファイルの緩衝の本数と同じ</summary>
@@ -142,6 +144,7 @@ public sealed class HuAnalyzer
             UsesRandom = _usesRandom,
             RecordBuffers = RecordBuffers,
             FieldVars = FieldVarIds(),
+            ClearTop = _clearTop,
         };
         if (program.FieldVars.Count > MaxFieldVars)
             _diag.Error("HB0301", $"FIELD に使う文字列の変数 (SWAP の相手を含む) は {MaxFieldVars} 個までです ({program.FieldVars.Count} 個)", _firstFilePos);
@@ -1069,6 +1072,9 @@ public sealed class HuAnalyzer
                 else
                     _fileCapDynamic = true;
                 break;
+            case HuClear cl:
+                if (cl.Top != null) CheckClearTop(cl.Top, cl.Pos);
+                break;
             case HuDim:
             case HuDefType:
             case HuData:
@@ -1079,6 +1085,39 @@ public sealed class HuAnalyzer
             case HuInit:
                 break;
         }
+    }
+
+    /// <summary>
+    /// CLEAR 番地: 番地は整数の定数で 0〜65535。変換したプログラムは HuLayout.LoadAddress から置くので、それより前の番地は
+    /// どんなプログラムも入らない (error)。いちばん小さい番地を覚え、組み立ての後の大きさの検査 (HuLayout.Check) に渡す
+    /// </summary>
+    private void CheckClearTop(HuExpr top, HuPos pos)
+    {
+        if (CheckExpr(top, true) == HuType.Str)
+        {
+            _diag.Error("HB0404", "CLEAR の番地に文字列は使えません", top.Pos);
+            return;
+        }
+        // 32767 を越える 10 進の数 (CLEAR 57343) は浮動小数の定数として読まれるので、整数の値の浮動小数の定数 1 つも受ける
+        long? value = ContainsFloat(top)
+            ? (top is HuFloat f && f.Value == Math.Floor(f.Value) && Math.Abs(f.Value) <= 1e6 ? (long)f.Value : null)
+            : ConstValue(top);
+        if (value is not long v)
+        {
+            _diag.Error("HB0317", "CLEAR の番地は整数の定数で書いてください (変数や式の番地は未対応)", pos);
+            return;
+        }
+        if (v < 0 || v > 0xFFFF)
+        {
+            _diag.Error("HB0317", $"CLEAR の番地は 0〜65535 (&H0〜&HFFFF) です ({v})", pos);
+            return;
+        }
+        if (v < HuLayout.LoadAddress)
+        {
+            _diag.Error("HB0317", $"CLEAR の番地 &H{v:X4} は、変換したプログラムの置き場 &H{HuLayout.LoadAddress:X4} より前です", pos);
+            return;
+        }
+        _clearTop = _clearTop is int prev ? Math.Min(prev, (int)v) : (int)v;
     }
 
     private void CheckForVar(string name, string stmt, HuPos pos)

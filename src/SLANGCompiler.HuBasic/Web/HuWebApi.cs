@@ -16,8 +16,9 @@ public static class HuWebApi
     /// <summary>
     /// BASIC のファイルの中身を変換する。sourceName は入力のファイル名 (SL の頭の `// source:` と IPL の起動名の元)。
     /// optionsJson は CLI のオプションに当たる項目の object (空文字列は {} と同じ)。
-    /// 結果は {"ok","sl","diskMainName","requiredEnv","diagnostics":[…]}、オプションの誤りは {"ok":false,"error"}。
-    /// requiredEnv は、ファイルの命令を使うなら "x1native_hufs" (そのディスクで組み立てる)、使わなければ null
+    /// 結果は {"ok","sl","diskMainName","requiredEnv","clearTop","diagnostics":[…]}、オプションの誤りは {"ok":false,"error"}。
+    /// requiredEnv は、ファイルの命令を使うなら "x1native_hufs" (そのディスクで組み立てる)、使わなければ null。
+    /// clearTop は CLEAR 番地のいちばん小さい番地 (最後に使える番地。CheckLayoutClear にそのまま渡す)、なければ null
     /// </summary>
     public static string Transpile(byte[] source, string sourceName, string optionsJson)
     {
@@ -34,6 +35,8 @@ public static class HuWebApi
             w.WriteString("diskMainName", result.Output != null ? ReadDiskMainName(result.Output) : "");
             if (result.RequiredEnv != null) w.WriteString("requiredEnv", result.RequiredEnv);
             else w.WriteNull("requiredEnv");
+            if (result.Output != null && result.Program?.ClearTop is int clearTop) w.WriteNumber("clearTop", clearTop);
+            else w.WriteNull("clearTop");
             w.WriteStartArray("diagnostics");
             foreach (var d in result.Diagnostics.Items)
             {
@@ -55,12 +58,26 @@ public static class HuWebApi
     /// 組み立て後の大きさの検査。binLength は bin のバイト数、workEnd はアセンブラの記号 __WORKEND__ の値。
     /// 結果は {"ok","message","loadAddress","reservedStart"}。message は CLI の --check-bin と同じ 1 行
     /// </summary>
-    public static string CheckLayout(int binLength, int workEnd)
+    public static string CheckLayout(int binLength, int workEnd) => CheckLayoutCore(binLength, workEnd, null);
+
+    /// <summary>
+    /// CheckLayout に、CLEAR 番地の上限を足したもの。clearTop は Transpile の結果の clearTop (最後に使える番地) をそのまま渡す。
+    /// 終わりがその番地 + 1 を越えたら ok は false (message は error HB0318)。予約領域の検査 (HB0312) はいつも行う。
+    /// clearTop が 0〜65535 の外なら {"ok":false,"error"}
+    /// </summary>
+    public static string CheckLayoutClear(int binLength, int workEnd, int clearTop)
+    {
+        if (clearTop < 0 || clearTop > 0xFFFF)
+            return ErrorJson($"hubasic2sl: CLEAR の番地 {clearTop} が 0〜65535 の外です");
+        return CheckLayoutCore(binLength, workEnd, clearTop);
+    }
+
+    private static string CheckLayoutCore(int binLength, int workEnd, int? clearTop)
     {
         if (binLength < 0) return ErrorJson($"hubasic2sl: bin の大きさが負です: {binLength}");
         if (workEnd < HuLayout.LoadAddress)
             return ErrorJson($"hubasic2sl: 作業領域の終わり ${workEnd:X4} が配置先 ${HuLayout.LoadAddress:X4} より前です");
-        var (fits, message) = HuLayout.Check(binLength, workEnd);
+        var (fits, message) = HuLayout.Check(binLength, workEnd, clearTop);
         return Json(w =>
         {
             w.WriteBoolean("ok", fits);

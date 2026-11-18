@@ -205,6 +205,41 @@ public class HuBasicEmitTests
         Assert.Equal(Transpile(with).Output, Transpile(without).Output);
     }
 
+    /// <summary>
+    /// 引数のない CLEAR: 変数と配列を消し (MAXFILES と同じ)、制御スタックを空にし、DATA を始めに戻す。ファイルを使うなら先に全部閉じる。
+    /// CLEAR 番地は何も出さない
+    /// </summary>
+    [Fact]
+    public void Lowering_ClearResetsVariablesStackDataAndFiles()
+    {
+        static List<string> Calls(HuTranspileResult r) => r.Flat!.Ops.OfType<FCall>().Select(c => c.Function).ToList();
+        var plain = Calls(Transpile("10 DEFINT A-Z:A=1:DIM B(3):S$=\"X\":CLEAR"));
+        var tail = string.Join(",", plain.SkipWhile(c => c != "BAS_DIM").Skip(1).SkipWhile(c => c != "BAS_FCLR").Take(4));
+        Assert.Equal("BAS_FCLR,BAS_FCLR,BAS_CLRSTK,BAS_END", tail);   // 文字列の変数・配列、制御スタック (DATA なし)、プログラムの終わり
+        var data = Calls(Transpile("10 READ A:CLEAR\n20 DATA 1"));
+        Assert.Equal(new[] { "BAS_CLRSTK", "BAS_RESTORE" }, data.SkipWhile(c => c != "BAS_CLRSTK").Take(2));
+        var files = Calls(Transpile("10 OPEN \"O\",#1,\"T\":CLEAR"));
+        Assert.Equal("BAS_FCLOSEA", files.SkipWhile(c => c != "BAS_FOPEN").Skip(1).First());
+        Assert.Contains("BAS_CLRSTK", files);
+        // CLEAR 番地は変数を消さない
+        var top = Calls(Transpile("10 A=1:CLEAR &HDFFF:PRINT A"));
+        Assert.DoesNotContain("BAS_CLRSTK", top);
+        Assert.DoesNotContain("BAS_FCLR", top);
+    }
+
+    /// <summary>CLEAR 番地: 頭のコメントと CONST ASM に、いちばん小さい番地 (最後に使える番地) を書く。なければどちらも書かない</summary>
+    [Fact]
+    public void Emit_ClearTopMarkAndSymbol()
+    {
+        var sl = Transpile("10 CLEAR &HDFFF\n20 CLEAR &HC000:CLEAR").Output!;
+        Assert.Contains("// clear-top: $C000\n", sl.Replace("\r\n", "\n"));
+        Assert.Contains("CONST ASM H_CLRTOP = $C000;", sl);
+        Assert.Equal(1, sl.Split("H_CLRTOP").Length - 1);
+        var none = Transpile("10 CLEAR:PRINT 1").Output!;
+        Assert.DoesNotContain("clear-top", none);
+        Assert.DoesNotContain("H_CLRTOP", none);
+    }
+
     [Fact]
     public void Lowering_ZeroTripForExitLabelIsAfterItsVariablePart()
     {
@@ -1782,6 +1817,48 @@ public class HuBasicEmitTests
         var se = proc.StandardError.ReadToEndAsync();
         Assert.True(proc.WaitForExit(180_000), "slangbuild timed out");
         return (proc.ExitCode, so.Result + "\n" + se.Result);
+    }
+
+    /// <summary>
+    /// CLEAR 番地を書いたプログラムを実際に組み立てると、LST に H_CLRTOP の行が出て、--check-bin と同じ検査がそれを読む。
+    /// 終わりが番地 + 1 以下なら収まり、越えたら HB0318
+    /// </summary>
+    [SkippableFact]
+    public void Build_ClearTopIsCheckedFromLst()
+    {
+        var root = RepoRoot();
+        var asmPath = Path.Combine(root, "tools", OperatingSystem.IsWindows() ? "AILZ80ASM.exe" : "AILZ80ASM");
+        Skip.IfNot(File.Exists(asmPath), "AILZ80ASM がない (make setup-tools で取得)");
+        var dir = Path.Combine(Path.GetTempPath(), $"hubasic2sl_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var sl = Path.Combine(dir, "CLR.SL");
+            File.WriteAllText(sl, Transpile("10 CLEAR &HDFFF:A=4:DIM B(3):B(1)=9\n20 FOR I=1 TO 2:PRINT A;B(1):CLEAR:NEXT\n30 DATA 1").Output!);
+            var outBase = Path.Combine(dir, "CLR");
+            RunSlangbuild(root, dir, sl, asmPath, outBase);
+            AssertBuilt(outBase);
+            var lst = outBase + ".LST";
+            Assert.Equal(0xDFFF, SLANGCompiler.HuBasic.CLI.Program.ReadEqu(lst, "H_CLRTOP"));
+            long binLength = new FileInfo(outBase + ".bin").Length;
+            long workEnd = SLANGCompiler.HuBasic.CLI.Program.ReadWorkEnd(lst)!.Value;
+            long end = Math.Max(0x1000 + binLength, workEnd);
+            // 実際の終わりで、上限ちょうど (最後に使える番地 = end - 1) は収まり、1 つ下は HB0318
+            Assert.True(SLANGCompiler.HuBasic.HuLayout.Check(binLength, workEnd, end - 1).Fits);
+            var (fits, message) = SLANGCompiler.HuBasic.HuLayout.Check(binLength, workEnd, end - 2);
+            Assert.False(fits);
+            Assert.Contains("HB0318", message);
+            Assert.True(SLANGCompiler.HuBasic.HuLayout.Check(binLength, workEnd, SLANGCompiler.HuBasic.CLI.Program.ReadEqu(lst, "H_CLRTOP")).Fits);
+            // CLEAR 番地のないプログラムの LST には H_CLRTOP がない
+            var sl2 = Path.Combine(dir, "NOCLR.SL");
+            File.WriteAllText(sl2, Transpile("10 CLEAR:PRINT 1").Output!);
+            RunSlangbuild(root, dir, sl2, asmPath, Path.Combine(dir, "NOCLR"));
+            Assert.Null(SLANGCompiler.HuBasic.CLI.Program.ReadEqu(Path.Combine(dir, "NOCLR.LST"), "H_CLRTOP"));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
     }
 
     /// <summary>bin ができていて、作業領域 (__WORKEND__) まで含めて $1000〜予約領域 $FFE0 の手前に収まる</summary>

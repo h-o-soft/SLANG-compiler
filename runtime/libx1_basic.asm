@@ -58,7 +58,7 @@ RET
 
 ; ============================================================ 組の印
 
-; @name BAS_ABI_1
+; @name BAS_ABI_2
 ; @resident shared
 ; @param_count 0
 ; hubasic2sl の出力とこのランタイムの組の印 (何もしない)。出力は MAIN の最初に BAS_ABI_<n>() を呼ぶので、
@@ -1478,6 +1478,37 @@ RET
 
 
 ; ============================================================ 配列
+
+; @name BAS_CLRSTK
+; @resident shared
+; @param_count 0
+; @calls BAS_WORK
+; 引数のない CLEAR: 制御スタック (FOR・GOSUB の枠) を空にする (HuBASIC の実測: CLEAR の後の NEXT・RETURN はエラー)
+LD HL, BAS_CSTK
+LD (BAS_CSP), HL
+RET
+
+
+; @name BAS_FCLR
+; @resident shared
+; @param_count 2
+; HL = 番地、DE = バイト数 → 0 で埋める (MAXFILES と引数のない CLEAR で変数を消す)
+LD A, D
+OR E
+RET Z
+LD (HL), 0
+DEC DE
+LD A, D
+OR E
+RET Z
+LD B, D
+LD C, E
+LD D, H
+LD E, L
+INC DE
+LDIR
+RET
+
 
 ; @name BAS_DIM
 ; @resident shared

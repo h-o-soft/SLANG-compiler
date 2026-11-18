@@ -438,7 +438,7 @@ public class HuBasicFrontendTests
     }
 
     /// <summary>
-    /// THEN の後ろが空の形は error (本物は空の THEN 節として受けて何もしない。端の形なのでエラーにする)。
+    /// THEN の後ろが空・文でない形は error HB0208 (本物は空の THEN 節として受けて何もしない。端の形なのでエラーにする)。
     /// `IF A=1 100` は、本物は数の中の空白を読み飛ばして条件を A=1100 と読む (実測)
     /// </summary>
     [Theory]
@@ -447,25 +447,41 @@ public class HuBasicFrontendTests
     [InlineData("10 IF A=1 :PRINT \"X\"")]
     [InlineData("10 IF A=1 100")]
     [InlineData("10 IF A=1 )")]
-    public void Parser_IfWithEmptyThenIsError(string text)
-    {
-        var diag = new HuDiagnosticBag();
-        HuParser.ParseSingleLine(text, diag);
-        Assert.True(diag.HasErrors, text);
-    }
-
-    [Theory]
-    [InlineData("10 IF A=1")]
-    [InlineData("10 IF A=1 ELSE PRINT \"E\"")]
-    [InlineData("10 IF A=1 :PRINT \"X\"")]
     public void Parser_IfWithEmptyThenIsHB0208(string text)
     {
         var diag = new HuDiagnosticBag();
         HuParser.ParseSingleLine(text, diag);
-        Assert.Contains(diag.Items, d => d.Code == "HB0208");
+        Assert.Contains(diag.Items, d => d.Code == "HB0208" && d.Severity == HuSeverity.Error);
     }
 
+    // ------------------------------------------------------------ CLEAR
+
+    /// <summary>CLEAR と CLEAR 番地 (整数の定数)。番地はいちばん小さいものを ClearTop に</summary>
     [Fact]
+    public void Analyzer_ClearTopIsSmallestAddress()
+    {
+        Assert.Null(AnalyzeOk("10 CLEAR:A=1").ClearTop);
+        Assert.Equal(0xDFFF, AnalyzeOk("10 CLEAR &HDFFF").ClearTop);
+        Assert.Equal(0xC000, AnalyzeOk("10 CLEAR &HDFFF:CLEAR 49152\n20 IF A THEN CLEAR &HF000").ClearTop);
+        Assert.Equal(0x1000, AnalyzeOk("10 CLEAR &H1000").ClearTop);
+        Assert.Equal(0xFFFF, AnalyzeOk("10 CLEAR &HFFFF").ClearTop);
+        Assert.Equal(0x8000, AnalyzeOk("10 CLEAR &H7000+&H1000").ClearTop);
+    }
+
+    [Theory]
+    [InlineData("10 CLEAR A", "HB0317")]              // 変数の番地
+    [InlineData("10 CLEAR 1.5*2", "HB0317")]          // 浮動小数
+    [InlineData("10 CLEAR 57343.5", "HB0317")]
+    [InlineData("10 CLEAR -57343", "HB0317")]
+    [InlineData("10 CLEAR -1", "HB0317")]
+    [InlineData("10 CLEAR 70000", "HB0317")]
+    [InlineData("10 CLEAR &HFFF", "HB0317")]          // 置き場 $1000 より前
+    [InlineData("10 CLEAR 100", "HB0317")]            // 本物も Illegal function call
+    [InlineData("10 CLEAR 1,&HDFFF", "HB0301")]       // 2 つの引数 (本物は Illegal function call)
+    [InlineData("10 CLEAR \"A\"", "HB0404")]
+    public void Analyzer_ClearErrors(string program, string code) => AssertError(program, code);
+
+        [Fact]
     public void Parser_PrintItemsAndChannel()
     {
         var line = HuParser.ParseSingleLine("10 PRINT#0\"GO\";A,SPC(3);", new HuDiagnosticBag());

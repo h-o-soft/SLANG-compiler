@@ -561,6 +561,19 @@ public sealed class HuParser
                 ExpectSymbol("=");
                 return new HuMidSet(name, start, len, ParseExpr(), pos);
             }
+            case "CLEAR":
+            {
+                // CLEAR か CLEAR 番地。2 つの引数の形 (HuBASIC は CLEAR 1,&HDFFF を Illegal function call にする) は未対応
+                if (AtStatementEnd) return new HuClear(null, pos);
+                var top = ParseExpr();
+                if (Peek.IsSymbol(","))
+                {
+                    Error("HB0301", "CLEAR の引数は番地 1 つだけに対応しています");
+                    SkipToStatementEnd();
+                    return null;
+                }
+                return new HuClear(top, pos);
+            }
             case "DEFCHR$":
             {
                 ExpectSymbol("(");

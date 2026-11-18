@@ -67,13 +67,30 @@ public class HuBasicWebTests
     [InlineData(16, "FFE0", 0, "hubasic2sl: $1000-$FFDF に収まります (bin $1010、作業領域 $FFE0、残り 0 バイト)")]
     [InlineData(16, "FFE1", 1, "hubasic2sl: error HB0312: プログラムの終わり $FFE1 (bin $1010、作業領域 $FFE1) が 予約領域 $FFE0 を越えています (1 バイト超過)")]
     public void Cli_CheckBinFixedText(int binLength, string workEnd, int expectedCode, string expectedLine)
+        => CheckBinCase(binLength, workEnd, null, expectedCode, expectedLine);
+
+    /// <summary>
+    /// --check-bin は LST の H_CLRTOP (CLEAR 番地の最後に使える番地) も見る。終わりが番地 + 1 ちょうどなら収まり、1 越えで HB0318。
+    /// 番地が予約領域より上でも、予約領域の検査 (HB0312) は弱まらない
+    /// </summary>
+    [Theory]
+    [InlineData(0xD000, "2000", "DFFF", 0, "hubasic2sl: $1000-$DFFF に収まります (bin $E000、作業領域 $2000、CLEAR の上限 $DFFF まで残り 0 バイト)")]
+    [InlineData(0xD001, "2000", "DFFF", 1, "hubasic2sl: error HB0318: プログラムの終わり $E001 (bin $E001、作業領域 $2000) が CLEAR で決めたメモリの上限 $DFFF を越えています (1 バイト超過)")]
+    [InlineData(16, "E001", "DFFF", 1, "hubasic2sl: error HB0318: プログラムの終わり $E001 (bin $1010、作業領域 $E001) が CLEAR で決めたメモリの上限 $DFFF を越えています (1 バイト超過)")]
+    [InlineData(0xEFE0, "2000", "FFF0", 0, "hubasic2sl: $1000-$FFDF に収まります (bin $FFE0、作業領域 $2000、残り 0 バイト)")]
+    [InlineData(0xEFE1, "2000", "FFF0", 1, "hubasic2sl: error HB0312: プログラムの終わり $FFE1 (bin $FFE1、作業領域 $2000) が 予約領域 $FFE0 を越えています (1 バイト超過)")]
+    public void Cli_CheckBinReadsClearTop(int binLength, string workEnd, string clearTop, int expectedCode, string expectedLine)
+        => CheckBinCase(binLength, workEnd, clearTop, expectedCode, expectedLine);
+
+    private static void CheckBinCase(int binLength, string workEnd, string? clearTop, int expectedCode, string expectedLine)
     {
         var dir = NewTempDir();
         try
         {
             var bin = Path.Combine(dir, "A.bin");
             File.WriteAllBytes(bin, new byte[binLength]);
-            File.WriteAllText(Path.Combine(dir, "A.LST"), $"       {workEnd}                     __WORKEND__ EQU $\n");
+            var lst = clearTop == null ? "" : $"       {clearTop}                     H_CLRTOP EQU ${clearTop}\n";
+            File.WriteAllText(Path.Combine(dir, "A.LST"), lst + $"       {workEnd}                     __WORKEND__ EQU $\n");
             var (code, so, se) = RunCliCaptured("--check-bin", bin);
             Assert.Equal(expectedCode, code);
             var (hit, other) = expectedCode == 0 ? (so, se) : (se, so);
@@ -261,6 +278,43 @@ public class HuBasicWebTests
         Assert.Equal(message, web.GetProperty("message").GetString());
         Assert.Equal(0x1000, web.GetProperty("loadAddress").GetInt32());
         Assert.Equal(0xFFE0, web.GetProperty("reservedStart").GetInt32());
+    }
+
+    /// <summary>
+    /// Transpile の JSON の clearTop (最後に使える番地) を、そのまま CheckLayoutClear に渡せば正しい:
+    /// ちょうど収まる・1 バイト越える (HB0318)・予約領域が先に来る (HB0312)
+    /// </summary>
+    [Fact]
+    public void Web_ClearTopRoundTrip()
+    {
+        var t = Parse(HuWebApi.Transpile(Encoding.ASCII.GetBytes("10 CLEAR &HDFFF\n"), "A.BAS", "{}"));
+        int top = t.GetProperty("clearTop").GetInt32();
+        Assert.Equal(0xDFFF, top);
+        var fit = Parse(HuWebApi.CheckLayoutClear(0xD000, 0x2000, top));
+        Assert.True(fit.GetProperty("ok").GetBoolean());
+        Assert.Contains("CLEAR の上限 $DFFF まで残り 0 バイト", fit.GetProperty("message").GetString());
+        var over = Parse(HuWebApi.CheckLayoutClear(0xD001, 0x2000, top));
+        Assert.False(over.GetProperty("ok").GetBoolean());
+        Assert.Contains("HB0318", over.GetProperty("message").GetString());
+        var high = Parse(HuWebApi.Transpile(Encoding.ASCII.GetBytes("10 CLEAR &HFFF0\n"), "A.BAS", "{}"));
+        var reserved = Parse(HuWebApi.CheckLayoutClear(0xEFE1, 0x2000, high.GetProperty("clearTop").GetInt32()));
+        Assert.False(reserved.GetProperty("ok").GetBoolean());
+        Assert.Contains("HB0312", reserved.GetProperty("message").GetString());
+        // CLEAR 番地がなければ null
+        var none = Parse(HuWebApi.Transpile(Encoding.ASCII.GetBytes("10 CLEAR\n"), "A.BAS", "{}"));
+        Assert.Equal(JsonValueKind.Null, none.GetProperty("clearTop").ValueKind);
+        var bad = Parse(HuWebApi.Transpile(Encoding.ASCII.GetBytes("10 CLEAR A\n"), "A.BAS", "{}"));
+        Assert.Equal(JsonValueKind.Null, bad.GetProperty("clearTop").ValueKind);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0x10000)]
+    public void Web_CheckLayoutClearRejectsBadTop(int clearTop)
+    {
+        var web = Parse(HuWebApi.CheckLayoutClear(16, 0x2000, clearTop));
+        Assert.False(web.GetProperty("ok").GetBoolean());
+        Assert.Contains("0〜65535 の外", web.GetProperty("error").GetString());
     }
 
     [Theory]

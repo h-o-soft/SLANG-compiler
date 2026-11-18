@@ -124,6 +124,12 @@ public sealed record HuKill(HuExpr Name, HuPos Pos) : HuStmt(Pos);
 /// <summary>NAME 古い名前 AS 新しい名前</summary>
 public sealed record HuNameAs(HuExpr Old, HuExpr New, HuPos Pos) : HuStmt(Pos);
 
+/// <summary>
+/// CLEAR [番地]。Top が null (引数なし) なら変数・配列・制御スタック・DATA の位置・開いているファイルを始めに戻す。
+/// Top があれば、BASIC が使うメモリの上限 (最後に使える番地) を決めるだけ (変数は消さない。HuBASIC の実測)
+/// </summary>
+public sealed record HuClear(HuExpr? Top, HuPos Pos) : HuStmt(Pos);
+
 /// <summary>MAXFILES 本数 (変数を消し、開いているファイルを閉じる)</summary>
 public sealed record HuMaxFiles(HuExpr Count, HuPos Pos) : HuStmt(Pos);
 

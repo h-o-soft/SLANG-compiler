@@ -39,6 +39,8 @@ hubasic2sl PROG.BAS --emit tape --wait line:480   # PROG.tap (テープ) を作�
   slangbuild --emit disk -E x1native_slfs PROG.SL -o PROG   # PROG.d88 を作る (テープは --emit tape -E x1native)
   hubasic2sl --check-bin PROG.bin --lst PROG.LST     # メモリ ($1000〜$FFDF) に収まるかを確かめる
   ```
+  `--check-bin` には、同じ組み立てでできた bin と LST の組を渡してください (`CLEAR 番地` の上限も LST から読みます)。
+  変換だけして slangbuild を手で動かしたときは、この行を回すまで大きさは確かめられません。
 - サンプル: [examples/hubasic/](../examples/hubasic/)
 
 ### 入力のファイル
@@ -61,7 +63,7 @@ hubasic2sl PROG.BAS --emit tape --wait line:480   # PROG.tap (テープ) を作�
 | `--string-len <N>` | 文字列 1 本の長さの上限 (1〜255、既定 255)。文字列の変数と文字列の配列の要素は N+1 バイトずつ取るので、メモリが減る。N を超える文字列を変数に入れると、切り詰めずに String too long で止まる。文字列の定数・計算の途中・つなげたときの上限は 255 のまま |
 | `--no-line-numbers` | 各行の頭 (と GOSUB の戻り先・`LABEL` の所) で実行中の行番号を書かない。1 か所 6 バイト・約 6.5 マイクロ秒の分、小さく速くなる。実行時エラーは「<メッセージ>」と「Ok」だけになり、` in <行番号>` が出ない |
 | `--data-budget <bytes>` | 静的データの上限 (既定 24576) |
-| `--check-bin <bin>` / `--lst <lst>` | 組み立てた後の大きさを検査する |
+| `--check-bin <bin>` / `--lst <lst>` | 組み立てた後の大きさを検査する (`$FFE0` の予約領域と、`CLEAR 番地` を書いたプログラムはその番地。どちらも LST から読む) |
 | `--emit disk` / `--emit tape` | 変換・組み立て・大きさの検査を続けてして、ディスクイメージ (`.d88`) かテープ (`.tap`) を作る (上の「使い方」) |
 | `--disk-main-name <name>` | IPL の起動名 (`--emit disk` のとき。既定は BASIC のファイル名) |
 | `--tape-name <name>` | テープの名前 (`--emit tape` のとき。既定は `PROG`) |
@@ -121,12 +123,15 @@ const api = (await runtime.getAssemblyExports('hubasic2sl-wasm')).SLANGCompiler.
 
 const bytes = new Uint8Array(await (await fetch('PROG.BAS')).arrayBuffer());
 const r = JSON.parse(api.Transpile(bytes, 'PROG.BAS', JSON.stringify({ wait: 'line:480' })));
-// r = { ok, sl, diskMainName, requiredEnv, diagnostics: [{ severity, code, message, sourceLine, column, basicLine, text }] }
+// r = { ok, sl, diskMainName, requiredEnv, clearTop, diagnostics: [{ severity, code, message, sourceLine, column, basicLine, text }] }
 // requiredEnv はファイルの命令を使うなら "x1native_hufs" (そのディスクで組み立てる)、使わなければ null
+// clearTop は CLEAR 番地のいちばん小さい番地 (最後に使える番地)、なければ null
 // オプションの誤りは { ok: false, error }
 
 const c = JSON.parse(api.CheckLayout(binLength, workEnd));   // workEnd はアセンブラの記号 __WORKEND__ の値
 // c = { ok, message, loadAddress, reservedStart }。message は --check-bin と同じ 1 行。__WORKEND__ が無いときは呼ぶ側で失敗にする
+// r.clearTop が null でなければ、代わりに CheckLayoutClear(binLength, workEnd, r.clearTop) を呼ぶ (値はそのまま渡す)。
+// 終わりがその番地を越えたら ok: false (message は error HB0318)。予約領域の検査はいつも行う
 const v = JSON.parse(api.Version());                          // { version, informational: "0.1.0-alpha+<SHA>", basAbi }
 ```
 
@@ -183,7 +188,7 @@ CONSOLE [ys,yl[,xs,xl]]   (テキストの窓。下の説明)
 CFLASH [n]  CSIZE [n]  CGEN [n]  DEFCHR$(n)=文字列  LINE (x1,y1)-(x2,y2),"文字"[,B|BF]
 LINE (x1,y1)-(x2,y2),PSET|PRESET[,色][,B|BF]   (グラフィック画面の線・箱・塗りつぶした箱)
 PAINT (x,y),色[,境界色 (7 つまで)]
-MID$(変数,位置[,長さ])=文字列  INPUT ["案内";|,] 変数,…  SWAP a,b
+MID$(変数,位置[,長さ])=文字列  INPUT ["案内";|,] 変数,…  SWAP a,b  CLEAR [番地]
 OUT ポート,値  INIT  CLICK ON/OFF  REPEAT ON/OFF  PALET [c,p]  PRW [n]
 POKE 番地,値[,値…]  POKE@ ポート,値[,値…]  CALL 番地  TIME=秒
 PLAY "MML"  PLAY n  MUSIC (PLAY と同じ)  TEMPO n  BEEP [0|1]  SOUND レジスタ,値  PAUSE n  RANDOMIZE [n]
@@ -201,7 +206,13 @@ KEYLIST n・KLIST n・KMODE n   (X1turbo の形。何もしない。0 以外は 
   同じ名前の `LABEL` が 2 つあれば前の方 (warning HB0505)。名前は文字列の定数だけ書けます。
 - `CALL` は番地のマシン語を呼びます (RET で戻る。IX・IY は保存します)。マシン語は `POKE` で置いてください。変換したプログラムは
   $1000 から置かれ、変数などの作業領域がその後ろに続きます。マシン語や `POKE` で使う番地がそれと重ならないようにしてください
-  (`CLEAR 番地` はありません。組み立てた `.bin` の大きさと、リストの `__WORKEND__` で終わりの番地が分かります)。
+  (`CLEAR 番地` を書くと、組み立てた後の大きさの検査で、プログラムの終わりがその番地を越えないかを確かめます。下の `CLEAR`)。
+- 引数のない `CLEAR` は、HuBASIC と同じく、変数を 0・空にし、配列を消し (もう一度 `DIM` できる)、FOR・GOSUB の積み上げを空にし
+  (後の `NEXT`・`RETURN` は NEXT without FOR・RETURN without GOSUB)、`DATA` の読む位置を始めに戻し、開いているファイルを閉じます。
+  `CLEAR 番地` は、HuBASIC と同じく変数を消さず、BASIC が使うメモリの上限 (最後に使える番地) を決めるだけです。
+  番地は整数の定数だけ書けます (`CLEAR &HDFFF`、`CLEAR 57343`。変数や式・小数は error HB0317)。2 つ以上あれば、いちばん小さい番地を使います。
+  変換したプログラムは $1000 から置くので、$1000 より前の番地は error HB0317 です。組み立てた後の大きさの検査 (`--emit` と `--check-bin`) で、
+  プログラムの終わりがその番地を越えたら error HB0318 で止まります (ブラウザでは `CheckLayoutClear`)。
 - `POKE@`・`PEEK@` は I/O 空間 (テキスト VRAM `&H3000`〜・属性 `&H2000`〜 など) の読み書きです。値は 0〜255 (外なら Illegal function call。`POKE` も同じ。
   HuBASIC と同じく、値は先に 16 ビットに回り込むので、`-65535` は 1 として書かれます)。
 - `TIME` はサブ CPU の時計で数える秒です (`CALL` でマシン語を動かしている間も進みます)。
@@ -375,7 +386,7 @@ FILES [ディスクリプタ]   DEVI$ ディスクリプタ,レコード,文字�
 ## まだないもの (変換のときの error)
 
 - 命令: `CIRCLE`・`PSET`・`POLY` などほかのグラフィックの命令、`LINE -(x,y)`・`STEP`、`DEF FN`、`ON ERROR`、`USR`、`ERASE`、
-  `CLEAR`・`LOADM`・`RUN "ファイル"`、`TIME$`、キーボードからの `LINE INPUT`、
+  `CLEAR` の 2 つの引数の形 (`CLEAR 1,&HDFFF`)、`LOADM`・`RUN "ファイル"`、`TIME$`、キーボードからの `LINE INPUT`、
   `LOAD`/`SAVE` などのディスク・テープの命令 (error HB0301)
 - 関数: `OCT$`・`MKI$`・`CVI` など (error HB0302)
 - 3 次元以上の配列 (error HB0303。2 次元までにすると決めたもの)、`MID$` の文の配列の要素
@@ -397,6 +408,10 @@ FILES [ディスクリプタ]   DEVI$ ディスクリプタ,レコード,文字�
     (HuBASIC は Format over)。書式に数値の欄がないと、HuBASIC は Illegal function call、こちらは値をふつうに出す。
   - `RANDOMIZE` の後の乱数の並びは HuBASIC と違います。
 - プログラムの流れ
+  - 引数のない `CLEAR` の後の `WEND`・`UNTIL` は、HuBASIC は WEND without WHILE・UNTIL without REPEAT ですが、こちらはループを続けます
+    (WHILE・REPEAT の行き先は変換のときに決めているため)。
+  - `CLEAR 番地` で、HuBASIC が低すぎる (Illegal function call。`&H8000` など) か高すぎる (Out of memory。`&HFFFF`) とする番地でも、
+    変換したプログラムが収まれば通ります。
   - `DEFINT` などはプログラム全体に効きます (HuBASIC は実行した時点から。前の行で使っていると warning HB0411)。
   - 整数だけの代入で、配列の添字の範囲外と右辺のエラーが両方あると、右辺のエラーが先に出る。
   - 交差した `NEXT` (`FOR Y…FOR X…NEXT Y`) は続けて動く (HuBASIC は FOR without NEXT)。ループが終わった後の余分な `NEXT` は NEXT without FOR。
@@ -446,7 +461,7 @@ FILES [ディスクリプタ]   DEVI$ ディスクリプタ,レコード,文字�
 |---|---|
 | error HB01xx | 文字・数値の書き方 (変換できない文字、大きすぎる数、1 行 255 文字超え、DATA が大きすぎる など) |
 | error HB02xx | 構文 (文として読めない、`:` や `)` が足りない、行番号がない など) |
-| error HB03xx | 未対応 (命令 HB0301、関数 HB0302、3 次元以上の配列 HB0303、1 次元と 2 次元の両方で使う配列 HB0314 など)。HB0305 は配列が大きすぎる、HB0309・HB0312 はメモリに収まらない。HB0315 はファイルの命令を `x1native_hufs` でない環境 (テープ・`--env x1native_slfs` など) で使った、HB0316 はファイル番号 (1〜15) か `MAXFILES` (0〜15) の定数が範囲外 |
+| error HB03xx | 未対応 (命令 HB0301、関数 HB0302、3 次元以上の配列 HB0303、1 次元と 2 次元の両方で使う配列 HB0314 など)。HB0305 は配列が大きすぎる、HB0309・HB0312 はメモリに収まらない。HB0317 は `CLEAR` の番地が定数でない・範囲外、HB0318 は組み立てたプログラムの終わりが `CLEAR` の番地を越えた。HB0315 はファイルの命令を `x1native_hufs` でない環境 (テープ・`--env x1native_slfs` など) で使った、HB0316 はファイル番号 (1〜15) か `MAXFILES` (0〜15) の定数が範囲外 |
 | error HB04xx | 型 (整数と文字列の取り違え HB0404、同じ頭文字に違う DEFxxx HB0410 など) |
 | error HB05xx | 行番号 (飛び先の行がない HB0503、同じ行番号が 2 回 HB0502、飛び先の名前の `LABEL` がない HB0504) |
 | error HB06xx | ループの対応 (FOR に NEXT がない、WEND に WHILE がない など) |
