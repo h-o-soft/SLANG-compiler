@@ -233,6 +233,22 @@ public class HuBasicEmitTests
         Assert.Empty(ZeroAssigns(Transpile("10 A%=1:B!=2.5:CLEAR &HDFFF")));
     }
 
+    /// <summary>
+    /// 変数の上限の DIM: 先に BAS_DIMCK(上限, 置き場の上限) で範囲を調べてから、今までどおり BAS_DIM。2 次元の 2 つめは調べてから代入。
+    /// 定数の上限の DIM には BAS_DIMCK を出さない
+    /// </summary>
+    [Fact]
+    public void Lowering_VariableDimChecksStorage()
+    {
+        var calls = Transpile("10 DEFINT A-Z:N=5:DIM A(N-1):M=2:DIM C(3,M+1):DIM D(4)").Flat!.Ops.OfType<FCall>()
+            .Where(c => c.Function is "BAS_DIMCK" or "BAS_DIM")
+            .Select(c => c.Function + "(" + string.Join(",", c.Args.Select(a => a is FIntArg i ? i.Value.ToString() : a is FExprArg ? "e" : "&")) + ")")
+            .ToList();
+        Assert.Equal(new[] { "BAS_DIMCK(e,4)", "BAS_DIM(&,&,e)", "BAS_DIMCK(e,3)", "BAS_DIM(&,&,3)", "BAS_DIM(&,&,4)" }, calls);
+        var sl = Transpile("10 DEFINT A-Z:M=2:DIM C(3,M+1)").Output!;
+        Assert.Contains("H_UB2_C=((V_M)+(1));", sl);
+    }
+
     /// <summary>CLEAR 番地: 頭のコメントと CONST ASM に、いちばん小さい番地 (最後に使える番地) を書く。なければどちらも書かない</summary>
     [Fact]
     public void Emit_ClearTopMarkAndSymbol()
@@ -1850,7 +1866,7 @@ public class HuBasicEmitTests
         try
         {
             var sl = Path.Combine(dir, "CLR.SL");
-            File.WriteAllText(sl, Transpile("10 CLEAR &HDFFF:A=4:DIM B(3):B(1)=9\n20 FOR I=1 TO 2:PRINT A;B(1):CLEAR:NEXT\n30 DATA 1").Output!);
+            File.WriteAllText(sl, Transpile("10 CLEAR &HDFFF:A=4:DIM B(3):B(1)=9:N=3:DIM C(N,N+1)\n20 FOR I=1 TO 2:PRINT A;B(1):CLEAR:NEXT\n30 DATA 1").Output!);
             var outBase = Path.Combine(dir, "CLR");
             RunSlangbuild(root, dir, sl, asmPath, outBase);
             AssertBuilt(outBase);

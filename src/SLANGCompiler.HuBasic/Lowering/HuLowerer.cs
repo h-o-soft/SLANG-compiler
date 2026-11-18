@@ -322,11 +322,18 @@ public sealed class HuLowerer
                 {
                     var key = _prog.Key(name);
                     if (!_prog.Arrays.ContainsKey(key)) continue;
-                    var n = (int)(HuAnalyzer.ConstValue(bound) ?? 0);
-                    Call("BAS_DIM", new FHiddenAddrArg(DimState(key)), new FHiddenAddrArg(UpperBound(key)), I(n));
+                    // 変数の上限 (V・V±c) は、置き場の上限を越えないか (負も) を先に調べる (越えたら Subscript out of range。HuBASIC の
+                    // DIM A(-1) と同じ)。置き場の上限は、解析が V に入る値から決めたもの (2 次元は次元ごと)
+                    var (s1, s2) = _prog.Arrays2.TryGetValue(key, out var b2) ? b2 : (_prog.Arrays[key], 0);
+                    bool var1 = HuAnalyzer.VarBoundForm(bound) != null;
+                    bool var2 = bound2 != null && HuAnalyzer.VarBoundForm(bound2) != null;
+                    if (var1) Call("BAS_DIMCK", E(bound), I(s1));
+                    if (var2) Call("BAS_DIMCK", E(bound2!), I(s2));
+                    var first = var1 ? E(bound) : I((int)(HuAnalyzer.ConstValue(bound) ?? 0));
+                    Call("BAS_DIM", new FHiddenAddrArg(DimState(key)), new FHiddenAddrArg(UpperBound(key)), first);
                     // 2 次元: BAS_DIM が 2 回目の DIM をエラーにした後なので、2 つめの上限はそのまま入れてよい
                     if (bound2 != null)
-                        Emit(new FAssignHidden(UpperBound2(key), new HuNum((int)(HuAnalyzer.ConstValue(bound2) ?? 0), HuPos.None)));
+                        Emit(new FAssignHidden(UpperBound2(key), var2 ? bound2 : new HuNum((int)(HuAnalyzer.ConstValue(bound2) ?? 0), HuPos.None)));
                 }
                 break;
             case HuRead rd:

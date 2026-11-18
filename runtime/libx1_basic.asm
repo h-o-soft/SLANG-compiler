@@ -1510,6 +1510,22 @@ LDIR
 RET
 
 
+; @name BAS_DIMCK
+; @resident shared
+; @param_count 2
+; @calls BAS_ERROR
+; 変数の上限の DIM: HL = 上限 n, DE = 置き場の上限。n が 0〜置き場の上限の外 (符号なしで比べるので負も外) ならエラー 9
+; (HuBASIC の DIM A(-1) は Subscript out of range)。内なら何もしない (HL = n のまま)
+PUSH HL
+EX DE, HL
+OR A
+SBC HL, DE          ; 置き場の上限 - n
+POP HL
+RET NC
+LD HL, 9
+JP BAS_ERROR
+
+
 ; @name BAS_DIM
 ; @resident shared
 ; @param_count 3

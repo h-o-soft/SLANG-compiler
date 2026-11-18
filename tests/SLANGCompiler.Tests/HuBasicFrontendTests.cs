@@ -454,6 +454,54 @@ public class HuBasicFrontendTests
         Assert.Contains(diag.Items, d => d.Code == "HB0208" && d.Severity == HuSeverity.Error);
     }
 
+    // ------------------------------------------------------------ 変数の上限の DIM
+
+    /// <summary>
+    /// 上限が V・V+c・V-c・c+V で、V に入るのが整数の定数だけなら通る。置き場の上限は、V が取り得る値 (定数と、始め・CLEAR の後の 0) + c の最大値
+    /// </summary>
+    [Theory]
+    [InlineData("10 N=10:DIM A(N)", "A!", 10)]
+    [InlineData("10 DEFINT A-Z:N=10:DIM A(N)", "A%", 10)]
+    [InlineData("10 N=5:N=8:DIM A(N)", "A!", 8)]
+    [InlineData("10 N=10:DIM A(N-1)", "A!", 9)]
+    [InlineData("10 N=-1:DIM A(N+1)", "A!", 1)]           // -1 と 0 (始め・CLEAR の後) の + 1 の最大
+    [InlineData("10 DIM A(2+N):N=4", "A!", 6)]
+    [InlineData("10 N=10.0:DIM A(N)", "A!", 10)]          // 整数の値の浮動小数の定数
+    [InlineData("10 N=2:DIM A(N):IF X THEN DIM A(7)", "A!", 7)]   // 定数の DIM とも大きい方
+    public void Analyzer_VariableDimBound(string program, string key, int storage)
+    {
+        Assert.Equal(storage, AnalyzeOk(program).Arrays[key]);
+    }
+
+    [Fact]
+    public void Analyzer_VariableDimBound2D()
+    {
+        var prog = AnalyzeOk("10 N=3:M=5:DIM C(N,M+1)");
+        Assert.Equal((3, 6), prog.Arrays2["C!"]);
+        Assert.Equal(4 * 7 - 1, prog.Arrays["C!"]);
+        prog = AnalyzeOk("10 N=3:DIM C(2,N)");
+        Assert.Equal((2, 3), prog.Arrays2["C!"]);
+    }
+
+    [Theory]
+    [InlineData("10 INPUT N:DIM A(N)", "HB0304")]
+    [InlineData("10 FOR N=1 TO 3:NEXT:DIM A(N)", "HB0304")]
+    [InlineData("10 READ N:DIM A(N)\n20 DATA 3", "HB0304")]
+    [InlineData("10 N=1:M=2:SWAP N,M:DIM A(N)", "HB0304")]
+    [InlineData("10 X=2:N=X*2:DIM A(N)", "HB0304")]
+    [InlineData("10 N=1.5:DIM A(N)", "HB0304")]
+    [InlineData("10 N=3:DIM A(N*2)", "HB0304")]
+    [InlineData("10 N=3:M=2:DIM A(N+M)", "HB0304")]
+    [InlineData("10 DIM A(N)", "HB0304")]                  // N に値が入る所がない
+    [InlineData("10 B(1)=3:DIM A(B(1))", "HB0304")]
+    [InlineData("10 N=3:DIM A(N+1.5)", "HB0304")]
+    [InlineData("10 N=0:DIM A(N-1)", "HB0305")]            // いつも負 (本物は実行時の Subscript out of range)
+    [InlineData("10 N=6000:DIM A(N)", "HB0305")]           // 浮動小数の配列の上限 5460 を越える
+    [InlineData("10 N=64:N=3:DIM A$(N)", "HB0305")]        // 使わない値 (64) も置き場に入る。文字列の配列の上限 63 を越える
+    [InlineData("10 N=200:M=200:DIM A(N,M)", "HB0305")]    // 並べた大きさが越える
+    [InlineData("10 A$=\"X\":DIM A(A$)", "HB0404")]
+    public void Analyzer_VariableDimBoundErrors(string program, string code) => AssertError(program, code);
+
     // ------------------------------------------------------------ CLEAR
 
     /// <summary>CLEAR と CLEAR 番地 (整数の定数)。番地はいちばん小さいものを ClearTop に</summary>
@@ -642,7 +690,7 @@ public class HuBasicFrontendTests
     [InlineData("10 DEFINT A-Z:DEFSNG X", "HB0410")]           // 同じ頭文字に違う DEFxxx
     [InlineData("10 DEFSTR S\n20 IF 0 THEN DEFINT R-T", "HB0410")] // IF の中の DEFxxx も数える
     [InlineData("10 DEFINT A-Z:S=\"X\"", "HB0404")]
-    [InlineData("10 DEFINT A-Z:N=5:DIM A(N)", "HB0304")]      // 変数の上限
+    [InlineData("10 DEFINT A-Z:INPUT N:DIM A(N)", "HB0304")]  // 上限の変数に定数でない値が入る
     [InlineData("10 DEFINT A-Z:DIM A(&H8000*&HFFFF)", "HB0305")] // 定数の計算があふれても範囲外として検出
     [InlineData("10 DEFINT A-Z:DIM A(&HFFFF*&HFFFF*&HFFFF)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A(8192)", "HB0305")]

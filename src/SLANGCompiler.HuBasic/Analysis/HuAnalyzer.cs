@@ -301,6 +301,7 @@ public sealed class HuAnalyzer
 
     private void CollectDims(List<HuLine> lines)
     {
+        _varWrites = CollectVarWrites(lines);
         foreach (var line in lines)
         foreach (var s in Flatten(line.Statements))
         {
@@ -343,13 +344,119 @@ public sealed class HuAnalyzer
         }
     }
 
+    /// <summary>数の単純変数の鍵 → その変数に入る値 (整数の定数) と、定数でない値が入る最初の所 (行番号。なければ null)</summary>
+    private Dictionary<string, (List<long> Values, int? NonConstLine)> _varWrites = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 変数に値が入る所を集める (変数の上限の DIM のため)。LET・= の右辺が整数の値の定数ならその値、それ以外の代入・FOR の変数・
+    /// READ・INPUT・INPUT# の行き先・SWAP のどちらかは「定数でない値が入る」
+    /// </summary>
+    private Dictionary<string, (List<long> Values, int? NonConstLine)> CollectVarWrites(List<HuLine> lines)
+    {
+        var writes = new Dictionary<string, (List<long> Values, int? NonConstLine)>(StringComparer.Ordinal);
+        void Add(HuExpr target, long? value, int line)
+        {
+            if (target is not HuVar v) return;
+            var key = Key(v.Name);
+            if (!writes.TryGetValue(key, out var w)) w = (new List<long>(), null);
+            if (value is long x) w.Values.Add(x);
+            else if (w.NonConstLine == null) w.NonConstLine = line;
+            writes[key] = w;
+        }
+        foreach (var line in lines)
+        foreach (var s in Flatten(line.Statements))
+        {
+            switch (s)
+            {
+                case HuAssign a: Add(a.Target, IntegralConst(a.Value), line.Number); break;
+                case HuFor fr: Add(new HuVar(fr.Var, fr.Pos), null, line.Number); break;
+                case HuRead rd: foreach (var t in rd.Targets) Add(t, null, line.Number); break;
+                case HuInput inp: foreach (var t in inp.Targets) Add(t, null, line.Number); break;
+                case HuInputFile inf: foreach (var t in inf.Targets) Add(t, null, line.Number); break;
+                case HuSwap sw: Add(sw.A, null, line.Number); Add(sw.B, null, line.Number); break;
+            }
+        }
+        return writes;
+    }
+
+    /// <summary>
+    /// 整数の値の定数 (浮動小数を含まない定数の式か、整数の値の浮動小数の定数 1 つに符号を付けたもの) ならその値。それ以外は null
+    /// </summary>
+    private static long? IntegralConst(HuExpr e)
+    {
+        if (!ContainsFloat(e)) return ConstExprOnly(e) ? ConstValue(e) : null;
+        double? d = e switch
+        {
+            HuFloat f => f.Value,
+            HuUnary { Op: "-", Operand: HuFloat f } => -f.Value,
+            HuUnary { Op: "+", Operand: HuFloat f } => f.Value,
+            _ => null,
+        };
+        return d is double x && x == Math.Floor(x) && Math.Abs(x) <= 1e6 ? (long)x : null;
+    }
+
+    /// <summary>
+    /// 変数の上限の形 (V、V+c、V-c、c+V。V は数の単純変数、c は整数の定数) なら (V, c)。それ以外は null。
+    /// 平らにする所も、これで「変数の上限の DIM」かを見分ける
+    /// </summary>
+    public static (HuVar Var, long Offset)? VarBoundForm(HuExpr e)
+    {
+        static long? Off(HuExpr x) => !ContainsFloat(x) && ConstExprOnly(x) ? ConstValue(x) : null;
+        return e switch
+        {
+            HuVar v => (v, 0),
+            HuBinary { Op: "+", Left: HuVar v } b when Off(b.Right) is long c => (v, c),
+            HuBinary { Op: "+", Right: HuVar v } b when Off(b.Left) is long c => (v, c),
+            HuBinary { Op: "-", Left: HuVar v } b when Off(b.Right) is long c => (v, -c),
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// 変数の上限の DIM の置き場の上限: V が実行時に取り得る値 (集めた定数と、始め・CLEAR・MAXFILES の後の 0) + c の最大値。
+    /// V に定数でない値が入る所があるか、値が入る所が 1 つもなければ HB0304
+    /// </summary>
+    private long? VarDimStorage(string name, HuVar v, long offset, HuPos pos)
+    {
+        var key = Key(v.Name);
+        if (HuProgram.KindOfKey(key) == HuVarKind.Str)
+        {
+            _diag.Error("HB0404", $"DIM {name} の上限に文字列の変数 {v.Name} は使えません", pos);
+            return null;
+        }
+        if (!_varWrites.TryGetValue(key, out var w))
+        {
+            _diag.Error("HB0304", $"DIM {name} の上限の変数 {v.Name} に値を入れる所がありません (上限はいつも {Math.Max(0, offset)} になります)", pos);
+            return null;
+        }
+        if (w.NonConstLine is int bad)
+        {
+            _diag.Error("HB0304", $"DIM {name} の上限の変数 {v.Name} に、定数でない値が入る所があります (行 {bad})。" +
+                                  "変数の上限は、その変数に入るのが定数だけのときに使えます", pos);
+            return null;
+        }
+        return w.Values.Append(0).Max() + offset;
+    }
+
     /// <summary>DIM の 1 つの次元の上限 (定数で 0〜max)。書けない形ならエラーを出して null</summary>
     private int? DimBound(string name, HuExpr boundExpr, int max, HuVarKind kind, HuPos pos)
     {
         if (ConstExprOnly(boundExpr) == false)
         {
-            _diag.Error("HB0304", $"DIM {name} の上限は定数で書いてください (変数を含む上限は未対応)", pos);
-            return null;
+            if (VarBoundForm(boundExpr) is not { } form)
+            {
+                _diag.Error("HB0304", $"DIM {name} の上限は定数か、変数 1 つ (と整数の定数の足し引き) で書いてください", pos);
+                return null;
+            }
+            var (v, offset) = form;
+            var storage = VarDimStorage(name, v, offset, pos);
+            if (storage == null) return null;
+            if (storage < 0 || storage > max)
+            {
+                _diag.Error("HB0305", $"DIM {name} の上限 (変数 {v.Name} に入る値から決めた置き場 {storage}) が範囲外です (0〜{max})" + StrArrayHint(kind), pos);
+                return null;
+            }
+            return (int)storage.Value;
         }
         if (ContainsFloat(boundExpr) && !IsSignedFloatConst(boundExpr))
         {
@@ -1075,7 +1182,14 @@ public sealed class HuAnalyzer
             case HuClear cl:
                 if (cl.Top != null) CheckClearTop(cl.Top, cl.Pos);
                 break;
-            case HuDim:
+            case HuDim dim:
+                // 変数の上限は実行時に計算する (定数の上限は CollectDims で見た)
+                foreach (var (_, b, b2) in dim.Arrays)
+                {
+                    if (VarBoundForm(b) != null) ExpectNum(b, intConv: true);
+                    if (b2 != null && VarBoundForm(b2) != null) ExpectNum(b2, intConv: true);
+                }
+                break;
             case HuDefType:
             case HuData:
             case HuRem:
