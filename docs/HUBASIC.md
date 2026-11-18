@@ -63,7 +63,7 @@ hubasic2sl PROG.BAS --emit tape --wait line:480   # PROG.tap (テープ) を作�
 | `--string-len <N>` | 文字列 1 本の長さの上限 (1〜255、既定 255)。文字列の変数と文字列の配列の要素は N+1 バイトずつ取るので、メモリが減る。N を超える文字列を変数に入れると、切り詰めずに String too long で止まる。文字列の定数・計算の途中・つなげたときの上限は 255 のまま |
 | `--no-line-numbers` | 各行の頭 (と GOSUB の戻り先・`LABEL` の所) で実行中の行番号を書かない。1 か所 6 バイト・約 6.5 マイクロ秒の分、小さく速くなる。実行時エラーは「<メッセージ>」と「Ok」だけになり、` in <行番号>` が出ない |
 | `--data-budget <bytes>` | 静的データの上限 (既定 24576) |
-| `--check-bin <bin>` / `--lst <lst>` | 組み立てた後の大きさを検査する (`$FFE0` の予約領域と、`CLEAR 番地` を書いたプログラムはその番地。どちらも LST から読む) |
+| `--check-bin <bin>` / `--lst <lst>` | 組み立てた後の大きさを検査する (終わりは bin の大きさと LST の `__WORKEND__` から。予約領域 `$FFE0` の手前に収まるか、`CLEAR 番地` を書いたプログラムは LST の `H_CLRTOP` の番地も越えないか) |
 | `--emit disk` / `--emit tape` | 変換・組み立て・大きさの検査を続けてして、ディスクイメージ (`.d88`) かテープ (`.tap`) を作る (上の「使い方」) |
 | `--disk-main-name <name>` | IPL の起動名 (`--emit disk` のとき。既定は BASIC のファイル名) |
 | `--tape-name <name>` | テープの名前 (`--emit tape` のとき。既定は `PROG`) |

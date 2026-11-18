@@ -1243,16 +1243,8 @@ public class HuBasicEmitTests
             // 作業領域の終わりが予約領域の頭 $FFE0 ちょうどは通る
             Assert.Equal(0, RunCli(bas, "--emit", "disk", "--slangbuild", Fake("edge.sh", Built("FFE0"))));
 
-            // CLEAR 番地: LST に H_CLRTOP が欠けていても、変換で分かった番地で検査する (終わり $2000 は CLEAR &H1FFF ちょうど、&H1000 は越える)
-            File.WriteAllText(bas, "10 CLEAR &H1FFF:PRINT 1\n");
-            Assert.Equal(0, RunCli(bas, "--emit", "disk", "--slangbuild", ok));
-            Assert.True(File.Exists(prefix + ".d88"));
-            File.WriteAllText(bas, "10 CLEAR &H1000:PRINT 1\n");
-            File.Delete(argsFile);
-            Assert.Equal(1, RunCli(bas, "--emit", "disk", "--slangbuild", ok));
-            Assert.True(File.Exists(argsFile));   // 組み立ては動いた (止まったのは組み立ての後の検査。HB0318 の文は HuBasicWebTests で見る)
-            Assert.False(File.Exists(prefix + ".d88"));
-            // LST の H_CLRTOP が変換の番地より小さければ、そちらで止まる
+            // CLEAR 番地: LST の H_CLRTOP が変換の番地より小さければ、そちらで止まる
+            // (LST に H_CLRTOP が欠けたときに変換の番地で止まることと、HB0318 の文は HuBasicWebTests.Cli_EmitChecksClearTopWithoutLstSymbol)
             var lstTop = Fake("lsttop.sh", $"printf x > \"$p.bin\"; printf '  1000  H_CLRTOP EQU $1000\\n  2000  __WORKEND__ EQU $\\n' > \"$p.LST\"; " + image);
             File.WriteAllText(bas, "10 CLEAR &HDFFF:PRINT 1\n");
             File.Delete(argsFile);

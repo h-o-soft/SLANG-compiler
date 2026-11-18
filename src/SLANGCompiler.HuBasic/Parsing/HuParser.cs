@@ -38,6 +38,12 @@ public sealed class HuParser
 
     private HuParser(HuDiagnosticBag diag) => _diag = diag;
 
+    /// <summary>
+    /// true の間、小数点・指数・接尾辞のない 10 進の数 (32768 以上は浮動小数の字句) を、浮動小数に丸めずに整数の値で読む
+    /// (CLEAR の番地の式。CLEAR 49152+4096 を正しく畳み込むため)
+    /// </summary>
+    private bool _exactDecimal;
+
     public static HuAstProgram Parse(HuSource source, HuDiagnosticBag diag)
     {
         var parser = new HuParser(diag);
@@ -567,7 +573,10 @@ public sealed class HuParser
                 // 後ろのコメント (CLEAR 'X) は文の終わり (コメントは文の並びが読む)
                 if (AtStatementEnd || Peek.Kind == HuTokenKind.Comment) return new HuClear(null, pos);
                 int from = _p;
-                var top = ParseExpr();
+                _exactDecimal = true;
+                HuExpr top;
+                try { top = ParseExpr(); }
+                finally { _exactDecimal = false; }
                 // 小数の綴り (57342.9・1E4・57343!) は、浮動小数に丸める前の字句で見分ける (丸めると整数に見えることがある)。
                 // 括弧の中 (CLEAR (57342.9)) も含め、式に使った字句をすべて見る
                 if (_tokens.Skip(from).Take(_p - from).Any(k => k.Kind == HuTokenKind.Float && !k.Text.All(char.IsAsciiDigit)))
@@ -1226,6 +1235,9 @@ public sealed class HuParser
             case HuTokenKind.Number:
                 Next();
                 return new HuNum(t.Value, pos);
+            case HuTokenKind.Float when _exactDecimal && t.Text.All(char.IsAsciiDigit) && long.TryParse(t.Text, out var exact) && exact <= int.MaxValue:
+                Next();
+                return new HuNum((int)exact, pos);
             case HuTokenKind.Float:
             {
                 Next();

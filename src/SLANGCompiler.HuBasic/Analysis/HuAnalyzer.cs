@@ -1098,13 +1098,11 @@ public sealed class HuAnalyzer
             _diag.Error("HB0404", "CLEAR の番地に文字列は使えません", top.Pos);
             return;
         }
-        // 32767 を越える 10 進の数 (CLEAR 57343) は浮動小数の定数として読まれるので、整数の値の浮動小数の定数 1 つも受ける
-        long? value = ContainsFloat(top)
-            ? (top is HuFloat f && f.Value == Math.Floor(f.Value) && Math.Abs(f.Value) <= 1e6 ? (long)f.Value : null)
-            : ConstValue(top);
-        if (value is not long v)
+        // 32767 を越える 10 進の数 (CLEAR 57343) は、構文解析が CLEAR の式の中だけ整数のまま読む (小数の綴りはそこで error)。
+        // ここに浮動小数が残るのは、整数に収まらない大きな数だけ
+        if (ContainsFloat(top) || ConstValue(top) is not long v)
         {
-            _diag.Error("HB0317", "CLEAR の番地は整数の定数で書いてください (変数や式の番地は未対応)", pos);
+            _diag.Error("HB0317", "CLEAR の番地は整数の定数で書いてください (変数を使った式や小数の番地は未対応)", pos);
             return;
         }
         if (v < 0 || v > 0xFFFF)
