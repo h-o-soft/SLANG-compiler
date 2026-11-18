@@ -1243,6 +1243,20 @@ public class HuBasicEmitTests
             // 作業領域の終わりが予約領域の頭 $FFE0 ちょうどは通る
             Assert.Equal(0, RunCli(bas, "--emit", "disk", "--slangbuild", Fake("edge.sh", Built("FFE0"))));
 
+            // CLEAR 番地: LST に H_CLRTOP が欠けていても、変換で分かった番地で検査する (終わり $2000 は CLEAR &H1FFF ちょうど、&H1000 は越える)
+            File.WriteAllText(bas, "10 CLEAR &H1FFF:PRINT 1\n");
+            Assert.Equal(0, RunCli(bas, "--emit", "disk", "--slangbuild", ok));
+            Assert.True(File.Exists(prefix + ".d88"));
+            File.WriteAllText(bas, "10 CLEAR &H1000:PRINT 1\n");
+            Assert.Equal(1, RunCli(bas, "--emit", "disk", "--slangbuild", ok));
+            Assert.False(File.Exists(prefix + ".d88"));
+            // LST の H_CLRTOP が変換の番地より小さければ、そちらで止まる
+            var lstTop = Fake("lsttop.sh", $"printf x > \"$p.bin\"; printf '  1000  H_CLRTOP EQU $1000\\n  2000  __WORKEND__ EQU $\\n' > \"$p.LST\"; " + image);
+            File.WriteAllText(bas, "10 CLEAR &HDFFF:PRINT 1\n");
+            Assert.Equal(1, RunCli(bas, "--emit", "disk", "--slangbuild", lstTop));
+            Assert.False(File.Exists(prefix + ".d88"));
+            File.WriteAllText(bas, "10 PRINT 1\n");
+
             // 止まったら 1。前の回のイメージも、できかけのイメージも残さない
             foreach (var tool in new[]
             {

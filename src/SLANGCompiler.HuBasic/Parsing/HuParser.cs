@@ -564,8 +564,17 @@ public sealed class HuParser
             case "CLEAR":
             {
                 // CLEAR か CLEAR 番地。2 つの引数の形 (HuBASIC は CLEAR 1,&HDFFF を Illegal function call にする) は未対応
-                if (AtStatementEnd) return new HuClear(null, pos);
+                // 後ろのコメント (CLEAR 'X) は文の終わり (コメントは文の並びが読む)
+                if (AtStatementEnd || Peek.Kind == HuTokenKind.Comment) return new HuClear(null, pos);
+                var first = Peek;
                 var top = ParseExpr();
+                // 小数の綴り (57342.9・1E4・57343!) は、浮動小数に丸める前の字句で見分ける (丸めると整数に見えることがある)
+                if (top is HuFloat && first.Kind == HuTokenKind.Float && !first.Text.All(char.IsAsciiDigit))
+                {
+                    _diag.Error("HB0317", "CLEAR の番地は整数の定数で書いてください (小数は未対応)", pos);
+                    SkipToStatementEnd();
+                    return null;
+                }
                 if (Peek.IsSymbol(","))
                 {
                     Error("HB0301", "CLEAR の引数は番地 1 つだけに対応しています");

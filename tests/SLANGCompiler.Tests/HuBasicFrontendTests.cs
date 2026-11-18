@@ -466,12 +466,18 @@ public class HuBasicFrontendTests
         Assert.Equal(0x1000, AnalyzeOk("10 CLEAR &H1000").ClearTop);
         Assert.Equal(0xFFFF, AnalyzeOk("10 CLEAR &HFFFF").ClearTop);
         Assert.Equal(0x8000, AnalyzeOk("10 CLEAR &H7000+&H1000").ClearTop);
+        Assert.Equal(0xDFFF, AnalyzeOk("10 CLEAR 57343").ClearTop);       // 32767 を越える 10 進の整数 (字句は浮動小数)
+        Assert.Equal(0xFFFF, AnalyzeOk("10 CLEAR 65535").ClearTop);
+        Assert.Null(AnalyzeOk("10 CLEAR 'RESET\n20 CLEAR:REM X").ClearTop);  // 後ろのコメント
     }
 
     [Theory]
     [InlineData("10 CLEAR A", "HB0317")]              // 変数の番地
     [InlineData("10 CLEAR 1.5*2", "HB0317")]          // 浮動小数
     [InlineData("10 CLEAR 57343.5", "HB0317")]
+    [InlineData("10 CLEAR 57342.9", "HB0317")]        // f24 に丸めると 57343 になる小数も、綴りで見分ける
+    [InlineData("10 CLEAR 57343!", "HB0317")]
+    [InlineData("10 CLEAR 5E4", "HB0317")]
     [InlineData("10 CLEAR -57343", "HB0317")]
     [InlineData("10 CLEAR -1", "HB0317")]
     [InlineData("10 CLEAR 70000", "HB0317")]

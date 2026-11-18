@@ -229,7 +229,8 @@ class Program
         int check;
         try
         {
-            check = CheckBin(prefix + ".bin", prefix + ".LST");
+            // CLEAR 番地は、変換の結果 (解析した番地) と LST の H_CLRTOP の両方を見る (LST に記号が欠けても見落とさない)
+            check = CheckBin(prefix + ".bin", prefix + ".LST", result.Program?.ClearTop);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -281,7 +282,7 @@ class Program
     /// 起動時に 0 で埋められる) の終わりも見る。__WORKEND__ はアセンブラの LST (既定は bin と同じ名前の .LST) から読む。
     /// CLEAR 番地を書いたプログラムは、LST の H_CLRTOP (最後に使える番地) も読み、終わりがそれを越えないかを見る。
     /// </summary>
-    static int CheckBin(string path, string? lstPath)
+    static int CheckBin(string path, string? lstPath, int? knownClearTop = null)
     {
         if (!File.Exists(path)) return Fail($"bin がありません: {path}");
         long binLength = new FileInfo(path).Length;
@@ -292,6 +293,7 @@ class Program
         if (workEnd == null)
             return Fail($"{lstPath} に __WORKEND__ が見つかりません");
         var clearTop = ReadEqu(lstPath, SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.ClearTopSymbol);
+        if (knownClearTop is int known) clearTop = clearTop is long fromLst ? Math.Min(fromLst, known) : known;
         var (fits, message) = HuLayout.Check(binLength, workEnd.Value, clearTop);
         if (!fits)
         {
