@@ -372,6 +372,99 @@ public class HuBasicFrontendTests
         Assert.Equal(200, Assert.IsType<HuGoto>(f.Else![0]).Line);
     }
 
+    /// <summary>
+    /// THEN の省略: 条件の後ろが文の始まりなら、THEN を書いたときと同じ構文木になる (本物の実測: THEN を省いても、
+    /// PRINT・GOSUB・代入・':' で続く文・ELSE・入れ子の IF・コメントが同じに動く。ELSE の後の行番号は GOTO)
+    /// </summary>
+    [Theory]
+    [InlineData("IF A=1 PRINT \"P\"")]
+    [InlineData("IF A$=\"Y\" GOSUB 100")]
+    [InlineData("IF A=1 B=2:PRINT \"B\";B")]
+    [InlineData("IF A=0 PRINT \"Z\" ELSE PRINT \"E\"")]
+    [InlineData("IF A PRINT \"T\" ELSE 200")]
+    [InlineData("IF A IF B=2 PRINT \"N\" ELSE X=1 ELSE X=2")]
+    [InlineData("IF A=1 -B=0 PRINT \"X\"")]     // 条件は (A = 1-B) = 0 (本物も同じに読んで X を出す)
+    [InlineData("IF A=1 LOCATE 0,10:PRINT 1")]
+    [InlineData("IF A=1 'COMMENT")]
+    [InlineData("IF A=1 REM X")]
+    [InlineData("IF A GOTO 100 ELSE 200")]
+    [InlineData("IF A=1 LINE(0,0)-(1,1),PSET")]
+    public void Parser_IfWithoutThenMatchesThen(string body)
+    {
+        var withoutThen = ParseIfShape("10 " + body);
+        // THEN を条件の直後 (最初の文の前) に足したもの
+        var withThen = ParseIfShape("10 " + InsertThen(body));
+        Assert.Equal(withThen, withoutThen);
+    }
+
+    /// <summary>body の外側の IF の条件の後ろに THEN を入れる (条件の後ろの最初の文の始まりを、THEN を書いた形から探す)</summary>
+    private static string InsertThen(string body) => body switch
+    {
+        "IF A=1 PRINT \"P\"" => "IF A=1 THEN PRINT \"P\"",
+        "IF A$=\"Y\" GOSUB 100" => "IF A$=\"Y\" THEN GOSUB 100",
+        "IF A=1 B=2:PRINT \"B\";B" => "IF A=1 THEN B=2:PRINT \"B\";B",
+        "IF A=0 PRINT \"Z\" ELSE PRINT \"E\"" => "IF A=0 THEN PRINT \"Z\" ELSE PRINT \"E\"",
+        "IF A PRINT \"T\" ELSE 200" => "IF A THEN PRINT \"T\" ELSE 200",
+        "IF A IF B=2 PRINT \"N\" ELSE X=1 ELSE X=2" => "IF A THEN IF B=2 THEN PRINT \"N\" ELSE X=1 ELSE X=2",
+        "IF A=1 -B=0 PRINT \"X\"" => "IF A=1 -B=0 THEN PRINT \"X\"",
+        "IF A=1 LOCATE 0,10:PRINT 1" => "IF A=1 THEN LOCATE 0,10:PRINT 1",
+        "IF A=1 'COMMENT" => "IF A=1 THEN 'COMMENT",
+        "IF A=1 REM X" => "IF A=1 THEN REM X",
+        "IF A GOTO 100 ELSE 200" => "IF A THEN GOTO 100 ELSE 200",
+        "IF A=1 LINE(0,0)-(1,1),PSET" => "IF A=1 THEN LINE(0,0)-(1,1),PSET",
+        _ => throw new ArgumentException(body),
+    };
+
+    /// <summary>1 行を解析し (エラーなし)、文の並びを入れ子の形の文字列にする (IF は条件の式と THEN 節・ELSE 節)</summary>
+    private static string ParseIfShape(string text)
+    {
+        var diag = new HuDiagnosticBag();
+        var line = HuParser.ParseSingleLine(text, diag);
+        Assert.False(diag.HasErrors, text + ": " + string.Join("; ", diag.Items.Select(d => d.Code + " " + d.Message)));
+        return StmtsShape(line!.Statements);
+
+        static string StmtsShape(IEnumerable<HuStmt>? stmts)
+            => stmts == null ? "-" : "[" + string.Join(",", stmts.Select(StmtShape)) + "]";
+
+        static string StmtShape(HuStmt s) => s switch
+        {
+            HuIf f => $"IF {Show(f.Cond)} THEN {StmtsShape(f.Then)} ELSE {StmtsShape(f.Else)}",
+            HuGoto g => $"GOTO {g.Line}",
+            HuGosub g => $"GOSUB {g.Line}",
+            HuAssign a => $"LET {Show(a.Target)}={Show(a.Value)}",
+            HuRem r => "REM",
+            _ => s.GetType().Name,
+        };
+    }
+
+    /// <summary>
+    /// THEN の後ろが空の形は error (本物は空の THEN 節として受けて何もしない。端の形なのでエラーにする)。
+    /// `IF A=1 100` は、本物は数の中の空白を読み飛ばして条件を A=1100 と読む (実測)
+    /// </summary>
+    [Theory]
+    [InlineData("10 IF A=1")]
+    [InlineData("10 IF A=1 ELSE PRINT \"E\"")]
+    [InlineData("10 IF A=1 :PRINT \"X\"")]
+    [InlineData("10 IF A=1 100")]
+    [InlineData("10 IF A=1 )")]
+    public void Parser_IfWithEmptyThenIsError(string text)
+    {
+        var diag = new HuDiagnosticBag();
+        HuParser.ParseSingleLine(text, diag);
+        Assert.True(diag.HasErrors, text);
+    }
+
+    [Theory]
+    [InlineData("10 IF A=1")]
+    [InlineData("10 IF A=1 ELSE PRINT \"E\"")]
+    [InlineData("10 IF A=1 :PRINT \"X\"")]
+    public void Parser_IfWithEmptyThenIsHB0208(string text)
+    {
+        var diag = new HuDiagnosticBag();
+        HuParser.ParseSingleLine(text, diag);
+        Assert.Contains(diag.Items, d => d.Code == "HB0208");
+    }
+
     [Fact]
     public void Parser_PrintItemsAndChannel()
     {

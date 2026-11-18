@@ -192,6 +192,9 @@ KBUF ON/OFF・SCREEN …・KEY n,文字列   (何もしない。warning が出�
 KEYLIST n・KLIST n・KMODE n   (X1turbo の形。何もしない。0 以外は warning が出ます)
 ```
 
+- `IF` の `THEN` は、HuBASIC と同じく、条件の後ろに文が続くなら省けます (`IF A=1 PRINT "P"`、`IF A$="Y" GOSUB 100 ELSE 200`)。
+  `THEN` を書いたときと同じに動きます。条件の後ろが空の形 (`IF A=1`、`IF A=1 ELSE …`、`IF A=1 :PRINT …`) は error HB0208 です
+  (HuBASIC は空の THEN 節として受けます)。
 - 文の区切りの `:` は、HuBASIC と同じく、文が終わった所なら省けます (`COLOR 4 LOCATE 0,2 PRINT "A"`、`A=1 B=2`)。
   `PRINT "A" PRINT "B"` のように、文がまだ続きを読む所では error です (HuBASIC も Syntax error)。
 - `GOTO "名前"` などは、`LABEL "名前"` の文の直後に飛びます (行の途中でも)。名前は大文字小文字と空白まで同じものだけが合います。

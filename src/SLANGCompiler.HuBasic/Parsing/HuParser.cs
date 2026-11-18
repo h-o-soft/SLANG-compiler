@@ -816,11 +816,13 @@ public sealed class HuParser
         List<HuStmt> thenList;
         if (AcceptKeyword("THEN"))
             thenList = ParseIfBranch();
-        else if (Peek.IsKeyword("GOTO"))
-            thenList = ParseIfBranch();
+        else if (StartsStatement(Peek))
+            // THEN の省略 (本物は THEN を省いても、条件の後ろの文を THEN 節として読む。GOTO もここ)。
+            // 後ろが行番号・':'・ELSE・行末の形 (本物は THEN 節が空として受ける) は、下でエラーにする
+            thenList = ParseStatementList(stopAtElse: true);
         else
         {
-            Error("HB0208", "IF の後に THEN が必要です");
+            Error("HB0208", "IF の条件の後に THEN か文が必要です");
             thenList = new List<HuStmt>();
         }
         List<HuStmt>? elseList = null;

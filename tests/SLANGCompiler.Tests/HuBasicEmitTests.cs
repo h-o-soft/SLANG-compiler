@@ -182,6 +182,29 @@ public class HuBasicEmitTests
 
     // ------------------------------------------------------------ 展開
 
+    /// <summary>THEN を省いた IF の出力は、THEN を書いたものと 1 字も変わらない</summary>
+    [Fact]
+    public void Emit_IfWithoutThenSameAsThen()
+    {
+        const string without = """
+            10 A=1:B$="Y"
+            20 IF A=1 PRINT "P":B=2 ELSE 100
+            30 IF B$="Y" GOSUB 200 ELSE IF A LOCATE 0,1:PRINT "Q" ELSE PRINT "R"
+            40 IF A=1 -B=0 PRINT "X"
+            100 END
+            200 RETURN
+            """;
+        const string with = """
+            10 A=1:B$="Y"
+            20 IF A=1 THEN PRINT "P":B=2 ELSE 100
+            30 IF B$="Y" THEN GOSUB 200 ELSE IF A THEN LOCATE 0,1:PRINT "Q" ELSE PRINT "R"
+            40 IF A=1 -B=0 THEN PRINT "X"
+            100 END
+            200 RETURN
+            """;
+        Assert.Equal(Transpile(with).Output, Transpile(without).Output);
+    }
+
     [Fact]
     public void Lowering_ZeroTripForExitLabelIsAfterItsVariablePart()
     {
