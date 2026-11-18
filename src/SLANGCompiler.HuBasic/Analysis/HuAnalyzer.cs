@@ -429,7 +429,7 @@ public sealed class HuAnalyzer
         }
         if (!_varWrites.TryGetValue(key, out var w))
         {
-            _diag.Error("HB0304", $"DIM {name} の上限の変数 {v.Name} に値を入れる所がありません (上限はいつも {Math.Max(0, offset)} になります)", pos);
+            _diag.Error("HB0304", $"DIM {name} の上限の変数 {v.Name} に値を入れる所がありません (上限はいつも {offset} になります)", pos);
             return null;
         }
         if (w.NonConstLine is int bad)
