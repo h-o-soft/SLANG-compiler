@@ -82,6 +82,38 @@ public class HuBasicWebTests
     public void Cli_CheckBinReadsClearTop(int binLength, string workEnd, string clearTop, int expectedCode, string expectedLine)
         => CheckBinCase(binLength, workEnd, clearTop, expectedCode, expectedLine);
 
+    /// <summary>
+    /// --emit の大きさの検査は、LST に H_CLRTOP が欠けていても、変換で分かった CLEAR の番地で止まる (stderr に HB0318、イメージは残さない)。
+    /// slangbuild の代わりの sh (Windows では飛ばす) は、1 バイトの bin と __WORKEND__ = $2000 の LST を作る
+    /// </summary>
+    [Fact]
+    public void Cli_EmitChecksClearTopWithoutLstSymbol()
+    {
+        if (OperatingSystem.IsWindows()) return;
+        var dir = NewTempDir();
+        try
+        {
+            var fake = Path.Combine(dir, "fake.sh");
+            File.WriteAllText(fake, "#!/bin/sh\nfor a; do p=$a; done\nprintf x > \"$p.bin\"; echo '  2000  __WORKEND__ EQU $' > \"$p.LST\"; : > \"$p.d88\"\n");
+            File.SetUnixFileMode(fake, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            var bas = Path.Combine(dir, "A.BAS");
+            File.WriteAllText(bas, "10 CLEAR &H1000:PRINT 1\n");
+            var (code, _, se) = RunCliCaptured(bas, "--emit", "disk", "--slangbuild", fake);
+            Assert.Equal(1, code);
+            Assert.Contains("hubasic2sl: error HB0318: プログラムの終わり $2000 (bin $1001、作業領域 $2000) が CLEAR で決めたメモリの上限 $1000 を越えています (4095 バイト超過)", se);
+            Assert.False(File.Exists(Path.Combine(dir, "A.d88")));
+            File.WriteAllText(bas, "10 CLEAR &H1FFF:PRINT 1\n");
+            (code, _, se) = RunCliCaptured(bas, "--emit", "disk", "--slangbuild", fake);
+            Assert.Equal(0, code);
+            Assert.DoesNotContain("HB0318", se);
+            Assert.True(File.Exists(Path.Combine(dir, "A.d88")));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
     private static void CheckBinCase(int binLength, string workEnd, string? clearTop, int expectedCode, string expectedLine)
     {
         var dir = NewTempDir();
