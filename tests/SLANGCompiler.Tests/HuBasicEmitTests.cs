@@ -1111,6 +1111,16 @@ public class HuBasicEmitTests
         return (int)main.Invoke(null, new object[] { args })!;
     }
 
+    /// <summary>RunCli と同じ。stderr に出た文も返す</summary>
+    private static (int Code, string Err) RunCliErr(params string[] args)
+    {
+        var old = Console.Error;
+        var sw = new StringWriter();
+        Console.SetError(sw);
+        try { return (RunCli(args), sw.ToString()); }
+        finally { Console.SetError(old); }
+    }
+
     private static string NewTempDir()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"hubasic2sl_{Guid.NewGuid():N}");
@@ -1248,12 +1258,20 @@ public class HuBasicEmitTests
             Assert.Equal(0, RunCli(bas, "--emit", "disk", "--slangbuild", ok));
             Assert.True(File.Exists(prefix + ".d88"));
             File.WriteAllText(bas, "10 CLEAR &H1000:PRINT 1\n");
-            Assert.Equal(1, RunCli(bas, "--emit", "disk", "--slangbuild", ok));
+            File.Delete(argsFile);
+            var (code, err) = RunCliErr(bas, "--emit", "disk", "--slangbuild", ok);
+            Assert.Equal(1, code);
+            Assert.True(File.Exists(argsFile));   // 組み立ては動いた (止まったのは組み立ての後の検査)
+            Assert.Contains("error HB0318", err);
             Assert.False(File.Exists(prefix + ".d88"));
             // LST の H_CLRTOP が変換の番地より小さければ、そちらで止まる
             var lstTop = Fake("lsttop.sh", $"printf x > \"$p.bin\"; printf '  1000  H_CLRTOP EQU $1000\\n  2000  __WORKEND__ EQU $\\n' > \"$p.LST\"; " + image);
             File.WriteAllText(bas, "10 CLEAR &HDFFF:PRINT 1\n");
-            Assert.Equal(1, RunCli(bas, "--emit", "disk", "--slangbuild", lstTop));
+            File.Delete(argsFile);
+            (code, err) = RunCliErr(bas, "--emit", "disk", "--slangbuild", lstTop);
+            Assert.Equal(1, code);
+            Assert.True(File.Exists(argsFile));
+            Assert.Contains("error HB0318", err);
             Assert.False(File.Exists(prefix + ".d88"));
             File.WriteAllText(bas, "10 PRINT 1\n");
 
