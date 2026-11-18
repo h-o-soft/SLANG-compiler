@@ -435,7 +435,16 @@ public sealed class HuAnalyzer
                                   "変数の上限は、その変数に入るのが定数だけのときに使えます", pos);
             return null;
         }
-        return w.Values.Append(0).Max() + offset;
+        // 入る値・足し引きの定数・その和は -32768〜32767 に限る (この範囲なら、整数の変数に入れたときも、実行時の 16 ビットの計算・
+        // 浮動小数から整数への変換も回り込まず、ここで決めた値と同じになる。外れる形 (N%=-&HFFFF など) は端の形なのでエラー)
+        var values = w.Values.Append(0).ToList();
+        if (values.Any(x => x is < short.MinValue or > short.MaxValue) || offset is < short.MinValue or > short.MaxValue
+            || values.Any(x => x + offset is < short.MinValue or > short.MaxValue))
+        {
+            _diag.Error("HB0304", $"DIM {name} の上限の変数 {v.Name} に入る値と足し引きの定数は、和も含めて -32768〜32767 にしてください", pos);
+            return null;
+        }
+        return values.Max() + offset;
     }
 
     /// <summary>DIM の 1 つの次元の上限 (定数で 0〜max)。書けない形ならエラーを出して null</summary>

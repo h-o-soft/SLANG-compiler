@@ -465,6 +465,7 @@ public class HuBasicFrontendTests
     [InlineData("10 N=5:N=8:DIM A(N)", "A!", 8)]
     [InlineData("10 N=10:DIM A(N-1)", "A!", 9)]
     [InlineData("10 N=-1:DIM A(N+1)", "A!", 1)]           // -1 と 0 (始め・CLEAR の後) の + 1 の最大
+    [InlineData("10 N=-32768:N=5:DIM A(N)", "A!", 5)]     // -32768 は使える (実行したときの上限は負で Subscript out of range)
     [InlineData("10 DIM A(2+N):N=4", "A!", 6)]
     [InlineData("10 N=10.0:DIM A(N)", "A!", 10)]          // 整数の値の浮動小数の定数
     [InlineData("10 N=2:DIM A(N):IF X THEN DIM A(7)", "A!", 7)]   // 定数の DIM とも大きい方
@@ -500,6 +501,11 @@ public class HuBasicFrontendTests
     [InlineData("10 N=64:N=3:DIM A$(N)", "HB0305")]        // 使わない値 (64) も置き場に入る。文字列の配列の上限 63 を越える
     [InlineData("10 N=200:M=200:DIM A(N,M)", "HB0305")]    // 並べた大きさが越える
     [InlineData("10 A$=\"X\":DIM A(A$)", "HB0404")]
+    [InlineData("10 N%=-&HFFFF:DIM A(N%)", "HB0304")]      // 16 ビットに回り込む値 (実行時は 1)
+    [InlineData("10 N%=0:DIM A(N%-&HFFFF)", "HB0304")]     // 回り込む足し引き
+    [InlineData("10 N=1:N=-65535.0:DIM A(N)", "HB0304")]   // 整数にするときに回り込む浮動小数
+    [InlineData("10 N=32767:DIM A(N+1)", "HB0304")]        // 和が 32767 を越える
+    [InlineData("10 N%=&H8000:DIM A(N%)", "HB0304")]
     public void Analyzer_VariableDimBoundErrors(string program, string code) => AssertError(program, code);
 
     // ------------------------------------------------------------ CLEAR
