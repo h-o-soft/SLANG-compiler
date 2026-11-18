@@ -503,7 +503,7 @@ public sealed class SlangBackend : IHuBackend
                 {
                     "INP" or "PEEK@" => $"PORT[{Int(c.Args[0])}]",
                     "PEEK" => $"MEM[{Int(c.Args[0])}]",
-                    "POINT" => $"BAS_POINT({Int(c.Args[0])}, {Int(c.Args[1])})",
+                    "POINT" => Call("BAS_POINT", (c.Args[0], K.Int), (c.Args[1], K.Int)),
                     "ASC" => $"BAS_SASC({Str(c.Args[0])})",
                     "STICK" => $"BAS_STICK({Int(c.Args[0])})",
                     "STRIG" => $"BAS_STRIG({Int(c.Args[0])})",

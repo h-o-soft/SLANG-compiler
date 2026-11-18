@@ -271,6 +271,12 @@ public class HuBasicEmitTests
         Assert.Contains("BAS_GLINEP(0, 0, 5, 6, 0, 22);", Transpile("10 DEFINT A-Z:LINE -(5,6),PRESET").Output!);   // 始点は 0 の置き物
         var sl = Transpile("10 DEFINT A-Z:A=POINT(X,Y+1)").Output!;
         Assert.Contains("BAS_POINT(V_X, ((V_Y)+(1)))", sl);
+        // x を読んでから y を計算する (y の MIRROR$ が S$ を書き換える前に、x の ASC(S$) を一時変数に取る)
+        var seq = Transpile("10 S$=CHR$(1):A=POINT(ASC(S$),ASC(MIRROR$(S$))+0.0)").Output!.Split('\n').Select(l => l.Trim()).ToList();
+        int x = seq.FindIndex(l => l.Contains("=BAS_SASC(S_S);"));
+        int y = seq.FindIndex(l => l.Contains("BAS_SMIRRORV(S_S)"));
+        int pt = seq.FindIndex(l => l.Contains("BAS_POINT("));
+        Assert.True(x >= 0 && x < y && y < pt, $"x={x} y={y} point={pt}");
     }
 
     /// <summary>CLEAR 番地: 頭のコメントと CONST ASM に、いちばん小さい番地 (最後に使える番地) を書く。なければどちらも書かない</summary>
