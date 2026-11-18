@@ -344,22 +344,25 @@ public sealed class HuAnalyzer
         }
     }
 
-    /// <summary>数の単純変数の鍵 → その変数に入る値 (整数の定数) と、定数でない値が入る最初の所 (行番号。なければ null)</summary>
-    private Dictionary<string, (List<long> Values, int? NonConstLine)> _varWrites = new(StringComparer.Ordinal);
+    /// <summary>
+    /// 数の単純変数の鍵 → その変数に入る値 (整数の定数) の最小と最大 (始め・CLEAR・MAXFILES の後の 0 も含める) と、
+    /// 定数でない値が入る最初の所 (行番号。なければ null)
+    /// </summary>
+    private Dictionary<string, (long Min, long Max, int? NonConstLine)> _varWrites = new(StringComparer.Ordinal);
 
     /// <summary>
     /// 変数に値が入る所を集める (変数の上限の DIM のため)。LET・= の右辺が整数の値の定数ならその値、それ以外の代入・FOR の変数・
     /// READ・INPUT・INPUT# の行き先・SWAP のどちらかは「定数でない値が入る」
     /// </summary>
-    private Dictionary<string, (List<long> Values, int? NonConstLine)> CollectVarWrites(List<HuLine> lines)
+    private Dictionary<string, (long Min, long Max, int? NonConstLine)> CollectVarWrites(List<HuLine> lines)
     {
-        var writes = new Dictionary<string, (List<long> Values, int? NonConstLine)>(StringComparer.Ordinal);
+        var writes = new Dictionary<string, (long Min, long Max, int? NonConstLine)>(StringComparer.Ordinal);
         void Add(HuExpr target, long? value, int line)
         {
             if (target is not HuVar v) return;
             var key = Key(v.Name);
-            if (!writes.TryGetValue(key, out var w)) w = (new List<long>(), null);
-            if (value is long x) w.Values.Add(x);
+            if (!writes.TryGetValue(key, out var w)) w = (0, 0, null);
+            if (value is long x) w = (Math.Min(w.Min, x), Math.Max(w.Max, x), w.NonConstLine);
             else if (w.NonConstLine == null) w.NonConstLine = line;
             writes[key] = w;
         }
@@ -437,14 +440,14 @@ public sealed class HuAnalyzer
         }
         // 入る値・足し引きの定数・その和は -32768〜32767 に限る (この範囲なら、整数の変数に入れたときも、実行時の 16 ビットの計算・
         // 浮動小数から整数への変換も回り込まず、ここで決めた値と同じになる。外れる形 (N%=-&HFFFF など) は端の形なのでエラー)
-        var values = w.Values.Append(0).ToList();
-        if (values.Any(x => x is < short.MinValue or > short.MaxValue) || offset is < short.MinValue or > short.MaxValue
-            || values.Any(x => x + offset is < short.MinValue or > short.MaxValue))
+        // 最小と最大だけ見ればよい (和も最小 + c・最大 + c の間にある)
+        if (w.Min < short.MinValue || w.Max > short.MaxValue || offset is < short.MinValue or > short.MaxValue
+            || w.Min + offset < short.MinValue || w.Max + offset > short.MaxValue)
         {
             _diag.Error("HB0304", $"DIM {name} の上限の変数 {v.Name} に入る値と足し引きの定数は、和も含めて -32768〜32767 にしてください", pos);
             return null;
         }
-        return values.Max() + offset;
+        return w.Max + offset;
     }
 
     /// <summary>DIM の 1 つの次元の上限 (定数で 0〜max)。書けない形ならエラーを出して null</summary>
