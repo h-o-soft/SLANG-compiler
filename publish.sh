@@ -58,10 +58,18 @@ createRelease() {
   # 含まれないので自動的に対象外)。
   if [ -d "../../examples/zxn" ]; then
     mkdir -p examples/zxn
-    for ext in SL sl cfg nxp nxi spr til ndr nfx; do
+    for ext in SL sl cfg nxp nxi spr til ndr nfx md; do
       cp ../../examples/zxn/*.$ext examples/zxn/ 2>/dev/null
     done
     cp ../../examples/zxn/Makefile examples/zxn/ 2>/dev/null
+  fi
+
+  # examples/zxs は素の ZX Spectrum (zxs) の見本。SL と説明だけを写す (TAP・TZX は slangbuild --emit tape で作る)
+  if [ -d "../../examples/zxs" ]; then
+    mkdir -p examples/zxs
+    cp ../../examples/zxs/*.SL       examples/zxs/ 2>/dev/null
+    cp ../../examples/zxs/*.sl       examples/zxs/ 2>/dev/null
+    cp ../../examples/zxs/README.md  examples/zxs/ 2>/dev/null
   fi
 
   # examples/hubasic は HuBASIC の変換のサンプル。BASIC と README・MANIFEST.txt だけを写す
