@@ -197,6 +197,21 @@ public class BuildIntegrationTests : IDisposable
         Assert.Matches(@"(?m)^\s*CALL\s+M8ALIB\.M8ALOAD\b", File.ReadAllText(Path.Combine(_tempDir, "m8a.ASM")));
     }
 
+    [SkippableTheory]
+    [InlineData("x1")]
+    [InlineData("sosx1")]
+    public void ChipLib_BuildsAlone(string env)
+    {
+        // CHIPLIB.LIB はトップレベルの #ASM で MULHLDE を call する。CHIPLIB.LIB だけを取り込み、掛け算を書かないプログラムも組み立てられる
+        Skip.IfNot(File.Exists(_ailz80AsmPath), "AILZ80ASM がない");
+        var slPath = Path.Combine(_tempDir, "chip.SL");
+        File.WriteAllText(slPath, "#INCLUDE CHIPLIB.LIB\nMAIN()\nBEGIN\nEND;\n");
+        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", env, "-I", Path.Combine(_projectRoot, "include"), "--keep-asm");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        Assert.True(File.Exists(Path.Combine(_tempDir, "chip.bin")), $"bin not produced. stderr: {stderr}");
+        Assert.Matches(@"(?m)^MULHLDE:", File.ReadAllText(Path.Combine(_tempDir, "chip.ASM")));
+    }
+
     [Theory]
     [InlineData("", true)]
     [InlineData("ORG $D000;", false)]                              // コードが WORK に重なる

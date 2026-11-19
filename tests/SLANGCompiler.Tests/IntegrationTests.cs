@@ -1644,4 +1644,26 @@ SUB() BEGIN END;
         Assert.Contains("Unknown #MODULE policy", stderr);
         Assert.Contains("RESIDNT", stderr);
     }
+
+    [Theory]
+    [InlineData("#ASM\nFOO:\n\tcall MULHLDE\n\tRET\n#END\nMAIN() BEGIN END;\n")]           // トップレベルの #ASM (小文字の call)
+    [InlineData("MAIN() BEGIN\n#ASM\n\tcall MULHLDE\n#END\nEND;\n")]                          // 関数の中の #ASM (小文字の call)
+    [InlineData("MAIN() BEGIN\n#ASM\n\tOR A\n\tCALL Z,MULHLDE\n#END\nEND;\n")]              // 条件つきの CALL
+    public void InlineAsmCall_SelectsRuntime(string source)
+    {
+        // #ASM の中の CALL で呼ぶランタイムも入る (ほかに入れるものが無くても)
+        var asm = CompileWithCli(source);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(asm, @"(?m)^MULHLDE:"));
+    }
+
+    [Theory]
+    [InlineData("#ASM\nMULHLDE:\n\tRET\n#END\n#ASM\nFOO:\n\tCALL MULHLDE\n\tRET\n#END\nMAIN() BEGIN END;\n")]
+    [InlineData("#ASM\nMULHLDE:\n\tRET\n#END\nMAIN() BEGIN\n#ASM\n\tcall MULHLDE\n#END\nEND;\n")]
+    public void InlineAsmCall_OwnLabel_DoesNotSelectRuntime(string source)
+    {
+        // #ASM で自分が決めたラベルを CALL するときは、同じ名前のランタイムを入れない (同名のラベルにしない)
+        var asm = CompileWithCli(source);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(asm, @"(?m)^MULHLDE:"));
+        Assert.DoesNotContain(".mul1", asm);   // ランタイムの MULHLDE の中のラベル
+    }
 }

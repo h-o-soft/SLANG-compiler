@@ -98,6 +98,9 @@ public class CodeGenerator
         foreach (var f in _module.Functions) EmitFunction(f);
         var mainCalled = new HashSet<string>(_calledFunctions, StringComparer.OrdinalIgnoreCase);
 
+        // トップレベルの #ASM の CALL (#ASM はモジュールの外にだけ書ける)
+        mainCalled.UnionWith(GlobalAsmCallNames());
+
         // address symbol deps (CONST 式等で参照される runtime ラベル)
         foreach (var dep in _module.AddressSymbolDeps)
             if (_runtimeManager.Functions.ContainsKey(dep)) mainCalled.Add(dep);
@@ -344,7 +347,7 @@ public class CodeGenerator
         if (_runtimeManager != null && _runtimePlan == null)
         {
             var userFuncs = new HashSet<string>(_module.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
-            foreach (var name in _calledFunctions)
+            foreach (var name in _calledFunctions.Concat(GlobalAsmCallNames()))
             {
                 if (!userFuncs.Contains(name))
                     _runtimeManager.MarkUsed(name);
@@ -634,6 +637,29 @@ public class CodeGenerator
         lines.Select(line => AsmLineLabel.Match(line))
              .Where(m => m.Success)
              .Select(m => m.Groups[1].Value);
+
+    // #ASM で決めるラベル (トップレベルと関数の中、本体とモジュールの全部)。#ASM の CALL がこの名前なら、ランタイムを入れない
+    // (自分で書いた同じ名前のラベルを呼んでいるので、ランタイムを入れると同名のラベルになる)
+    private HashSet<string>? _asmDefinedLabels;
+    private HashSet<string> AsmDefinedLabels => _asmDefinedLabels ??= new HashSet<string>(
+        AsmLineLabels(_module.GlobalData
+                .Concat(_module.Functions.SelectMany(f => f.Instructions))
+                .Concat(_module.Overlays.SelectMany(o => o.Functions).SelectMany(f => f.Instructions))
+                .Where(i => i.Op == IrOp.InlineAsm)
+                .Select(i => i.Dest.Kind == IrOperandKind.Temp ? i.Src1.Name : i.Dest.Name)
+                .Where(a => a != null)
+                .SelectMany(a => a!.Split('\n'))),
+        StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>#ASM の中の CALL の名前。#ASM で自分が決めたラベルは除く</summary>
+    private IEnumerable<string> AsmCallNames(string asm) =>
+        InlineAsmCalls.Names(asm).Where(n => !AsmDefinedLabels.Contains(n));
+
+    /// <summary>トップレベルの #ASM の中の CALL の名前 (ランタイムを選ぶため。関数の中の #ASM は EmitFunction で集める)</summary>
+    private IEnumerable<string> GlobalAsmCallNames() =>
+        _module.GlobalData
+            .Where(i => i.Op == IrOp.InlineAsm && i.Dest.Kind == IrOperandKind.AsmString)
+            .SelectMany(i => AsmCallNames(i.Dest.Name!));
 
     /// <summary>トップレベルのインラインASM（#ASMブロック）を出力</summary>
     private void EmitGlobalPlainAsm()
@@ -2534,17 +2560,9 @@ public class CodeGenerator
                 if (asmCode != null)
                 {
                     _e.Raw(asmCode);
-                    // InlineAsm内のCALL命令を_calledFunctionsに登録
-                    foreach (var line in asmCode.Split('\n'))
-                    {
-                        var trimmed = line.Trim();
-                        if (trimmed.StartsWith("CALL\t") || trimmed.StartsWith("CALL "))
-                        {
-                            var funcName = trimmed[5..].Trim().Split(';')[0].Trim();
-                            if (!string.IsNullOrEmpty(funcName))
-                                _calledFunctions.Add(funcName);
-                        }
-                    }
+                    // #ASM の CALL の名前を _calledFunctions に入れる (ランタイムを選ぶため)
+                    foreach (var name in AsmCallNames(asmCode))
+                        _calledFunctions.Add(name);
                 }
                 break;
 

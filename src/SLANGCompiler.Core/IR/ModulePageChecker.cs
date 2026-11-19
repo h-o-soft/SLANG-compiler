@@ -80,15 +80,8 @@ public static class ModulePageChecker
             {
                 var asm = i.Dest.Kind == IrOperandKind.Temp ? i.Src1.Name : i.Dest.Name;
                 if (asm == null) continue;
-                foreach (var line in asm.Split('\n'))
-                {
-                    // `CALL 名前`・`CALL Z,名前` (条件つきも)。大文字・小文字は問わない
-                    var t = line.Trim();
-                    if (t.Length < 5 || !t.StartsWith("CALL", StringComparison.OrdinalIgnoreCase) || (t[4] != ' ' && t[4] != '\t')) continue;
-                    var operand = t[5..].Split(';')[0].Trim();
-                    var name = operand[(operand.LastIndexOf(',') + 1)..].Trim();
-                    if (name.Length > 0) yield return name;
-                }
+                foreach (var name in InlineAsmCalls.Names(asm))
+                    yield return name;
             }
         }
     }
