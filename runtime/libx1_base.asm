@@ -133,8 +133,10 @@ RET
 ; (音の部品はポート B を出力にするので、そのままでは出力の値を読んでしまう)。
 ; PSG を使う間は割り込みを止め、割り込みの状態は呼ぶ前のまま戻す。
 ; 状態は LD A,I (IFF2 を P/V に写す) で知る。NMOS の Z80 は、LD A,I の終わりで割り込みを受けると、許可でも P/V が 0 になる。
-; そこで、スタックのすぐ下に 0 を置いてから LD A,I し、P/V が 0 なら、そこが割り込みの戻り先 (上位は 0 でない) で
-; 上書きされていないかを見る。上書きされていれば、何かの割り込みを受けた (止めていても NMI は入る) ので、もう一度確かめる。
+; そこで、スタックのすぐ下に印 ($FFFF - .STICK_IRQRET) を置いてから LD A,I し、P/V が 0 なら、そこが割り込みの戻り先で
+; 上書きされていないかを見る。ここで受けた割り込みの戻り先は LD A,I の所か .STICK_IRQRET で、どこに置かれても印とは違う値になる
+; (印と .STICK_IRQRET の和は $FFFF、LD A,I の所との和は $FFFD)。
+; 上書きされていれば、何かの割り込みを受けた (止めていても NMI は入る) ので、もう一度確かめる。
 ; P/V が 1 なら許可、P/V が 0 で上書きされていなければ止まっていた。
 ; 割り込みの処理 (とくに NMI の処理) の中からは呼ばない。NMI の処理の中では IFF2 が元の許可を残しているので、
 ; 許可と読んで EI し、RETN より前に割り込みを入れてしまう
@@ -145,17 +147,22 @@ LD A,L
 CP 2
 JR NC,.STICK_INVALID
 .STICK_PROBE
-XOR A
-PUSH AF
-POP AF
+LD DE,$FFFF-.STICK_IRQRET
+PUSH DE
+POP DE
 LD A,I
+.STICK_IRQRET
 JP PE,.STICK_ON
 DEC SP
 DEC SP
-POP AF
+POP DE
+PUSH HL
+LD HL,$FFFF-.STICK_IRQRET
 OR A
+SBC HL,DE
+POP HL
 JR NZ,.STICK_PROBE
-LD D,A
+LD D,0
 JR .STICK_READ
 .STICK_ON
 LD D,1
