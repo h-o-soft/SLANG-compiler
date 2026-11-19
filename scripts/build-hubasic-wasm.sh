@@ -32,6 +32,11 @@ if [ -n "$(ls -A "$OUT")" ]; then
   echo "build-hubasic-wasm: $OUT が空ではありません (消すか、別のフォルダを指定してください)" >&2
   exit 2
 fi
+# 出力フォルダに書くのは 1 つの組み立てだけ (同時に同じフォルダへ組み立てたら、後から来た方は止まる)
+if ! mkdir "$OUT/.building" 2> /dev/null; then
+  echo "build-hubasic-wasm: $OUT には、ほかの組み立てが書いています" >&2
+  exit 2
+fi
 # slangc は今の作業フォルダの runtime/ を先に探すので、この木の根から動かす
 cd "$REPO"
 
@@ -63,12 +68,17 @@ if ! command -v "$NODE" > /dev/null 2>&1 \
   echo "build-hubasic-wasm: node 22.7 以上が要ります (PATH に置くか、NODE で指してください)" >&2
   exit 1
 fi
+# 確かめ (wasm の中は / 区切りの道) は、Windows の node では動かない。Windows では WSL などの Linux で組み立てる
+if [ "$("$NODE" -p 'process.platform')" = win32 ]; then
+  echo "build-hubasic-wasm: Windows の node では束を確かめられません (WSL などの Linux で動かしてください)" >&2
+  exit 1
+fi
 
 TMP="$(mktemp -d)"
-# 束は出力フォルダに直に作る (許可は呼んだ人の umask と出力フォルダのまま)。manifest.json は、manifest の検査と
-# CLI との比べ合わせが全部通ったときだけ残し、途中で止まったら消す。manifest の無い束は、検査も取り込みも通らない
-COMPLETE=false
-trap 'rm -rf "$TMP"; [ "$COMPLETE" = true ] || rm -f "$OUT/manifest.json"' EXIT
+# 束は出力フォルダに直に作る (許可は呼んだ人の umask と出力フォルダのまま)。manifest.json は束の外 ($TMP) に書いて
+# 確かめ、manifest の検査と CLI との比べ合わせが全部通ってから、最後に名前の付け替えで束に入れる。
+# 途中で止まった束には manifest.json が無いので、検査も取り込みも通らない
+trap 'rm -rf "$TMP"; rmdir "$OUT/.building" 2> /dev/null || true' EXIT
 
 echo "[1/5] CLI (hubasic2sl・slangc・slangbuild) を組み立てます"
 for p in SLANGCompiler.HuBasic SLANGCompiler.CLI SLANGCompiler.Build; do
@@ -126,11 +136,15 @@ done
 
 echo "[4/5] ランタイムと manifest を作り、束を確かめます"
 python3 -I scripts/hubasic-wasm-manifest.py copy "$REPO" "$OUT"
-python3 -I scripts/hubasic-wasm-manifest.py write "$REPO" "$OUT" "$SHA" "$DIRTY" "$VERSION" "$ASM" "$ASM_VERSION" "$CASES" "$HUFS_ADD" "$SLANG_CASES"
-python3 -I scripts/hubasic-wasm-manifest.py verify "$OUT"
+python3 -I scripts/hubasic-wasm-manifest.py write "$REPO" "$OUT" "$SHA" "$DIRTY" "$VERSION" "$ASM" "$ASM_VERSION" "$CASES" "$HUFS_ADD" "$SLANG_CASES" "$TMP/manifest.json"
+python3 -I scripts/hubasic-wasm-manifest.py verify "$OUT" "$TMP/manifest.json"
 
 echo "[5/5] wasm の変換・コンパイル・ディスク作りを CLI と比べます"
-"$NODE" scripts/hubasic-wasm-smoke.mjs "$OUT" "$REPO" "$HUB" "$SLANGC_DLL"
+"$NODE" scripts/hubasic-wasm-smoke.mjs "$OUT" "$REPO" "$HUB" "$SLANGC_DLL" "$TMP/manifest.json"
 
-COMPLETE=true
+# 全部通ったので manifest.json を束に入れる (同じフォルダの中の rename で、一度に現れる)
+cp "$TMP/manifest.json" "$OUT/.manifest.json.tmp"
+mv -f "$OUT/.manifest.json.tmp" "$OUT/manifest.json"
+rmdir "$OUT/.building"
+python3 -I scripts/hubasic-wasm-manifest.py verify "$OUT"
 echo "build-hubasic-wasm: $OUT にできました (SHA $SHA、dirty $DIRTY)"

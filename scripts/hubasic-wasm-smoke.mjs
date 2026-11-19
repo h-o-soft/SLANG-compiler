@@ -1,7 +1,8 @@
 // ブラウザ向けの一式 (scripts/build-hubasic-wasm.sh が作るもの) を node で読み込み、
 // wasm の変換 (HuBasicWeb)・コンパイルとディスク作り (SlangWeb) が同じ版の CLI と同じかを確かめる。1 つでも違えば終了コード 1。
 //
-//   node hubasic-wasm-smoke.mjs <一式のフォルダ> <リポジトリ> <hubasic2sl.dll> <slangc.dll>
+//   node hubasic-wasm-smoke.mjs <一式のフォルダ> <リポジトリ> <hubasic2sl.dll> <slangc.dll> [<manifest.json>]
+//   (manifest.json を省けば <一式のフォルダ>/manifest.json。組み立ての script は、確かめが通るまで束の外に置いた manifest を渡す)
 //
 // 確かめること:
 // - hubasic2sl: examples/hubasic/*.BAS の SL と診断 (オプションあり・なし)、Shift_JIS の入力、error と warning の診断、
@@ -17,7 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 // 道は呼んだ人の作業フォルダからの相対でもよい (CLI を一時の dir で動かすので、先に絶対の道にする)
-const [bundle, repo, cliDll, slangcDll] = process.argv.slice(2).map(p => p && path.resolve(p));
+const [bundle, repo, cliDll, slangcDll, manifestArg] = process.argv.slice(2).map(p => p && path.resolve(p));
 if (!bundle || !repo || !cliDll || !slangcDll) {
   console.error('使い方: node hubasic-wasm-smoke.mjs <一式のフォルダ> <リポジトリ> <hubasic2sl.dll> <slangc.dll>');
   process.exit(2);
@@ -39,7 +40,7 @@ const { dotnet } = await import(pathToFileURL(path.join(bundle, '_framework', 'd
 const runtime = await dotnet.create();
 const exports = await runtime.getAssemblyExports('hubasic2sl-wasm');
 const api = exports.SLANGCompiler.HuBasic.Wasm.HuBasicWeb;
-const manifest = JSON.parse(fs.readFileSync(path.join(bundle, 'manifest.json'), 'utf8'));
+const manifest = JSON.parse(fs.readFileSync(manifestArg ?? path.join(bundle, 'manifest.json'), 'utf8'));
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'hubasic-wasm-smoke-'));
 let failed = 0;

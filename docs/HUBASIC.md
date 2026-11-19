@@ -86,7 +86,8 @@ prog.bas:2:4: error HB0301 (BASIC 20): 未対応の命令 CIRCLE
 hubasic2sl の変換と、slangc のコンパイル、Hu-BASIC と同じ形のディスク作りを、.NET の browser-wasm で動かす入口があります
 (`src/SLANGCompiler.HuBasic.Wasm/`。SLANGCompiler.sln には入っていません。.NET 10)。アセンブラは入っていません (組み立ては呼ぶ側のもの)。
 組み立てと試験は次の 1 行です (要るもの: .NET 10 SDK、python3、AILZ80ASM (`AILZ80ASM_PATH`・PATH・`tools/` の順に探す)、node 22.7 以上
-(`NODE` で指せます。最後に、wasm の変換・コンパイル・ディスク作りが CLI と同じかを確かめます。node が無ければ止まります))。
+(`NODE` で指せます。最後に、wasm の変換・コンパイル・ディスク作りが CLI と同じかを確かめます。node が無ければ止まります)。
+Linux か macOS で動かします (Windows では WSL などの Linux で)。束の `manifest.json` は、確かめが全部通ったときだけ置かれます)。
 
 ```sh
 scripts/build-hubasic-wasm.sh out/hubasic-wasm

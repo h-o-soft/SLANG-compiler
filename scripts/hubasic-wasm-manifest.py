@@ -5,13 +5,13 @@
   hubasic-wasm-manifest.py envs   <repo>                      env の値と組の印の番号を JSON で stdout に出す (テストが使う)
   hubasic-wasm-manifest.py copy   <repo> <out>                runtime/ (4 つの env の libraries の和集合の .asm)・env/・include/ (X1 で使う .LIB)・
                                                               LICENSE・LICENSE-APACHE-2.0.txt を写す (env の disk.template のディスクの型は写さない)
-  hubasic-wasm-manifest.py write  <repo> <out> <sha> <dirty> <version> <asm> <asm-version> <case,...> <hufs-add> <slang-case,...>
-                                                              束の全部のファイルを数えて <out>/manifest.json を書く。
+  hubasic-wasm-manifest.py write  <repo> <out> <sha> <dirty> <version> <asm> <asm-version> <case,...> <hufs-add> <slang-case,...> [<manifest>]
+                                                              束の全部のファイルを数えて <out>/manifest.json (<manifest> を書けばそこ) を書く。
                                                               <case> は HuBASIC の例。.SL の頭の `// env:` が x1native_hufs なら hufsTestdata、
                                                               無ければ testdata (x1native_slfs) に入れる。
                                                               <hufs-add> は「例の名前:名前=testdata のファイル,種類」を ; でつないだもの
                                                               (その例のディスクに --hufs-add で足したファイル)。<slang-case> は testdata/slang/ の x1 の env の例
-  hubasic-wasm-manifest.py verify <out>                       束と manifest が合っているかを確かめる
+  hubasic-wasm-manifest.py verify <out> [<manifest>]          束と manifest (既定は <out>/manifest.json) が合っているかを確かめる
 
 env ファイルから読むのは env_type・os_type・default_org・defines・libraries と、disk: の main_name・main_load・main_exec・volume だけ
 (EnvironmentLoader と同じ値になることをテストで確かめる)。読めないか、.asm が無ければ止める。
@@ -237,7 +237,7 @@ def cmd_copy(repo, out):
         shutil.copyfile(os.path.join(repo, name), os.path.join(out, name))
 
 
-def cmd_write(repo, out, sha, dirty, version, asm, asm_version, cases, hufs_add, slang_cases):
+def cmd_write(repo, out, sha, dirty, version, asm, asm_version, cases, hufs_add, slang_cases, manifest_path=None):
     envs = read_envs(repo)
     adds = parse_hufs_add(hufs_add)
     testdata = {"env": TESTDATA_ENV, "transpileOptions": {}, "cases": []}
@@ -282,15 +282,16 @@ def cmd_write(repo, out, sha, dirty, version, asm, asm_version, cases, hufs_add,
         "files": [{"path": p, "sha256": sha256(os.path.join(out, p)), "size": os.path.getsize(os.path.join(out, p))}
                   for p in list_files(out)],
     }
-    with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:
+    with open(manifest_path or os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
         f.write("\n")
 
 
-def cmd_verify(out):
-    if not os.path.isfile(os.path.join(out, "manifest.json")):
-        fail(f"{out} に manifest.json がありません (組み立てが途中で止まった束か、束ではありません)")
-    with open(os.path.join(out, "manifest.json"), encoding="utf-8") as f:
+def cmd_verify(out, manifest_path=None):
+    manifest_path = manifest_path or os.path.join(out, "manifest.json")
+    if not os.path.isfile(manifest_path):
+        fail(f"{manifest_path} がありません (組み立てが途中で止まった束か、束ではありません)")
+    with open(manifest_path, encoding="utf-8") as f:
         m = json.load(f)
     paths = [e["path"] for e in m["files"]]
     if len(paths) != len(set(paths)):
@@ -330,6 +331,8 @@ def cmd_verify(out):
     if current:
         if not m["hufsTestdata"]["cases"]:
             fail("hufsTestdata が空です")
+        if m["slangTestdata"].get("env") not in m["envs"]:
+            fail(f"slangTestdata の env ({m['slangTestdata'].get('env')}) が束にありません")
         if not m["slangTestdata"]["cases"]:
             fail("SLANG タブ用の testdata が空です")
         for case in m["slangTestdata"]["cases"]:
@@ -342,6 +345,9 @@ def cmd_verify(out):
         for name in INCLUDE_FILES:
             if not any(f"{p.rstrip('/')}/{name}" in listed for p in include_paths):
                 fail(f"{name} が slangTestdata の includePaths ({include_paths}) のどこにもありません")
+    for name in m["envs"]:
+        if f"env/{name}.env" not in listed:
+            fail(f"env/{name}.env が束にありません")
     for env in m["envs"].values():
         for lib in env["libraries"]:
             if f"runtime/{lib}" not in listed:
@@ -359,10 +365,11 @@ def main():
         print()
     elif args[:1] == ["copy"] and len(args) == 3:
         cmd_copy(args[1], args[2])
-    elif args[:1] == ["write"] and len(args) == 11:
-        cmd_write(*args[1:8], [c for c in args[8].split(",") if c], args[9], [c for c in args[10].split(",") if c])
-    elif args[:1] == ["verify"] and len(args) == 2:
-        cmd_verify(args[1])
+    elif args[:1] == ["write"] and len(args) in (11, 12):
+        cmd_write(*args[1:8], [c for c in args[8].split(",") if c], args[9], [c for c in args[10].split(",") if c],
+                  args[11] if len(args) == 12 else None)
+    elif args[:1] == ["verify"] and len(args) in (2, 3):
+        cmd_verify(args[1], args[2] if len(args) == 3 else None)
     else:
         fail("使い方: hubasic-wasm-manifest.py envs|copy|write|verify … (ファイルの頭の説明を参照)")
 
