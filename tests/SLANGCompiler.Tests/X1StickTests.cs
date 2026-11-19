@@ -7,8 +7,8 @@ namespace SLANGCompiler.Tests;
 /// <summary>
 /// X1 の `STICK(n)` (libx1_base.asm) の約束:
 /// - 引数 1 個。H が 0 でない・L が 2 以上なら、I/O も DI/EI もせずに $00FF を返す
-/// - 0・1 なら PSG のレジスタ 14・15 を選んで ($1C00 に OUT) 読み ($1B00 から IN)、H を 0 にして返す
-/// - PSG を選んで読む間だけ割り込みを止め、割り込みの状態は呼ぶ前のまま戻す (LD A,I で覚えて、許可だったときだけ EI)
+/// - 0・1 なら PSG のレジスタ 7 のそのポートを入力にして、レジスタ 14・15 を選んで ($1C00 に OUT) 読み ($1B00 から IN)、レジスタ 7 を戻し、H を 0 にして返す
+/// - PSG を使う間だけ割り込みを止め、割り込みの状態は呼ぶ前のまま戻す (NMOS の Z80 の LD A,I の癖も見て、許可だったときだけ EI)
 /// - X1 の全部の env の libraries に libx1_base が入っている
 /// 実 Z80 の動きはここでは確かめられないので、注釈と命令の並びを押さえる。
 /// </summary>
@@ -68,33 +68,63 @@ public class X1StickTests
     public void Stick_ReadsPsgPortAndRestoresInterruptState()
     {
         // 範囲の検査の後から .STICK_INVALID の前までは、この並びのとおり:
-        // - IFF2 を LD A,I で P/V に写す。NMOS の Z80 で、LD A,I の終わりに割り込みを受けて P/V が 0 になったときのため、
-        //   1 回目が 0 (PO) ならもう 1 回 LD A,I する。すぐ DI して、P/V を PUSH AF で覚えてから PSG を選んで読む
-        // - レジスタ (14 + 番号) を $1C00 で選び、すぐ後に $1Bxx から読む
-        // - 覚えた P/V で、割り込みが止まっていたなら RET PO でそのまま戻り、許可だったときだけ EI
+        // - 割り込みの状態: スタックのすぐ下に 0 を置いて LD A,I。P/V が 1 なら許可。0 なら、置いた所が
+        //   割り込みの戻り先で上書きされたか (NMOS の Z80 の LD A,I) を見て、上書きされていれば許可。D に 1 (許可)・0 (止まっていた)
+        // - DI してから、レジスタ 7 を読んで E に覚え、そのポートのビット (A は 6、B は 7) を 0 (入力) にして書く
+        // - レジスタ (14 + 番号) を $1C00 で選んで、すぐ $1Bxx から読む
+        // - レジスタ 7 を E に戻し、D が 0 ならそのまま戻り、1 なら EI して戻る
         var lines = CodeLines(LoadStick());
         int invalid = Array.IndexOf(lines, ".STICK_INVALID");
         Assert.Equal(new[]
         {
-            "LD A,I",
-            "JP PE,.STICK_IFF",
-            "LD A,I",
-            ".STICK_IFF",
-            "DI",
+            "XOR A",
             "PUSH AF",
+            "POP AF",
+            "LD A,I",
+            "JP PE,.STICK_ON",
+            "DEC SP",
+            "DEC SP",
+            "POP AF",
+            "OR A",
+            "JR NZ,.STICK_ON",
+            "LD D,A",
+            "JR .STICK_READ",
+            ".STICK_ON",
+            "LD D,1",
+            ".STICK_READ",
+            "DI",
+            "LD BC,$1C00",
+            "LD A,7",
+            "OUT (C),A",
+            "LD B,$1B",
+            "IN E,(C)",
+            "LD A,L",
+            "OR A",
+            "LD A,$BF",
+            "JR Z,.STICK_MASK",
+            "LD A,$7F",
+            ".STICK_MASK",
+            "AND E",
+            "OUT (C),A",
+            "LD B,$1C",
             "LD A,L",
             "ADD A,$0E",
-            "LD BC,$1C00",
             "OUT (C),A",
             "LD B,$1B",
             "IN L,(C)",
+            "LD B,$1C",
+            "LD A,7",
+            "OUT (C),A",
+            "LD B,$1B",
+            "OUT (C),E",
             "LD H,0",
-            "POP AF",
-            "RET PO",
+            "LD A,D",
+            "OR A",
+            "RET Z",
             "EI",
             "RET",
         }, lines[6..invalid]);
-        // DI・EI はこの 1 回ずつだけ (範囲外の道では割り込みに触らない)
+        // DI・EI はこの 1 回ずつだけ (範囲外の道では割り込みにも PSG にも触らない)
         Assert.Single(lines, "DI");
         Assert.Single(lines, "EI");
     }

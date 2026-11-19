@@ -129,31 +129,62 @@ RET
 ; @param_count 1
 ; HL = ジョイスティックの番号 (0 = 1 つ目、1 = 2 つ目) → HL = そのポートの生の値 (PSG のレジスタ 14・15)。
 ; 押したレバーとボタンのビットが 0 になる。範囲外の番号は $00FF。
-; PSG のレジスタを選んで読む間だけ割り込みを止める (割り込みの中で PSG を鳴らす部品とぶつからないように)。
-; 割り込みの状態は、呼ぶ前のまま戻す (LD A,I で IFF2 を P/V に写して覚え、許可だったときだけ EI)。
-; NMOS の Z80 は、LD A,I の終わりで割り込みを受けると、許可でも P/V が 0 になることがある。
-; そのときは割り込みの処理が EI して戻っているので、1 回目が 0 なら LD A,I をもう 1 回して確かめる
+; 読む間だけ、PSG のレジスタ 7 のそのポートのビット (6 = ポート A、7 = ポート B) を 0 (入力) にして、読んだら元に戻す
+; (音の部品はポート B を出力にするので、そのままでは出力の値を読んでしまう)。
+; PSG を使う間は割り込みを止め、割り込みの状態は呼ぶ前のまま戻す。
+; 状態は LD A,I (IFF2 を P/V に写す) で知る。NMOS の Z80 は、LD A,I の終わりで割り込みを受けると、許可でも P/V が 0 になる。
+; そこで、スタックのすぐ下に 0 を置いてから LD A,I し、P/V が 0 なら、そこが割り込みの戻り先 (上位は 0 でない) で
+; 上書きされていないかを見る。上書きされていれば、割り込みを受けた (= 許可だった)
 LD A,H
 OR A
 JR NZ,.STICK_INVALID
 LD A,L
 CP 2
 JR NC,.STICK_INVALID
-LD A,I
-JP PE,.STICK_IFF
-LD A,I
-.STICK_IFF
-DI
+XOR A
 PUSH AF
+POP AF
+LD A,I
+JP PE,.STICK_ON
+DEC SP
+DEC SP
+POP AF
+OR A
+JR NZ,.STICK_ON
+LD D,A
+JR .STICK_READ
+.STICK_ON
+LD D,1
+.STICK_READ
+DI
+LD BC,$1C00
+LD A,7
+OUT (C),A
+LD B,$1B
+IN E,(C)
+LD A,L
+OR A
+LD A,$BF
+JR Z,.STICK_MASK
+LD A,$7F
+.STICK_MASK
+AND E
+OUT (C),A
+LD B,$1C
 LD A,L
 ADD A,$0E
-LD BC,$1C00
 OUT (C),A
 LD B,$1B
 IN L,(C)
+LD B,$1C
+LD A,7
+OUT (C),A
+LD B,$1B
+OUT (C),E
 LD H,0
-POP AF
-RET PO
+LD A,D
+OR A
+RET Z
 EI
 RET
 .STICK_INVALID
