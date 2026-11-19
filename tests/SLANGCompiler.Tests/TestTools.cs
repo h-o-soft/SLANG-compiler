@@ -6,13 +6,15 @@ namespace SLANGCompiler.Tests;
 
 /// <summary>
 /// 試験が slangbuild を動かすときに --slangc で渡す slangc。slangbuild は slangc を同梱・開発の publish・PATH から探し、
-/// どこにも無ければ止まるので、試験は開発の木の slangc を publish したもの (無ければ、この試験のプロセスで 1 回だけ publish する) を明示して渡す
+/// どこにも無ければ止まるので、試験は今の木の slangc を明示して渡す。
+/// 試験のプロセスごとに 1 回、今の木の CLI をこのプロセスだけの一時のフォルダに publish する
+/// (前に publish した古い slangc を使わず、同時に動くほかの試験のプロセスとも取り合わない。終わったら消す)
 /// </summary>
 internal static class TestTools
 {
     private static readonly Lazy<string> _slangc = new(PublishSlangc, LazyThreadSafetyMode.ExecutionAndPublication);
 
-    /// <summary>publish した slangc の道 (src/SLANGCompiler.CLI/bin/Release/net10.0/&lt;RID&gt;/publish/slangc(.exe))</summary>
+    /// <summary>このプロセスで publish した slangc の道</summary>
     internal static string SlangcPath => _slangc.Value;
 
     internal static string RepoRoot()
@@ -37,9 +39,12 @@ internal static class TestTools
     {
         var root = RepoRoot();
         var rid = CurrentRid();
-        var exePath = Path.Combine(root, "src", "SLANGCompiler.CLI", "bin", "Release", "net10.0", rid, "publish",
-                                   OperatingSystem.IsWindows() ? "slangc.exe" : "slangc");
-        if (File.Exists(exePath)) return exePath;   // 前に publish したものを使う (試験のあいだで publish を重ねない)
+        var outDir = Path.Combine(Path.GetTempPath(), $"slang_test_slangc_{Environment.ProcessId}_{Guid.NewGuid():N}");
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try { Directory.Delete(outDir, true); } catch { }
+        };
+        var exePath = Path.Combine(outDir, OperatingSystem.IsWindows() ? "slangc.exe" : "slangc");
 
         var psi = new ProcessStartInfo
         {
@@ -51,7 +56,7 @@ internal static class TestTools
         };
         psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         foreach (var a in new[] { "publish", "src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj", "-c", "Release", "-r", rid,
-                                  "--self-contained", "true", "-p:PublishSingleFile=true" })
+                                  "--self-contained", "true", "-p:PublishSingleFile=true", "-o", outDir })
             psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         var stdoutTask = proc.StandardOutput.ReadToEndAsync();
