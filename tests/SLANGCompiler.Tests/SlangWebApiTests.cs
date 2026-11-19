@@ -198,10 +198,27 @@ public class SlangWebApiTests : IDisposable
     [Fact]
     public void Compile_PreprocessorDivisionOverflow_DoesNotThrow()
     {
-        // #IF の -2147483648 / -1 は、+ - * と同じく回り込む (例外で止まらない)
-        var path = Source("IF.SL", "#IF $80000000 / -1\nVAR K;\n#ENDIF\nVAR J;\nMAIN()\nBEGIN\n  J = 1;\nEND;\n");
+        // #IF の -2147483648 / -1 は、+ - * と同じく回り込んで -2147483648 になる (例外で止まらない)。
+        // 違う値なら K が無くなり、MAIN の K = 1 が error になる
+        var path = Source("IF.SL", "#IF ($80000000 / -1) == $80000000\nVAR K;\n#ENDIF\nMAIN()\nBEGIN\n  K = 1;\nEND;\n");
         var r = Parse(SlangWebApi.Compile(path, Options("x1")));
         Assert.True(r.GetProperty("ok").GetBoolean(), r.GetRawText());
+    }
+
+    [Theory]
+    [InlineData("- ", "")]          // 空白で区切る (続けると -- の字句になる)
+    [InlineData("(", ")")]
+    public void Compile_DeeplyNestedIfExpression_ReturnsErrorAndNextCompileWorks(string open, string close)
+    {
+        // 深すぎる #IF の式は、スタックを使い果たす前に error にする。そのあとも同じ口でコンパイルできる
+        var deep = string.Concat(Enumerable.Repeat(open, 10000)) + "1" + string.Concat(Enumerable.Repeat(close, 10000));
+        var path = Source("DEEP.SL", $"#IF {deep}\nVAR K;\n#ENDIF\nVAR J;\nMAIN()\nBEGIN\n  J = 1;\nEND;\n");
+        var r = Parse(SlangWebApi.Compile(path, Options("x1")));
+        Assert.False(r.GetProperty("ok").GetBoolean());
+        Assert.Contains(Lines(r, "log"), l => l.Contains("#IF expression is nested too deeply"));
+
+        var ok = Parse(SlangWebApi.Compile(Source("OK.SL", "VAR J;\nMAIN()\nBEGIN\n  J = 1;\nEND;\n"), Options("x1")));
+        Assert.True(ok.GetProperty("ok").GetBoolean(), ok.GetRawText());
     }
 
     [Fact]

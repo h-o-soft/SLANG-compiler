@@ -545,16 +545,35 @@ public class Preprocessor
         return left;
     }
 
+    /// <summary>#IF の式の入れ子 (単項の演算子と括弧) の深さの上限。越えたら error (深すぎる式でスタックを使い果たさないように)</summary>
+    private const int MaxIfNesting = 256;
+    private int _ifNesting;
+
     /// <summary>- / NOT / CPL</summary>
     private int? EvalUnary(List<Token> tokens, ref int pos)
     {
-        if (pos < tokens.Count)
+        // 単項の演算子も括弧も、ここを 1 段ずつ通る
+        _ifNesting++;
+        try
         {
-            if (tokens[pos].Kind == TokenKind.Minus) { pos++; var v = EvalUnary(tokens, ref pos); return v != null ? -v.Value : null; }
-            if (tokens[pos].Kind == TokenKind.Not) { pos++; var v = EvalUnary(tokens, ref pos); return v != null ? (v.Value != 0 ? 0 : 1) : null; }
-            if (tokens[pos].Kind == TokenKind.Cpl) { pos++; var v = EvalUnary(tokens, ref pos); return v != null ? ~v.Value : null; }
+            if (_ifNesting > MaxIfNesting)
+            {
+                var at = tokens[Math.Min(pos, tokens.Count - 1)];
+                _diagnostics.Error($"#IF expression is nested too deeply (more than {MaxIfNesting} levels)", at.Span);
+                return null;
+            }
+            if (pos < tokens.Count)
+            {
+                if (tokens[pos].Kind == TokenKind.Minus) { pos++; var v = EvalUnary(tokens, ref pos); return v != null ? -v.Value : null; }
+                if (tokens[pos].Kind == TokenKind.Not) { pos++; var v = EvalUnary(tokens, ref pos); return v != null ? (v.Value != 0 ? 0 : 1) : null; }
+                if (tokens[pos].Kind == TokenKind.Cpl) { pos++; var v = EvalUnary(tokens, ref pos); return v != null ? ~v.Value : null; }
+            }
+            return EvalPrimary(tokens, ref pos);
         }
-        return EvalPrimary(tokens, ref pos);
+        finally
+        {
+            _ifNesting--;
+        }
     }
 
     /// <summary>数値 / 識別子(CONST参照) / (expr)</summary>

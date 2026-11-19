@@ -96,6 +96,16 @@ public class HuDiskWebApiTests : IDisposable
         }
     }
 
+    [Fact]
+    public void BuildHuDisk_DrivePrefixedBootName_UsesSameNameInDirectoryAndIpl()
+    {
+        // "0:GAME" のドライブの "0:" は、ディレクトリの項目にも IPL の見出しにも書かない
+        var r = Parse(HuDiskWebApi.BuildHuDisk(Main, "{\"mainName\":\"0:GAME\"}"));
+        var disk = HuDiskImage.FromD88(D88(r));
+        Assert.Contains("GAME.Sys", disk.Entries().Select(e => e.DisplayName));
+        Assert.Equal("GAME         ", System.Text.Encoding.ASCII.GetString(disk.ReadRecord(0), 1, 13));
+    }
+
     [Theory]
     [InlineData("ｱ")]                    // 表示できる ASCII でない (IPL の見出しに書けない)
     [InlineData("ABCDEFGHIJKLMN")]       // 14 文字
