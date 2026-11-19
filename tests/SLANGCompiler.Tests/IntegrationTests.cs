@@ -1644,46 +1644,4 @@ SUB() BEGIN END;
         Assert.Contains("Unknown #MODULE policy", stderr);
         Assert.Contains("RESIDNT", stderr);
     }
-
-    [Theory]
-    [InlineData("#ASM\nFOO:\n\tcall MULHLDE\n\tRET\n#END\nMAIN() BEGIN END;\n")]                  // 小文字の call
-    [InlineData("#ASM\nFOO:\n\tOR A\n\tCALL Z,MULHLDE\n\tRET\n#END\nMAIN() BEGIN END;\n")]       // 条件つきの CALL
-    [InlineData("#ASM\nENTRY: call MULHLDE\n\tRET\n#END\nMAIN() BEGIN END;\n")]                     // ラベルと同じ行の CALL
-    public void TopLevelAsmCall_SelectsRuntime(string source)
-    {
-        // トップレベルの #ASM の CALL で呼ぶランタイムも入る (ほかに入れるものが無くても)
-        var asm = CompileWithCli(source);
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(asm, @"(?m)^MULHLDE:"));
-        Assert.Contains(".mul1", asm);   // ランタイムの MULHLDE の中のラベル
-    }
-
-    [Theory]
-    [InlineData("#ASM\nMULHLDE:\n\tRET\n#END\n#ASM\nFOO:\n\tCALL MULHLDE\n\tRET\n#END\nMAIN() BEGIN END;\n")]           // トップレベルの #ASM のラベル
-    [InlineData("#ASM\nFOO:\n\tCALL MULHLDE\n\tRET\n#END\nMAIN() BEGIN\n#ASM\nMULHLDE:\n\tRET\n#END\nEND;\n")]            // 本体の関数の中の #ASM のラベル
-    [InlineData("#ASM\nFOO:\n\tCALL MULHLDE\n\tRET\n#END\nMULHLDE() BEGIN END;\nMAIN() BEGIN END;\n")]                     // SLANG の関数
-    public void TopLevelAsmCall_OwnDefinition_DoesNotSelectRuntime(string source)
-    {
-        // 自分で決めた同じ名前のラベル・関数を呼ぶときは、ランタイムを入れない (同じ名前の定義を 2 つにしない)
-        var asm = CompileWithCli(source);
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(asm, @"(?m)^MULHLDE:"));
-        Assert.DoesNotContain(".mul1", asm);
-    }
-
-    [Fact]
-    public void TopLevelAsmCall_OverlayFunctionName_NoImport()
-    {
-        // トップレベルの #ASM の CALL は、ランタイムを選ぶためだけに読む。本体の FOO を呼ぶもので、モジュールの関数 FOO を取り込まない
-        var source = "VAR X;\n#ASM\nFOO:\n\tRET\nBAR:\n\tCALL FOO\n\tRET\n#END\nMAIN() BEGIN X = 1; END;\n#MODULE $8000\nFOO() BEGIN RETURN 1; END;\n#END\n";
-        var (mainAsm, _) = CompileWithOverlays(source);
-        Assert.DoesNotContain("; EXTERN FOO", mainAsm);
-    }
-
-    [Fact]
-    public void TopLevelAsmCall_ZxnModule_NotSelected()
-    {
-        // ZXN_MODULE はトップレベルの #ASM の CALL からは入れない (#MODULE の検査がトップレベルの #ASM を通る呼び出しをたどらないため)。
-        // いままでどおり、PAGE の無いモジュールもエラーにしない
-        var asm = CompileWithCli(MapHead + "#ASM\nTOPSW:\n\tLD HL,0\n\tCALL ZXN_MODULE\n\tRET\n#END\nMAIN() BEGIN R = FA(1); END;\n#MODULE $C000\nFA(X) BEGIN RETURN X; END;\n#END\n", "zxn");
-        Assert.DoesNotContain("__MODTBL", asm);
-    }
 }

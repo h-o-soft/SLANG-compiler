@@ -202,31 +202,15 @@ public class BuildIntegrationTests : IDisposable
     [InlineData("sosx1")]
     public void ChipLib_BuildsAlone(string env)
     {
-        // CHIPLIB.LIB はトップレベルの #ASM で MULHLDE を call する。CHIPLIB.LIB だけを取り込み、掛け算を書かないプログラムも組み立てられる
+        // CHIPLIB.LIB だけを取り込み、掛け算を書かないプログラムも組み立てられる
+        // (関数の外の #ASM の CALL ではランタイムの MULHLDE が入らないので、CHIPLIB.LIB は自分の _ChipMulHLDE を使う)
         Skip.IfNot(File.Exists(_ailz80AsmPath), "AILZ80ASM がない");
         var slPath = Path.Combine(_tempDir, "chip.SL");
         File.WriteAllText(slPath, "#INCLUDE CHIPLIB.LIB\nMAIN()\nBEGIN\nEND;\n");
         var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", env, "-I", Path.Combine(_projectRoot, "include"), "--keep-asm");
         Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
         Assert.True(File.Exists(Path.Combine(_tempDir, "chip.bin")), $"bin not produced. stderr: {stderr}");
-        Assert.Matches(@"(?m)^MULHLDE:", File.ReadAllText(Path.Combine(_tempDir, "chip.ASM")));
-    }
-
-    [SkippableTheory]
-    [InlineData("#ASM\nFOO:\n\tCALL M8ALIB.M8ALOAD\n\tRET\n#END\nMAIN()\nBEGIN\nEND;\n")]              // @lib のあるランタイムを名前空間つきで
-    [InlineData("#ASM\nFOO:\n\tCALL NAME_SPACE_DEFAULT.MULHLDE\n\tRET\n#END\nMAIN()\nBEGIN\nEND;\n")]    // @lib の無いランタイム
-    [InlineData("#ASM\nMULHLDE:\n\tRET\nFOO:\n\tCALL NAME_SPACE_DEFAULT.MULHLDE\n\tRET\n#END\nMAIN()\nBEGIN\nEND;\n")]   // 自分のラベルなら、ランタイムを重ねて入れない
-    [InlineData("#ASM\n[M8ALIB]\nM8ALOAD:\n\tRET\n[NAME_SPACE_DEFAULT]\nFOO:\n\tCALL M8ALIB.M8ALOAD\n\tRET\n#END\nMAIN()\nBEGIN\nEND;\n")]   // ランタイムの名前空間に自分で決めたラベル
-    public void InlineAsmQualifiedCall_Builds(string source)
-    {
-        // トップレベルの #ASM の CALL を名前空間つきで書いても、そのランタイムが入って組み立てられる (ほかに入れるものが無くても)。
-        // 自分で同じ名前のラベルを決めているときは、ランタイムを重ねて入れない
-        Skip.IfNot(File.Exists(_ailz80AsmPath), "AILZ80ASM がない");
-        var slPath = Path.Combine(_tempDir, "qual.SL");
-        File.WriteAllText(slPath, source);
-        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "x1", "--keep-asm");
-        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
-        Assert.True(File.Exists(Path.Combine(_tempDir, "qual.bin")), $"bin not produced. stderr: {stderr}");
+        Assert.Matches(@"(?m)^_ChipMulHLDE:", File.ReadAllText(Path.Combine(_tempDir, "chip.ASM")));
     }
 
     [Theory]

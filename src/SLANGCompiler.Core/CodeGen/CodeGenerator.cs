@@ -122,8 +122,7 @@ public class CodeGenerator
             ? new[] { "SLANGINIT" }
             : Array.Empty<string>();
 
-        // トップレベルの #ASM の CALL で呼ぶランタイムも本体に入れる (ランタイムを選ぶためだけ。関数の取り込みには使わない)
-        _runtimePlan = RuntimePlanner.Build(mainCalled.Concat(GlobalAsmRuntimeCalls()), _module.Overlays,
+        _runtimePlan = RuntimePlanner.Build(mainCalled, _module.Overlays,
             overlayCalled, _runtimeManager, inlineNames);
 
         // PR-B2: per-target called functions を保持し、Exports/Imports セクション emit
@@ -345,7 +344,7 @@ public class CodeGenerator
         if (_runtimeManager != null && _runtimePlan == null)
         {
             var userFuncs = new HashSet<string>(_module.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
-            foreach (var name in _calledFunctions.Concat(GlobalAsmRuntimeCalls()))
+            foreach (var name in _calledFunctions)
             {
                 if (!userFuncs.Contains(name))
                     _runtimeManager.MarkUsed(name);
@@ -627,40 +626,14 @@ public class CodeGenerator
         }
     }
 
-    // #ASM の行の頭で決めるラベル (`名前:` と `名前 EQU`。前の空白はよい)
-    private static IEnumerable<string> AsmLineLabels(IEnumerable<string> lines) => InlineAsmCalls.Labels(lines);
+    // #ASM の行の頭で決めるラベル (`名前:` と `名前 EQU`。前の空白はよい)。AILZ80ASM の書き方を全部は追わない (拾えない書き方はアセンブルのエラーのまま)
+    private static readonly System.Text.RegularExpressions.Regex AsmLineLabel =
+        new(@"^\s*([A-Za-z_][A-Za-z0-9_]*)(?::|\s+EQU\b)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
-    /// <summary>
-    /// トップレベル (関数の外) の #ASM の CALL の行で呼ぶランタイムの名前 (ライブラリの #ASM が呼ぶ MULHLDE など)。
-    /// 入れるのは、ランタイムの関数で、次のどれでもないものだけ (入れると同じ名前の定義が 2 つになるか、決まりを外れるため):
-    ///   - 利用者の関数の名前 (本体・モジュール)
-    ///   - 本体の #ASM (トップレベル・関数の中) で行の頭に決めたラベルと同じ名前 (名前空間は見ずに、名前だけで比べる)
-    ///   - ZXN_MODULE (#MODULE の検査は、トップレベルの #ASM を通る呼び出しをたどらないため)
-    /// 関数の中の #ASM の CALL は、いままでどおり EmitFunction で集める
-    /// </summary>
-    private IEnumerable<string> GlobalAsmRuntimeCalls()
-    {
-        if (_runtimeManager == null) yield break;
-        var topLevel = InlineAsmCalls.TopLevel(_module).ToList();
-        if (topLevel.Count == 0) yield break;
-        var userFuncs = new HashSet<string>(
-            _module.Functions.Concat(_module.Overlays.SelectMany(o => o.Functions)).Select(f => f.Name),
-            StringComparer.OrdinalIgnoreCase);
-        var labels = new HashSet<string>(
-            InlineAsmCalls.Labels(topLevel.Concat(InlineAsmCalls.InFunctions(_module.Functions)).SelectMany(a => a.Split('\n'))),
-            StringComparer.OrdinalIgnoreCase);
-        foreach (var raw in topLevel.SelectMany(InlineAsmCalls.Names))
-        {
-            var dot = raw.LastIndexOf('.');
-            var bare = dot < 0 ? raw : raw[(dot + 1)..];
-            if (!_runtimeManager.Functions.TryGetValue(bare, out var func)) continue;
-            // `ライブラリ名.名前` は、そのランタイムの @lib と合うときだけ
-            if (dot >= 0 && !string.Equals(raw[..dot], func.LibName, StringComparison.OrdinalIgnoreCase)) continue;
-            if (userFuncs.Contains(bare) || labels.Contains(bare)) continue;
-            if (string.Equals(func.Name, "ZXN_MODULE", StringComparison.OrdinalIgnoreCase)) continue;
-            yield return bare;
-        }
-    }
+    private static IEnumerable<string> AsmLineLabels(IEnumerable<string> lines) =>
+        lines.Select(line => AsmLineLabel.Match(line))
+             .Where(m => m.Success)
+             .Select(m => m.Groups[1].Value);
 
     /// <summary>トップレベルのインラインASM（#ASMブロック）を出力</summary>
     private void EmitGlobalPlainAsm()
