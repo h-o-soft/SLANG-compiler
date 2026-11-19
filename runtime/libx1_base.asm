@@ -129,21 +129,26 @@ RET
 ; @param_count 1
 ; HL = ジョイスティックの番号 (0 = 1 つ目、1 = 2 つ目) → HL = そのポートの生の値 (PSG のレジスタ 14・15)。
 ; 押したレバーとボタンのビットが 0 になる。範囲外の番号は $00FF。
-; 番号が 0・1 のときは、PSG を読む間だけ割り込みを止め、許可して戻る (割り込みの中で PSG を鳴らす部品とぶつからないように)。
-; 範囲外の番号のときは、割り込みの状態に触らない
+; PSG のレジスタを選んで読む間だけ割り込みを止める (割り込みの中で PSG を鳴らす部品とぶつからないように)。
+; 割り込みの状態は、呼ぶ前のまま戻す (LD A,I で IFF2 を P/V に写して覚え、許可だったときだけ EI)
 LD A,H
 OR A
 JR NZ,.STICK_INVALID
 LD A,L
 CP 2
 JR NC,.STICK_INVALID
-ADD A,$0E
+LD A,I
+PUSH AF
 DI
+LD A,L
+ADD A,$0E
 LD BC,$1C00
 OUT (C),A
 LD B,$1B
 IN L,(C)
 LD H,0
+POP AF
+RET PO
 EI
 RET
 .STICK_INVALID

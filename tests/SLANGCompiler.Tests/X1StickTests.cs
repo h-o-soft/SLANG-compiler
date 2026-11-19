@@ -8,7 +8,7 @@ namespace SLANGCompiler.Tests;
 /// X1 の `STICK(n)` (libx1_base.asm) の約束:
 /// - 引数 1 個。H が 0 でない・L が 2 以上なら、I/O も DI/EI もせずに $00FF を返す
 /// - 0・1 なら PSG のレジスタ 14・15 を選んで ($1C00 に OUT) 読み ($1B00 から IN)、H を 0 にして返す
-/// - PSG を選んで読む間だけ割り込みを止め (DI は OUT の前)、許可して戻る (EI は RET の前)
+/// - PSG を選んで読む間だけ割り込みを止め、割り込みの状態は呼ぶ前のまま戻す (LD A,I で覚えて、許可だったときだけ EI)
 /// - X1 の全部の env の libraries に libx1_base が入っている
 /// 実 Z80 の動きはここでは確かめられないので、注釈と命令の並びを押さえる。
 /// </summary>
@@ -65,20 +65,32 @@ public class X1StickTests
     }
 
     [Fact]
-    public void Stick_ReadsPsgPortWithInterruptsDisabledOnlyAroundAccess()
+    public void Stick_ReadsPsgPortAndRestoresInterruptState()
     {
+        // 範囲の検査の後から .STICK_INVALID の前までは、この並びのとおり:
+        // - IFF2 を LD A,I で P/V に写して覚え (PUSH AF)、DI してから PSG を選んで読む
+        // - レジスタ (14 + 番号) を $1C00 で選び、すぐ後に $1Bxx から読む
+        // - 覚えた P/V で、割り込みが止まっていたなら RET PO でそのまま戻り、許可だったときだけ EI
         var lines = CodeLines(LoadStick());
-        int di = Array.IndexOf(lines, "DI");
-        int outPsg = Array.FindIndex(lines, l => Regex.IsMatch(l, @"^OUT\s*\(\s*C\s*\)\s*,\s*A$"));
-        int inPsg = Array.FindIndex(lines, l => Regex.IsMatch(l, @"^IN\s+L\s*,\s*\(\s*C\s*\)$"));
-        int ei = Array.IndexOf(lines, "EI");
-        Assert.True(di >= 0 && outPsg > di && inPsg > outPsg && ei > inPsg, string.Join(" / ", lines));
-        Assert.Equal("RET", lines[ei + 1]);
-        // レジスタ 14 (= $0E + 番号) を $1C00 で選び、$1Bxx で読む
-        Assert.Contains("ADD A,$0E", lines);
-        Assert.Contains("LD BC,$1C00", lines);
-        Assert.Contains("LD B,$1B", lines);
-        Assert.Contains("LD H,0", lines);
+        int invalid = Array.IndexOf(lines, ".STICK_INVALID");
+        Assert.Equal(new[]
+        {
+            "LD A,I",
+            "PUSH AF",
+            "DI",
+            "LD A,L",
+            "ADD A,$0E",
+            "LD BC,$1C00",
+            "OUT (C),A",
+            "LD B,$1B",
+            "IN L,(C)",
+            "LD H,0",
+            "POP AF",
+            "RET PO",
+            "EI",
+            "RET",
+        }, lines[6..invalid]);
+        // DI・EI はこの 1 回ずつだけ (範囲外の道では割り込みに触らない)
         Assert.Single(lines, "DI");
         Assert.Single(lines, "EI");
     }
