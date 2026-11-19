@@ -490,7 +490,6 @@ public class DiskImageBuilder
     /// ResolvedTool.Kind に応じて起動方法を切り替える:
     /// - DirectExe: そのまま起動
     /// - MonoRun: `mono &lt;assembly&gt; &lt;args...&gt;` で起動 (Linux/macOS の HuDisk.exe)
-    /// - DotnetRun: 本ビルダーでは未使用 (slangc 側のみ)
     ///
     /// pipe バッファ詰まり対策で stdout/stderr を async で吸い、WaitForExit の
     /// timeout が確実に効くようにする (= 同期 ReadToEnd を先に呼ぶと child が

@@ -27,7 +27,8 @@ hubasic2sl PROG.BAS --emit tape --wait line:480   # PROG.tap (テープ) を作�
 - ディスクイメージでは、BASIC のファイル名 (拡張子なし。13 文字まで、ASCII だけ) が IPL の起動名になります
   (変換した SLANG の頭の `// disk-main-name:` の行。`--disk-main-name <name>` で変えられます。[SLFS.md](SLFS.md))。
 - テープの名前は `PROG` です (`--tape-name <name>` で変えられます)。`--wav` で `.wav` も作れます ([X1.md](X1.md) を参照)。
-- slangbuild は、hubasic2sl と同じ所、その下の `bin/`、開発で publish したもの、PATH、`dotnet run` (開発のとき) の順に探します。
+- slangbuild は、hubasic2sl と同じ所、その下の `bin/`、開発で publish したもの、PATH の順に探します
+  (開発の木では、先に `make publish-local` で slangc・slangbuild などを `bin/` に publish しておきます)。
   `--slangbuild <path>` で決めることもできます。
 - 使える条件は slangbuild を手で使うときと同じです: 配布の zip を解いたフォルダで setup-tools (AILZ80ASM などを取ってくる) をしてから install する
   (順が逆なら install し直す)。または、解いたフォルダの中で動かす。install の `--config-dir` を変えたときは `SLANG_HOME` をそこに向けます。
@@ -82,9 +83,11 @@ prog.bas:2:4: error HB0301 (BASIC 20): 未対応の命令 CIRCLE
 
 ### ブラウザで使う (wasm、X1Pen などに組み込むための材料)
 
-変換だけを .NET の browser-wasm で動かす入口があります (`src/SLANGCompiler.HuBasic.Wasm/`。SLANGCompiler.sln には入っていません)。
-組み立てと試験は次の 1 行です (要るもの: dotnet SDK、python3、AILZ80ASM (`AILZ80ASM_PATH`・PATH・`tools/` の順に探す)。
-node 22.7 以上があれば、最後に wasm の変換が CLI と同じかを確かめます。`NODE` で指せます)。
+hubasic2sl の変換と、slangc のコンパイル、Hu-BASIC と同じ形のディスク作りを、.NET の browser-wasm で動かす入口があります
+(`src/SLANGCompiler.HuBasic.Wasm/`。SLANGCompiler.sln には入っていません。.NET 10)。アセンブラは入っていません (組み立ては呼ぶ側のもの)。
+組み立てと試験は次の 1 行です (要るもの: .NET 10 SDK、python3、AILZ80ASM (`AILZ80ASM_PATH`・PATH・`tools/` の順に探す)、node 22.7 以上
+(`NODE` で指せます。最後に、wasm の変換・コンパイル・ディスク作りが CLI と同じかを確かめます。node が無ければ止まります)。
+Linux か macOS で動かします (Windows では WSL などの Linux で)。束の `manifest.json` は、確かめが全部通ったときだけ置かれます)。
 
 ```sh
 scripts/build-hubasic-wasm.sh out/hubasic-wasm
@@ -92,20 +95,25 @@ scripts/build-hubasic-wasm.sh out/hubasic-wasm
 
 できるフォルダ:
 
-- `_framework/`: wasm の一式 (`dotnet.js` から読む)
-- `runtime/`: `x1native`・`x1native_slfs`・`x1native_hufs` の env の libraries の `.asm` (LSX 用は入りません。混ぜないでください)
-- `env/`: 3 つの env ファイルの写し
+- `_framework/`: wasm の一式 (`dotnet.js` から読む。.NET 10 では boot の設定が `dotnet.js` の中に入り、ほかのファイルの名前にはハッシュが付きます)
+- `runtime/`: `x1native`・`x1native_slfs`・`x1native_hufs`・`x1` の env の libraries の `.asm`
+- `env/`: 4 つの env ファイルの写し (`x1` は X1Pen の SLANG タブ用。env の `disk.template` のディスクの型は束に入れません)
+- `include/`: `x1` の env の `#INCLUDE` で使う X1 向けの `.LIB` (CHIPLIB・GRAPH・GRAPHF・SOROBAN・SPRLIB・TILELIB・TILESPR・UILIB)
 - `LICENSE`・`LICENSE-APACHE-2.0.txt`: ライセンスの表示 (`runtime/libfloat.asm` は Apache License 2.0、ほかは `LICENSE` を見てください)。
   束を配るとき・取り込むときは、この 2 本も一緒に置きます
-- `testdata/`: 試験用のプログラム 4 本 (HELLO・GRAPH・MUSIC・FLOAT) の `.BAS`・`.SL`・`.bin`・`.LST`・`.d88`。
-  同じ木の hubasic2sl・slangbuild (`--emit disk -E x1native_slfs`)・slangc で作ったもので、ブラウザの側の道具と比べるのに使う
-  (D88 は日付が 0 で、同じ入力からは同じバイトになる)
+- `testdata/`: HuBASIC の試験用のプログラム 5 本 (HELLO・GRAPH・MUSIC・FLOAT・FILEIO) の `.BAS`・`.SL`・`.bin`・`.LST`・`.d88`。
+  同じ木の hubasic2sl・slangbuild (`--emit disk`)・slangc で作ったもので、ブラウザの側の道具と比べるのに使う
+  (D88 は日付が 0 で、同じ入力からは同じバイトになる)。FILEIO はファイルの命令を使う例で、`x1native_hufs` のディスクに
+  `FILEIO.GREET.TXT` を `--hufs-add GREET.TXT=…,text` で足してある
+- `testdata/slang/`: X1Pen の SLANG タブ用 (`x1` の env) の見本 (`examples/x1pen`) の `.SL` と、slangbuild・AILZ80ASM で組んだ `.ASM`・`.bin`
 - `manifest.json`: 組み立てた SHA (`slangCompilerRevision`)、`dirty`、版、組の印の番号 (`basAbi`、下を参照)、`loadAddress` ($1000)・`reservedStart` ($FFE0)、
   ファイルの命令の組の印の番号 (`basFileAbi`)、
   env ごとの `envType`・`osType`・`defaultOrg`・`defines`・`libraries` (順番どおり)・`defaultDiskMainName`・`diskMainLoad`・`diskMainExec`・`diskVolume`・
   `diskTool` (`slfs-pack` = SLFS のディスク、`hufs-pack` = Hu-BASIC と同じ形のディスク。ブラウザの側でディスクを作るときに見分ける)、
-  testdata を作ったアセンブラ (`assembler`: 版と sha256)、`testdata` (ケースごとのファイルと起動名)、
-  束の全部のファイルの `files` (path・sha256・size)
+  testdata を作ったアセンブラ (`assembler`: 版と sha256)、`testdata` (`x1native_slfs` で組む例。ケースごとのファイルと起動名)、
+  `hufsTestdata` (`x1native_hufs` で組むファイルの命令の例。ケースごとのファイル・起動名と、`--hufs-add` で足したファイルの `hufsAdd`
+  (`name`・`file`・`kind`))、`slangTestdata` (`env`・`includePaths`・ケースごとの `sl`・`asm`・`bin`)、
+  slangc の版 (`slangcVersion`)、束の全部のファイルの `files` (path・sha256・size)
 
 スクリプトは、作ったあとに束が manifest と合っているか (ファイルの集まり・大きさ・sha256・testdata) を確かめます。
 決めた SHA から作るときは、`git worktree add <一時フォルダ> <SHA>` をして、その中のスクリプトを動かします
@@ -139,6 +147,37 @@ const v = JSON.parse(api.Version());                          // { version, info
   `inputEncoding` (`"auto"`・`"utf8"`・`"sjis"`・`"x1"`)、`wait` (`"none"`・`"line:N"`・`"frame"` など。`--wait` と同じ読み方)、
   `stringLen` (1〜255)、`dataBudget`、`noLineNumbers`・`assumeDefint`・`emitLineComments` (true / false)。
 - 結果の SL・診断の文・大きさの検査の文は、同じ版の CLI と同じです。
+
+slangc のコンパイルと、Hu-BASIC と同じ形のディスク作り (同じ wasm の `SlangWeb`):
+
+```js
+const slang = (await runtime.getAssemblyExports('hubasic2sl-wasm')).SLANGCompiler.HuBasic.Wasm.SlangWeb;
+
+// 1. 束の env・runtime・include と、ソース (その #INCLUDE も) を、.NET のメモリの中のファイルシステムに入れる (絶対の道)
+slang.PutFile('/slang/env/x1.env', envBytes);
+slang.PutFile('/slang/runtime/runtime.asm', runtimeBytes);            // libraries に挙がる .asm を全部
+slang.PutFile('/slang/include/GRAPH.LIB', libBytes);
+slang.PutFile('/work/PROG.SL', sourceBytes);
+
+// 2. コンパイル (slangc -E x1 -L /slang -I /slang/include /work/PROG.SL と同じ)
+const c = JSON.parse(slang.Compile('/work/PROG.SL', JSON.stringify({ env: 'x1', libPaths: ['/slang'], includePaths: ['/slang/include'] })));
+// c = { ok, asm, overlays: [{ name, asm }], modules: [行] | null, inc | null, c | null, log: [行] }
+// asm は slangc の出力と同じ ASM (組み立ては呼ぶ側)。log は slangc の stderr と同じ行 (; Environment:・; Output: の行は無い)。
+// overlays・modules・inc は #MODULE のあるとき、c は OscarC の env のとき。オプションの誤りは { ok: false, error }。
+// 読めないファイルなどで止まっても、例外でなく ok: false と log の最後の "slangc: error: …" で返す
+
+// 3. Hu-BASIC と同じ形のディスク (slangbuild --emit disk -E x1native_hufs と同じ。組んだ bin と、足すファイルを渡す)
+slang.PutFile('/work/GREET.TXT', textBytes);
+const d = JSON.parse(slang.BuildHuDisk(binBytes, JSON.stringify({ mainName: 'PROG', load: 0x1000, exec: 0x1000, add: ['GREET.TXT=/work/GREET.TXT,text'] })));
+// d = { ok, d88 (base64) } か { ok: false, error }。add は --hufs-add と同じ書き方 ([名前=]ファイル[,text|,bin])。
+// load を省けば $1000、exec を省けば load の値。mainName は表示できる ASCII で 1〜13 文字 (--disk-main-name と同じ決まり)
+
+const sv = JSON.parse(slang.Version());                           // { slangc, informational: "<版>+<SHA>" }
+```
+
+- slangc と同じく、#INCLUDE はソースのフォルダ、`includePaths` の順に探します。env は `libPaths` のそれぞれの `env/`、ランタイムは
+  `libPaths` のそれぞれと、その `runtime/` から探します。
+- 結果の ASM と log は同じ版の CLI と同じです。式・文・#IF の入れ子が 256 段を越えると、source の error になります (CLI も同じ)。
 
 ### 出力とランタイムの組の印 (BAS_ABI_n)
 

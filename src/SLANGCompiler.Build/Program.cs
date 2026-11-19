@@ -261,7 +261,7 @@ internal class Program
         Console.Error.WriteLine("  -v, --version   Show version");
         Console.Error.WriteLine();
         Console.Error.WriteLine("Tool resolution order:");
-        Console.Error.WriteLine("  slangc:    --slangc → bundled bin → PATH → dotnet run (dev)");
+        Console.Error.WriteLine("  slangc:    --slangc → bundled bin → dev publish → PATH");
         Console.Error.WriteLine("  AILZ80ASM: --asm → AILZ80ASM_PATH env → PATH → bundled tools/ → repo root (dev)");
         Console.Error.WriteLine("  ndc:       --ndc → NDC_PATH env → bundled tools/ → PATH → repo root (dev)");
         Console.Error.WriteLine("  HuDisk:    --hudisk → HUDISK_PATH env → bundled tools/ → PATH → repo root (dev)");

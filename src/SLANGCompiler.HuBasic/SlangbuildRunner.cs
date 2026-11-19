@@ -8,16 +8,16 @@ namespace SLANGCompiler.HuBasic.CLI;
 /// (slangbuild の ToolResolver.ResolveSlangc。Build と Core を参照すると単一ファイルが大きくなるので写した):
 /// 1) --slangbuild
 /// 2) 同梱: hubasic2sl と同じ所の slangbuild(.exe)、その下の bin/slangbuild(.exe) (配布の bin/、install で入れた所)
-/// 3) 開発で publish したもの: src/SLANGCompiler.Build/bin/(Release|Debug)/net8.0/&lt;今の OS の RID&gt;/publish/slangbuild(.exe)
+/// 3) 開発で publish したもの: src/SLANGCompiler.Build/bin/(Release|Debug)/net10.0/&lt;今の OS の RID&gt;/publish/slangbuild(.exe)
 /// 4) PATH の上の slangbuild(.exe)
-/// 5) dotnet run --project src/SLANGCompiler.Build/SLANGCompiler.Build.csproj -c Release --
+/// どれにも無ければ見つからない (開発の木では、slangbuild を publish するか --slangbuild で指す)
 /// </summary>
 internal sealed class SlangbuildRunner
 {
     private static string ExeSuffix => RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : "";
 
-    /// <summary>見つけた slangbuild。Project があれば FileName は dotnet で、dotnet run --project Project で動かす</summary>
-    internal sealed record Resolved(string FileName, string? Project = null);
+    /// <summary>見つけた slangbuild</summary>
+    internal sealed record Resolved(string FileName);
 
     private readonly string _baseDir;
 
@@ -35,7 +35,7 @@ internal sealed class SlangbuildRunner
             tried = $"--slangbuild {cliOverride}";
             return File.Exists(cliOverride) ? new Resolved(Path.GetFullPath(cliOverride)) : null;
         }
-        tried = $"{_baseDir}、その下の bin/、開発の publish、PATH、dotnet run (開発)";
+        tried = $"{_baseDir}、その下の bin/、開発の publish、PATH";
 
         var direct = Path.Combine(_baseDir, name);
         if (File.Exists(direct)) return new Resolved(direct);
@@ -48,9 +48,6 @@ internal sealed class SlangbuildRunner
         var onPath = FindOnPath(name);
         if (onPath != null) return new Resolved(onPath);
 
-        var dotnet = FindOnPath($"dotnet{ExeSuffix}");
-        var csproj = LocateRepo("src/SLANGCompiler.Build/SLANGCompiler.Build.csproj", File.Exists);
-        if (dotnet != null && csproj != null) return new Resolved(dotnet, csproj);
         return null;
     }
 
@@ -58,9 +55,6 @@ internal sealed class SlangbuildRunner
     internal static int Run(Resolved tool, IEnumerable<string> args)
     {
         var psi = new ProcessStartInfo { FileName = tool.FileName, UseShellExecute = false };
-        if (tool.Project != null)
-            foreach (var a in new[] { "run", "--project", tool.Project, "-c", "Release", "--" })
-                psi.ArgumentList.Add(a);
         foreach (var a in args) psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         proc.WaitForExit();
@@ -75,7 +69,7 @@ internal sealed class SlangbuildRunner
         foreach (var rid in CurrentOsRids())
         {
             var newest = new[] { "Release", "Debug" }
-                .Select(c => Path.Combine(binRoot, c, "net8.0", rid, "publish", name))
+                .Select(c => Path.Combine(binRoot, c, "net10.0", rid, "publish", name))
                 .Where(File.Exists)
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .FirstOrDefault();

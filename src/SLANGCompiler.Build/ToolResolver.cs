@@ -28,11 +28,11 @@ public class ToolResolver
     /// 1) cliOverride (--slangc 引数)
     /// 2) bundled: {baseDir}/slangc(.exe), {baseDir}/bin/slangc(.exe)
     /// 3) dev publish: repo root を辿って
-    ///    src/SLANGCompiler.CLI/bin/(Release|Debug)/net8.0/&lt;RID&gt;/publish/slangc(.exe)
+    ///    src/SLANGCompiler.CLI/bin/(Release|Debug)/net10.0/&lt;RID&gt;/publish/slangc(.exe)
     ///    が見つかればそれ (= dev 環境で publish 済みの最新 slangc を PATH 上の
     ///    旧版より優先)
     /// 4) PATH 上の slangc (= 配布版を OS にインストールしたケース)
-    /// 5) dev fallback: dotnet (= caller が `dotnet run --project ...` を組み立てる)
+    /// どれにも無ければ FileNotFoundException (開発の木では、slangc を publish するか --slangc で指す)
     /// </summary>
     public ResolvedTool ResolveSlangc(string? cliOverride)
     {
@@ -55,23 +55,15 @@ public class ToolResolver
         var onPath = FindOnPath(name);
         if (onPath != null) return new ResolvedTool(onPath, ResolutionKind.DirectExe);
 
-        // 5) dev fallback: dotnet run --project <repo>/src/SLANGCompiler.CLI/...
-        var dotnet = FindOnPath($"dotnet{ExeSuffix}");
-        if (dotnet != null)
-        {
-            var cliCsproj = LocateRepoFile("src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj");
-            if (cliCsproj != null)
-                return new ResolvedTool(dotnet, ResolutionKind.DotnetRun, cliCsproj);
-        }
-
         throw new FileNotFoundException(
-            "slangc not found. Tried: --slangc, bundled bin, dev publish, PATH, and dev `dotnet run` fallback. "
-            + "Specify --slangc <path> explicitly.");
+            "slangc not found. Tried: --slangc, bundled bin, dev publish, PATH. "
+            + "Specify --slangc <path>, or publish it in the source tree: "
+            + "dotnet publish src/SLANGCompiler.CLI -c Release -r <rid> --self-contained true /p:PublishSingleFile=true");
     }
 
     /// <summary>
     /// dev 環境想定: repo root を起点に slangc の publish 物を探す。
-    /// <c>src/SLANGCompiler.CLI/bin/(Release|Debug)/net8.0/&lt;RID&gt;/publish/slangc(.exe)</c>
+    /// <c>src/SLANGCompiler.CLI/bin/(Release|Debug)/net10.0/&lt;RID&gt;/publish/slangc(.exe)</c>
     /// 配布物の `<root>/bin/slangc` パターンには触れない (= 通常解決順 2 が拾う想定)。
     ///
     /// **RID 選択** (Codex 指摘): 全 RID 走査で更新時刻最新を選ぶと、複数 RID 用に
@@ -91,7 +83,7 @@ public class ToolResolver
             DateTime newestTime = DateTime.MinValue;
             foreach (var config in new[] { "Release", "Debug" })
             {
-                var candidate = Path.Combine(binRoot, config, "net8.0", rid, "publish", name);
+                var candidate = Path.Combine(binRoot, config, "net10.0", rid, "publish", name);
                 if (!File.Exists(candidate)) continue;
                 var t = File.GetLastWriteTimeUtc(candidate);
                 if (t > newestTime)
@@ -561,7 +553,7 @@ public class ToolResolver
 
     /// <summary>
     /// dev 環境用: AppContext.BaseDirectory を起点に上位を辿って repo root を
-    /// 推定し、相対パスのファイルを探す。bin/Release/net8.0 配下から実行されている
+    /// 推定し、相対パスのファイルを探す。bin/Release/net10.0 配下から実行されている
     /// 想定で、最大 7 階層上まで探索。
     /// </summary>
     private string? LocateRepoFile(string relPath)
@@ -580,8 +572,6 @@ public enum ResolutionKind
 {
     /// <summary>実行ファイルを直接 spawn (slangc / AILZ80ASM / Windows の HuDisk.exe)</summary>
     DirectExe,
-    /// <summary>dotnet run --project &lt;csproj&gt; 経由 (dev fallback、slangc 用)</summary>
-    DotnetRun,
     /// <summary>mono &lt;assembly.exe&gt; 経由 (Linux/macOS の HuDisk.exe 用)</summary>
     MonoRun,
 }
@@ -589,7 +579,6 @@ public enum ResolutionKind
 /// <summary>
 /// 解決結果。Kind ごとに Path の意味が異なる:
 /// - DirectExe: 実行ファイル絶対パス (= そのまま spawn)
-/// - DotnetRun: dotnet の絶対パス、ProjectPath は --project に渡す csproj
 /// - MonoRun: mono の絶対パス、ProjectPath は mono に渡す .NET assembly (.exe)
 /// </summary>
 public record ResolvedTool(string Path, ResolutionKind Kind, string? ProjectPath = null);

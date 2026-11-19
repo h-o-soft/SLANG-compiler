@@ -3,10 +3,15 @@
 
 使い方 (python3 -I で動かす):
   hubasic-wasm-manifest.py envs   <repo>                      env の値と組の印の番号を JSON で stdout に出す (テストが使う)
-  hubasic-wasm-manifest.py copy   <repo> <out>                runtime/ (3 つの env の libraries の和集合の .asm)・env/・LICENSE・LICENSE-APACHE-2.0.txt を写す
-  hubasic-wasm-manifest.py write  <repo> <out> <sha> <dirty> <version> <asm> <asm-version> <case,...>
-                                                              束の全部のファイルを数えて <out>/manifest.json を書く
-  hubasic-wasm-manifest.py verify <out>                       束と manifest が合っているかを確かめる
+  hubasic-wasm-manifest.py copy   <repo> <out>                runtime/ (4 つの env の libraries の和集合の .asm)・env/・include/ (X1 で使う .LIB)・
+                                                              LICENSE・LICENSE-APACHE-2.0.txt を写す (env の disk.template のディスクの型は写さない)
+  hubasic-wasm-manifest.py write  <repo> <out> <sha> <dirty> <version> <asm> <asm-version> <case,...> <hufs-add> <slang-case,...> [<manifest>]
+                                                              束の全部のファイルを数えて <out>/manifest.json (<manifest> を書けばそこ) を書く。
+                                                              <case> は HuBASIC の例。.SL の頭の `// env:` が x1native_hufs なら hufsTestdata、
+                                                              無ければ testdata (x1native_slfs) に入れる。
+                                                              <hufs-add> は「例の名前:名前=testdata のファイル,種類」を ; でつないだもの
+                                                              (その例のディスクに --hufs-add で足したファイル)。<slang-case> は testdata/slang/ の x1 の env の例
+  hubasic-wasm-manifest.py verify <out> [<manifest>]          束と manifest (既定は <out>/manifest.json) が合っているかを確かめる
 
 env ファイルから読むのは env_type・os_type・default_org・defines・libraries と、disk: の main_name・main_load・main_exec・volume だけ
 (EnvironmentLoader と同じ値になることをテストで確かめる)。読めないか、.asm が無ければ止める。
@@ -18,10 +23,20 @@ import re
 import shutil
 import sys
 
-ENVS = ["x1native_slfs", "x1native", "x1native_hufs"]
+ENVS = ["x1native_slfs", "x1native", "x1native_hufs", "x1"]
+# x1 の env (X1Pen の SLANG タブ) の #INCLUDE で使う、X1 向けの include (include/ の C64・MSX などのものは入れない)
+INCLUDE_FILES = ["CHIPLIB.LIB", "GRAPH.LIB", "GRAPHF.LIB", "SOROBAN.LIB", "SPRLIB.LIB", "TILELIB.LIB", "TILESPR.LIB", "UILIB.LIB"]
+# SLANG タブ用の試験データの env と、そのファイルの拡張子
+SLANG_TESTDATA_ENV = "x1"
+SLANG_TESTDATA_EXTS = {"sl": "SL", "asm": "ASM", "bin": "bin"}
+# SLANG タブ用の試験データの見本 (examples/x1pen。build-hubasic-wasm.sh と publish.sh と同じ一覧)
+SLANG_TESTDATA_CASES = ["SCREEN", "SOUND", "INPUT"]
 # 束の根に写すライセンスの表示 (runtime/ の .asm を配るので要る。libfloat.asm は Apache 2.0)
 LICENSE_FILES = ["LICENSE", "LICENSE-APACHE-2.0.txt"]
 TESTDATA_ENV = "x1native_slfs"
+# ファイルの命令を使う例 (x1native_hufs で組む) は、testdata とは別の hufsTestdata に入れる
+# (testdata の読み手は、いちばん上の env で全部の例を組むので、そこに違う env の例を混ぜない)
+HUFS_TESTDATA_ENV = "x1native_hufs"
 TESTDATA_EXTS = ["bas", "sl", "bin", "lst", "d88"]
 
 
@@ -142,6 +157,49 @@ def read_bas_file_abi(repo):
     return int(found[0])
 
 
+def read_slangc_version(repo):
+    """src/SLANGCompiler.Core/SlangVersion.cs の slangc の版"""
+    with open(os.path.join(repo, "src", "SLANGCompiler.Core", "SlangVersion.cs"), encoding="utf-8") as f:
+        found = re.findall(r'const\s+string\s+Version\s*=\s*"([^"]+)"', f.read())
+    if len(found) != 1:
+        fail("src/SLANGCompiler.Core/SlangVersion.cs の Version がちょうど 1 つではありません")
+    return found[0]
+
+
+def sl_env(sl_path, default):
+    """hubasic2sl の SL の頭のコメントの並びから `// env: <名前>` を読む (無ければ default)"""
+    with open(sl_path, encoding="utf-8") as f:
+        for line in f:
+            if not line.startswith("//"):
+                break
+            if line.startswith("// env:"):
+                return line[len("// env:"):].split()[0]
+    return default
+
+
+def hu_disk_name(name):
+    """HuName.Parse と同じく、ディスクの上の名前として比べる形 (ドライブの 0: を除き、名前と拡張子の後ろの空白を除く)"""
+    if name.startswith("0:"):
+        name = name[2:]
+    base, dot, ext = name.rpartition(".")
+    if not dot:
+        base, ext = name, ""
+    return (base.rstrip(" "), ext.rstrip(" "))
+
+
+def parse_hufs_add(spec):
+    """「例の名前:名前=ファイル,種類」を ; でつないだものを {例の名前: [{name, file, kind}]} にする"""
+    adds = {}
+    for item in [x for x in spec.split(";") if x]:
+        case, sep, rest = item.partition(":")
+        name, sep2, file_kind = rest.partition("=")
+        file, sep3, kind = file_kind.rpartition(",")
+        if not (sep and sep2 and sep3) or kind not in ("text", "bin", "raw"):
+            fail(f"hufs-add の書き方がおかしいです: {item}")
+        adds.setdefault(case, []).append({"name": name, "file": file, "kind": kind})
+    return adds
+
+
 def sha256(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -184,23 +242,46 @@ def cmd_copy(repo, out):
                 done.add(lib)
     for name in ENVS:
         shutil.copyfile(os.path.join(repo, "runtime", "env", name + ".env"), os.path.join(out, "env", name + ".env"))
+    os.makedirs(os.path.join(out, "include"))
+    for name in INCLUDE_FILES:
+        shutil.copyfile(os.path.join(repo, "include", name), os.path.join(out, "include", name))
     for name in LICENSE_FILES:
         shutil.copyfile(os.path.join(repo, name), os.path.join(out, name))
 
 
-def cmd_write(repo, out, sha, dirty, version, asm, asm_version, cases):
+def cmd_write(repo, out, sha, dirty, version, asm, asm_version, cases, hufs_add, slang_cases, manifest_path=None):
     envs = read_envs(repo)
+    adds = parse_hufs_add(hufs_add)
     testdata = {"env": TESTDATA_ENV, "transpileOptions": {}, "cases": []}
+    hufs_testdata = {"env": HUFS_TESTDATA_ENV, "transpileOptions": {}, "cases": []}
     for name in cases:
         case = {"name": name}
         for ext in TESTDATA_EXTS:
             case[ext] = f"testdata/{name}.{ext.upper() if ext in ('bas', 'sl', 'lst') else ext}"
         case["diskMainName"] = disk_main_name(os.path.join(out, case["sl"]))
-        testdata["cases"].append(case)
+        env = sl_env(os.path.join(out, case["sl"]), TESTDATA_ENV)
+        if env == TESTDATA_ENV:
+            if name in adds:
+                fail(f"{name} は {TESTDATA_ENV} の例なので、ファイルを足せません")
+            testdata["cases"].append(case)
+        elif env == HUFS_TESTDATA_ENV:
+            case["hufsAdd"] = adds.pop(name, [])
+            hufs_testdata["cases"].append(case)
+        else:
+            fail(f"{name} の env {env} は testdata に入れられません")
+    if adds:
+        fail(f"hufs-add の例が testdata にありません: {sorted(adds)}")
+    slang_testdata = {
+        "env": SLANG_TESTDATA_ENV,
+        "includePaths": ["include"],
+        "cases": [{"name": name, **{k: f"testdata/slang/{name}.{ext}" for k, ext in SLANG_TESTDATA_EXTS.items()}}
+                  for name in slang_cases],
+    }
     manifest = {
         "slangCompilerRevision": sha,
         "dirty": dirty == "true",
         "hubasic2slVersion": version,
+        "slangcVersion": read_slangc_version(repo),
         "basAbi": read_bas_abi(repo),
         "basFileAbi": read_bas_file_abi(repo),
         "loadAddress": 0x1000,
@@ -208,16 +289,21 @@ def cmd_write(repo, out, sha, dirty, version, asm, asm_version, cases):
         "envs": envs,
         "assembler": {"name": "AILZ80ASM", "version": asm_version, "sha256": sha256(asm)},
         "testdata": testdata,
+        "hufsTestdata": hufs_testdata,
+        "slangTestdata": slang_testdata,
         "files": [{"path": p, "sha256": sha256(os.path.join(out, p)), "size": os.path.getsize(os.path.join(out, p))}
                   for p in list_files(out)],
     }
-    with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:
+    with open(manifest_path or os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2, ensure_ascii=False)
         f.write("\n")
 
 
-def cmd_verify(out):
-    with open(os.path.join(out, "manifest.json"), encoding="utf-8") as f:
+def cmd_verify(out, manifest_path=None):
+    manifest_path = manifest_path or os.path.join(out, "manifest.json")
+    if not os.path.isfile(manifest_path):
+        fail(f"{manifest_path} がありません (組み立てが途中で止まった束か、束ではありません)")
+    with open(manifest_path, encoding="utf-8") as f:
         m = json.load(f)
     paths = [e["path"] for e in m["files"]]
     if len(paths) != len(set(paths)):
@@ -237,10 +323,95 @@ def cmd_verify(out):
             fail(f"{name} が束にありません")
     if not m["testdata"]["cases"]:
         fail("testdata が空です")
-    for case in m["testdata"]["cases"]:
-        for ext in TESTDATA_EXTS:
-            if case.get(ext) not in listed:
-                fail(f"testdata の {case['name']} の {ext} ({case.get(ext)}) が束にありません")
+    # 前の版の束 (hufsTestdata・slangTestdata・slangcVersion がどれも無い manifest) は、前からの項目だけを確かめる。
+    # どれかだけがある manifest は、途中までしか書けていないので止める
+    new_keys = ("slangcVersion", "hufsTestdata", "slangTestdata")
+    present = [k for k in new_keys if k in m]
+    # 今の形の束にだけあるファイル (x1 の env・SLANG タブの testdata・include) があれば、今の形の manifest が要る
+    current_files = [p for p in paths if p == "env/x1.env" or p.startswith("testdata/slang/") or p.startswith("include/")]
+    if (present or current_files) and len(present) != len(new_keys):
+        why = f"{', '.join(present)} がある" if present else f"今の形の束のファイル ({current_files[0]} など) がある"
+        fail(f"manifest に {', '.join(k for k in new_keys if k not in m)} がありません ({why}ので、今の形の manifest です)")
+    current = bool(present)
+    # 今の形の manifest では、試験データの組ごとの env は決まっている (write が書くもの)
+    expected_env = {"testdata": TESTDATA_ENV, "hufsTestdata": HUFS_TESTDATA_ENV}
+    for key in ("testdata", "hufsTestdata") if current else ("testdata",):
+        if m[key]["env"] not in m["envs"]:
+            fail(f"{key} の env ({m[key]['env']}) が束にありません")
+        if current and m[key]["env"] != expected_env[key]:
+            fail(f"{key} の env は {expected_env[key]} のはずです ({m[key]['env']})")
+        for case in m[key]["cases"]:
+            for ext in TESTDATA_EXTS:
+                if case.get(ext) not in listed:
+                    fail(f"{key} の {case['name']} の {ext} ({case.get(ext)}) が束にありません")
+            if key != "hufsTestdata":
+                continue
+            # Hu-BASIC の形のディスクの例は、足したファイルの一覧 (hufsAdd) が要る (ディスクを作り直すのに使う)
+            adds = case.get("hufsAdd")
+            if not isinstance(adds, list):
+                fail(f"{key} の {case['name']} に hufsAdd の一覧がありません")
+            disk_names = set()
+            for add in adds:
+                if not isinstance(add, dict) or not add.get("name") or add.get("kind") not in ("text", "bin", "raw"):
+                    fail(f"{key} の {case['name']} の hufsAdd の項目がおかしいです: {add}")
+                # ディスクの上の名前は同じものを 2 つ足せない (HuName と同じ比べ方。大文字と小文字は区別する)
+                disk_name = hu_disk_name(add["name"])
+                if disk_name in disk_names:
+                    fail(f"{key} の {case['name']} の hufsAdd に {add['name']} と同じ名前があります")
+                disk_names.add(disk_name)
+                if add.get("file") not in listed:
+                    fail(f"{key} の {case['name']} の足すファイル ({add.get('file')}) が束にありません")
+            if case["name"] == "FILEIO" and not any(a["name"] == "GREET.TXT" and a["kind"] == "text"
+                                                    and a["file"] == "testdata/FILEIO.GREET.TXT" for a in adds):
+                fail(f"{key} の FILEIO に、GREET.TXT (text、testdata/FILEIO.GREET.TXT から) を足した記録がありません")
+    if current:
+        if not m["hufsTestdata"]["cases"]:
+            fail("hufsTestdata が空です")
+        # ファイルの命令の例 FILEIO は hufsTestdata にちょうど 1 つ (testdata には入れない)
+        if [c["name"] for c in m["hufsTestdata"]["cases"]].count("FILEIO") != 1:
+            fail("hufsTestdata に FILEIO の例がちょうど 1 つありません")
+        if any(c["name"] == "FILEIO" for c in m["testdata"]["cases"]):
+            fail("testdata に FILEIO があります (hufsTestdata に入れるものです)")
+        # env はちょうど決まった 4 つ。名前と束のファイルを確かめてから、束の env ファイルを読み直して値を比べる
+        # (manifest の名前から束の外の道を作って読まないように、読むのは一覧にある束のファイルだけ)
+        if sorted(m["envs"]) != sorted(ENVS):
+            fail(f"manifest の envs は {', '.join(ENVS)} のはずです ({', '.join(m['envs'])})")
+        for name in ENVS:
+            if f"env/{name}.env" not in listed:
+                fail(f"env/{name}.env が束にありません")
+            if read_env(os.path.join(out, "env", name + ".env")) != m["envs"][name]:
+                fail(f"manifest の envs の {name} が、束の env/{name}.env と合いません")
+        # HuBASIC の例の起動名は、束の .SL の頭の `// disk-main-name:` と同じ
+        for key in ("testdata", "hufsTestdata"):
+            for case in m[key]["cases"]:
+                if case.get("diskMainName") != disk_main_name(os.path.join(out, case["sl"])) or not case.get("diskMainName"):
+                    fail(f"{key} の {case['name']} の diskMainName ({case.get('diskMainName')}) が、{case['sl']} の起動名と合いません")
+        if m["slangTestdata"].get("env") not in m["envs"]:
+            fail(f"slangTestdata の env ({m['slangTestdata'].get('env')}) が束にありません")
+        if m["slangTestdata"]["env"] != SLANG_TESTDATA_ENV:
+            fail(f"slangTestdata の env は {SLANG_TESTDATA_ENV} のはずです ({m['slangTestdata']['env']})")
+        if not m["slangTestdata"]["cases"]:
+            fail("SLANG タブ用の testdata が空です")
+        # SLANG タブ用の見本は、決まった 3 つがちょうど 1 つずつで、それぞれ自分の .SL・.ASM・.bin を指す
+        if sorted(c.get("name") for c in m["slangTestdata"]["cases"]) != sorted(SLANG_TESTDATA_CASES):
+            fail(f"slangTestdata の見本は {', '.join(SLANG_TESTDATA_CASES)} のはずです")
+        for case in m["slangTestdata"]["cases"]:
+            for key, ext in SLANG_TESTDATA_EXTS.items():
+                if case.get(key) != f"testdata/slang/{case['name']}.{ext}" or case.get(key) not in listed:
+                    fail(f"SLANG タブ用の testdata の {case['name']} の {key} ({case.get(key)}) がおかしいか、束にありません")
+        include_paths = m["slangTestdata"].get("includePaths")
+        if not isinstance(include_paths, list) or not include_paths:
+            fail("slangTestdata に includePaths の一覧がありません")
+        for p in include_paths:
+            # 束の根からの相対の道だけ (絶対の道・.. ・空は使えない)
+            if not isinstance(p, str) or not p or p.startswith("/") or "\\" in p or ".." in p.split("/"):
+                fail(f"slangTestdata の includePaths に使えない道があります: {p!r}")
+        for name in INCLUDE_FILES:
+            if not any(f"{p.rstrip('/')}/{name}" in listed for p in include_paths):
+                fail(f"{name} が slangTestdata の includePaths ({include_paths}) のどこにもありません")
+    for name in m["envs"]:
+        if f"env/{name}.env" not in listed:
+            fail(f"env/{name}.env が束にありません")
     for env in m["envs"].values():
         for lib in env["libraries"]:
             if f"runtime/{lib}" not in listed:
@@ -258,10 +429,11 @@ def main():
         print()
     elif args[:1] == ["copy"] and len(args) == 3:
         cmd_copy(args[1], args[2])
-    elif args[:1] == ["write"] and len(args) == 9:
-        cmd_write(*args[1:8], [c for c in args[8].split(",") if c])
-    elif args[:1] == ["verify"] and len(args) == 2:
-        cmd_verify(args[1])
+    elif args[:1] == ["write"] and len(args) in (11, 12):
+        cmd_write(*args[1:8], [c for c in args[8].split(",") if c], args[9], [c for c in args[10].split(",") if c],
+                  args[11] if len(args) == 12 else None)
+    elif args[:1] == ["verify"] and len(args) in (2, 3):
+        cmd_verify(args[1], args[2] if len(args) == 3 else None)
     else:
         fail("使い方: hubasic-wasm-manifest.py envs|copy|write|verify … (ファイルの頭の説明を参照)")
 

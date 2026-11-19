@@ -40,6 +40,8 @@ public class SlfsBuildIntegrationTests
         psi.ArgumentList.Add("--");
         foreach (var a in args)
             psi.ArgumentList.Add(a);
+        psi.ArgumentList.Add("--slangc");
+        psi.ArgumentList.Add(TestTools.SlangcPath);
 
         using var proc = Process.Start(psi)!;
 

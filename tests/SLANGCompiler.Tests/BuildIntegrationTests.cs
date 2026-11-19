@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Xunit;
 using SkippableFactAttribute = Xunit.SkippableFactAttribute;
 
@@ -33,7 +34,7 @@ public class BuildIntegrationTests : IDisposable
 
         // CI / dev 共通: PATH 上の旧 slangc を避けるため必ずリポジトリ内の最新 publish 物
         // (なければ自動 publish) を使う
-        _slangcExePath = EnsureSlangcExePath();
+        _slangcExePath = TestTools.SlangcPath;
         // Windows では `AILZ80ASM.exe` が必要 (Codex 指摘)
         var asmName = OperatingSystem.IsWindows() ? "AILZ80ASM.exe" : "AILZ80ASM";
         _ailz80AsmPath = Path.Combine(_projectRoot, "tools", asmName);
@@ -45,61 +46,6 @@ public class BuildIntegrationTests : IDisposable
         {
             try { Directory.Delete(_tempDir, true); } catch { }
         }
-    }
-
-    private string EnsureSlangcExePath()
-    {
-        // 既存 publish 物があれば再利用 (テスト間で publish 重複を避ける)
-        var rid = GetCurrentRid();
-        var publishDir = Path.Combine(_projectRoot, "src", "SLANGCompiler.CLI",
-                                       "bin", "Release", "net8.0", rid, "publish");
-        var exeName = OperatingSystem.IsWindows() ? "slangc.exe" : "slangc";
-        var exePath = Path.Combine(publishDir, exeName);
-        if (File.Exists(exePath)) return exePath;
-
-        // なければ自動 publish (初回 + CI で必要)
-        var psi = new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            WorkingDirectory = _projectRoot,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
-        psi.ArgumentList.Add("publish");
-        psi.ArgumentList.Add("src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj");
-        psi.ArgumentList.Add("-c");
-        psi.ArgumentList.Add("Release");
-        psi.ArgumentList.Add("-r");
-        psi.ArgumentList.Add(rid);
-        psi.ArgumentList.Add("--self-contained");
-        psi.ArgumentList.Add("true");
-        psi.ArgumentList.Add("-p:PublishSingleFile=true");
-        using var proc = Process.Start(psi)!;
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-        var stderrTask = proc.StandardError.ReadToEndAsync();
-        if (!proc.WaitForExit(180_000))
-        {
-            try { proc.Kill(entireProcessTree: true); } catch { }
-            Assert.Fail("dotnet publish timed out after 180s");
-        }
-        stdoutTask.GetAwaiter().GetResult();
-        stderrTask.GetAwaiter().GetResult();
-        Assert.Equal(0, proc.ExitCode);
-        Assert.True(File.Exists(exePath), $"slangc publish output not found: {exePath}");
-        return exePath;
-    }
-
-    private static string GetCurrentRid()
-    {
-        // 簡易: macOS arm64 / x64, linux x64, windows x64 のみ対応 (CI 用途では十分)
-        if (OperatingSystem.IsMacOS())
-            return System.Runtime.InteropServices.RuntimeInformation.OSArchitecture
-                == System.Runtime.InteropServices.Architecture.Arm64 ? "osx-arm64" : "osx-x64";
-        if (OperatingSystem.IsLinux()) return "linux-x64";
-        if (OperatingSystem.IsWindows()) return "win-x64";
-        throw new PlatformNotSupportedException();
     }
 
     private (int ExitCode, string Stdout, string Stderr) RunSlangbuild(
@@ -207,6 +153,32 @@ public class BuildIntegrationTests : IDisposable
         var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "x1native");
         Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
         Assert.True(File.Exists(Path.Combine(_tempDir, "flog.bin")), $"bin not produced. stderr: {stderr}");
+    }
+
+    [SkippableFact]
+    public void Stick_LinksOnlyWhenUsed_X1Native()
+    {
+        // X1 の STICK (libx1_base) を呼ぶプログラムは組み立てられ、ASM に STICK が入る。呼ばないプログラムには入らない
+        Skip.IfNot(File.Exists(_ailz80AsmPath), "AILZ80ASM がない");
+        var withPath = Path.Combine(_tempDir, "stick.SL");
+        File.WriteAllText(withPath, "VAR J;\nMAIN()\nBEGIN\n  J = STICK(0) + STICK(1);\n  IF (J & $01) == 0 THEN PRINT(\"UP\");\nEND;\n");
+        var (code, stdout, stderr) = RunSlangbuild(withPath, "-E", "x1native", "--keep-asm");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        Assert.True(File.Exists(Path.Combine(_tempDir, "stick.bin")), $"bin not produced. stderr: {stderr}");
+        Assert.Matches(@"(?m)^STICK:", File.ReadAllText(Path.Combine(_tempDir, "stick.ASM")));
+        // 割り込みの状態を確かめる印は、値として読み込まれ (LD DE,nn = 11、LD HL,nn = 21)、上位も下位も「.STICK_LDAI の上位 + $80」
+        var lst = File.ReadAllText(Path.Combine(_tempDir, "stick.LST"));
+        var ldai = Regex.Match(lst, @"(?m)^\s+([0-9A-F]{4})\s+\.STICK_LDAI\s*$");
+        Assert.True(ldai.Success, "LST に .STICK_LDAI がない");
+        var mark = ((Convert.ToInt32(ldai.Groups[1].Value, 16) >> 8) + 0x80 & 0xFF).ToString("X2");
+        Assert.Matches($@"(?m)^\S+\s+[0-9A-F]{{4}}\s+11{mark}{mark}\s+\d+\s+LD DE,\$0101", lst);
+        Assert.Matches($@"(?m)^\S+\s+[0-9A-F]{{4}}\s+21{mark}{mark}\s+\d+\s+LD HL,\$0101", lst);
+
+        var withoutPath = Path.Combine(_tempDir, "nostick.SL");
+        File.WriteAllText(withoutPath, "VAR J;\nMAIN()\nBEGIN\n  J = 1;\nEND;\n");
+        (code, stdout, stderr) = RunSlangbuild(withoutPath, "-E", "x1native", "--keep-asm");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        Assert.DoesNotMatch(@"(?m)^STICK:", File.ReadAllText(Path.Combine(_tempDir, "nostick.ASM")));
     }
 
     [Theory]

@@ -34,6 +34,8 @@ public class HufsBuildIntegrationTests
         psi.ArgumentList.Add("--no-build");
         psi.ArgumentList.Add("--");
         foreach (var a in args) psi.ArgumentList.Add(a);
+        psi.ArgumentList.Add("--slangc");
+        psi.ArgumentList.Add(TestTools.SlangcPath);
         using var proc = Process.Start(psi)!;
         var stdoutTask = proc.StandardOutput.ReadToEndAsync();
         var stderrTask = proc.StandardError.ReadToEndAsync();
@@ -153,6 +155,8 @@ public class HufsBuildIntegrationTests
         {
             var (rc, stdout, stderr) = RunSlangbuild("-E", "x1native_hufs", src, "-o", output, "--emit", "bin");
             Assert.True(rc != 0, $"FS_READ_BY_ID が x1native_hufs でリンクできてしまった\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            // 止まったのは、SLFS の関数がアセンブルで見つからないため (ほかの理由ではない)
+            Assert.Contains("未定義:FS_READ_BY_ID", stdout + stderr);
         }
         finally
         {

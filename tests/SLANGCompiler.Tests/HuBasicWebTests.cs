@@ -441,7 +441,7 @@ public class HuBasicWebTests
             var m = Parse(so.Result);
             Assert.Equal(SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.BasAbi, m.GetProperty("basAbi").GetInt32());
             Assert.Equal(SLANGCompiler.HuBasic.Emit.Slang.SlangBackend.BasFileAbi, m.GetProperty("basFileAbi").GetInt32());
-            foreach (var name in new[] { "x1native", "x1native_slfs", "x1native_hufs" })
+            foreach (var name in new[] { "x1native", "x1native_slfs", "x1native_hufs", "x1" })
             {
                 var cfg = EnvironmentLoader.Load(Path.Combine(root, "runtime", "env", name + ".env"));
                 var e = m.GetProperty("envs").GetProperty(name);

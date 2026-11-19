@@ -419,7 +419,7 @@ public class HuBasicFileTests
         psi.Environment["SLANG_HOME"] = root;
         psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         foreach (var a in new[] { "run", "--project", Path.Combine(root, "src", "SLANGCompiler.Build", "SLANGCompiler.Build.csproj"),
-                     "-c", "Release", "--", sl, "-E", env, "--asm", asmPath, "--keep-asm", "-o", outBase })
+                     "-c", "Release", "--", sl, "-E", env, "--asm", asmPath, "--slangc", TestTools.SlangcPath, "--keep-asm", "-o", outBase })
             psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         var so = proc.StandardOutput.ReadToEndAsync();

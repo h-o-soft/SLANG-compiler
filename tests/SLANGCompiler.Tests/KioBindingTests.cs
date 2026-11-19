@@ -283,7 +283,7 @@ public class KioBindingTests
     }
 
     /// <summary>
-    /// テスト実行 cwd から SLANG-compiler repo root を遡って探す。bin/Debug/net8.0
+    /// テスト実行 cwd から SLANG-compiler repo root を遡って探す。bin/Debug/net10.0
     /// から実行されるため複数階層上に上がる必要あり。
     /// </summary>
     private static string FindRepoRoot()

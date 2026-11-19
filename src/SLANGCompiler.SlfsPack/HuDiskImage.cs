@@ -318,7 +318,8 @@ public sealed class HuDiskImage
         WriteEntry(entry);
         var ipl = new SlfsBootHeader
         {
-            FileName = mainName,
+            // ディレクトリの項目と同じ名前 (HuName.Parse と同じく、ドライブの "0:" は名前に含めない)
+            FileName = mainName.StartsWith("0:", StringComparison.Ordinal) ? mainName[2..] : mainName,
             Extension = "Sys",
             DataSize = (ushort)body.Length,
             LoadAddress = load,

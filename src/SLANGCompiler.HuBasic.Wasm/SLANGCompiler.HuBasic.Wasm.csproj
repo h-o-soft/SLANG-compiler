@@ -1,12 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk.WebAssembly">
   <!--
-    hubasic2sl の変換をブラウザ (browser-wasm) で動かす入口。SLANGCompiler.sln には入れない
-    (組み立てるのは scripts/build-hubasic-wasm.sh だけ)。
-    HuBasic は自己完結でない Exe なので ProjectReference にせず (NETSDK1151)、CLI の外側を除いたソースを共有する。
+    hubasic2sl の変換と slangc のコンパイルと Hu-BASIC の形のディスク作りを、ブラウザ (browser-wasm) で動かす入口。
+    SLANGCompiler.sln には入れない (組み立てるのは scripts/build-hubasic-wasm.sh だけ)。
+    HuBasic と SlfsPack は自己完結でない Exe なので ProjectReference にせず (NETSDK1151)、CLI の外側を除いたソースを共有する。
+    Core (slangc の本体) はライブラリなので ProjectReference にする。
+    env を読む YamlDotNet はリフレクションで型を作るので、刈り込み (trimming) で落ちないように Core と YamlDotNet を根にする。
   -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -23,9 +25,16 @@
   <ItemGroup>
     <Compile Include="../SLANGCompiler.HuBasic/**/*.cs"
              Exclude="../SLANGCompiler.HuBasic/obj/**;../SLANGCompiler.HuBasic/bin/**;../SLANGCompiler.HuBasic/Program.cs;../SLANGCompiler.HuBasic/SlangbuildRunner.cs" />
+    <Compile Include="../SLANGCompiler.SlfsPack/**/*.cs"
+             Exclude="../SLANGCompiler.SlfsPack/obj/**;../SLANGCompiler.SlfsPack/bin/**;../SLANGCompiler.SlfsPack/Program.cs;../SLANGCompiler.SlfsPack/HuCommands.cs" />
     <Compile Include="HuBasicWeb.cs" />
+    <Compile Include="SlangWeb.cs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+    <ProjectReference Include="../SLANGCompiler.Core/SLANGCompiler.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <TrimmerRootAssembly Include="SLANGCompiler.Core" />
+    <TrimmerRootAssembly Include="YamlDotNet" />
   </ItemGroup>
 </Project>

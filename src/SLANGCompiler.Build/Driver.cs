@@ -205,7 +205,7 @@ public class Driver
                 {
                     Console.Error.WriteLine(
                         $"slangbuild: disk main name '{name}' ({source}) invalid "
-                        + "(ASCII printable 0x20-0x7E, 1..13 char)");
+                        + $"({SLANGCompiler.SlfsPack.BootName.Rule})");
                     return 1;
                 }
                 if (_opts.Verbose)
@@ -1396,34 +1396,11 @@ public class Driver
     private int SpawnSlangc(ResolvedTool slangc, string inputPath, string outAsmPath, string env,
                             IList<string>? extraIncludePaths = null)
     {
-        var psi = new ProcessStartInfo
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-
-        if (slangc.Kind == ResolutionKind.DotnetRun)
-        {
-            // dotnet run --project <csproj> -c Release -- -E <env> -o <out> <input>
-            psi.FileName = slangc.Path; // dotnet
-            psi.ArgumentList.Add("run");
-            psi.ArgumentList.Add("--project");
-            psi.ArgumentList.Add(slangc.ProjectPath!);
-            psi.ArgumentList.Add("-c");
-            psi.ArgumentList.Add("Release");
-            psi.ArgumentList.Add("--");
-        }
-        else
-        {
-            psi.FileName = slangc.Path;
-        }
-        psi.ArgumentList.Add("-E");
-        psi.ArgumentList.Add(env);
+        var args = new List<string> { "-E", env };
         foreach (var p in _opts.IncludePaths)
         {
-            psi.ArgumentList.Add("-I");
-            psi.ArgumentList.Add(p);
+            args.Add("-I");
+            args.Add(p);
         }
         // extraIncludePaths: caller 指定の追加 -I (= 例 SLFS Phase 3 で
         // generated header 配置 outputDir、 常時 add 副作用回避のため明示渡し)
@@ -1431,18 +1408,27 @@ public class Driver
         {
             foreach (var p in extraIncludePaths)
             {
-                psi.ArgumentList.Add("-I");
-                psi.ArgumentList.Add(p);
+                args.Add("-I");
+                args.Add(p);
             }
         }
         foreach (var p in _opts.LibraryPaths)
         {
-            psi.ArgumentList.Add("-L");
-            psi.ArgumentList.Add(p);
+            args.Add("-L");
+            args.Add(p);
         }
-        psi.ArgumentList.Add("-o");
-        psi.ArgumentList.Add(outAsmPath);
-        psi.ArgumentList.Add(inputPath);
+        args.Add("-o");
+        args.Add(outAsmPath);
+        args.Add(inputPath);
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = slangc.Path,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var a in args) psi.ArgumentList.Add(a);
 
         if (_opts.Verbose)
         {

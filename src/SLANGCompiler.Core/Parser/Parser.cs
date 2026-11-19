@@ -42,22 +42,51 @@ public class Parser
     }
     private void Error(string msg) => _diagnostics.Error(msg, Current.Span);
 
+    /// <summary>
+    /// 式 (括弧・単項の演算子) と文の入れ子の深さの上限。越えたら error にして読むのをやめる
+    /// (深すぎる入れ子でスタックを使い果たさないように。木の深さも抑えるので、後の段の再帰も深くならない)
+    /// </summary>
+    internal const int MaxNesting = 256;
+    private int _nesting;
+
+    /// <summary>入れ子が深すぎて読むのをやめたときに投げる (ParseCompilationUnit が受ける)</summary>
+    private sealed class NestingTooDeepException : Exception { }
+
+    private T Nested<T>(Func<T> parse)
+    {
+        if (_nesting >= MaxNesting)
+        {
+            Error($"Expression or statement is nested too deeply (more than {MaxNesting} levels)");
+            throw new NestingTooDeepException();
+        }
+        _nesting++;
+        try { return parse(); }
+        finally { _nesting--; }
+    }
+
     // ==== Top-level ====
 
     public CompilationUnit ParseCompilationUnit()
     {
         var defs = new List<AstNode>();
-        while (!Check(TokenKind.EOF) && !_diagnostics.HasReachedMaxErrors)
+        try
         {
-            if (Match(TokenKind.Semicolon)) continue;
-            int errorsBefore = _diagnostics.ErrorCount;
-            int before = _pos;
-            var def = ParseTopLevel();
-            if (def != null) defs.Add(def);
-            if (_diagnostics.ErrorCount > errorsBefore)
-                SynchronizeTopLevel();
-            else if (_pos == before)
-                Advance();
+            while (!Check(TokenKind.EOF) && !_diagnostics.HasReachedMaxErrors)
+            {
+                if (Match(TokenKind.Semicolon)) continue;
+                int errorsBefore = _diagnostics.ErrorCount;
+                int before = _pos;
+                var def = ParseTopLevel();
+                if (def != null) defs.Add(def);
+                if (_diagnostics.ErrorCount > errorsBefore)
+                    SynchronizeTopLevel();
+                else if (_pos == before)
+                    Advance();
+            }
+        }
+        catch (NestingTooDeepException)
+        {
+            // error は書いてある。残りは読まない
         }
         return new CompilationUnit(defs, SourceSpan.Unknown);
     }
@@ -709,7 +738,9 @@ public class Parser
         return stmts;
     }
 
-    private AstNode? ParseStmt()
+    private AstNode? ParseStmt() => Nested(ParseStmtCore);
+
+    private AstNode? ParseStmtCore()
     {
         // 空文（セミコロンのみ）: repeat ; until ... や while expr ; に対応
         if (Check(TokenKind.Semicolon))
@@ -1055,9 +1086,18 @@ public class Parser
     {
         var diag = new DiagnosticBag();
         var p = new Parser(tokens, diag) { _pos = start };
-        var e = p.ParseNcExpr();
-        end = p._pos;
-        return diag.HasErrors ? null : e;
+        try
+        {
+            var e = p.ParseNcExpr();
+            end = p._pos;
+            return diag.HasErrors ? null : e;
+        }
+        catch (NestingTooDeepException)
+        {
+            // 入れ子が深すぎる: 値は決めない。あとの構文の読み取りが、同じ所で source の error を書く
+            end = p._pos;
+            return null;
+        }
     }
 
     private Expression ParseAssign()
@@ -1202,7 +1242,10 @@ public class Parser
         return e;
     }
 
-    private Expression ParseUnary()
+    /// <summary>単項の演算子も括弧の中の式も、ここを 1 段ずつ通る (入れ子の深さを数える所)</summary>
+    private Expression ParseUnary() => Nested(ParseUnaryCore);
+
+    private Expression ParseUnaryCore()
     {
         var s = Current.Span;
 

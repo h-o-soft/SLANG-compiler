@@ -5,7 +5,7 @@ CSPROJ=src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj
 CSPROJ_BUILD=src/SLANGCompiler.Build/SLANGCompiler.Build.csproj
 CSPROJ_SLFS=src/SLANGCompiler.SlfsPack/SLANGCompiler.SlfsPack.csproj
 CSPROJ_HUBASIC=src/SLANGCompiler.HuBasic/SLANGCompiler.HuBasic.csproj
-TFM=net8.0
+TFM=net10.0
 
 createRelease() {
   cd publish-new/$1
@@ -72,11 +72,19 @@ createRelease() {
     cp ../../examples/zxs/README.md  examples/zxs/ 2>/dev/null
   fi
 
-  # examples/hubasic は HuBASIC の変換のサンプル。BASIC と README・MANIFEST.txt だけを写す
+  # examples/x1pen は x1 の env の見本 (画面・音・入力)。SL と説明だけを写す
+  if [ -d "../../examples/x1pen" ]; then
+    mkdir -p examples/x1pen
+    for f in SCREEN.SL SOUND.SL INPUT.SL; do cp "../../examples/x1pen/$f" examples/x1pen/ 2>/dev/null; done
+    cp ../../examples/x1pen/README.md  examples/x1pen/ 2>/dev/null
+  fi
+
+  # examples/hubasic は HuBASIC の変換のサンプル。BASIC とそれが読むテキストと README・MANIFEST.txt だけを写す
   # (変換した *.SL などは含めない。置いてよいファイルは MANIFEST.txt の一覧)
   if [ -d "../../examples/hubasic" ]; then
     mkdir -p examples/hubasic
     cp ../../examples/hubasic/*.BAS         examples/hubasic/ 2>/dev/null
+    cp ../../examples/hubasic/FILEIO.TXT    examples/hubasic/ 2>/dev/null
     cp ../../examples/hubasic/README.md     examples/hubasic/ 2>/dev/null
     cp ../../examples/hubasic/MANIFEST.txt  examples/hubasic/ 2>/dev/null
   fi
