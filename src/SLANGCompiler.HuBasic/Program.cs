@@ -359,6 +359,6 @@ class Program
         Console.Error.WriteLine("  --disk-main-name <name>  IPL の起動名 (--emit disk。既定は BASIC のファイル名)");
         Console.Error.WriteLine("  --tape-name <name>       テープの名前 (--emit tape。既定は PROG)");
         Console.Error.WriteLine("  --wav                    .wav も作る (--emit tape)");
-        Console.Error.WriteLine("  --slangbuild <path>      呼ぶ slangbuild (既定: hubasic2sl と同じ所、bin/、開発の publish、PATH、dotnet run の順に探す)");
+        Console.Error.WriteLine("  --slangbuild <path>      呼ぶ slangbuild (既定: hubasic2sl と同じ所、bin/、開発の publish、PATH の順に探す)");
     }
 }

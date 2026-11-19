@@ -32,7 +32,7 @@ public class ToolResolver
     ///    が見つかればそれ (= dev 環境で publish 済みの最新 slangc を PATH 上の
     ///    旧版より優先)
     /// 4) PATH 上の slangc (= 配布版を OS にインストールしたケース)
-    /// 5) dev fallback: dotnet (= caller が DevToolBuild で CLI の csproj を組み立て、`dotnet &lt;slangc.dll&gt;` で動かす)
+    /// どれにも無ければ FileNotFoundException (開発の木では、slangc を publish するか --slangc で指す)
     /// </summary>
     public ResolvedTool ResolveSlangc(string? cliOverride)
     {
@@ -55,18 +55,10 @@ public class ToolResolver
         var onPath = FindOnPath(name);
         if (onPath != null) return new ResolvedTool(onPath, ResolutionKind.DirectExe);
 
-        // 5) dev fallback: <repo>/src/SLANGCompiler.CLI/... を組み立てて dotnet で動かす (DevToolBuild)
-        var dotnet = FindOnPath($"dotnet{ExeSuffix}");
-        if (dotnet != null)
-        {
-            var cliCsproj = LocateRepoFile("src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj");
-            if (cliCsproj != null)
-                return new ResolvedTool(dotnet, ResolutionKind.DotnetRun, cliCsproj);
-        }
-
         throw new FileNotFoundException(
-            "slangc not found. Tried: --slangc, bundled bin, dev publish, PATH, and dev `dotnet run` fallback. "
-            + "Specify --slangc <path> explicitly.");
+            "slangc not found. Tried: --slangc, bundled bin, dev publish, PATH. "
+            + "Specify --slangc <path>, or publish it in the source tree: "
+            + "dotnet publish src/SLANGCompiler.CLI -c Release -r <rid> --self-contained true /p:PublishSingleFile=true");
     }
 
     /// <summary>
@@ -580,8 +572,6 @@ public enum ResolutionKind
 {
     /// <summary>実行ファイルを直接 spawn (slangc / AILZ80ASM / Windows の HuDisk.exe)</summary>
     DirectExe,
-    /// <summary>開発の木の csproj を組み立てて dotnet で動かす (dev fallback、slangc 用。DevToolBuild)</summary>
-    DotnetRun,
     /// <summary>mono &lt;assembly.exe&gt; 経由 (Linux/macOS の HuDisk.exe 用)</summary>
     MonoRun,
 }
@@ -589,7 +579,6 @@ public enum ResolutionKind
 /// <summary>
 /// 解決結果。Kind ごとに Path の意味が異なる:
 /// - DirectExe: 実行ファイル絶対パス (= そのまま spawn)
-/// - DotnetRun: dotnet の絶対パス、ProjectPath は --project に渡す csproj
 /// - MonoRun: mono の絶対パス、ProjectPath は mono に渡す .NET assembly (.exe)
 /// </summary>
 public record ResolvedTool(string Path, ResolutionKind Kind, string? ProjectPath = null);

@@ -1421,17 +1421,14 @@ public class Driver
         args.Add(outAsmPath);
         args.Add(inputPath);
 
-        // 開発の木の slangc (DotnetRun) は、木の SDK の決まりで組み立ててから dotnet <slangc.dll> で動かす (DevToolBuild を参照)
-        var psi = DevToolBuild.CreateStartInfo(slangc, "slangc", args, out var buildLog, out var built);
-        using var builtTool = built;   // 開発の木で組み立てたときは、動かし終わったら組み立てのフォルダを消す
-        if (psi == null)
+        var psi = new ProcessStartInfo
         {
-            Console.Error.Write(buildLog);
-            Console.Error.WriteLine($"slangbuild: failed to build slangc ({slangc.ProjectPath})");
-            return 1;
-        }
-        psi.RedirectStandardOutput = true;
-        psi.RedirectStandardError = true;
+            FileName = slangc.Path,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var a in args) psi.ArgumentList.Add(a);
 
         if (_opts.Verbose)
         {

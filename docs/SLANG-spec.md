@@ -1150,7 +1150,7 @@ overlay に渡すと compiler 内部ラベルとの衝突リスクがあるた�
 `AppContext.BaseDirectory` を起点に決定論的に探す。共通の install dir 検索順は
 `$SLANG_HOME/tools/` → `~/.config/SLANG/tools/` (= `make install` 後の配置先)。
 
-- **slangc**: `--slangc` → 同梱 `{baseDir}/slangc(.exe)` / `{baseDir}/bin/slangc(.exe)` → dev publish 物 (`src/SLANGCompiler.CLI/bin/Release/net10.0/<rid>/publish/slangc`) → `PATH` → 開発の木の `src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj` (dev fallback。csproj のフォルダで `dotnet build -c Release -p:OutDir=<csproj のフォルダ>/bin/devtool/` してから、呼んだ人の作業フォルダのまま `dotnet <リポジトリ>/src/SLANGCompiler.CLI/bin/devtool/slangc.dll` (絶対の道) で動かす。`dotnet run` は呼んだ人のフォルダの global.json で SDK を選んでしまうので使わない)
+- **slangc**: `--slangc` → 同梱 `{baseDir}/slangc(.exe)` / `{baseDir}/bin/slangc(.exe)` → dev publish 物 (`src/SLANGCompiler.CLI/bin/Release/net10.0/<rid>/publish/slangc`) → `PATH`。どれにも無ければ止まる (開発の木では、`dotnet publish src/SLANGCompiler.CLI -c Release -r <rid> --self-contained true /p:PublishSingleFile=true` で publish するか、`--slangc` で指す)
 - **AILZ80ASM**: `--asm` → `AILZ80ASM_PATH` 環境変数 → `PATH` → 同梱 `{baseDir}/tools/`
   → 同梱 `{baseDir}/../tools/` → install dir → repo root `tools/` (dev fallback)
 - **ndc** (`--emit disk` の `tool: ndc`): `--ndc` → `NDC_PATH` 環境変数 → 同梱
