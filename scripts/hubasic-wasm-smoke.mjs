@@ -201,6 +201,9 @@ try {
   }
 
   // Hu-BASIC の形のディスク: wasm の BuildHuDisk が、testdata の .d88 (slangbuild --emit disk --hufs-add で作ったもの) と同じ
+  const fileio = manifest.testdata.cases.find(c => c.name === 'FILEIO');
+  check(fileio?.env === 'x1native_hufs' && fileio.hufsAdd?.some(a => a.name === 'GREET.TXT' && a.kind === 'text'),
+        'testdata の FILEIO は x1native_hufs で、GREET.TXT を足してある (ディスクの比べ合わせを飛ばさない)');
   for (const c of manifest.testdata.cases.filter(c => c.hufsAdd)) {
     const env = manifest.envs[c.env];
     const add = c.hufsAdd.map(a => `${a.name}=${path.join(bundle, a.file)},${a.kind}`);

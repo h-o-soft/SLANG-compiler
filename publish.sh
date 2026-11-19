@@ -84,7 +84,7 @@ createRelease() {
   if [ -d "../../examples/hubasic" ]; then
     mkdir -p examples/hubasic
     cp ../../examples/hubasic/*.BAS         examples/hubasic/ 2>/dev/null
-    cp ../../examples/hubasic/*.TXT         examples/hubasic/ 2>/dev/null
+    cp ../../examples/hubasic/FILEIO.TXT    examples/hubasic/ 2>/dev/null
     cp ../../examples/hubasic/README.md     examples/hubasic/ 2>/dev/null
     cp ../../examples/hubasic/MANIFEST.txt  examples/hubasic/ 2>/dev/null
   fi

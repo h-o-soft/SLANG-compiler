@@ -56,8 +56,21 @@ if [ ! -x "$ASM" ] || ! ASM_VERSION="$("$ASM" --version 2>/dev/null | head -1)";
   exit 1
 fi
 
+# node は最後の確かめに要る。何かを作る前に確かめる (確かめられない束は作らない)
+NODE="${NODE:-node}"
+if ! command -v "$NODE" > /dev/null 2>&1 \
+   || ! "$NODE" -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=7)?0:1)'; then
+  echo "build-hubasic-wasm: node 22.7 以上が要ります (PATH に置くか、NODE で指してください)" >&2
+  exit 1
+fi
+
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+# 束は一時の所で作り、manifest と CLI との比べ合わせが全部通ってから出力フォルダに写す
+# (途中で止まったら、出力フォルダは空のまま)
+FINAL="$OUT"
+OUT="$TMP/bundle"
+mkdir "$OUT"
 
 echo "[1/5] CLI (hubasic2sl・slangc・slangbuild) を組み立てます"
 for p in SLANGCompiler.HuBasic SLANGCompiler.CLI SLANGCompiler.Build; do
@@ -86,14 +99,14 @@ for bas in examples/hubasic/HELLO.BAS examples/hubasic/GRAPH.BAS examples/hubasi
   # ファイルの命令を使う例は、変換が SL の頭に `// env: x1native_hufs` と書く
   env="$(sed -n 's|^// env: \([^ ]*\).*|\1|p' "$base.SL" | head -1)"
   env="${env:-x1native_slfs}"
-  add=()
+  # slangbuild の引数 (空の配列を "${a[@]}" で広げると、古い bash の set -u で止まるので、いつも中身のある配列にする)
+  args=(--emit disk -E "$env" "$base.SL" -o "$base" --slangc "$SLANGC" --asm "$ASM")
   if [ "$name" = FILEIO ]; then
     cp examples/hubasic/FILEIO.TXT "$base.GREET.TXT"
-    add=(--hufs-add "GREET.TXT=$base.GREET.TXT,text")
+    args+=(--hufs-add "GREET.TXT=$base.GREET.TXT,text")
     HUFS_ADD="$HUFS_ADD${HUFS_ADD:+;}FILEIO:GREET.TXT=testdata/FILEIO.GREET.TXT,text"
   fi
-  "$SLANGBUILD" --emit disk -E "$env" "$base.SL" -o "$base" "${add[@]}" --slangc "$SLANGC" --asm "$ASM" > "$TMP/$name.log" 2>&1 \
-    || { cat "$TMP/$name.log" >&2; exit 1; }
+  "$SLANGBUILD" "${args[@]}" > "$TMP/$name.log" 2>&1 || { cat "$TMP/$name.log" >&2; exit 1; }
   dotnet "$HUB" --check-bin "$base.bin" --lst "$base.LST"
   CASES="$CASES${CASES:+,}$name"
 done
@@ -118,12 +131,9 @@ python3 -I scripts/hubasic-wasm-manifest.py write "$REPO" "$OUT" "$SHA" "$DIRTY"
 python3 -I scripts/hubasic-wasm-manifest.py verify "$OUT"
 
 echo "[5/5] wasm の変換・コンパイル・ディスク作りを CLI と比べます"
-NODE="${NODE:-node}"
-if ! command -v "$NODE" > /dev/null 2>&1; then
-  # 確かめずに束を渡さない (束が CLI と同じことを確かめるのは、この段だけ)
-  echo "build-hubasic-wasm: node が無いので、束を確かめられません (node 22.7 以上を PATH に置くか、NODE で指してください)" >&2
-  exit 1
-fi
 "$NODE" scripts/hubasic-wasm-smoke.mjs "$OUT" "$REPO" "$HUB" "$SLANGC_DLL"
 
-echo "build-hubasic-wasm: $OUT にできました (SHA $SHA、dirty $DIRTY)"
+# 全部通ったので、出力フォルダに写して、写した先でも manifest と合うかを確かめる
+cp -R "$OUT/." "$FINAL/"
+python3 -I scripts/hubasic-wasm-manifest.py verify "$FINAL"
+echo "build-hubasic-wasm: $FINAL にできました (SHA $SHA、dirty $DIRTY)"
