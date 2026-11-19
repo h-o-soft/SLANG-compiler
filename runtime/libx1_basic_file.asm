@@ -869,27 +869,6 @@ LD HL, 5
 JP BAS_ERROR
 
 
-; @name BAS_FCLR
-; @resident shared
-; @param_count 2
-; HL = 番地、DE = バイト数 → 0 で埋める (MAXFILES で変数を消す)
-LD A, D
-OR E
-RET Z
-LD (HL), 0
-DEC DE
-LD A, D
-OR E
-RET Z
-LD B, D
-LD C, E
-LD D, H
-LD E, L
-INC DE
-LDIR
-RET
-
-
 ; ============================================================ ランダム (OPEN "R"・FIELD・LSET・RSET・GET・PUT・LOC・LOF)
 ;
 ; hubasic2sl は、ランダムを使うプログラム (FIELD・GET・PUT・LSET・RSET か、OPEN のモードが "R" か式) だけ、始めと MAXFILES の

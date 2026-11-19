@@ -90,6 +90,12 @@ public sealed class HuProgram
     /// <summary>レコードの緩衝 (256 バイト) を取る本数 (番号 1 から)</summary>
     public int RecordBuffers { get; init; }
 
+    /// <summary>
+    /// CLEAR 番地のいちばん小さい番地 (BASIC が使えるメモリの最後の番地)。CLEAR 番地がなければ null。
+    /// 組み立てたプログラムの終わりがこれを越えたら、大きさの検査 (HuLayout.Check) で error HB0318
+    /// </summary>
+    public int? ClearTop { get; init; }
+
     /// <summary>FIELD の変数 (と、それと SWAP する単純な文字列の変数) の鍵 → FIELD の表の項目の番号 (0 から)</summary>
     public IReadOnlyDictionary<string, int> FieldVars { get; init; } = new Dictionary<string, int>();
 

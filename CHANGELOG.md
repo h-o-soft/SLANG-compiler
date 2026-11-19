@@ -1,15 +1,76 @@
 # 更新履歴
 
-## Unreleased
+## Version 0.28.0
 
-- ライセンスの表示を足した (コードの動きは変わらない) — `runtime/libfloat.asm` が z80float 由来であることと、slang で変えた所も含めてファイルごと Apache License 2.0 であることを、`LICENSE` の頭・z80float の項・ファイルの頭に書き、全文 `LICENSE-APACHE-2.0.txt` を足した (配布 zip とブラウザ向けの束にも入れる)。 LZE の展開 (zlib、uniabis) の著作権の行と変えたことの注釈、ZX0 の帰属の注釈、mzd88 (MIT) の許諾の文も足した。 FLOAT を使ったプログラムを配るときの案内は README の「ライセンス」の節
+### 動きが変わること (前の版から書き換えが要るかもしれないもの)
+
+- 文字列と文字定数のエスケープ `\N`・`\0` を、仕様書の表どおり `$0D`・`$00` にした (前は `N`・`0` の字になっていた) (#258)
+- 定数どうしの計算をコンパイル時に畳み込んだ値を、実行時の計算と同じにした (`1 << 16` は `$0001`、`$8000 >> 16` は `$8000`、負の数の `/`・`MOD`・`>>` など) (#259)
+- `EXIT(n)` は内側から n 番目のループを抜ける (前はいつも 1 段)。`EXIT TO ラベル`・`CONTINUE` の行き先も仕様書どおりにした (#265)
+- 式の値を正した: 後置・前置の `++`・`--`、代入、`?:`、FLOAT の `++` と複合代入 (#266)
+- 大域の CONST と同じ名前の引数・局所変数・静的変数は、その変数を指す (前は CONST の値で畳み込んでいた) (#271)
+- これまで黙って違う値になったり何も書かなかったりした、次の書き方をエラーにした:
+  - 代入先を 2 回計算する `++`・`--`・複合代入 (`T[I++]++`、`T[I++] += 1`、`T[I] += (I = I + 1)` など) (#269)
+  - `VAR` の番地の式と初期値の一部 (大きさのある配列の `= 式`、固定番地の配列の `{…}`、単純変数の `{…}`) (#267)
+  - FLOAT を受け付けない所の FLOAT の値 (条件・`PRINT` の数・`MOD` やビット演算・添字と番地・`FOR` など)、引数の大きさの合計が 16 バイトを越える関数 (Z80 の出力) (#270)
+  - 書けない代入先 (`X + 1 = 5`、関数や CONST への代入)、`MEM`・`PORT`・間接変数の 2 つ目からの添字、宣言の式の中の変数の名前、
+    変数の名前の `TRUE`・`FALSE`、引数の数が宣言と違う MACHINE の呼び出し (#271)
+- zxn: `FREAD`・`FWRITE` の戻り値を、読み書きした数にした (前は次の番地)。`GETC` の字のキーの大文字・小文字が局所の変数で変わっていたのを直した (#286)。
+  `#MODULE` の窓に 4000H〜5FFFH は使えない (#287)
+- hubasic2sl の出力とランタイムに組の印 (`BAS_ABI_n`) を付けた。番号の違う組はアセンブルで止まる (#244)。この版の番号は 4
+
+### hubasic2sl (HuBASIC → SLANG の変換ツール、アルファ版)
+
 - X1 の HuBASIC のテキストを SLANG に変換するツールを同梱 (アルファ版、 版は 0.1.0-alpha で SLANG compiler とは別に数える)。 変換した SLANG は `x1native` / `x1native_slfs` で組み立てる。 ランタイム `libx1_basic` を追加。 使い方・対応している命令・HuBASIC との違いは [docs/HUBASIC.md](docs/HUBASIC.md)、 サンプルは `examples/hubasic/`
+- `IF` の `THEN` の省略、`CLEAR`・`CLEAR 番地` (番地はプログラムの終わりの上限として、組み立てた後に検査する)、
+  `DIM` の上限の変数 (`N=10:DIM A(N)`。変数に入るのが定数だけのとき)、`PSET(x,y[,色])`・`PRESET(x,y[,色])`・`POINT(x,y)`・
+  始点を省いた `LINE -(x,y)` (グラフィックとテキスト) にも対応。どれも HuBASIC で測った動きに合わせた (詳しくは [docs/HUBASIC.md](docs/HUBASIC.md))
+- 足した命令・関数: `CONSOLE` と `CHR$(14)`・`CHR$(15)` (#247)、`MIRROR$`・`BIN$`・2 次元の配列 (#246・#249)、`MUSIC` (`PLAY` の別名)、
+  X1turbo の形 (`WIDTH` の行数・`KEYLIST`/`KLIST`・`KMODE`。何もしない) (#248)、区切りなしの文・`LABEL`・`POKE`/`PEEK`/`CALL`/`TIME` (#237)、
+  HuBASIC にない `VSYNC [n]` (#239)、ファイルの命令 (`OPEN`・`PRINT#`・`INPUT#`・`FIELD`・`GET`・`PUT`・`FILES` など。`x1native_hufs` で組み立てる) (#251)
+- オプション: `--emit disk` / `--emit tape` (変換から組み立てまで 1 行で) (#242)、`--no-line-numbers` (#240)、`--string-len` (#241)、
+  ディスクイメージの IPL の起動名は BASIC のファイル名 (#238)
+- ブラウザ (wasm) から変換を呼ぶ入口と、その一式を作るスクリプト (#243)
+
+### 新しい環境
+
+- `zxs`: 素の ZX Spectrum (48K として動くもの) 向け。`slangbuild -E zxs --emit tape` で TAP と TZX を出力する (#282)。詳しくは [docs/ZXS.md](docs/ZXS.md)
+- `x1native_hufs`: `x1native` に、HuBASIC (CZ-8FB01) と同じ形の 2D ディスクとファイル API (`FOPEN`・`FREAD`・`FWRITE` など) を足した環境 (#250・#252)。
+  詳しくは [docs/HUFS.md](docs/HUFS.md)
+
+### ZX Spectrum Next (zxn)
+
+- `#MODULE $addr PAGE n` でモジュールを Next のページに置き、`ZXN_MODULE(n)` で付ける。`slangbuild --emit nex` で NEX を直接書く (#283・#284・#285)
+- `CONST __STACKTOP` でスタックの初めの番地、`CONST __NOROM = 1` で ROM を使わない `PRT`・`GETC`・`SLANGINIT`、
+  `CONST __LOWRAM = ページ` (`CONST __NOROM = 1` と一緒に書く) で 0000H〜3FFFH を RAM にする (#277・#279・#280・#281)
+- slangbuild が、Next の SLANG IDE と同じ置き場の検査 (8000H〜FCFFH) を行う (#278)
+- Arkos Tracker (AKM) の再生部と見本 `examples/zxn/ARKOS.SL` (#276)
+- ランタイムの直し: `PRT` の `DE`・`BC` (#262)、`PCHR` の 0 のバイト (#272)、ファイル関数の `EXX` (#273)、`SET_PALALL`・`SET_PAL9ALL` (#274)、
+  `SPR_SET`・`SPR_SETREL`・`SPR_HIDE`・`STICK`・`COPPER_SET` (#275)
+
+### X1
+
 - ランタイムに `TATTR(ATTR)` を追加 — 現在のテキストカーソル位置のセルのテキスト属性を 1 バイト設定する (`x1` / `sosx1` / `x1native` / `x1native_slfs`)。 `LOCATE(X,Y)` → `TATTR(ATTR)` → `PRINT(...)` の順で使う。 戻り値は成功 1 / 検証失敗 0。
   - ビット割当は bit7=横倍角 / bit6=縦倍角 / bit5=PCG 選択 / bit4=点滅 / bit3=反転 / bit2-0=BRG 色。 `$00`-`$FF` をマスクせずそのまま書き込む (`$0100` 以上は書き込まず 0 を返す)。
   - 文字も漢字セレクタも書かず、カーソルも動かさない。 属性を保持しない `PRINT` の既存動作は変更なしで、一度設定した属性は後続の `PRINT` でも維持される。
   - 有効範囲は現在の桁数 × 25 行 (40 桁なら 0-999、 80 桁なら 0-1999 のセル)。 範囲外のカーソル位置では何も書き込まず 0 を返す。
   - `WIDTH` / 画面クリア / スクロールは属性面を塗り直すため、 それらの後は再設定が必要。
   - PCG は `PCGDEF` でパターンを定義した上で、 そのセルの属性 bit5 を立てて初めて表示される (例: `TATTR($27)` = PCG + 白)。
+- `slangbuild --emit disk` の IPL の起動名を `--disk-main-name` で変えられるようにした (`x1native_slfs`) (#238)
+
+### コンパイラとランタイムの直し
+
+- FLOAT の定数の畳み込みと、libfloat の `LOG`・`ATN` 系の組み立て (#235)
+- 文字列の中の `\` を DB の文字列に入れず `$5C` で出す (#256)、後ろで決まる定数を何段たどっても値を出す (#257)
+- アセンブラの予約語と同じ名前の関数 (`ADD` など) のラベルに `_F_` を付ける (#260)、関数の中の CONST を受け付ける (#261)
+- `NAME:番地(n)`・`CODE([式])`・`FOR … DO 文` を読めるようにした (#264)、`#CHAIN` を読み、`#IF` の中の CONST を CONST と同じ規則で値にする (#268)
+- FLOAT の型の整理 (右の FLOAT を推定せず、ランタイムの関数の引数の型を注釈で決め、大域・静的の FLOAT の初期値を書く。libfloat の `FLOGY` も直した) (#270)
+- `#MODULE` のモジュールから、本体の名前 (`^HL`・`VAR X:ラベル`・本体の `#ASM` のラベル) を使える (#288)
+- ランタイムの `@calls` の書き損じ (`NOTHL`・`SET_PAINTBUF`) (#255)、`PCHR` の終わりの `RET` (pc80mk2・x1) (#272)
+
+### ライセンス
+
+- ライセンスの表示を足した (コードの動きは変わらない) — `runtime/libfloat.asm` が z80float 由来であることと、slang で変えた所も含めてファイルごと Apache License 2.0 であることを、`LICENSE` の頭・z80float の項・ファイルの頭に書き、全文 `LICENSE-APACHE-2.0.txt` を足した (配布 zip とブラウザ向けの束にも入れる)。 LZE の展開 (zlib、uniabis) の著作権の行と変えたことの注釈、ZX0 の帰属の注釈、mzd88 (MIT) の許諾の文も足した。 FLOAT を使ったプログラムを配るときの案内は README の「ライセンス」の節
 
 ## Version 0.27.0
 

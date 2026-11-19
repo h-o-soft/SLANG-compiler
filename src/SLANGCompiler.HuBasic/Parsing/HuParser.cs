@@ -27,6 +27,7 @@ public sealed class HuParser
         ["RAD"] = (1, 1), ["LEN"] = (1, 1), ["INSTR"] = (2, 3), ["HEX$"] = (1, 1), ["BIN$"] = (1, 1), ["SPACE$"] = (1, 1),
         ["SCRN$"] = (3, 3), ["PEEK"] = (1, 1), ["PEEK@"] = (1, 1),
         ["EOF"] = (1, 1), ["LOC"] = (1, 1), ["LOF"] = (1, 1),
+        ["POINT"] = (2, 2),
     };
 
 
@@ -37,6 +38,12 @@ public sealed class HuParser
     private HuPos _linePos;
 
     private HuParser(HuDiagnosticBag diag) => _diag = diag;
+
+    /// <summary>
+    /// true の間、小数点・指数・接尾辞のない 10 進の数 (32768 以上は浮動小数の字句) を、浮動小数に丸めずに整数の値で読む
+    /// (CLEAR の番地の式。CLEAR 49152+4096 を正しく畳み込むため)
+    /// </summary>
+    private bool _exactDecimal;
 
     public static HuAstProgram Parse(HuSource source, HuDiagnosticBag diag)
     {
@@ -549,6 +556,23 @@ public sealed class HuParser
                 return ParseLine(pos);
             case "PAINT":
                 return ParsePaint(pos);
+            case "PSET":
+            case "PRESET":
+            {
+                // PSET(x,y[,色])。色は括弧の中 (HuBASIC の実測: PSET (x,y),色 と PSET STEP(…) は Syntax error)
+                ExpectSymbol("(");
+                var x = ParseExpr();
+                ExpectSymbol(",");
+                var y = ParseExpr();
+                HuExpr? color = AcceptSymbol(",") ? ParseExpr() : null;
+                ExpectSymbol(")");
+                if (Peek.IsSymbol(","))
+                {
+                    Error("HB0203", $"{t.Text} の色は括弧の中に書きます ({t.Text}(x,y,色)。HuBASIC も {t.Text} (x,y),色 は Syntax error)");
+                    SkipToStatementEnd();
+                }
+                return new HuPset(x, y, color, t.Text == "PRESET", pos);
+            }
             case "MID$":
             {
                 // MID$(変数, 位置[, 長さ]) = 文字列
@@ -560,6 +584,34 @@ public sealed class HuParser
                 ExpectSymbol(")");
                 ExpectSymbol("=");
                 return new HuMidSet(name, start, len, ParseExpr(), pos);
+            }
+            case "CLEAR":
+            {
+                // CLEAR か CLEAR 番地。2 つの引数の形 (HuBASIC は CLEAR 1,&HDFFF を Illegal function call にする) は未対応
+                // 後ろのコメント (CLEAR 'X) は文の終わり (コメントは文の並びが読む)
+                if (AtStatementEnd || Peek.Kind == HuTokenKind.Comment) return new HuClear(null, pos);
+                int from = _p;
+                _exactDecimal = true;
+                HuExpr top;
+                try { top = ParseExpr(); }
+                finally { _exactDecimal = false; }
+                // 小数の綴り (57342.9・1E4・57343!) は、浮動小数に丸める前の字句で見分ける (丸めると整数に見えることがある)。
+                // 括弧の中 (CLEAR (57342.9)) も含め、式に使った字句をすべて見る。番地の式の中の数は 0〜65535 に限る
+                // (それより大きな 10 進の数は、途中の値が大きな式を受けるための端の形なのでエラーにする)
+                if (_tokens.Skip(from).Take(_p - from).Any(k => k.Kind == HuTokenKind.Float
+                        && (!k.Text.All(char.IsAsciiDigit) || !long.TryParse(k.Text, out var n) || n > 0xFFFF)))
+                {
+                    _diag.Error("HB0317", "CLEAR の番地は整数の定数で書いてください (式の中の数は 0〜65535。小数は未対応)", pos);
+                    SkipToStatementEnd();
+                    return null;
+                }
+                if (Peek.IsSymbol(","))
+                {
+                    Error("HB0301", "CLEAR の引数は番地 1 つだけに対応しています");
+                    SkipToStatementEnd();
+                    return null;
+                }
+                return new HuClear(top, pos);
             }
             case "DEFCHR$":
             {
@@ -816,11 +868,13 @@ public sealed class HuParser
         List<HuStmt> thenList;
         if (AcceptKeyword("THEN"))
             thenList = ParseIfBranch();
-        else if (Peek.IsKeyword("GOTO"))
-            thenList = ParseIfBranch();
+        else if (StartsStatement(Peek))
+            // THEN の省略 (本物は THEN を省いても、条件の後ろの文を THEN 節として読む。GOTO もここ)。
+            // 後ろが行番号・':'・ELSE・行末の形 (本物は THEN 節が空として受ける) は、下でエラーにする
+            thenList = ParseStatementList(stopAtElse: true);
         else
         {
-            Error("HB0208", "IF の後に THEN が必要です");
+            Error("HB0208", "IF の条件の後に THEN か文が必要です");
             thenList = new List<HuStmt>();
         }
         List<HuStmt>? elseList = null;
@@ -953,11 +1007,35 @@ public sealed class HuParser
 
     private HuStmt ParseLine(HuPos pos)
     {
-        ExpectSymbol("(");
-        var x1 = ParseExpr();
-        ExpectSymbol(",");
-        var y1 = ParseExpr();
-        ExpectSymbol(")");
+        // LINE -(x2,y2) は始点を省いた形 (始点は最後に引いた LINE の終点。HuBASIC の実測。テキストの LINE も同じ)。
+        // STEP は HuBASIC にない (LINE STEP(…)・LINE (…)-STEP(…) は Syntax error)
+        bool startOmitted = Peek.IsSymbol("-");
+        HuExpr x1, y1;
+        if (startOmitted)
+        {
+            x1 = new HuNum(0, pos);
+            y1 = new HuNum(0, pos);
+        }
+        else
+        {
+            ExpectSymbol("(");
+            x1 = ParseExpr();
+            ExpectSymbol(",");
+            y1 = ParseExpr();
+            ExpectSymbol(")");
+        }
+        var line = ParseLineEnd(x1, y1, pos);
+        return line switch
+        {
+            HuLineGraphic g => g with { StartOmitted = startOmitted },
+            HuLineText tx => tx with { StartOmitted = startOmitted },
+            _ => line,
+        };
+    }
+
+    /// <summary>LINE の "-" から後ろ (終点と、PSET|PRESET か文字)</summary>
+    private HuStmt ParseLineEnd(HuExpr x1, HuExpr y1, HuPos pos)
+    {
         ExpectSymbol("-");
         ExpectSymbol("(");
         var x2 = ParseExpr();
@@ -1201,6 +1279,9 @@ public sealed class HuParser
             case HuTokenKind.Number:
                 Next();
                 return new HuNum(t.Value, pos);
+            case HuTokenKind.Float when _exactDecimal && t.Text.All(char.IsAsciiDigit) && long.TryParse(t.Text, out var exact) && exact <= 0xFFFF:
+                Next();
+                return new HuNum((int)exact, pos);
             case HuTokenKind.Float:
             {
                 Next();

@@ -69,6 +69,8 @@ public sealed class HuAnalyzer
     /// <summary>ファイルの緩衝を取る本数 (定数のファイル番号と MAXFILES の最大。2 未満なら 2)。式があれば 15</summary>
     private int _fileCap = 2;
     private bool _fileCapDynamic;
+    /// <summary>CLEAR 番地のいちばん小さい番地 (最後に使える番地)。CLEAR 番地がなければ null</summary>
+    private int? _clearTop;
     /// <summary>ランダム (FIELD・GET・PUT・LSET・RSET か、OPEN のモードが "R" か式) を使うか</summary>
     private bool _usesRandom;
     /// <summary>レコードの緩衝を取る番号の上限 (ランダムに使う定数の番号の最大)。式があればファイルの緩衝の本数と同じ</summary>
@@ -142,6 +144,7 @@ public sealed class HuAnalyzer
             UsesRandom = _usesRandom,
             RecordBuffers = RecordBuffers,
             FieldVars = FieldVarIds(),
+            ClearTop = _clearTop,
         };
         if (program.FieldVars.Count > MaxFieldVars)
             _diag.Error("HB0301", $"FIELD に使う文字列の変数 (SWAP の相手を含む) は {MaxFieldVars} 個までです ({program.FieldVars.Count} 個)", _firstFilePos);
@@ -298,6 +301,7 @@ public sealed class HuAnalyzer
 
     private void CollectDims(List<HuLine> lines)
     {
+        _varWrites = CollectVarWrites(lines);
         foreach (var line in lines)
         foreach (var s in Flatten(line.Statements))
         {
@@ -340,13 +344,131 @@ public sealed class HuAnalyzer
         }
     }
 
+    /// <summary>
+    /// 数の単純変数の鍵 → その変数に入る値 (整数の定数) の最小と最大 (始め・CLEAR・MAXFILES の後の 0 も含める) と、
+    /// 定数でない値が入る最初の所 (行番号。なければ null)
+    /// </summary>
+    private Dictionary<string, (long Min, long Max, int? NonConstLine)> _varWrites = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 変数に値が入る所を集める (変数の上限の DIM のため)。LET・= の右辺が整数の値の定数ならその値、それ以外の代入・FOR の変数・
+    /// READ・INPUT・INPUT# の行き先・SWAP のどちらかは「定数でない値が入る」
+    /// </summary>
+    private Dictionary<string, (long Min, long Max, int? NonConstLine)> CollectVarWrites(List<HuLine> lines)
+    {
+        var writes = new Dictionary<string, (long Min, long Max, int? NonConstLine)>(StringComparer.Ordinal);
+        void Add(HuExpr target, long? value, int line)
+        {
+            if (target is not HuVar v) return;
+            var key = Key(v.Name);
+            if (!writes.TryGetValue(key, out var w)) w = (0, 0, null);
+            if (value is long x) w = (Math.Min(w.Min, x), Math.Max(w.Max, x), w.NonConstLine);
+            else if (w.NonConstLine == null) w.NonConstLine = line;
+            writes[key] = w;
+        }
+        foreach (var line in lines)
+        foreach (var s in Flatten(line.Statements))
+        {
+            switch (s)
+            {
+                case HuAssign a: Add(a.Target, IntegralConst(a.Value), line.Number); break;
+                case HuFor fr: Add(new HuVar(fr.Var, fr.Pos), null, line.Number); break;
+                case HuRead rd: foreach (var t in rd.Targets) Add(t, null, line.Number); break;
+                case HuInput inp: foreach (var t in inp.Targets) Add(t, null, line.Number); break;
+                case HuInputFile inf: foreach (var t in inf.Targets) Add(t, null, line.Number); break;
+                case HuSwap sw: Add(sw.A, null, line.Number); Add(sw.B, null, line.Number); break;
+            }
+        }
+        return writes;
+    }
+
+    /// <summary>
+    /// 整数の値の定数 (浮動小数を含まない定数の式か、整数の値の浮動小数の定数 1 つに符号を付けたもの) ならその値。それ以外は null
+    /// </summary>
+    private static long? IntegralConst(HuExpr e)
+    {
+        if (!ContainsFloat(e)) return ConstExprOnly(e) ? ConstValue(e) : null;
+        static double? Signed(HuExpr x) => x switch
+        {
+            HuFloat f => f.Value,
+            HuUnary { Op: "-" } u => -Signed(u.Operand),
+            HuUnary { Op: "+" } u => Signed(u.Operand),
+            _ => null,
+        };
+        return Signed(e) is double x && x == Math.Floor(x) && Math.Abs(x) <= 1e6 ? (long)x : null;
+    }
+
+    /// <summary>
+    /// 変数の上限の形 (V、V+c、V-c、c+V。V は数の単純変数、c は整数の定数) なら (V, c)。それ以外は null。
+    /// 平らにする所も、これで「変数の上限の DIM」かを見分ける
+    /// </summary>
+    public static (HuVar Var, long Offset)? VarBoundForm(HuExpr e)
+    {
+        static long? Off(HuExpr x) => !ContainsFloat(x) && ConstExprOnly(x) ? ConstValue(x) : null;
+        return e switch
+        {
+            HuVar v => (v, 0),
+            HuBinary { Op: "+", Left: HuVar v } b when Off(b.Right) is long c => (v, c),
+            HuBinary { Op: "+", Right: HuVar v } b when Off(b.Left) is long c => (v, c),
+            HuBinary { Op: "-", Left: HuVar v } b when Off(b.Right) is long c => (v, -c),
+            _ => null,
+        };
+    }
+
+    /// <summary>
+    /// 変数の上限の DIM の置き場の上限: V が実行時に取り得る値 (集めた定数と、始め・CLEAR・MAXFILES の後の 0) + c の最大値。
+    /// V に定数でない値が入る所があるか、値が入る所が 1 つもなければ HB0304
+    /// </summary>
+    private long? VarDimStorage(string name, HuVar v, long offset, HuPos pos)
+    {
+        var key = Key(v.Name);
+        if (HuProgram.KindOfKey(key) == HuVarKind.Str)
+        {
+            _diag.Error("HB0404", $"DIM {name} の上限に文字列の変数 {v.Name} は使えません", pos);
+            return null;
+        }
+        if (!_varWrites.TryGetValue(key, out var w))
+        {
+            _diag.Error("HB0304", $"DIM {name} の上限の変数 {v.Name} に値を入れる所がありません (上限はいつも {offset} になります)", pos);
+            return null;
+        }
+        if (w.NonConstLine is int bad)
+        {
+            _diag.Error("HB0304", $"DIM {name} の上限の変数 {v.Name} に、定数でない値が入る所があります (行 {bad})。" +
+                                  "変数の上限は、その変数に入るのが定数だけのときに使えます", pos);
+            return null;
+        }
+        // 入る値・足し引きの定数・その和は -32768〜32767 に限る (この範囲なら、整数の変数に入れたときも、実行時の 16 ビットの計算・
+        // 浮動小数から整数への変換も回り込まず、ここで決めた値と同じになる。外れる形 (N%=-&HFFFF など) は端の形なのでエラー)
+        // 最小と最大だけ見ればよい (和も最小 + c・最大 + c の間にある)
+        if (w.Min < short.MinValue || w.Max > short.MaxValue || offset is < short.MinValue or > short.MaxValue
+            || w.Min + offset < short.MinValue || w.Max + offset > short.MaxValue)
+        {
+            _diag.Error("HB0304", $"DIM {name} の上限の変数 {v.Name} に入る値と足し引きの定数は、和も含めて -32768〜32767 にしてください", pos);
+            return null;
+        }
+        return w.Max + offset;
+    }
+
     /// <summary>DIM の 1 つの次元の上限 (定数で 0〜max)。書けない形ならエラーを出して null</summary>
     private int? DimBound(string name, HuExpr boundExpr, int max, HuVarKind kind, HuPos pos)
     {
         if (ConstExprOnly(boundExpr) == false)
         {
-            _diag.Error("HB0304", $"DIM {name} の上限は定数で書いてください (変数を含む上限は未対応)", pos);
-            return null;
+            if (VarBoundForm(boundExpr) is not { } form)
+            {
+                _diag.Error("HB0304", $"DIM {name} の上限は定数か、変数 1 つ (と整数の定数の足し引き) で書いてください", pos);
+                return null;
+            }
+            var (v, offset) = form;
+            var storage = VarDimStorage(name, v, offset, pos);
+            if (storage == null) return null;
+            if (storage < 0 || storage > max)
+            {
+                _diag.Error("HB0305", $"DIM {name} の上限 (変数 {v.Name} に入る値から決めた置き場 {storage}) が範囲外です (0〜{max})" + StrArrayHint(kind), pos);
+                return null;
+            }
+            return (int)storage.Value;
         }
         if (ContainsFloat(boundExpr) && !IsSignedFloatConst(boundExpr))
         {
@@ -712,6 +834,11 @@ public sealed class HuAnalyzer
             case "PEEK@":
                 ExpectNum(a[0], intConv: true);
                 return HuType.Int;
+            case "POINT":
+                // POINT(x,y): その点の色 (0〜7)。画面の外は -1 (HuBASIC の実測)
+                ExpectNum(a[0], intConv: true);
+                ExpectNum(a[1], intConv: true);
+                return HuType.Int;
             case "TIME":
                 return HuType.Float;
             case "ASC":
@@ -939,6 +1066,11 @@ public sealed class HuAnalyzer
                 ExpectNum(lg.Y2, true);
                 if (lg.Color != null) ExpectNum(lg.Color, true);
                 break;
+            case HuPset ps:
+                ExpectNum(ps.X, true);
+                ExpectNum(ps.Y, true);
+                if (ps.Color != null) ExpectNum(ps.Color, true);
+                break;
             case HuPaint pt:
                 ExpectNum(pt.X, true);
                 ExpectNum(pt.Y, true);
@@ -1069,7 +1201,17 @@ public sealed class HuAnalyzer
                 else
                     _fileCapDynamic = true;
                 break;
-            case HuDim:
+            case HuClear cl:
+                if (cl.Top != null) CheckClearTop(cl.Top, cl.Pos);
+                break;
+            case HuDim dim:
+                // 変数の上限は実行時に計算する (定数の上限は CollectDims で見た)
+                foreach (var (_, b, b2) in dim.Arrays)
+                {
+                    if (VarBoundForm(b) != null) ExpectNum(b, intConv: true);
+                    if (b2 != null && VarBoundForm(b2) != null) ExpectNum(b2, intConv: true);
+                }
+                break;
             case HuDefType:
             case HuData:
             case HuRem:
@@ -1079,6 +1221,37 @@ public sealed class HuAnalyzer
             case HuInit:
                 break;
         }
+    }
+
+    /// <summary>
+    /// CLEAR 番地: 番地は整数の定数で 0〜65535。変換したプログラムは HuLayout.LoadAddress から置くので、それより前の番地は
+    /// どんなプログラムも入らない (error)。いちばん小さい番地を覚え、組み立ての後の大きさの検査 (HuLayout.Check) に渡す
+    /// </summary>
+    private void CheckClearTop(HuExpr top, HuPos pos)
+    {
+        if (CheckExpr(top, true) == HuType.Str)
+        {
+            _diag.Error("HB0404", "CLEAR の番地に文字列は使えません", top.Pos);
+            return;
+        }
+        // 32767 を越える 10 進の数 (CLEAR 57343) は、構文解析が CLEAR の式の中だけ整数のまま読む (小数の綴りはそこで error)。
+        // ここに浮動小数が残るのは、整数に収まらない大きな数だけ
+        if (ContainsFloat(top) || ConstValue(top) is not long v)
+        {
+            _diag.Error("HB0317", "CLEAR の番地は整数の定数で書いてください (変数を使った式や小数の番地は未対応)", pos);
+            return;
+        }
+        if (v < 0 || v > 0xFFFF)
+        {
+            _diag.Error("HB0317", $"CLEAR の番地は 0〜65535 (&H0〜&HFFFF) です ({v})", pos);
+            return;
+        }
+        if (v < HuLayout.LoadAddress)
+        {
+            _diag.Error("HB0317", $"CLEAR の番地 &H{v:X4} は、変換したプログラムの置き場 &H{HuLayout.LoadAddress:X4} より前です", pos);
+            return;
+        }
+        _clearTop = _clearTop is int prev ? Math.Min(prev, (int)v) : (int)v;
     }
 
     private void CheckForVar(string name, string stmt, HuPos pos)

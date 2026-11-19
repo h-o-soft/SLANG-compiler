@@ -58,7 +58,7 @@ RET
 
 ; ============================================================ 組の印
 
-; @name BAS_ABI_1
+; @name BAS_ABI_4
 ; @resident shared
 ; @param_count 0
 ; hubasic2sl の出力とこのランタイムの組の印 (何もしない)。出力は MAIN の最初に BAS_ABI_<n>() を呼ぶので、
@@ -1478,6 +1478,53 @@ RET
 
 
 ; ============================================================ 配列
+
+; @name BAS_CLRSTK
+; @resident shared
+; @param_count 0
+; @calls BAS_WORK
+; 引数のない CLEAR: 制御スタック (FOR・GOSUB の枠) を空にする (HuBASIC の実測: CLEAR の後の NEXT・RETURN はエラー)
+LD HL, BAS_CSTK
+LD (BAS_CSP), HL
+RET
+
+
+; @name BAS_FCLR
+; @resident shared
+; @param_count 2
+; HL = 番地、DE = バイト数 → 0 で埋める (MAXFILES と引数のない CLEAR で変数を消す)
+LD A, D
+OR E
+RET Z
+LD (HL), 0
+DEC DE
+LD A, D
+OR E
+RET Z
+LD B, D
+LD C, E
+LD D, H
+LD E, L
+INC DE
+LDIR
+RET
+
+
+; @name BAS_DIMCK
+; @resident shared
+; @param_count 2
+; @calls BAS_ERROR
+; 変数の上限の DIM: HL = 上限 n, DE = 置き場の上限。n が 0〜置き場の上限の外 (符号なしで比べるので負も外) ならエラー 9
+; (HuBASIC の DIM A(-1) は Subscript out of range)。内なら何もしない (HL = n のまま)
+PUSH HL
+EX DE, HL
+OR A
+SBC HL, DE          ; 置き場の上限 - n
+POP HL
+RET NC
+LD HL, 9
+JP BAS_ERROR
+
 
 ; @name BAS_DIM
 ; @resident shared
@@ -4303,6 +4350,227 @@ RET
 .brc_adr DW 0
 .brc_cb DB 0
 .brc_p DB 0
+
+
+; ============================================================ PSET・PRESET・最後の点・POINT
+
+; @name BAS_GPSET
+; @resident shared
+; @calls BAS_GLINE
+; @stack_cleanup callee
+; スタック引数 (x, y, 色, 形)。形: bit 1 = PRESET、bit 2 = 色なし (今の前景色)。PSET(x,y[,色])・PRESET(x,y[,色]) を、
+; 1 × 1 の塗りつぶした箱 (BAS_GLINE の (x, y, x, y, 色, 形 + BF)) として描く (HuBASIC の実測と同じ: PSET は色で上書き、
+; PRESET は色のビットを落とす、画面の外は描かない、色が 0〜7 の外はエラー 5)。最後の点 (LINE -(x,y) の始点) は変えない。
+; 座標の式は呼ぶ側で 1 回だけ計算したものを、ここで 2 組に並べ替える
+POP HL
+LD (.bgp_ret), HL
+POP HL              ; 形
+LD A, L
+OR 9                ; 箱 + 塗りつぶし (BF)
+LD L, A
+LD (.bgp_mode), HL
+POP DE              ; 色
+POP BC              ; y
+POP HL              ; x
+PUSH HL             ; x1
+PUSH BC             ; y1
+PUSH HL             ; x2
+PUSH BC             ; y2
+PUSH DE             ; 色
+LD HL, (.bgp_mode)
+PUSH HL             ; 形
+LD HL, (.bgp_ret)
+PUSH HL
+JP BAS_GLINE
+.bgp_ret DW 0
+.bgp_mode DW 0
+
+
+; @name BAS_GLINEP
+; @resident shared
+; @calls BAS_GLINE,BAS_LPSWAP
+; @stack_cleanup callee
+; BAS_GLINE と同じスタック引数。形の bit 4 = 始点を省いた (LINE -(x2,y2)。x1・y1 の代わりに最後の点)。
+; 始点を省いた LINE があるプログラムだけが、どの LINE でもこれを呼ぶ (最後の点を終点にしてから BAS_GLINE へ)
+LD DE, BAS_GLINE
+JP BAS_LPSWAP
+
+
+; @name BAS_TLINEP
+; @resident shared
+; @calls BAS_TLINE,BAS_LPSWAP
+; @stack_cleanup callee
+; BAS_TLINE と同じスタック引数。最後の引数の bit 4 = 始点を省いた。テキストの LINE もグラフィックの LINE と最後の点を分け合う
+; (HuBASIC の実測: LINE (0,20)-(3,20),"*" の後の LINE -(100,50),PSET は (3,20) から引く)
+LD DE, BAS_TLINE
+JP BAS_LPSWAP
+
+
+; @name BAS_LPSWAP
+; @resident shared
+; @param_count 0
+; DE = 飛び先 (BAS_GLINE か BAS_TLINE)。スタック: 戻り番地、最後の引数 (形)、5 つめ、y2、x2、y1、x1 (BAS_GLINE と同じ並び)。
+; 形の bit 4 が立っていれば、それを落として x1・y1 を最後の点にする。それから最後の点を (x2, y2) にして、DE へ飛ぶ。
+; 最後の点は、PSET・PRESET・PAINT・CLS・WIDTH・INIT・CLEAR では変わらない。始めは (10, 15) (HuBASIC の起動直後の実測)
+LD HL, 2
+ADD HL, SP
+LD A, (HL)          ; 形 (下のバイト)
+BIT 4, A
+JP Z, .lps_end
+AND $EF
+LD (HL), A
+LD HL, 10
+ADD HL, SP          ; y1
+LD BC, (.lps_y)
+LD (HL), C
+INC HL
+LD (HL), B
+INC HL              ; x1
+LD BC, (.lps_x)
+LD (HL), C
+INC HL
+LD (HL), B
+.lps_end
+LD HL, 6
+ADD HL, SP          ; y2
+LD C, (HL)
+INC HL
+LD B, (HL)
+LD (.lps_y), BC
+INC HL              ; x2
+LD C, (HL)
+INC HL
+LD B, (HL)
+LD (.lps_x), BC
+EX DE, HL
+JP (HL)
+.lps_x DW 10
+.lps_y DW 15
+
+
+; @name BAS_POINT
+; @resident shared
+; @param_count 2
+; @calls BAS_WORK
+; HL = x, DE = y → HL = その点の色 (青 1・赤 2・緑 4 の和、0〜7)。画面の外 (x が 0〜319 (WIDTH 80 なら 0〜639)、y が 0〜199 の外。
+; 符号なしで比べるので負も外) は -1 (HuBASIC の実測)
+LD A, D
+OR A
+JP NZ, .bpt_out     ; y が 256 以上か負
+LD A, E
+CP 200
+JP NC, .bpt_out
+LD (.bpt_y), A
+LD A, (BAS_WID)     ; 1 行のバイト数 (40 か 80)
+CP 80
+LD A, 80
+JP Z, .bpt_wset
+LD A, 40
+.bpt_wset
+LD (.bpt_w), A
+LD B, A             ; x の上限 = バイト数 × 8 (320 か 640)
+LD C, 0
+SRL B
+RR C
+SRL B
+RR C
+SRL B
+RR C
+SRL B
+RR C
+SRL B
+RR C                ; BC = バイト数 × 8
+LD A, H
+CP B
+JP C, .bpt_xin
+JP NZ, .bpt_out
+LD A, L
+CP C
+JP NC, .bpt_out
+.bpt_xin
+; バイトの中のビット: $80 >> (x mod 8)
+LD A, L
+AND 7
+LD B, A
+LD A, $80
+JP Z, .bpt_mset
+.bpt_mlp
+RRCA
+DJNZ .bpt_mlp
+.bpt_mset
+LD (.bpt_mask), A
+; x / 8
+SRL H
+RR L
+SRL H
+RR L
+SRL H
+RR L
+EX DE, HL           ; DE = x / 8
+; 番地 = (y mod 8) * $800 + (y / 8) * バイト数 + x / 8
+LD A, (.bpt_y)
+RRCA
+RRCA
+RRCA
+AND $1F
+LD C, A             ; C = y / 8 (足す回数)
+LD A, (.bpt_w)
+LD B, A             ; B = バイト数
+LD HL, 0
+LD A, C
+OR A
+JP Z, .bpt_madd
+.bpt_mul
+LD A, L
+ADD A, B
+LD L, A
+LD A, H
+ADC A, 0
+LD H, A
+DEC C
+JP NZ, .bpt_mul
+.bpt_madd
+ADD HL, DE
+LD A, (.bpt_y)
+AND 7
+ADD A, A
+ADD A, A
+ADD A, A
+ADD A, H
+LD H, A             ; HL = 面の中の番地 ($0000〜$3FFF)
+; 面を読む: 青 $4000 (1)・赤 $8000 (2)・緑 $C000 (4)
+LD E, 0             ; 色
+LD D, 1             ; この面の色のビット
+LD A, $40           ; この面の頭 (上のバイト)
+.bpt_plane
+LD (.bpt_pb), A
+ADD A, H
+LD B, A
+LD C, L
+IN A, (C)
+PUSH HL
+LD HL, .bpt_mask
+AND (HL)
+POP HL
+JP Z, .bpt_next
+LD A, E
+OR D
+LD E, A
+.bpt_next
+SLA D               ; 次の面の色のビット
+LD A, (.bpt_pb)
+ADD A, $40
+JP NZ, .bpt_plane   ; $40 → $80 → $C0 → $00 (3 面で終わり)
+LD L, E
+LD H, 0
+RET
+.bpt_out
+LD HL, -1
+RET
+.bpt_y DB 0
+.bpt_w DB 0
+.bpt_mask DB 0
+.bpt_pb DB 0
 
 
 ; ============================================================ PAINT

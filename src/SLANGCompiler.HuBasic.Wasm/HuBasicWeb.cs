@@ -22,6 +22,10 @@ public static partial class HuBasicWeb
         => HuWebApi.CheckLayout(binLength, workEnd);
 
     [JSExport]
+    public static string CheckLayoutClear(int binLength, int workEnd, int clearTop)
+        => HuWebApi.CheckLayoutClear(binLength, workEnd, clearTop);
+
+    [JSExport]
     public static string Version()
         => HuWebApi.Version();
 }

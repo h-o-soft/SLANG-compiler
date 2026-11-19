@@ -124,6 +124,12 @@ public sealed record HuKill(HuExpr Name, HuPos Pos) : HuStmt(Pos);
 /// <summary>NAME 古い名前 AS 新しい名前</summary>
 public sealed record HuNameAs(HuExpr Old, HuExpr New, HuPos Pos) : HuStmt(Pos);
 
+/// <summary>
+/// CLEAR [番地]。Top が null (引数なし) なら変数・配列・制御スタック・DATA の位置・開いているファイルを始めに戻す。
+/// Top があれば、BASIC が使うメモリの上限 (最後に使える番地) を決めるだけ (変数は消さない。HuBASIC の実測)
+/// </summary>
+public sealed record HuClear(HuExpr? Top, HuPos Pos) : HuStmt(Pos);
+
 /// <summary>MAXFILES 本数 (変数を消し、開いているファイルを閉じる)</summary>
 public sealed record HuMaxFiles(HuExpr Count, HuPos Pos) : HuStmt(Pos);
 
@@ -149,21 +155,33 @@ public sealed record HuDev(HuExpr Descriptor, HuExpr Record, HuExpr First, HuExp
 /// PLAY, TEMPO, BEEP, CLICK, PAUSE, KEY, REPEAT (ON/OFF), PALET, PRW, VSYNC)。省略された引数は null。</summary>
 public sealed record HuCommand(string Name, IReadOnlyList<HuExpr?> Args, HuPos Pos) : HuStmt(Pos);
 
-/// <summary>テキスト版 LINE (x1,y1)-(x2,y2),"c"[,B|BF]。Fill は BF (箱の中も塗る)</summary>
+/// <summary>
+/// テキスト版 LINE [(x1,y1)]-(x2,y2),"c"[,B|BF]。Fill は BF (箱の中も塗る)。
+/// StartOmitted は始点を省いた形 (LINE -(x2,y2)。始点は最後に引いた LINE の終点。X1・Y1 は 0 の置き物)
+/// </summary>
 public sealed record HuLineText(HuExpr X1, HuExpr Y1, HuExpr X2, HuExpr Y2, HuExpr Char, bool Box, HuPos Pos) : HuStmt(Pos)
 {
     public bool Fill { get; init; }
+    public bool StartOmitted { get; init; }
 }
 
 /// <summary>
-/// グラフィックの LINE (x1,y1)-(x2,y2),PSET|PRESET[,色][,B|BF]。Color は書かなければ null (今の前景色)。
-/// Preset は PRESET (色のビットを落とす)、Box は B (外周だけの箱)、Fill は BF (塗りつぶした箱。Box も真)
+/// グラフィックの LINE [(x1,y1)]-(x2,y2),PSET|PRESET[,色][,B|BF]。Color は書かなければ null (今の前景色)。
+/// Preset は PRESET (色のビットを落とす)、Box は B (外周だけの箱)、Fill は BF (塗りつぶした箱。Box も真)。
+/// StartOmitted は始点を省いた形 (LINE -(x2,y2)。始点は最後に引いた LINE (テキストの LINE も) の終点。X1・Y1 は 0 の置き物)
 /// </summary>
 public sealed record HuLineGraphic(HuExpr X1, HuExpr Y1, HuExpr X2, HuExpr Y2, HuExpr? Color, bool Preset, bool Box, HuPos Pos)
     : HuStmt(Pos)
 {
     public bool Fill { get; init; }
+    public bool StartOmitted { get; init; }
 }
+
+/// <summary>
+/// PSET(x,y[,色])・PRESET(x,y[,色]) (色は括弧の中。HuBASIC の実測: PSET (x,y),色 は Syntax error)。Color は書かなければ null
+/// (PSET は今の前景色で、PRESET は今の前景色のビットを落とす)。最後に引いた LINE の終点 (LINE -(x,y) の始点) は変えない
+/// </summary>
+public sealed record HuPset(HuExpr X, HuExpr Y, HuExpr? Color, bool Preset, HuPos Pos) : HuStmt(Pos);
 
 /// <summary>PAINT (x,y),色[,境界色…] (境界色は 0〜7 個。なければ塗る色だけが境界)</summary>
 public sealed record HuPaint(HuExpr X, HuExpr Y, HuExpr Color, IReadOnlyList<HuExpr> Borders, HuPos Pos) : HuStmt(Pos);

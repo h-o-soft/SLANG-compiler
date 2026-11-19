@@ -372,7 +372,189 @@ public class HuBasicFrontendTests
         Assert.Equal(200, Assert.IsType<HuGoto>(f.Else![0]).Line);
     }
 
+    /// <summary>
+    /// THEN の省略: 条件の後ろが文の始まりなら、THEN を書いたときと同じ構文木になる (本物の実測: THEN を省いても、
+    /// PRINT・GOSUB・代入・':' で続く文・ELSE・入れ子の IF・コメントが同じに動く。ELSE の後の行番号は GOTO)
+    /// </summary>
+    [Theory]
+    [InlineData("IF A=1 PRINT \"P\"")]
+    [InlineData("IF A$=\"Y\" GOSUB 100")]
+    [InlineData("IF A=1 B=2:PRINT \"B\";B")]
+    [InlineData("IF A=0 PRINT \"Z\" ELSE PRINT \"E\"")]
+    [InlineData("IF A PRINT \"T\" ELSE 200")]
+    [InlineData("IF A IF B=2 PRINT \"N\" ELSE X=1 ELSE X=2")]
+    [InlineData("IF A=1 -B=0 PRINT \"X\"")]     // 条件は (A = 1-B) = 0 (本物も同じに読んで X を出す)
+    [InlineData("IF A=1 LOCATE 0,10:PRINT 1")]
+    [InlineData("IF A=1 'COMMENT")]
+    [InlineData("IF A=1 REM X")]
+    [InlineData("IF A GOTO 100 ELSE 200")]
+    [InlineData("IF A=1 LINE(0,0)-(1,1),PSET")]
+    public void Parser_IfWithoutThenMatchesThen(string body)
+    {
+        var withoutThen = ParseIfShape("10 " + body);
+        // THEN を条件の直後 (最初の文の前) に足したもの
+        var withThen = ParseIfShape("10 " + InsertThen(body));
+        Assert.Equal(withThen, withoutThen);
+    }
+
+    /// <summary>body の外側の IF の条件の後ろに THEN を入れる (条件の後ろの最初の文の始まりを、THEN を書いた形から探す)</summary>
+    private static string InsertThen(string body) => body switch
+    {
+        "IF A=1 PRINT \"P\"" => "IF A=1 THEN PRINT \"P\"",
+        "IF A$=\"Y\" GOSUB 100" => "IF A$=\"Y\" THEN GOSUB 100",
+        "IF A=1 B=2:PRINT \"B\";B" => "IF A=1 THEN B=2:PRINT \"B\";B",
+        "IF A=0 PRINT \"Z\" ELSE PRINT \"E\"" => "IF A=0 THEN PRINT \"Z\" ELSE PRINT \"E\"",
+        "IF A PRINT \"T\" ELSE 200" => "IF A THEN PRINT \"T\" ELSE 200",
+        "IF A IF B=2 PRINT \"N\" ELSE X=1 ELSE X=2" => "IF A THEN IF B=2 THEN PRINT \"N\" ELSE X=1 ELSE X=2",
+        "IF A=1 -B=0 PRINT \"X\"" => "IF A=1 -B=0 THEN PRINT \"X\"",
+        "IF A=1 LOCATE 0,10:PRINT 1" => "IF A=1 THEN LOCATE 0,10:PRINT 1",
+        "IF A=1 'COMMENT" => "IF A=1 THEN 'COMMENT",
+        "IF A=1 REM X" => "IF A=1 THEN REM X",
+        "IF A GOTO 100 ELSE 200" => "IF A THEN GOTO 100 ELSE 200",
+        "IF A=1 LINE(0,0)-(1,1),PSET" => "IF A=1 THEN LINE(0,0)-(1,1),PSET",
+        _ => throw new ArgumentException(body),
+    };
+
+    /// <summary>1 行を解析し (エラーなし)、文の並びを入れ子の形の文字列にする (IF は条件の式と THEN 節・ELSE 節)</summary>
+    private static string ParseIfShape(string text)
+    {
+        var diag = new HuDiagnosticBag();
+        var line = HuParser.ParseSingleLine(text, diag);
+        Assert.False(diag.HasErrors, text + ": " + string.Join("; ", diag.Items.Select(d => d.Code + " " + d.Message)));
+        return StmtsShape(line!.Statements);
+
+        static string StmtsShape(IEnumerable<HuStmt>? stmts)
+            => stmts == null ? "-" : "[" + string.Join(",", stmts.Select(StmtShape)) + "]";
+
+        static string StmtShape(HuStmt s) => s switch
+        {
+            HuIf f => $"IF {Show(f.Cond)} THEN {StmtsShape(f.Then)} ELSE {StmtsShape(f.Else)}",
+            HuGoto g => $"GOTO {g.Line}",
+            HuGosub g => $"GOSUB {g.Line}",
+            HuAssign a => $"LET {Show(a.Target)}={Show(a.Value)}",
+            HuRem r => "REM",
+            _ => s.GetType().Name,
+        };
+    }
+
+    /// <summary>
+    /// THEN の後ろが空・文でない形は error HB0208 (本物は空の THEN 節として受けて何もしない。端の形なのでエラーにする)。
+    /// `IF A=1 100` は、本物は数の中の空白を読み飛ばして条件を A=1100 と読む (実測)
+    /// </summary>
+    [Theory]
+    [InlineData("10 IF A=1")]
+    [InlineData("10 IF A=1 ELSE PRINT \"E\"")]
+    [InlineData("10 IF A=1 :PRINT \"X\"")]
+    [InlineData("10 IF A=1 100")]
+    [InlineData("10 IF A=1 )")]
+    public void Parser_IfWithEmptyThenIsHB0208(string text)
+    {
+        var diag = new HuDiagnosticBag();
+        HuParser.ParseSingleLine(text, diag);
+        Assert.Contains(diag.Items, d => d.Code == "HB0208" && d.Severity == HuSeverity.Error);
+    }
+
+    // ------------------------------------------------------------ 変数の上限の DIM
+
+    /// <summary>
+    /// 上限が V・V+c・V-c・c+V で、V に入るのが整数の定数だけなら通る。置き場の上限は、V が取り得る値 (定数と、始め・CLEAR の後の 0) + c の最大値
+    /// </summary>
+    [Theory]
+    [InlineData("10 N=10:DIM A(N)", "A!", 10)]
+    [InlineData("10 DEFINT A-Z:N=10:DIM A(N)", "A%", 10)]
+    [InlineData("10 N=5:N=8:DIM A(N)", "A!", 8)]
+    [InlineData("10 N=10:DIM A(N-1)", "A!", 9)]
+    [InlineData("10 N=-1:DIM A(N+1)", "A!", 1)]           // -1 と 0 (始め・CLEAR の後) の + 1 の最大
+    [InlineData("10 N=-32768:N=5:DIM A(N)", "A!", 5)]     // -32768 は使える (実行したときの上限は負で Subscript out of range)
+    [InlineData("10 DIM A(2+N):N=4", "A!", 6)]
+    [InlineData("10 N=10.0:DIM A(N)", "A!", 10)]          // 整数の値の浮動小数の定数
+    [InlineData("10 N=-(-10.0):DIM A(N)", "A!", 10)]      // 入れ子の符号
+    [InlineData("10 N=2:DIM A(N):IF X THEN DIM A(7)", "A!", 7)]   // 定数の DIM とも大きい方
+    public void Analyzer_VariableDimBound(string program, string key, int storage)
+    {
+        Assert.Equal(storage, AnalyzeOk(program).Arrays[key]);
+    }
+
     [Fact]
+    public void Analyzer_VariableDimBound2D()
+    {
+        var prog = AnalyzeOk("10 N=3:M=5:DIM C(N,M+1)");
+        Assert.Equal((3, 6), prog.Arrays2["C!"]);
+        Assert.Equal(4 * 7 - 1, prog.Arrays["C!"]);
+        prog = AnalyzeOk("10 N=3:DIM C(2,N)");
+        Assert.Equal((2, 3), prog.Arrays2["C!"]);
+    }
+
+    [Theory]
+    [InlineData("10 INPUT N:DIM A(N)", "HB0304")]
+    [InlineData("10 FOR N=1 TO 3:NEXT:DIM A(N)", "HB0304")]
+    [InlineData("10 READ N:DIM A(N)\n20 DATA 3", "HB0304")]
+    [InlineData("10 N=1:M=2:SWAP N,M:DIM A(N)", "HB0304")]
+    [InlineData("10 X=2:N=X*2:DIM A(N)", "HB0304")]
+    [InlineData("10 N=1.5:DIM A(N)", "HB0304")]
+    [InlineData("10 N=3:DIM A(N*2)", "HB0304")]
+    [InlineData("10 N=3:M=2:DIM A(N+M)", "HB0304")]
+    [InlineData("10 DIM A(N)", "HB0304")]                  // N に値が入る所がない
+    [InlineData("10 B(1)=3:DIM A(B(1))", "HB0304")]
+    [InlineData("10 N=3:DIM A(N+1.5)", "HB0304")]
+    [InlineData("10 N=0:DIM A(N-1)", "HB0305")]            // いつも負 (本物は実行時の Subscript out of range)
+    [InlineData("10 N=6000:DIM A(N)", "HB0305")]           // 浮動小数の配列の上限 5460 を越える
+    [InlineData("10 N=64:N=3:DIM A$(N)", "HB0305")]        // 使わない値 (64) も置き場に入る。文字列の配列の上限 63 を越える
+    [InlineData("10 N=200:M=200:DIM A(N,M)", "HB0305")]    // 並べた大きさが越える
+    [InlineData("10 A$=\"X\":DIM A(A$)", "HB0404")]
+    [InlineData("10 N%=-&HFFFF:DIM A(N%)", "HB0304")]      // 16 ビットに回り込む値 (実行時は 1)
+    [InlineData("10 N%=0:DIM A(N%-&HFFFF)", "HB0304")]     // 回り込む足し引き
+    [InlineData("10 N=1:N=-65535.0:DIM A(N)", "HB0304")]   // 整数にするときに回り込む浮動小数
+    [InlineData("10 N=32767:DIM A(N+1)", "HB0304")]        // 和が 32767 を越える
+    [InlineData("10 N%=&H8000:DIM A(N%)", "HB0304")]
+    public void Analyzer_VariableDimBoundErrors(string program, string code) => AssertError(program, code);
+
+    // ------------------------------------------------------------ CLEAR
+
+    /// <summary>CLEAR と CLEAR 番地 (整数の定数)。番地はいちばん小さいものを ClearTop に</summary>
+    [Fact]
+    public void Analyzer_ClearTopIsSmallestAddress()
+    {
+        Assert.Null(AnalyzeOk("10 CLEAR:A=1").ClearTop);
+        Assert.Equal(0xDFFF, AnalyzeOk("10 CLEAR &HDFFF").ClearTop);
+        Assert.Equal(0xC000, AnalyzeOk("10 CLEAR &HDFFF:CLEAR 49152\n20 IF A THEN CLEAR &HF000").ClearTop);
+        Assert.Equal(0x1000, AnalyzeOk("10 CLEAR &H1000").ClearTop);
+        Assert.Equal(0xFFFF, AnalyzeOk("10 CLEAR &HFFFF").ClearTop);
+        Assert.Equal(0x8000, AnalyzeOk("10 CLEAR &H7000+&H1000").ClearTop);
+        Assert.Equal(0xDFFF, AnalyzeOk("10 CLEAR 57343").ClearTop);       // 32767 を越える 10 進の整数 (字句は浮動小数)
+        Assert.Equal(0xFFFF, AnalyzeOk("10 CLEAR 65535").ClearTop);
+        Assert.Equal(0xDFFF, AnalyzeOk("10 CLEAR (57343)").ClearTop);
+        Assert.Equal(0xD000, AnalyzeOk("10 CLEAR 49152+4096").ClearTop);      // 32767 を越える 10 進の数も、式の中で整数のまま畳み込む
+        Assert.Equal(0xFFFF, AnalyzeOk("10 CLEAR 65000+535").ClearTop);       // 浮動小数に丸めない
+        Assert.Equal(0xC000, AnalyzeOk("10 CLEAR 49152*2-49152").ClearTop);   // 途中の値が 65535 を越えてもよい
+        Assert.Equal(0xC000, AnalyzeOk("10 CLEAR 2*24576").ClearTop);
+        Assert.Null(AnalyzeOk("10 CLEAR 'RESET\n20 CLEAR:REM X").ClearTop);  // 後ろのコメント
+    }
+
+    [Theory]
+    [InlineData("10 CLEAR A", "HB0317")]              // 変数の番地
+    [InlineData("10 CLEAR 1.5*2", "HB0317")]          // 浮動小数
+    [InlineData("10 CLEAR 57343.5", "HB0317")]
+    [InlineData("10 CLEAR 57342.9", "HB0317")]        // f24 に丸めると 57343 になる小数も、綴りで見分ける
+    [InlineData("10 CLEAR 57343!", "HB0317")]
+    [InlineData("10 CLEAR 5E4", "HB0317")]
+    [InlineData("10 CLEAR (57342.9)", "HB0317")]      // 括弧の中も綴りで見る
+    [InlineData("10 CLEAR (5E4)", "HB0317")]
+    [InlineData("10 CLEAR ((57343!))", "HB0317")]
+    [InlineData("10 CLEAR 49152+0.5", "HB0317")]
+    [InlineData("10 CLEAR 70000-4465", "HB0317")]                  // 式の中の数は 0〜65535
+    [InlineData("10 CLEAR 2147483648-2147434496", "HB0317")]
+    [InlineData("10 CLEAR 49152+4096.0", "HB0317")]
+    [InlineData("10 CLEAR -57343", "HB0317")]
+    [InlineData("10 CLEAR -1", "HB0317")]
+    [InlineData("10 CLEAR 70000", "HB0317")]
+    [InlineData("10 CLEAR &HFFF", "HB0317")]          // 置き場 $1000 より前
+    [InlineData("10 CLEAR 100", "HB0317")]            // 本物も Illegal function call
+    [InlineData("10 CLEAR 1,&HDFFF", "HB0301")]       // 2 つの引数 (本物は Illegal function call)
+    [InlineData("10 CLEAR \"A\"", "HB0404")]
+    public void Analyzer_ClearErrors(string program, string code) => AssertError(program, code);
+
+        [Fact]
     public void Parser_PrintItemsAndChannel()
     {
         var line = HuParser.ParseSingleLine("10 PRINT#0\"GO\";A,SPC(3);", new HuDiagnosticBag());
@@ -515,7 +697,7 @@ public class HuBasicFrontendTests
     [InlineData("10 DEFINT A-Z:DEFSNG X", "HB0410")]           // 同じ頭文字に違う DEFxxx
     [InlineData("10 DEFSTR S\n20 IF 0 THEN DEFINT R-T", "HB0410")] // IF の中の DEFxxx も数える
     [InlineData("10 DEFINT A-Z:S=\"X\"", "HB0404")]
-    [InlineData("10 DEFINT A-Z:N=5:DIM A(N)", "HB0304")]      // 変数の上限
+    [InlineData("10 DEFINT A-Z:INPUT N:DIM A(N)", "HB0304")]  // 上限の変数に定数でない値が入る
     [InlineData("10 DEFINT A-Z:DIM A(&H8000*&HFFFF)", "HB0305")] // 定数の計算があふれても範囲外として検出
     [InlineData("10 DEFINT A-Z:DIM A(&HFFFF*&HFFFF*&HFFFF)", "HB0305")]
     [InlineData("10 DEFINT A-Z:DIM A(8192)", "HB0305")]
@@ -852,6 +1034,47 @@ public class HuBasicFrontendTests
         Assert.True(g[2] is { Box: true, Color: null });
         Assert.True(g[3] is { Box: true, Color: null });
     }
+
+    /// <summary>
+    /// 点の命令: PSET(x,y[,色])・PRESET(x,y[,色])・POINT(x,y)・始点を省いた LINE -(x,y) (グラフィックとテキスト)
+    /// </summary>
+    [Fact]
+    public void Parser_PointCommands()
+    {
+        var prog = AnalyzeOk("10 PSET(10,20):PSET(X,Y+1,C):PRESET(1,2):PRESET(1,2,5):A=POINT(3,4)+1\n" +
+                             "20 LINE -(100,50),PSET,2:LINE -(5,6),PRESET:LINE -(1,1),\"*\":LINE(0,0)-(1,1),PSET");
+        var all = SLANGCompiler.HuBasic.Analysis.HuAnalyzer.AllStatements(prog.Lines).ToList();
+        var ps = all.OfType<HuPset>().ToList();
+        Assert.Equal(4, ps.Count);
+        Assert.True(ps[0] is { Preset: false, Color: null, X: HuNum { Value: 10 }, Y: HuNum { Value: 20 } });
+        Assert.True(ps[1] is { Preset: false, Color: HuVar { Name: "C" } });
+        Assert.True(ps[2] is { Preset: true, Color: null });
+        Assert.True(ps[3] is { Preset: true, Color: HuNum { Value: 5 } });
+        var g = all.OfType<HuLineGraphic>().ToList();
+        Assert.Equal(new[] { true, true, false }, g.Select(x => x.StartOmitted));
+        Assert.True(g[0] is { X2: HuNum { Value: 100 }, Y2: HuNum { Value: 50 }, Color: HuNum { Value: 2 } });
+        Assert.True(g[1] is { Preset: true });
+        Assert.True(Assert.Single(all.OfType<HuLineText>()).StartOmitted);
+        var assign = all.OfType<HuAssign>().Single();
+        Assert.True(assign.Value is HuBinary { Left: HuCall { Name: "POINT", Args.Count: 2 } });
+    }
+
+    /// <summary>
+    /// HuBASIC の実測で Syntax error の形 (色を括弧の外に書いた PSET、STEP) と、引数の数の誤り
+    /// </summary>
+    [Theory]
+    [InlineData("10 PSET (10,90),4", "HB0203")]                // 本物も Syntax error (色は括弧の中)
+    [InlineData("10 PRESET(1,2),3", "HB0203")]
+    [InlineData("10 PSET STEP(5,5)", "HB0203")]               // 本物に STEP はない
+    [InlineData("10 LINE STEP(10,10)-STEP(20,0),PSET,2", "HB0203")]
+    [InlineData("10 LINE (10,100)-STEP(20,0),PSET,2", "HB0203")]
+    [InlineData("10 PSET(1)", "HB0203")]
+    [InlineData("10 PSET(1,2,3,4)", "HB0203")]
+    [InlineData("10 A=POINT(1)", "HB0212")]                     // 引数 1 つの POINT はない (本物はこの形で止まった)
+    [InlineData("10 PSET(A$,1)", "HB0404")]
+    [InlineData("10 PSET(1,1,C$)", "HB0404")]
+    [InlineData("10 A=POINT(1,B$)", "HB0404")]
+    public void Parser_PointCommandErrors(string program, string code) => AssertError(program, code);
 
     [Theory]
     [InlineData("10 LINE(0,0)-(1,1),PSET,7,X", "HB0203")]      // 箱の印の位置は B・BF だけ

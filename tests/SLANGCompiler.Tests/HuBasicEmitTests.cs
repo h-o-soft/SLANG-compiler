@@ -182,6 +182,116 @@ public class HuBasicEmitTests
 
     // ------------------------------------------------------------ 展開
 
+    /// <summary>THEN を省いた IF の出力は、THEN を書いたものと 1 字も変わらない</summary>
+    [Fact]
+    public void Emit_IfWithoutThenSameAsThen()
+    {
+        const string without = """
+            10 A=1:B$="Y"
+            20 IF A=1 PRINT "P":B=2 ELSE 100
+            30 IF B$="Y" GOSUB 200 ELSE IF A LOCATE 0,1:PRINT "Q" ELSE PRINT "R"
+            40 IF A=1 -B=0 PRINT "X"
+            100 END
+            200 RETURN
+            """;
+        const string with = """
+            10 A=1:B$="Y"
+            20 IF A=1 THEN PRINT "P":B=2 ELSE 100
+            30 IF B$="Y" THEN GOSUB 200 ELSE IF A THEN LOCATE 0,1:PRINT "Q" ELSE PRINT "R"
+            40 IF A=1 -B=0 THEN PRINT "X"
+            100 END
+            200 RETURN
+            """;
+        Assert.Equal(Transpile(with).Output, Transpile(without).Output);
+    }
+
+    /// <summary>
+    /// 引数のない CLEAR: 変数と配列を消し (MAXFILES と同じ)、制御スタックを空にし、DATA を始めに戻す。ファイルを使うなら先に全部閉じる。
+    /// CLEAR 番地は何も出さない
+    /// </summary>
+    [Fact]
+    public void Lowering_ClearResetsVariablesStackDataAndFiles()
+    {
+        static List<string> Calls(HuTranspileResult r) => r.Flat!.Ops.OfType<FCall>().Select(c => c.Function).ToList();
+        var plain = Calls(Transpile("10 DEFINT A-Z:A=1:DIM B(3):S$=\"X\":CLEAR"));
+        var tail = string.Join(",", plain.SkipWhile(c => c != "BAS_DIM").Skip(1).SkipWhile(c => c != "BAS_FCLR").Take(4));
+        Assert.Equal("BAS_FCLR,BAS_FCLR,BAS_CLRSTK,BAS_END", tail);   // 文字列の変数・配列、制御スタック (DATA なし)、プログラムの終わり
+        var data = Calls(Transpile("10 READ A:CLEAR\n20 DATA 1"));
+        Assert.Equal(new[] { "BAS_CLRSTK", "BAS_RESTORE" }, data.SkipWhile(c => c != "BAS_CLRSTK").Take(2));
+        var files = Calls(Transpile("10 OPEN \"O\",#1,\"T\":CLEAR"));
+        Assert.Equal("BAS_FCLOSEA", files.SkipWhile(c => c != "BAS_FOPEN").Skip(1).First());
+        Assert.Contains("BAS_CLRSTK", files);
+        // CLEAR 番地は変数を消さない
+        var top = Calls(Transpile("10 A=1:CLEAR &HDFFF:PRINT A"));
+        Assert.DoesNotContain("BAS_CLRSTK", top);
+        Assert.DoesNotContain("BAS_FCLR", top);
+        // 数の変数: 引数のない CLEAR は整数・浮動小数の変数に 0 を入れる。CLEAR 番地は入れない
+        static List<string> ZeroAssigns(HuTranspileResult r) => r.Flat!.Ops.OfType<FAssign>()
+            .Where(a => a.Value is SLANGCompiler.HuBasic.Parsing.HuNum { Value: 0 } or SLANGCompiler.HuBasic.Parsing.HuFloat { Value: 0 })
+            .Select(a => ((SLANGCompiler.HuBasic.Parsing.HuVar)a.Target).Name).OrderBy(n => n).ToList();
+        Assert.Equal(new[] { "A%", "B!" }, ZeroAssigns(Transpile("10 A%=1:B!=2.5:CLEAR")));
+        Assert.Empty(ZeroAssigns(Transpile("10 A%=1:B!=2.5:CLEAR &HDFFF")));
+    }
+
+    /// <summary>
+    /// 変数の上限の DIM: 先に BAS_DIMCK(上限, 置き場の上限) で範囲を調べてから、今までどおり BAS_DIM。2 次元の 2 つめは調べてから代入。
+    /// 定数の上限の DIM には BAS_DIMCK を出さない
+    /// </summary>
+    [Fact]
+    public void Lowering_VariableDimChecksStorage()
+    {
+        var calls = Transpile("10 DEFINT A-Z:N=5:DIM A(N-1):M=2:DIM C(3,M+1):DIM D(4)").Flat!.Ops.OfType<FCall>()
+            .Where(c => c.Function is "BAS_DIMCK" or "BAS_DIM")
+            .Select(c => c.Function + "(" + string.Join(",", c.Args.Select(a => a is FIntArg i ? i.Value.ToString() : a is FExprArg ? "e" : "&")) + ")")
+            .ToList();
+        Assert.Equal(new[] { "BAS_DIMCK(e,4)", "BAS_DIM(&,&,e)", "BAS_DIMCK(e,3)", "BAS_DIM(&,&,3)", "BAS_DIM(&,&,4)" }, calls);
+        var sl = Transpile("10 DEFINT A-Z:M=2:DIM C(3,M+1)").Output!;
+        Assert.Contains("H_UB2_C=((V_M)+(1));", sl);
+    }
+
+    /// <summary>
+    /// 点の命令: PSET・PRESET は BAS_GPSET(x, y, 色, 形 (bit 1 = PRESET、bit 2 = 色なし))。POINT は BAS_POINT。
+    /// 始点を省いた LINE があるプログラムは、どの LINE も BAS_GLINEP・BAS_TLINEP (形の bit 4 = 始点を省いた)。なければ今までどおり
+    /// </summary>
+    [Fact]
+    public void Lowering_PointCommands()
+    {
+        static List<string> Calls(string program) => Transpile(program).Flat!.Ops.OfType<FCall>()
+            .Where(c => c.Function is "BAS_GPSET" or "BAS_GLINE" or "BAS_GLINEP" or "BAS_TLINE" or "BAS_TLINEP")
+            .Select(c => c.Function + "(" + string.Join(",", c.Args.Select(a => a is FIntArg i ? i.Value.ToString() : "e")) + ")")
+            .ToList();
+        Assert.Equal(new[] { "BAS_GPSET(e,e,0,4)", "BAS_GPSET(e,e,e,0)", "BAS_GPSET(e,e,0,6)", "BAS_GPSET(e,e,e,2)" },
+            Calls("10 DEFINT A-Z:PSET(1,2):PSET(1,2,C):PRESET(1,2):PRESET(1,2,3)"));
+        // 始点を省いた LINE がなければ BAS_GLINE・BAS_TLINE のまま (今までの出力と同じ)
+        Assert.Equal(new[] { "BAS_GLINE(e,e,e,e,e,0)", "BAS_TLINE(e,e,e,e,e,0)" },
+            Calls("10 DEFINT A-Z:LINE(0,0)-(1,1),PSET,2:LINE(0,0)-(1,1),\"*\""));
+        // あれば、どの LINE も最後の点を覚える入口。始点を省いたものは bit 4 (x1・y1 は 0 を渡す)
+        Assert.Equal(new[] { "BAS_GLINEP(e,e,e,e,e,0)", "BAS_GLINEP(e,e,e,e,0,22)", "BAS_TLINEP(e,e,e,e,e,17)" },
+            Calls("10 DEFINT A-Z:LINE(0,0)-(1,1),PSET,2:LINE -(5,6),PRESET:LINE -(3,4),\"*\",B"));
+        Assert.Contains("BAS_GLINEP(0, 0, 5, 6, 0, 22);", Transpile("10 DEFINT A-Z:LINE -(5,6),PRESET").Output!);   // 始点は 0 の置き物
+        var sl = Transpile("10 DEFINT A-Z:A=POINT(X,Y+1)").Output!;
+        Assert.Contains("BAS_POINT(V_X, ((V_Y)+(1)))", sl);
+        // x を読んでから y を計算する (y の MIRROR$ が S$ を書き換える前に、x の ASC(S$) を一時変数に取る)
+        var seq = Transpile("10 S$=CHR$(1):A=POINT(ASC(S$),ASC(MIRROR$(S$))+0.0)").Output!.Split('\n').Select(l => l.Trim()).ToList();
+        int x = seq.FindIndex(l => l.Contains("=BAS_SASC(S_S);"));
+        int y = seq.FindIndex(l => l.Contains("BAS_SMIRRORV(S_S)"));
+        int pt = seq.FindIndex(l => l.Contains("BAS_POINT("));
+        Assert.True(x >= 0 && x < y && y < pt, $"x={x} y={y} point={pt}");
+    }
+
+    /// <summary>CLEAR 番地: 頭のコメントと CONST ASM に、いちばん小さい番地 (最後に使える番地) を書く。なければどちらも書かない</summary>
+    [Fact]
+    public void Emit_ClearTopMarkAndSymbol()
+    {
+        var sl = Transpile("10 CLEAR &HDFFF\n20 CLEAR &HC000:CLEAR").Output!;
+        Assert.Contains("// clear-top: $C000\n", sl.Replace("\r\n", "\n"));
+        Assert.Contains("CONST ASM H_CLRTOP = $C000;", sl);
+        Assert.Equal(1, sl.Split("H_CLRTOP").Length - 1);
+        var none = Transpile("10 CLEAR:PRINT 1").Output!;
+        Assert.DoesNotContain("clear-top", none);
+        Assert.DoesNotContain("H_CLRTOP", none);
+    }
+
     [Fact]
     public void Lowering_ZeroTripForExitLabelIsAfterItsVariablePart()
     {
@@ -1185,6 +1295,16 @@ public class HuBasicEmitTests
             // 作業領域の終わりが予約領域の頭 $FFE0 ちょうどは通る
             Assert.Equal(0, RunCli(bas, "--emit", "disk", "--slangbuild", Fake("edge.sh", Built("FFE0"))));
 
+            // CLEAR 番地: LST の H_CLRTOP が変換の番地より小さければ、そちらで止まる
+            // (LST に H_CLRTOP が欠けたときに変換の番地で止まることと、HB0318 の文は HuBasicWebTests.Cli_EmitChecksClearTopWithoutLstSymbol)
+            var lstTop = Fake("lsttop.sh", $"printf x > \"$p.bin\"; printf '  1000  H_CLRTOP EQU $1000\\n  2000  __WORKEND__ EQU $\\n' > \"$p.LST\"; " + image);
+            File.WriteAllText(bas, "10 CLEAR &HDFFF:PRINT 1\n");
+            File.Delete(argsFile);
+            Assert.Equal(1, RunCli(bas, "--emit", "disk", "--slangbuild", lstTop));
+            Assert.True(File.Exists(argsFile));
+            Assert.False(File.Exists(prefix + ".d88"));
+            File.WriteAllText(bas, "10 PRINT 1\n");
+
             // 止まったら 1。前の回のイメージも、できかけのイメージも残さない
             foreach (var tool in new[]
             {
@@ -1759,6 +1879,49 @@ public class HuBasicEmitTests
         var se = proc.StandardError.ReadToEndAsync();
         Assert.True(proc.WaitForExit(180_000), "slangbuild timed out");
         return (proc.ExitCode, so.Result + "\n" + se.Result);
+    }
+
+    /// <summary>
+    /// CLEAR 番地を書いたプログラムを実際に組み立てると、LST に H_CLRTOP の行が出て、--check-bin と同じ検査がそれを読む。
+    /// 終わりが番地 + 1 以下なら収まり、越えたら HB0318
+    /// </summary>
+    [SkippableFact]
+    public void Build_ClearTopIsCheckedFromLst()
+    {
+        var root = RepoRoot();
+        var asmPath = Path.Combine(root, "tools", OperatingSystem.IsWindows() ? "AILZ80ASM.exe" : "AILZ80ASM");
+        Skip.IfNot(File.Exists(asmPath), "AILZ80ASM がない (make setup-tools で取得)");
+        var dir = Path.Combine(Path.GetTempPath(), $"hubasic2sl_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var sl = Path.Combine(dir, "CLR.SL");
+            File.WriteAllText(sl, Transpile("10 CLEAR &HDFFF:A=4:DIM B(3):B(1)=9:N=3:DIM C(N,N+1)\n20 FOR I=1 TO 2:PRINT A;B(1):CLEAR:NEXT\n30 DATA 1\n" +
+                "40 PSET(1,2,3):PRESET(4,5):A=POINT(1,2):LINE(0,0)-(9,9),PSET:LINE -(5,5),PRESET,2:LINE -(1,1),\"*\"").Output!);
+            var outBase = Path.Combine(dir, "CLR");
+            RunSlangbuild(root, dir, sl, asmPath, outBase);
+            AssertBuilt(outBase);
+            var lst = outBase + ".LST";
+            Assert.Equal(0xDFFF, SLANGCompiler.HuBasic.CLI.Program.ReadEqu(lst, "H_CLRTOP"));
+            long binLength = new FileInfo(outBase + ".bin").Length;
+            long workEnd = SLANGCompiler.HuBasic.CLI.Program.ReadWorkEnd(lst)!.Value;
+            long end = Math.Max(0x1000 + binLength, workEnd);
+            // 実際の終わりで、上限ちょうど (最後に使える番地 = end - 1) は収まり、1 つ下は HB0318
+            Assert.True(SLANGCompiler.HuBasic.HuLayout.Check(binLength, workEnd, end - 1).Fits);
+            var (fits, message) = SLANGCompiler.HuBasic.HuLayout.Check(binLength, workEnd, end - 2);
+            Assert.False(fits);
+            Assert.Contains("HB0318", message);
+            Assert.True(SLANGCompiler.HuBasic.HuLayout.Check(binLength, workEnd, SLANGCompiler.HuBasic.CLI.Program.ReadEqu(lst, "H_CLRTOP")).Fits);
+            // CLEAR 番地のないプログラムの LST には H_CLRTOP がない
+            var sl2 = Path.Combine(dir, "NOCLR.SL");
+            File.WriteAllText(sl2, Transpile("10 CLEAR:PRINT 1").Output!);
+            RunSlangbuild(root, dir, sl2, asmPath, Path.Combine(dir, "NOCLR"));
+            Assert.Null(SLANGCompiler.HuBasic.CLI.Program.ReadEqu(Path.Combine(dir, "NOCLR.LST"), "H_CLRTOP"));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
     }
 
     /// <summary>bin ができていて、作業領域 (__WORKEND__) まで含めて $1000〜予約領域 $FFE0 の手前に収まる</summary>

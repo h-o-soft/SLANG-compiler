@@ -46,6 +46,8 @@ public sealed class HuLowerer
     private readonly Dictionary<(HuNext, int), List<int>> _exitsAt = new(new NextPartComparer());
     /// <summary>NEXT で呼ぶ関数 (浮動小数の FOR があれば BAS_FFORNEXT)</summary>
     private readonly string _nextFunction;
+    /// <summary>始点を省いた LINE (LINE -(x,y)) があるか。あれば、どの LINE も最後の点を覚える入口 (BAS_GLINEP・BAS_TLINEP) を呼ぶ</summary>
+    private readonly bool _usesLastPoint;
 
     private HuLowerer(HuProgram prog, HuLowerOptions opt)
     {
@@ -58,6 +60,8 @@ public sealed class HuLowerer
             list.Add(prog.ForIds[fr]);
         }
         _nextFunction = prog.ForIds.Keys.Any(f => prog.VarType(f.Var) == HuType.Float) ? "BAS_FFORNEXT" : "BAS_FORNEXT";
+        _usesLastPoint = HuAnalyzer.AllStatements(prog.Lines)
+            .Any(s => s is HuLineGraphic { StartOmitted: true } or HuLineText { StartOmitted: true });
     }
 
     public static HuFlat Lower(HuProgram prog, HuLowerOptions? opt = null)
@@ -196,6 +200,19 @@ public sealed class HuLowerer
         InitArrayStates();
     }
 
+    /// <summary>
+    /// 引数のない CLEAR。HuBASIC の実測: 開いているファイルを閉じ、変数と配列を消し (配列はもう一度 DIM できる)、
+    /// FOR・GOSUB の積み上げを空にし (後の NEXT・RETURN はエラー)、DATA の読む位置を始めに戻す
+    /// </summary>
+    private void ClearAll(HuPos pos)
+    {
+        if (_prog.UsesFiles) Call("BAS_FCLOSEA");
+        ClearVariables(pos);
+        if (_prog.UsesRandom) RandomInit();
+        Call("BAS_CLRSTK");
+        if (_prog.DataBytes.Length > 0) Call("BAS_RESTORE", I(0));
+    }
+
     private void LowerStatements(IEnumerable<HuStmt> stmts)
     {
         foreach (var s in stmts) LowerStatement(s);
@@ -298,16 +315,29 @@ public sealed class HuLowerer
             case HuInit:
                 Call("BAS_INIT2");
                 break;
+            case HuClear { Top: null } cl:
+                ClearAll(cl.Pos);
+                break;
+            case HuClear:
+                // CLEAR 番地: メモリの上限を決めるだけ (変数は消さない。HuBASIC の実測)。上限は組み立ての後の大きさの検査で見る
+                break;
             case HuDim d:
                 foreach (var (name, bound, bound2) in d.Arrays)
                 {
                     var key = _prog.Key(name);
                     if (!_prog.Arrays.ContainsKey(key)) continue;
-                    var n = (int)(HuAnalyzer.ConstValue(bound) ?? 0);
-                    Call("BAS_DIM", new FHiddenAddrArg(DimState(key)), new FHiddenAddrArg(UpperBound(key)), I(n));
+                    // 変数の上限 (V・V±c) は、置き場の上限を越えないか (負も) を先に調べる (越えたら Subscript out of range。HuBASIC の
+                    // DIM A(-1) と同じ)。置き場の上限は、解析が V に入る値から決めたもの (2 次元は次元ごと)
+                    var (s1, s2) = _prog.Arrays2.TryGetValue(key, out var b2) ? b2 : (_prog.Arrays[key], 0);
+                    bool var1 = HuAnalyzer.VarBoundForm(bound) != null;
+                    bool var2 = bound2 != null && HuAnalyzer.VarBoundForm(bound2) != null;
+                    if (var1) Call("BAS_DIMCK", E(bound), I(s1));
+                    if (var2) Call("BAS_DIMCK", E(bound2!), I(s2));
+                    var first = var1 ? E(bound) : I((int)(HuAnalyzer.ConstValue(bound) ?? 0));
+                    Call("BAS_DIM", new FHiddenAddrArg(DimState(key)), new FHiddenAddrArg(UpperBound(key)), first);
                     // 2 次元: BAS_DIM が 2 回目の DIM をエラーにした後なので、2 つめの上限はそのまま入れてよい
                     if (bound2 != null)
-                        Emit(new FAssignHidden(UpperBound2(key), new HuNum((int)(HuAnalyzer.ConstValue(bound2) ?? 0), HuPos.None)));
+                        Emit(new FAssignHidden(UpperBound2(key), var2 ? bound2 : new HuNum((int)(HuAnalyzer.ConstValue(bound2) ?? 0), HuPos.None)));
                 }
                 break;
             case HuRead rd:
@@ -451,12 +481,21 @@ public sealed class HuLowerer
                 LowerCommand(c);
                 break;
             case HuLineText lt:
-                Call("BAS_TLINE", E(lt.X1), E(lt.Y1), E(lt.X2), E(lt.Y2), E(lt.Char), I(lt.Fill ? 2 : lt.Box ? 1 : 0));
+                // 始点を省いた LINE (LINE -(x,y)) があるプログラムは、どの LINE も BAS_TLINEP・BAS_GLINEP (最後の点を覚える) を呼ぶ。
+                // 形の bit 4 = 始点を省いた (x1・y1 の代わりに最後の点)
+                Call(_usesLastPoint ? "BAS_TLINEP" : "BAS_TLINE", E(lt.X1), E(lt.Y1), E(lt.X2), E(lt.Y2), E(lt.Char),
+                    I((lt.Fill ? 2 : lt.Box ? 1 : 0) | (lt.StartOmitted ? 16 : 0)));
                 break;
             case HuLineGraphic lg:
-                // 形: bit 0 = 箱、bit 1 = PRESET、bit 2 = 色なし (色の引数は 0 を渡す)、bit 3 = 塗りつぶし (BF。bit 0 も立てる)
-                Call("BAS_GLINE", E(lg.X1), E(lg.Y1), E(lg.X2), E(lg.Y2), lg.Color != null ? E(lg.Color) : I(0),
-                    I((lg.Box ? 1 : 0) | (lg.Preset ? 2 : 0) | (lg.Color == null ? 4 : 0) | (lg.Fill ? 8 : 0)));
+                // 形: bit 0 = 箱、bit 1 = PRESET、bit 2 = 色なし (色の引数は 0 を渡す)、bit 3 = 塗りつぶし (BF。bit 0 も立てる)、
+                // bit 4 = 始点を省いた (BAS_GLINEP だけ)
+                Call(_usesLastPoint ? "BAS_GLINEP" : "BAS_GLINE", E(lg.X1), E(lg.Y1), E(lg.X2), E(lg.Y2), lg.Color != null ? E(lg.Color) : I(0),
+                    I((lg.Box ? 1 : 0) | (lg.Preset ? 2 : 0) | (lg.Color == null ? 4 : 0) | (lg.Fill ? 8 : 0) | (lg.StartOmitted ? 16 : 0)));
+                break;
+            case HuPset ps:
+                // 形: bit 1 = PRESET、bit 2 = 色なし (色の引数は 0)。BAS_GPSET は 1×1 の BF として BAS_GLINE に描かせる (最後の点は変えない)
+                Call("BAS_GPSET", E(ps.X), E(ps.Y), ps.Color != null ? E(ps.Color) : I(0),
+                    I((ps.Preset ? 2 : 0) | (ps.Color == null ? 4 : 0)));
                 break;
             case HuPaint pt:
                 // BAS_PAINT(x, y, 色, 境界色 1, …, 境界色 n, n)。引数の数は文ごとに変わる (最後の n を見て BAS_PAINT が取り除く)
@@ -731,6 +770,10 @@ public sealed class HuLowerer
                 yield return lg.X1; yield return lg.Y1; yield return lg.X2; yield return lg.Y2;
                 if (lg.Color != null) yield return lg.Color;
                 break;
+            case HuPset ps:
+                yield return ps.X; yield return ps.Y;
+                if (ps.Color != null) yield return ps.Color;
+                break;
             case HuPaint pt:
                 yield return pt.X; yield return pt.Y; yield return pt.Color;
                 foreach (var b in pt.Borders) yield return b;
@@ -759,6 +802,7 @@ public sealed class HuLowerer
                 yield return dv.Second;
                 break;
             case HuMaxFiles mf: yield return mf.Count; break;
+            case HuClear { Top: not null } cl: yield return cl.Top; break;
             case HuField fd:
                 yield return fd.Number;
                 foreach (var (width, target) in fd.Items)
