@@ -72,11 +72,19 @@ createRelease() {
     cp ../../examples/zxs/README.md  examples/zxs/ 2>/dev/null
   fi
 
-  # examples/hubasic は HuBASIC の変換のサンプル。BASIC と README・MANIFEST.txt だけを写す
+  # examples/x1pen は x1 の env の見本 (画面・音・入力)。SL と説明だけを写す
+  if [ -d "../../examples/x1pen" ]; then
+    mkdir -p examples/x1pen
+    cp ../../examples/x1pen/*.SL       examples/x1pen/ 2>/dev/null
+    cp ../../examples/x1pen/README.md  examples/x1pen/ 2>/dev/null
+  fi
+
+  # examples/hubasic は HuBASIC の変換のサンプル。BASIC とそれが読むテキストと README・MANIFEST.txt だけを写す
   # (変換した *.SL などは含めない。置いてよいファイルは MANIFEST.txt の一覧)
   if [ -d "../../examples/hubasic" ]; then
     mkdir -p examples/hubasic
     cp ../../examples/hubasic/*.BAS         examples/hubasic/ 2>/dev/null
+    cp ../../examples/hubasic/*.TXT         examples/hubasic/ 2>/dev/null
     cp ../../examples/hubasic/README.md     examples/hubasic/ 2>/dev/null
     cp ../../examples/hubasic/MANIFEST.txt  examples/hubasic/ 2>/dev/null
   fi

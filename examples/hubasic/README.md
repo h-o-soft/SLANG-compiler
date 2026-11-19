@@ -8,6 +8,8 @@ HuBASIC のテキストを SLANG に変換して動かすサンプルです。�
 | `GRAPH.BAS` | グラフィックの `LINE` (線・箱・塗りつぶした箱) と `PAINT` |
 | `MUSIC.BAS` | `PLAY`・`TEMPO`・`BEEP` |
 | `FLOAT.BAS` | 浮動小数の定数を使う式 (割り算・負の数・`^`・`SQR`・小数の `STEP` など。ブラウザ向けの束の試験にも使う) |
+| `FILEIO.BAS` | ファイルの命令 (`OPEN`・`LINE INPUT #`・`PRINT #`・`EOF`)。`FILEIO.TXT` を `GREET.TXT` という名前でディスクに足して読む:<br>`hubasic2sl FILEIO.BAS` → `slangbuild --emit disk -E x1native_hufs FILEIO.SL --hufs-add GREET.TXT=FILEIO.TXT,text` (ブラウザ向けの束の試験にも使う) |
+| `FILEIO.TXT` | `FILEIO.BAS` が読むテキスト |
 
 変換した SLANG (`*.SL`) や組み立てた結果は、このディレクトリに置かないでください (`*.SL` は `.gitignore` で除外しています)。
 
