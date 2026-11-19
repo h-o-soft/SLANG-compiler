@@ -78,7 +78,7 @@ internal sealed class SlangbuildRunner
         return proc.ExitCode;
     }
 
-    /// <summary>組み立てた slangbuild の置き場 (csproj のフォルダから)。`-o` で決めるので、MSBuild の出力先の設定に左右されない</summary>
+    /// <summary>組み立てた slangbuild の置き場 (csproj のフォルダから)。OutDir をコマンド行で決めるので (環境変数や Directory.Build.props の OutDir より強い)、MSBuild の出力先の設定に左右されない</summary>
     internal static readonly string DevOutputSubdir = Path.Combine("bin", "devtool");
 
     /// <summary>
@@ -98,7 +98,7 @@ internal sealed class SlangbuildRunner
             UseShellExecute = false,
         };
         var outDir = Path.Combine(projectDir, DevOutputSubdir);
-        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-o", outDir, "-nologo", "-v", "q" })
+        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-p:OutDir=" + outDir + Path.DirectorySeparatorChar, "-nologo", "-v", "q" })
             psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         var stderrTask = proc.StandardError.ReadToEndAsync();
