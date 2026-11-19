@@ -28,13 +28,15 @@ fi
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$1"
 OUT="$(cd "$1" && pwd)"
-if [ -n "$(ls -A "$OUT")" ]; then
-  echo "build-hubasic-wasm: $OUT が空ではありません (消すか、別のフォルダを指定してください)" >&2
+# 出力フォルダに書くのは 1 つの組み立てだけ。先に印 (.building) を作り (作れなければ、ほかの組み立てが書いている)、
+# 印を持ったまま、出力フォルダが印のほかは空かを確かめる。印は、この組み立てが終わるときに 1 度だけ消す
+if ! mkdir "$OUT/.building" 2> /dev/null; then
+  echo "build-hubasic-wasm: $OUT には、ほかの組み立てが書いています (.building があります)" >&2
   exit 2
 fi
-# 出力フォルダに書くのは 1 つの組み立てだけ (同時に同じフォルダへ組み立てたら、後から来た方は止まる)
-if ! mkdir "$OUT/.building" 2> /dev/null; then
-  echo "build-hubasic-wasm: $OUT には、ほかの組み立てが書いています" >&2
+trap 'rmdir "$OUT/.building" 2> /dev/null || true' EXIT
+if [ -n "$(ls -A "$OUT" | grep -vx '.building' || true)" ]; then
+  echo "build-hubasic-wasm: $OUT が空ではありません (消すか、別のフォルダを指定してください)" >&2
   exit 2
 fi
 # slangc は今の作業フォルダの runtime/ を先に探すので、この木の根から動かす
@@ -142,9 +144,9 @@ python3 -I scripts/hubasic-wasm-manifest.py verify "$OUT" "$TMP/manifest.json"
 echo "[5/5] wasm の変換・コンパイル・ディスク作りを CLI と比べます"
 "$NODE" scripts/hubasic-wasm-smoke.mjs "$OUT" "$REPO" "$HUB" "$SLANGC_DLL" "$TMP/manifest.json"
 
-# 全部通ったので manifest.json を束に入れる (同じフォルダの中の rename で、一度に現れる)
+# 全部通ったので manifest.json を束に入れる (同じフォルダの中の rename で、一度に現れる)。
+# 印 (.building) は最後の検査まで持ち、終わるときに消す
 cp "$TMP/manifest.json" "$OUT/.manifest.json.tmp"
 mv -f "$OUT/.manifest.json.tmp" "$OUT/manifest.json"
-rmdir "$OUT/.building"
 python3 -I scripts/hubasic-wasm-manifest.py verify "$OUT"
 echo "build-hubasic-wasm: $OUT にできました (SHA $SHA、dirty $DIRTY)"

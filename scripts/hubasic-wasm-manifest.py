@@ -325,9 +325,19 @@ def cmd_verify(out, manifest_path=None):
             for ext in TESTDATA_EXTS:
                 if case.get(ext) not in listed:
                     fail(f"{key} の {case['name']} の {ext} ({case.get(ext)}) が束にありません")
-            for add in case.get("hufsAdd", []):
-                if add["file"] not in listed:
-                    fail(f"{key} の {case['name']} の足すファイル ({add['file']}) が束にありません")
+            if key != "hufsTestdata":
+                continue
+            # Hu-BASIC の形のディスクの例は、足したファイルの一覧 (hufsAdd) が要る (ディスクを作り直すのに使う)
+            adds = case.get("hufsAdd")
+            if not isinstance(adds, list):
+                fail(f"{key} の {case['name']} に hufsAdd の一覧がありません")
+            for add in adds:
+                if not isinstance(add, dict) or not add.get("name") or add.get("kind") not in ("text", "bin", "raw"):
+                    fail(f"{key} の {case['name']} の hufsAdd の項目がおかしいです: {add}")
+                if add.get("file") not in listed:
+                    fail(f"{key} の {case['name']} の足すファイル ({add.get('file')}) が束にありません")
+            if case["name"] == "FILEIO" and not any(a["name"] == "GREET.TXT" and a["kind"] == "text" for a in adds):
+                fail(f"{key} の FILEIO に、GREET.TXT (text) を足した記録がありません")
     if current:
         if not m["hufsTestdata"]["cases"]:
             fail("hufsTestdata が空です")
