@@ -181,6 +181,22 @@ public class BuildIntegrationTests : IDisposable
         Assert.DoesNotMatch(@"(?m)^STICK:", File.ReadAllText(Path.Combine(_tempDir, "nostick.ASM")));
     }
 
+    [SkippableTheory]
+    [InlineData("x1")]
+    [InlineData("sosx1")]
+    public void M8aLoad_BuildsAlone(string env)
+    {
+        // M8ALOAD (libm8a) は画面の幅 (AT_WIDTH) を読む。ほかの X1 の関数を呼ばず M8ALOAD だけを呼ぶプログラムも組み立てられる
+        // (x1 では AT_WIDTH は X1WORK にあるので、M8ALOAD は X1WORK を @calls に挙げる。sosx1 では土台の作業領域にある)
+        Skip.IfNot(File.Exists(_ailz80AsmPath), "AILZ80ASM がない");
+        var slPath = Path.Combine(_tempDir, "m8a.SL");
+        File.WriteAllText(slPath, "MAIN()\nBEGIN\n  M8ALOAD();\nEND;\n");
+        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", env, "--keep-asm");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        Assert.True(File.Exists(Path.Combine(_tempDir, "m8a.bin")), $"bin not produced. stderr: {stderr}");
+        Assert.Matches(@"(?m)^\s*CALL\s+M8ALIB\.M8ALOAD\b", File.ReadAllText(Path.Combine(_tempDir, "m8a.ASM")));
+    }
+
     [Theory]
     [InlineData("", true)]
     [InlineData("ORG $D000;", false)]                              // コードが WORK に重なる

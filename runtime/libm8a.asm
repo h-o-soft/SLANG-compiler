@@ -3,6 +3,7 @@
 
 ; @name M8ALOAD
 ; @resident local
+; @calls X1WORK
 ; @lib M8ALIB
 
 WIDTH		EQU	40
