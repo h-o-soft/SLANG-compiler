@@ -70,45 +70,53 @@ public static class ModulePageChecker
     /// 関数が呼ぶ名前: IR の呼び出しと、#ASM の中の `CALL 名前` の行 (コード生成がランタイムを選ぶのと同じ読み方)。
     /// `CALL(番地)`・関数の番地を使う呼び出しは入らない
     /// </summary>
-    private static IEnumerable<string> CalledNames(IrFunction f)
-    {
-        foreach (var i in f.Instructions)
-        {
-            if (i.Op == IrOp.Call && i.Src1.Kind == IrOperandKind.Symbol && i.Src1.Name != null)
-                yield return i.Src1.Name;
-            else if (i.Op == IrOp.InlineAsm)
-            {
-                var asm = i.Dest.Kind == IrOperandKind.Temp ? i.Src1.Name : i.Dest.Name;
-                if (asm == null) continue;
-                foreach (var name in InlineAsmCalls.Names(asm))
-                    yield return name;
-            }
-        }
-    }
+    private static IEnumerable<string> CalledNames(IrFunction f) =>
+        IrCalledNames(f).Concat(InlineAsmCalls.InFunctions(new[] { f }).SelectMany(InlineAsmCalls.Names));
 
-    // ZXN_MODULE は @lib の無いランタイムなので、#ASM では NAME_SPACE_DEFAULT.ZXN_MODULE とも書ける
+    private static IEnumerable<string> IrCalledNames(IrFunction f) =>
+        f.Instructions.Where(i => i.Op == IrOp.Call && i.Src1.Kind == IrOperandKind.Symbol && i.Src1.Name != null)
+                      .Select(i => i.Src1.Name!);
+
     private static bool IsModuleMap(string name) =>
-        string.Equals(name, ModuleMapName, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(name, "NAME_SPACE_DEFAULT." + ModuleMapName, StringComparison.OrdinalIgnoreCase);
+        string.Equals(name, ModuleMapName, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>呼び出しの表の 1 つ: 持ち主のモジュール (本体は null) と、呼ぶ名前</summary>
-    private sealed record Node(OverlayModule? Owner, List<string> Calls);
+    /// <summary>
+    /// 呼び出しの表の 1 つ: 持ち主のモジュール (本体は null)、呼ぶ名前、ランタイムの ZXN_MODULE を呼ぶか
+    /// (その単位で見える #ASM のラベルに ZXN_MODULE があれば、それはランタイムではない。コード生成と同じ)
+    /// </summary>
+    private sealed record Node(OverlayModule? Owner, List<string> Calls, bool CallsMap);
 
     /// <summary>
     /// 呼び出しの表 (名前 → Node)。関数と、本体のトップレベルの #ASM の行の頭のラベル (モジュールの #ASM から CALL できる)。
-    /// トップレベルの #ASM は 1 つの塊として扱う: どのラベルを呼んでも、塊の中の CALL の行を全部呼ぶとみなす
-    /// (ラベルの間の切れ目や、どこで戻るかは読まない。多めにたどる)
+    /// トップレベルの #ASM は #ASM ... #END の 1 つずつを塊として扱う: ラベルを呼ぶと、そのラベルのある塊の中の CALL の行を全部呼ぶとみなす
+    /// (塊の中のラベルの間の切れ目や、どこで戻るかは読まない。多めにたどる)
     /// </summary>
     private static Dictionary<string, Node> CallGraph(IrModule module)
     {
+        var mainLabels = InlineAsmCalls.VisibleLabels(module, null);
+        // SLANG の呼び出しはいつもランタイム。#ASM の CALL は、見えるラベルに同じ名前が無いときだけ
+        bool AsmCallsMap(IEnumerable<string> asmCalls, HashSet<string> labels) =>
+            !labels.Contains(ModuleMapName) && asmCalls.Any(IsModuleMap);
+        bool FuncCallsMap(IrFunction f, HashSet<string> labels) =>
+            IrCalledNames(f).Any(IsModuleMap)
+            || AsmCallsMap(InlineAsmCalls.InFunctions(new[] { f }).SelectMany(InlineAsmCalls.Names), labels);
+
         var g = new Dictionary<string, Node>(StringComparer.OrdinalIgnoreCase);
-        foreach (var f in module.Functions) g[f.Name] = new Node(null, CalledNames(f).ToList());
+        foreach (var f in module.Functions)
+            g[f.Name] = new Node(null, CalledNames(f).ToList(), FuncCallsMap(f, mainLabels));
         foreach (var o in module.Overlays)
-            foreach (var f in o.Functions) g[f.Name] = new Node(o, CalledNames(f).ToList());
-        var asm = InlineAsmCalls.TopLevel(module).ToList();
-        var asmCalls = asm.SelectMany(InlineAsmCalls.Names).ToList();
-        foreach (var label in InlineAsmCalls.Labels(asm.SelectMany(a => a.Split('\n'))))
-            g.TryAdd(label, new Node(null, asmCalls));
+        {
+            var labels = InlineAsmCalls.VisibleLabels(module, o);
+            foreach (var f in o.Functions)
+                g[f.Name] = new Node(o, CalledNames(f).ToList(), FuncCallsMap(f, labels));
+        }
+        foreach (var block in InlineAsmCalls.TopLevel(module))
+        {
+            var calls = InlineAsmCalls.Names(block).ToList();
+            var node = new Node(null, calls, AsmCallsMap(calls, mainLabels));
+            foreach (var label in InlineAsmCalls.Labels(block.Split('\n')))
+                g.TryAdd(label, node);
+        }
         return g;
     }
 
@@ -123,9 +131,10 @@ public static class ModulePageChecker
         // 利用者が ZXN_MODULE という名前の関数を書いたなら、それはランタイムの ZXN_MODULE ではない
         if (all.Any(f => IsModuleMap(f.Name))) return;
         var g = CallGraph(module);
-        // トップレベルの #ASM の CALL でも、ランタイムの ZXN_MODULE が入る
-        if (!all.Any(f => g[f.Name].Calls.Any(IsModuleMap))
-            && !InlineAsmCalls.TopLevel(module).SelectMany(InlineAsmCalls.Names).Any(IsModuleMap)) return;
+        // トップレベルの #ASM の CALL でも、ランタイムの ZXN_MODULE が入る (ラベルの無い塊も)
+        var mainLabels = InlineAsmCalls.VisibleLabels(module, null);
+        if (!g.Values.Any(n => n.CallsMap)
+            && (mainLabels.Contains(ModuleMapName) || !InlineAsmCalls.TopLevel(module).SelectMany(InlineAsmCalls.Names).Any(IsModuleMap))) return;
         foreach (var o in module.Overlays.Where(o => o.Page == null))
             errors.Add(($"ZXN_MODULE needs PAGE on every #MODULE (#MODULE {o.Index} has none)", o.Span));
 
@@ -137,7 +146,7 @@ public static class ModulePageChecker
             {
                 var name = queue.Dequeue();
                 var node = g[name];
-                if (node.Calls.Any(IsModuleMap))
+                if (node.CallsMap)
                 {
                     errors.Add(($"ZXN_MODULE is reached from #MODULE {o.Index} (through {name}); call it from the main program only", o.Span));
                     break;
