@@ -11,12 +11,13 @@ namespace SLANGCompiler.Build;
 /// </summary>
 internal static class DevToolBuild
 {
-    /// <summary>組み立てた物の置き場 (csproj のフォルダから)。OutDir をコマンド行で決めるので (環境変数や Directory.Build.props の OutDir より強い)、MSBuild の出力先の設定に左右されない</summary>
+    /// <summary>組み立てた物の置き場 (csproj のフォルダから)。OutDir としてコマンド行で渡す (環境変数や Directory.Build.props の OutDir より強い)</summary>
     internal static readonly string OutputSubdir = Path.Combine("bin", "devtool");
 
     /// <summary>
-    /// csproj を Release で &lt;csproj のフォルダ&gt;/bin/devtool に組み立てて、その中の &lt;assemblyName&gt;.dll を返す。
-    /// 組み立てに失敗したら null (log に組み立ての出力)
+    /// csproj を Release で &lt;csproj のフォルダ&gt;/bin/devtool に組み立てて、組み立てが言う TargetPath (出来た dll) を返す。
+    /// GenerateProjectSpecificOutputFolder などで MSBuild が置き場を変えても、出来た dll を指す。
+    /// 組み立てに失敗したか、dll の名前が assemblyName でなければ null (log に組み立ての出力)
     /// </summary>
     internal static string? Build(string dotnet, string csproj, string assemblyName, out string log)
     {
@@ -30,15 +31,18 @@ internal static class DevToolBuild
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-p:OutDir=" + MsBuildEscape(outDir + Path.DirectorySeparatorChar), "-nologo", "-v", "q" })
+        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-p:OutDir=" + MsBuildEscape(outDir + Path.DirectorySeparatorChar),
+                                  "-t:Build", "-getProperty:TargetPath", "-nologo", "-v", "q" })
             psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         var stderrTask = proc.StandardError.ReadToEndAsync();
         var stdout = proc.StandardOutput.ReadToEnd();
         proc.WaitForExit();
         log = stdout + stderrTask.Result;
-        var dll = Path.Combine(outDir, assemblyName + ".dll");
-        return proc.ExitCode == 0 && File.Exists(dll) ? dll : null;
+        if (proc.ExitCode != 0) return null;
+        // -getProperty は組み立ての後に値だけを stdout に書く (最後の行)
+        var dll = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
+        return dll != null && Path.GetFileName(dll) == assemblyName + ".dll" && File.Exists(dll) ? dll : null;
     }
 
     /// <summary>

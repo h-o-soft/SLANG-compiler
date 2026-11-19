@@ -78,7 +78,7 @@ internal sealed class SlangbuildRunner
         return proc.ExitCode;
     }
 
-    /// <summary>組み立てた slangbuild の置き場 (csproj のフォルダから)。OutDir をコマンド行で決めるので (環境変数や Directory.Build.props の OutDir より強い)、MSBuild の出力先の設定に左右されない</summary>
+    /// <summary>組み立てた slangbuild の置き場 (csproj のフォルダから)。OutDir としてコマンド行で渡す (環境変数や Directory.Build.props の OutDir より強い)</summary>
     internal static readonly string DevOutputSubdir = Path.Combine("bin", "devtool");
 
     /// <summary>
@@ -105,14 +105,17 @@ internal sealed class SlangbuildRunner
             UseShellExecute = false,
         };
         var outDir = Path.Combine(projectDir, DevOutputSubdir);
-        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-p:OutDir=" + MsBuildEscape(outDir + Path.DirectorySeparatorChar), "-nologo", "-v", "q" })
+        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-p:OutDir=" + MsBuildEscape(outDir + Path.DirectorySeparatorChar),
+                                  "-t:Build", "-getProperty:TargetPath", "-nologo", "-v", "q" })
             psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         var stderrTask = proc.StandardError.ReadToEndAsync();
         var stdout = proc.StandardOutput.ReadToEnd();
         proc.WaitForExit();
-        var dll = Path.Combine(outDir, "slangbuild.dll");
-        if (proc.ExitCode == 0 && File.Exists(dll)) return dll;
+        // -getProperty は組み立ての後に値 (TargetPath = 出来た dll) だけを stdout に書く (最後の行)。
+        // GenerateProjectSpecificOutputFolder などで MSBuild が置き場を変えても、出来た dll を指す
+        var dll = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
+        if (proc.ExitCode == 0 && dll != null && Path.GetFileName(dll) == "slangbuild.dll" && File.Exists(dll)) return dll;
         Console.Error.Write(stdout + stderrTask.Result);
         Console.Error.WriteLine($"hubasic2sl: slangbuild を組み立てられませんでした ({csproj})");
         return null;

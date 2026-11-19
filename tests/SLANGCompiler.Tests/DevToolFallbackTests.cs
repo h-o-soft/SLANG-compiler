@@ -115,16 +115,37 @@ public class DevToolFallbackTests : IDisposable
         return (proc.ExitCode, stdout, err.Result);
     }
 
-    /// <summary>環境変数 OutDir を別の所に向け、組み立ての置き場に壊れた dll を置いてから body を動かす (終わったら戻す)</summary>
-    private void WithRedirectedOutDirAndStaleDll(string staleDll, Action<string> body)
+    /// <summary>
+    /// MSBuild の出力先を変える環境変数を 1 つ決め、組み立ての置き場 (bin/devtool) に壊れた dll を置いてから body を動かす (終わったら戻す)。
+    /// body には、別の出力先にした一時のフォルダを渡す (OutDir のとき。使わなければそのまま)
+    /// </summary>
+    private void WithMsBuildEnvAndStaleDll(string staleDll, string variable, string? value, Action<string> body)
     {
         var elsewhere = NewTempDir("slang_outdir_");
         Directory.CreateDirectory(Path.GetDirectoryName(staleDll)!);
         File.WriteAllBytes(staleDll, new byte[] { 0x53, 0x54, 0x41, 0x4C, 0x45 });   // 古い残り (dll として読めない)
-        var old = Environment.GetEnvironmentVariable("OutDir");
-        Environment.SetEnvironmentVariable("OutDir", elsewhere + Path.DirectorySeparatorChar);
+        var old = Environment.GetEnvironmentVariable(variable);
+        Environment.SetEnvironmentVariable(variable, value ?? elsewhere + Path.DirectorySeparatorChar);
         try { body(elsewhere); }
-        finally { Environment.SetEnvironmentVariable("OutDir", old); }
+        finally { Environment.SetEnvironmentVariable(variable, old); }
+    }
+
+    /// <summary>
+    /// 子のプロセスの PATH にする一時のフォルダ: dotnet へのリンクだけを置く (dotnet と同じフォルダに入れた slangc などを拾わない)。
+    /// リンクを作れなければ null
+    /// </summary>
+    private string? IsolatedPath(string dotnet)
+    {
+        var dir = NewTempDir("slang_path_");
+        try
+        {
+            File.CreateSymbolicLink(Path.Combine(dir, Path.GetFileName(dotnet)), dotnet);
+            return dir;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            return null;
+        }
     }
 
     private string Assembler => Path.Combine(_repo, "tools", OperatingSystem.IsWindows() ? "AILZ80ASM.exe" : "AILZ80ASM");
@@ -146,18 +167,20 @@ public class DevToolFallbackTests : IDisposable
         Assert.NotEqual(0, RunToEnd(psi).Code);
     }
 
-    [Fact]
-    public void SlangcFallback_IgnoresOutDirFromEnvironmentAndStaleDll()
+    [Theory]
+    [InlineData("OutDir", null, "")]                                                    // 出力先を別の所に向ける
+    [InlineData("GenerateProjectSpecificOutputFolder", "true", "SLANGCompiler.CLI")]   // 出力先の下にプロジェクトの名前のフォルダを作る
+    public void SlangcFallback_LaunchesBuiltDllDespiteMsBuildOutputSettings(string variable, string? value, string subdir)
     {
         var checkout = MakeCheckout("SLANGCompiler.CLI", "SLANGCompiler.Core");
         var staleDll = Path.Combine(DevtoolDir(checkout, "SLANGCompiler.CLI"), "slangc.dll");
-        WithRedirectedOutDirAndStaleDll(staleDll, elsewhere =>
+        WithMsBuildEnvAndStaleDll(staleDll, variable, value, elsewhere =>
         {
             // slangbuild が slangc を動かす道 (Driver.SpawnSlangc も DevToolBuild.CreateStartInfo で作る)
             var tool = new ResolvedTool(Dotnet(), ResolutionKind.DotnetRun, Csproj(checkout, "SLANGCompiler.CLI"));
             var psi = DevToolBuild.CreateStartInfo(tool, "slangc", new[] { "-E", "x1native", "-o", "OUT.ASM", "PROG.SL" }, out var log);
             Assert.True(psi != null, log);
-            Assert.Equal(staleDll, psi!.ArgumentList[0]);
+            Assert.Equal(Path.Combine(DevtoolDir(checkout, "SLANGCompiler.CLI"), subdir, "slangc.dll"), psi!.ArgumentList[0]);
             Assert.False(File.Exists(Path.Combine(elsewhere, "slangc.dll")), "環境変数の OutDir に組み立てた");
             psi.WorkingDirectory = _pinnedDir;
             psi.Environment["SLANG_HOME"] = _repo;   // ランタイムと env はこの木のもの
@@ -167,13 +190,16 @@ public class DevToolFallbackTests : IDisposable
         });
     }
 
-    [Fact]
-    public void HuBasicFallback_IgnoresOutDirFromEnvironmentAndStaleDll()
+    [Theory]
+    [InlineData("OutDir", null)]
+    [InlineData("GenerateProjectSpecificOutputFolder", "true")]
+    public void HuBasicFallback_LaunchesBuiltDllDespiteMsBuildOutputSettings(string variable, string? value)
     {
-        // hubasic2sl が slangbuild を動かす道 (SlangbuildRunner.Run)。AILZ80ASM も slangc も要らない
+        // hubasic2sl が slangbuild を動かす道 (SlangbuildRunner.Run)。AILZ80ASM も slangc も要らない。
+        // 置き場の壊れた dll を動かせば止まる
         var checkout = MakeCheckout("SLANGCompiler.Build", "SLANGCompiler.Core", "SLANGCompiler.SlfsPack");
         var staleDll = Path.Combine(DevtoolDir(checkout, "SLANGCompiler.Build"), "slangbuild.dll");
-        WithRedirectedOutDirAndStaleDll(staleDll, elsewhere =>
+        WithMsBuildEnvAndStaleDll(staleDll, variable, value, elsewhere =>
         {
             var tool = new SlangbuildRunner.Resolved(Dotnet(), Csproj(checkout, "SLANGCompiler.Build"));
             Assert.Equal(0, SlangbuildRunner.Run(tool, new[] { "--version" }, _pinnedDir));
@@ -193,7 +219,7 @@ public class DevToolFallbackTests : IDisposable
     public void Slangbuild_FromPinnedFolder_ReachesCheckoutFallbackAndCompilesRelativeInput()
     {
         // 本物の slangbuild の入口を、古い SDK に決めたフォルダから動かす。
-        // 木の写しの中の slangbuild には、同梱の slangc も開発の publish も無く、PATH にも無い (PATH は dotnet のフォルダだけ) ので、
+        // 木の写しの中の slangbuild には、同梱の slangc も開発の publish も無く、PATH にも無い (PATH は dotnet へのリンクだけを置いたフォルダ) ので、
         // 最後の手 (木の CLI を組み立てて動かす) に行き着く
         Skip.IfNot(File.Exists(Assembler), "AILZ80ASM がない");
         var dotnet = Dotnet();
@@ -201,11 +227,13 @@ public class DevToolFallbackTests : IDisposable
 
         var checkout = MakeCheckout("SLANGCompiler.CLI", "SLANGCompiler.Core", "SLANGCompiler.Build", "SLANGCompiler.SlfsPack");
         var slangbuild = BuildInto(checkout, "SLANGCompiler.Build", "slangbuild");
+        var pathDir = IsolatedPath(dotnet);
+        Skip.If(pathDir == null, "dotnet へのリンクを作れない");
 
         var psi = new ProcessStartInfo(dotnet) { WorkingDirectory = _pinnedDir, UseShellExecute = false };
         foreach (var a in new[] { slangbuild, "-E", "x1native", "PROG.SL", "--asm", Assembler })
             psi.ArgumentList.Add(a);
-        psi.Environment["PATH"] = Path.GetDirectoryName(dotnet)!;
+        psi.Environment["PATH"] = pathDir!;
         psi.Environment["SLANG_HOME"] = _repo;
         var (code, stdout, stderr) = RunToEnd(psi);
         Assert.True(code == 0, stdout + stderr);
@@ -218,7 +246,7 @@ public class DevToolFallbackTests : IDisposable
     public void HuBasic_FromPinnedFolder_ReachesCheckoutFallbacksAndBuildsDisk()
     {
         // 本物の hubasic2sl --emit の入口を、古い SDK に決めたフォルダから動かす。
-        // 木の写しの中の hubasic2sl には、同梱の slangbuild も開発の publish も無く、PATH にも無いので、最後の手 (木の Build を組み立てて動かす) に行き着く。
+        // 木の写しの中の hubasic2sl には、同梱の slangbuild も開発の publish も無く、PATH にも無い (PATH は dotnet へのリンクだけを置いたフォルダ) ので、最後の手 (木の Build を組み立てて動かす) に行き着く。
         // その slangbuild も同じ理由で、木の写しの CLI を組み立てて slangc にする
         Skip.IfNot(File.Exists(Assembler), "AILZ80ASM がない");
         var dotnet = Dotnet();
@@ -227,11 +255,13 @@ public class DevToolFallbackTests : IDisposable
         var checkout = MakeCheckout("SLANGCompiler.HuBasic", "SLANGCompiler.CLI", "SLANGCompiler.Core",
                                     "SLANGCompiler.Build", "SLANGCompiler.SlfsPack");
         var hubasic = BuildInto(checkout, "SLANGCompiler.HuBasic", "hubasic2sl");
+        var pathDir = IsolatedPath(dotnet);
+        Skip.If(pathDir == null, "dotnet へのリンクを作れない");
 
         var psi = new ProcessStartInfo(dotnet) { WorkingDirectory = _pinnedDir, UseShellExecute = false };
         foreach (var a in new[] { hubasic, "PROG.BAS", "--emit", "disk" })
             psi.ArgumentList.Add(a);
-        psi.Environment["PATH"] = Path.GetDirectoryName(dotnet)!;
+        psi.Environment["PATH"] = pathDir!;
         psi.Environment["SLANG_HOME"] = _repo;
         psi.Environment["AILZ80ASM_PATH"] = Assembler;
         var (code, stdout, stderr) = RunToEnd(psi);
