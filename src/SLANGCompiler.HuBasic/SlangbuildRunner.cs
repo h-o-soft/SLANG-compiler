@@ -82,6 +82,13 @@ internal sealed class SlangbuildRunner
     internal static readonly string DevOutputSubdir = Path.Combine("bin", "devtool");
 
     /// <summary>
+    /// コマンド行のプロパティの値の中の % ; , を MSBuild の書き方 (%25 %3B %2C) にする
+    /// (; と , はプロパティの区切りになるので、そのままだと木の道にこれらがあると組み立てられない)
+    /// </summary>
+    internal static string MsBuildEscape(string value)
+        => value.Replace("%", "%25").Replace(";", "%3B").Replace(",", "%2C");
+
+    /// <summary>
     /// 開発の木の slangbuild を、csproj のフォルダを作業フォルダにして (その木の global.json が効く) Release で
     /// &lt;csproj のフォルダ&gt;/bin/devtool に組み立て、dll の道を返す。
     /// 失敗したら組み立ての出力を stderr に書いて null
@@ -98,7 +105,7 @@ internal sealed class SlangbuildRunner
             UseShellExecute = false,
         };
         var outDir = Path.Combine(projectDir, DevOutputSubdir);
-        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-p:OutDir=" + outDir + Path.DirectorySeparatorChar, "-nologo", "-v", "q" })
+        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-p:OutDir=" + MsBuildEscape(outDir + Path.DirectorySeparatorChar), "-nologo", "-v", "q" })
             psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         var stderrTask = proc.StandardError.ReadToEndAsync();

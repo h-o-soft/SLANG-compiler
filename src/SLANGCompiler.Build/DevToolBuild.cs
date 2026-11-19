@@ -30,7 +30,7 @@ internal static class DevToolBuild
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-p:OutDir=" + outDir + Path.DirectorySeparatorChar, "-nologo", "-v", "q" })
+        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-p:OutDir=" + MsBuildEscape(outDir + Path.DirectorySeparatorChar), "-nologo", "-v", "q" })
             psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         var stderrTask = proc.StandardError.ReadToEndAsync();
@@ -40,6 +40,13 @@ internal static class DevToolBuild
         var dll = Path.Combine(outDir, assemblyName + ".dll");
         return proc.ExitCode == 0 && File.Exists(dll) ? dll : null;
     }
+
+    /// <summary>
+    /// コマンド行のプロパティの値の中の % ; , を MSBuild の書き方 (%25 %3B %2C) にする
+    /// (; と , はプロパティの区切りになるので、そのままだと木の道にこれらがあると組み立てられない)
+    /// </summary>
+    internal static string MsBuildEscape(string value)
+        => value.Replace("%", "%25").Replace(";", "%3B").Replace(",", "%2C");
 
     /// <summary>
     /// 見つけた道具を動かす ProcessStartInfo (args を付けたもの)。DotnetRun なら先に組み立てて `dotnet &lt;dll&gt; args` にする。
