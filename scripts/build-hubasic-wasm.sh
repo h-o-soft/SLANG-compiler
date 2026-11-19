@@ -35,7 +35,7 @@ if ! mkdir "$OUT/.building" 2> /dev/null; then
   exit 2
 fi
 trap 'rmdir "$OUT/.building" 2> /dev/null || true' EXIT
-if [ -n "$(ls -A "$OUT" | grep -vx '.building' || true)" ]; then
+if [ -n "$(ls -A "$OUT" | grep -Fvx '.building' || true)" ]; then
   echo "build-hubasic-wasm: $OUT が空ではありません (消すか、別のフォルダを指定してください)" >&2
   exit 2
 fi

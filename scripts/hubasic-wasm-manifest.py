@@ -315,12 +315,19 @@ def cmd_verify(out, manifest_path=None):
     # どれかだけがある manifest は、途中までしか書けていないので止める
     new_keys = ("slangcVersion", "hufsTestdata", "slangTestdata")
     present = [k for k in new_keys if k in m]
-    if present and len(present) != len(new_keys):
-        fail(f"manifest に {', '.join(k for k in new_keys if k not in m)} がありません ({', '.join(present)} はあるので、今の形の manifest です)")
+    # 今の形の束にだけあるファイル (x1 の env・SLANG タブの testdata・include) があれば、今の形の manifest が要る
+    current_files = [p for p in paths if p == "env/x1.env" or p.startswith("testdata/slang/") or p.startswith("include/")]
+    if (present or current_files) and len(present) != len(new_keys):
+        why = f"{', '.join(present)} がある" if present else f"今の形の束のファイル ({current_files[0]} など) がある"
+        fail(f"manifest に {', '.join(k for k in new_keys if k not in m)} がありません ({why}ので、今の形の manifest です)")
     current = bool(present)
+    # 今の形の manifest では、試験データの組ごとの env は決まっている (write が書くもの)
+    expected_env = {"testdata": TESTDATA_ENV, "hufsTestdata": HUFS_TESTDATA_ENV}
     for key in ("testdata", "hufsTestdata") if current else ("testdata",):
         if m[key]["env"] not in m["envs"]:
             fail(f"{key} の env ({m[key]['env']}) が束にありません")
+        if current and m[key]["env"] != expected_env[key]:
+            fail(f"{key} の env は {expected_env[key]} のはずです ({m[key]['env']})")
         for case in m[key]["cases"]:
             for ext in TESTDATA_EXTS:
                 if case.get(ext) not in listed:
@@ -331,9 +338,15 @@ def cmd_verify(out, manifest_path=None):
             adds = case.get("hufsAdd")
             if not isinstance(adds, list):
                 fail(f"{key} の {case['name']} に hufsAdd の一覧がありません")
+            disk_names = set()
             for add in adds:
                 if not isinstance(add, dict) or not add.get("name") or add.get("kind") not in ("text", "bin", "raw"):
                     fail(f"{key} の {case['name']} の hufsAdd の項目がおかしいです: {add}")
+                # ディスクの上の名前は同じものを 2 つ足せない (大文字と小文字は区別する。ドライブの 0: は名前に入らない)
+                disk_name = add["name"][2:] if add["name"].startswith("0:") else add["name"]
+                if disk_name in disk_names:
+                    fail(f"{key} の {case['name']} の hufsAdd に {disk_name} が 2 つあります")
+                disk_names.add(disk_name)
                 if add.get("file") not in listed:
                     fail(f"{key} の {case['name']} の足すファイル ({add.get('file')}) が束にありません")
             if case["name"] == "FILEIO" and not any(a["name"] == "GREET.TXT" and a["kind"] == "text" for a in adds):
@@ -343,6 +356,8 @@ def cmd_verify(out, manifest_path=None):
             fail("hufsTestdata が空です")
         if m["slangTestdata"].get("env") not in m["envs"]:
             fail(f"slangTestdata の env ({m['slangTestdata'].get('env')}) が束にありません")
+        if m["slangTestdata"]["env"] != SLANG_TESTDATA_ENV:
+            fail(f"slangTestdata の env は {SLANG_TESTDATA_ENV} のはずです ({m['slangTestdata']['env']})")
         if not m["slangTestdata"]["cases"]:
             fail("SLANG タブ用の testdata が空です")
         for case in m["slangTestdata"]["cases"]:
