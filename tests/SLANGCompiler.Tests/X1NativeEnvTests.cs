@@ -675,7 +675,7 @@ END;
     {
         var repoRoot = RepoRoot();
         var slangbuildProj = Path.Combine(repoRoot, "src", "SLANGCompiler.Build", "SLANGCompiler.Build.csproj");
-        var psi = new ProcessStartInfo("dotnet", $"run --project \"{slangbuildProj}\" --no-build -- {args}")
+        var psi = new ProcessStartInfo("dotnet", $"run --project \"{slangbuildProj}\" --no-build -- {args} --slangc \"{TestTools.SlangcPath}\"")
         {
             WorkingDirectory = repoRoot,
             RedirectStandardOutput = true,

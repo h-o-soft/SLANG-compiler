@@ -33,7 +33,7 @@ public class BuildIntegrationTests : IDisposable
 
         // CI / dev 共通: PATH 上の旧 slangc を避けるため必ずリポジトリ内の最新 publish 物
         // (なければ自動 publish) を使う
-        _slangcExePath = EnsureSlangcExePath();
+        _slangcExePath = TestTools.SlangcPath;
         // Windows では `AILZ80ASM.exe` が必要 (Codex 指摘)
         var asmName = OperatingSystem.IsWindows() ? "AILZ80ASM.exe" : "AILZ80ASM";
         _ailz80AsmPath = Path.Combine(_projectRoot, "tools", asmName);
@@ -45,61 +45,6 @@ public class BuildIntegrationTests : IDisposable
         {
             try { Directory.Delete(_tempDir, true); } catch { }
         }
-    }
-
-    private string EnsureSlangcExePath()
-    {
-        // 既存 publish 物があれば再利用 (テスト間で publish 重複を避ける)
-        var rid = GetCurrentRid();
-        var publishDir = Path.Combine(_projectRoot, "src", "SLANGCompiler.CLI",
-                                       "bin", "Release", "net10.0", rid, "publish");
-        var exeName = OperatingSystem.IsWindows() ? "slangc.exe" : "slangc";
-        var exePath = Path.Combine(publishDir, exeName);
-        if (File.Exists(exePath)) return exePath;
-
-        // なければ自動 publish (初回 + CI で必要)
-        var psi = new ProcessStartInfo
-        {
-            FileName = "dotnet",
-            WorkingDirectory = _projectRoot,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
-        psi.ArgumentList.Add("publish");
-        psi.ArgumentList.Add("src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj");
-        psi.ArgumentList.Add("-c");
-        psi.ArgumentList.Add("Release");
-        psi.ArgumentList.Add("-r");
-        psi.ArgumentList.Add(rid);
-        psi.ArgumentList.Add("--self-contained");
-        psi.ArgumentList.Add("true");
-        psi.ArgumentList.Add("-p:PublishSingleFile=true");
-        using var proc = Process.Start(psi)!;
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-        var stderrTask = proc.StandardError.ReadToEndAsync();
-        if (!proc.WaitForExit(180_000))
-        {
-            try { proc.Kill(entireProcessTree: true); } catch { }
-            Assert.Fail("dotnet publish timed out after 180s");
-        }
-        stdoutTask.GetAwaiter().GetResult();
-        stderrTask.GetAwaiter().GetResult();
-        Assert.Equal(0, proc.ExitCode);
-        Assert.True(File.Exists(exePath), $"slangc publish output not found: {exePath}");
-        return exePath;
-    }
-
-    private static string GetCurrentRid()
-    {
-        // 簡易: macOS arm64 / x64, linux x64, windows x64 のみ対応 (CI 用途では十分)
-        if (OperatingSystem.IsMacOS())
-            return System.Runtime.InteropServices.RuntimeInformation.OSArchitecture
-                == System.Runtime.InteropServices.Architecture.Arm64 ? "osx-arm64" : "osx-x64";
-        if (OperatingSystem.IsLinux()) return "linux-x64";
-        if (OperatingSystem.IsWindows()) return "win-x64";
-        throw new PlatformNotSupportedException();
     }
 
     private (int ExitCode, string Stdout, string Stderr) RunSlangbuild(

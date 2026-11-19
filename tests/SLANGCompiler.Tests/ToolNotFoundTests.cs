@@ -22,8 +22,11 @@ public class ToolNotFoundTests : IDisposable
     {
         _dir = Path.Combine(Path.GetTempPath(), "slang_notfound_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_dir);
+        // PATH は、dotnet の替わりの空のファイルだけを置いたフォルダ。前の作りの最後の手 (PATH に dotnet があり、開発の木の csproj が
+        // あれば組み立てに行く) の条件はそろえたうえで、slangc・slangbuild は無い
+        File.WriteAllText(Path.Combine(_dir, OperatingSystem.IsWindows() ? "dotnet.exe" : "dotnet"), "");
         _oldPath = Environment.GetEnvironmentVariable("PATH");
-        Environment.SetEnvironmentVariable("PATH", _dir);   // 何も無いフォルダだけ
+        Environment.SetEnvironmentVariable("PATH", _dir);
     }
 
     public void Dispose()
