@@ -66,20 +66,32 @@ internal sealed class SlangbuildRunner
         if (workingDirectory != null) psi.WorkingDirectory = workingDirectory;
         if (environment != null)
             foreach (var (k, v) in environment) psi.Environment[k] = v;
-        if (tool.Project != null)
+        string? runDir = null;
+        try
         {
-            var dll = BuildDevSlangbuild(tool.FileName, tool.Project);
-            if (dll == null) return 1;
-            psi.ArgumentList.Add(dll);
+            if (tool.Project != null)
+            {
+                var dll = BuildDevSlangbuild(tool.FileName, tool.Project, out runDir);
+                if (dll == null) return 1;
+                psi.ArgumentList.Add(dll);
+            }
+            foreach (var a in args) psi.ArgumentList.Add(a);
+            using var proc = Process.Start(psi)!;
+            proc.WaitForExit();
+            return proc.ExitCode;
         }
-        foreach (var a in args) psi.ArgumentList.Add(a);
-        using var proc = Process.Start(psi)!;
-        proc.WaitForExit();
-        return proc.ExitCode;
+        finally
+        {
+            // 開発の木で組み立てたときは、動かし終わったら写しのフォルダを消す
+            if (runDir != null) DeleteQuietly(runDir);
+        }
     }
 
-    /// <summary>組み立てた slangbuild の置き場 (csproj のフォルダから)。OutDir としてコマンド行で渡す (環境変数や Directory.Build.props の OutDir より強い)</summary>
+    /// <summary>組み立ての物を置く所 (csproj のフォルダから)</summary>
     internal static readonly string DevOutputSubdir = Path.Combine("bin", "devtool");
+
+    /// <summary>錠を待つ長さの上限 (ほかの組み立てが終わるのを待つ)</summary>
+    private static readonly TimeSpan LockTimeout = TimeSpan.FromMinutes(10);
 
     /// <summary>
     /// コマンド行のプロパティの値の中の % ; , を MSBuild の書き方 (%25 %3B %2C) にする
@@ -89,13 +101,28 @@ internal sealed class SlangbuildRunner
         => value.Replace("%", "%25").Replace(";", "%3B").Replace(",", "%2C");
 
     /// <summary>
-    /// 開発の木の slangbuild を、csproj のフォルダを作業フォルダにして (その木の global.json が効く) Release で
-    /// &lt;csproj のフォルダ&gt;/bin/devtool に組み立て、dll の道を返す。
+    /// 開発の木の slangbuild を、csproj のフォルダを作業フォルダにして (その木の global.json が効く) Release で組み立て、
+    /// この呼び出しだけの写しの slangbuild.dll の道を返す (runDir は写しのフォルダ。動かし終わったら消す)。
+    /// slangbuild の DevToolBuild と同じ作り: プロセスをまたいだ錠 (bin/devtool/.lock) の中で、組み立ての置き場 (bin/devtool/build) を
+    /// 空にしてから組み立て、出来た dll をちょうど 1 つ見つけ、置き場ごと bin/devtool/run/&lt;新しい名前&gt; に写す。
+    /// MSBuild の出力先の設定で置き場がずれても前の残りの dll は動かさず、同時に呼ばれたほかの組み立てに写しを消されることもない。
     /// 失敗したら組み立ての出力を stderr に書いて null
     /// </summary>
-    private static string? BuildDevSlangbuild(string dotnet, string csproj)
+    private static string? BuildDevSlangbuild(string dotnet, string csproj, out string? runDir)
     {
+        runDir = null;
         var projectDir = Path.GetDirectoryName(Path.GetFullPath(csproj))!;
+        var root = Path.Combine(projectDir, DevOutputSubdir);
+        var buildDir = Path.Combine(root, "build");
+        Directory.CreateDirectory(root);
+        using var lockFile = AcquireLock(Path.Combine(root, ".lock"));
+        if (lockFile == null)
+        {
+            Console.Error.WriteLine($"hubasic2sl: {root}/.lock を {LockTimeout.TotalMinutes} 分待っても取れませんでした");
+            return null;
+        }
+
+        DeleteQuietly(buildDir);
         var psi = new ProcessStartInfo
         {
             FileName = dotnet,
@@ -104,21 +131,60 @@ internal sealed class SlangbuildRunner
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        var outDir = Path.Combine(projectDir, DevOutputSubdir);
-        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-p:OutDir=" + MsBuildEscape(outDir + Path.DirectorySeparatorChar),
-                                  "-t:Build", "-getProperty:TargetPath", "-nologo", "-v", "q" })
+        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release",
+                                  "-p:OutDir=" + MsBuildEscape(buildDir + Path.DirectorySeparatorChar), "-nologo", "-v", "q" })
             psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         var stderrTask = proc.StandardError.ReadToEndAsync();
         var stdout = proc.StandardOutput.ReadToEnd();
         proc.WaitForExit();
-        // -getProperty は組み立ての後に値 (TargetPath = 出来た dll) だけを stdout に書く (最後の行)。
-        // GenerateProjectSpecificOutputFolder などで MSBuild が置き場を変えても、出来た dll を指す
-        var dll = stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault();
-        if (proc.ExitCode == 0 && dll != null && Path.GetFileName(dll) == "slangbuild.dll" && File.Exists(dll)) return dll;
-        Console.Error.Write(stdout + stderrTask.Result);
-        Console.Error.WriteLine($"hubasic2sl: slangbuild を組み立てられませんでした ({csproj})");
-        return null;
+        var found = proc.ExitCode == 0 && Directory.Exists(buildDir)
+            ? Directory.GetFiles(buildDir, "slangbuild.dll", SearchOption.AllDirectories)
+            : Array.Empty<string>();
+        if (found.Length != 1)
+        {
+            Console.Error.Write(stdout + stderrTask.Result);
+            if (proc.ExitCode == 0)
+                Console.Error.WriteLine($"hubasic2sl: slangbuild.dll が {buildDir} の中に {found.Length} 個あります (1 個のはず)");
+            Console.Error.WriteLine($"hubasic2sl: slangbuild を組み立てられませんでした ({csproj})");
+            return null;
+        }
+        runDir = Path.Combine(root, "run", Guid.NewGuid().ToString("N"));
+        foreach (var f in Directory.EnumerateFiles(buildDir, "*", SearchOption.AllDirectories))
+        {
+            var dst = Path.Combine(runDir, Path.GetRelativePath(buildDir, f));
+            Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
+            File.Copy(f, dst);
+        }
+        return Path.Combine(runDir, Path.GetRelativePath(buildDir, found[0]));
+    }
+
+    /// <summary>プロセスをまたいだ錠 (ほかのプロセスが開いている間は開けない)。待っても取れなければ null</summary>
+    private static FileStream? AcquireLock(string path)
+    {
+        var deadline = DateTime.UtcNow + LockTimeout;
+        while (true)
+        {
+            try
+            {
+                return new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException) when (DateTime.UtcNow < deadline)
+            {
+                Thread.Sleep(200);
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+        }
+    }
+
+    private static void DeleteQuietly(string dir)
+    {
+        try { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     /// <summary>開発で publish した slangbuild。今の OS の RID だけを見て、同じ RID に Release と Debug があれば新しい方</summary>

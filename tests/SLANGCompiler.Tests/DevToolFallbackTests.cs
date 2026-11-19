@@ -16,7 +16,8 @@ public class DevToolBuildCollection { }
 /// 開発の木の道具の最後の手 (slangbuild の slangc、hubasic2sl の slangbuild) は、
 /// 呼んだ人のフォルダの global.json が別の SDK に決めていても動き、呼んだ人のフォルダからの相対の道を読む
 /// (組み立ては木の SDK の決まりで行い、動かすのは呼んだ人のフォルダのまま)。
-/// 組み立てた物の置き場は OutDir をコマンド行で決めるので、環境変数の OutDir や前の残りの dll に左右されず、
+/// 組み立てるたびに新しい空のフォルダを OutDir にして、その中に出来た dll だけを動かし、動かし終わったら消すので、
+/// MSBuild の出力先の設定 (OutDir・GenerateProjectSpecificOutputFolder・TargetPath) や前の残りの dll に左右されない。
 /// 木の道に , や ; があっても組み立てられる。
 /// 試験は、無い SDK の版に決めたフォルダから呼び (`dotnet run --project` なら SDK が見つからずに止まる所)、
 /// 組み立てるのは一時の木の写し (名前に , と ; を入れる) なので、開発の木の組み立てた物には触らない
@@ -116,18 +117,31 @@ public class DevToolFallbackTests : IDisposable
     }
 
     /// <summary>
-    /// MSBuild の出力先を変える環境変数を 1 つ決め、組み立ての置き場 (bin/devtool) に壊れた dll を置いてから body を動かす (終わったら戻す)。
-    /// body には、別の出力先にした一時のフォルダを渡す (OutDir のとき。使わなければそのまま)
+    /// MSBuild の出力先の設定を 1 つ入れ、組み立ての置き場 (bin/devtool) に壊れた dll を置いてから body を動かす (終わったら戻す)。
+    /// - 環境変数 (OutDir・GenerateProjectSpecificOutputFolder): value が null なら別の一時のフォルダに向ける
+    /// - "TargetPath": 木の写しの Directory.Build.props で、道具のプロジェクトだけの TargetPath を前の残りの dll に向ける
+    ///   (, や ; の無い一時のフォルダに置く)
     /// </summary>
-    private void WithMsBuildEnvAndStaleDll(string staleDll, string variable, string? value, Action<string> body)
+    private void WithMsBuildSettingAndStaleDll(string checkout, string project, string staleDll, string setting, string? value, Action body)
     {
         var elsewhere = NewTempDir("slang_outdir_");
+        var stale = new byte[] { 0x53, 0x54, 0x41, 0x4C, 0x45 };   // 古い残り (dll として読めない)
         Directory.CreateDirectory(Path.GetDirectoryName(staleDll)!);
-        File.WriteAllBytes(staleDll, new byte[] { 0x53, 0x54, 0x41, 0x4C, 0x45 });   // 古い残り (dll として読めない)
-        var old = Environment.GetEnvironmentVariable(variable);
-        Environment.SetEnvironmentVariable(variable, value ?? elsewhere + Path.DirectorySeparatorChar);
-        try { body(elsewhere); }
-        finally { Environment.SetEnvironmentVariable(variable, old); }
+        File.WriteAllBytes(staleDll, stale);
+        if (setting == "TargetPath")
+        {
+            var staleElsewhere = Path.Combine(elsewhere, Path.GetFileName(staleDll));
+            File.WriteAllBytes(staleElsewhere, stale);
+            File.WriteAllText(Path.Combine(checkout, "Directory.Build.props"),
+                "<Project><PropertyGroup Condition=\"'$(MSBuildProjectName)' == '" + project + "'\">" +
+                "<TargetPath>" + staleElsewhere + "</TargetPath></PropertyGroup></Project>");
+            body();
+            return;
+        }
+        var old = Environment.GetEnvironmentVariable(setting);
+        Environment.SetEnvironmentVariable(setting, value ?? elsewhere + Path.DirectorySeparatorChar);
+        try { body(); }
+        finally { Environment.SetEnvironmentVariable(setting, old); }
     }
 
     /// <summary>
@@ -164,55 +178,80 @@ public class DevToolFallbackTests : IDisposable
         var psi = new ProcessStartInfo(Dotnet()) { WorkingDirectory = _pinnedDir, UseShellExecute = false };
         foreach (var a in new[] { "run", "--project", Csproj(_repo, "SLANGCompiler.CLI"), "-c", "Release", "--", "--version" })
             psi.ArgumentList.Add(a);
-        Assert.NotEqual(0, RunToEnd(psi).Code);
+        var (code, stdout, stderr) = RunToEnd(psi);
+        Assert.NotEqual(0, code);
+        // dotnet の入口が、決めた版の SDK が無いと言って止まった (ほかの理由で止まったのではない)
+        Assert.Contains("9.0.999", stdout + stderr);
+    }
+
+    /// <summary>MSBuild の出力先の設定 (WithMsBuildSettingAndStaleDll を見る)</summary>
+    public static TheoryData<string, string?> MsBuildOutputSettings => new()
+    {
+        { "OutDir", null },                                  // 環境変数で、出力先を別の所に向ける
+        { "GenerateProjectSpecificOutputFolder", "true" },   // 環境変数で、出力先の下にプロジェクトの名前のフォルダを作る
+        { "TargetPath", null },                               // Directory.Build.props で、TargetPath を前の残りの dll に向ける
+    };
+
+    /// <summary>bin/devtool/run の下に、この呼び出しだけの写し (動かし終わったら消すもの) が残っていない</summary>
+    private static void AssertNoBuildFolderLeft(string devtoolDir)
+    {
+        var run = Path.Combine(devtoolDir, "run");
+        Assert.True(!Directory.Exists(run) || Directory.GetDirectories(run).Length == 0, $"{run} に写しが残っている");
     }
 
     [Theory]
-    [InlineData("OutDir", null, "")]                                                    // 出力先を別の所に向ける
-    [InlineData("GenerateProjectSpecificOutputFolder", "true", "SLANGCompiler.CLI")]   // 出力先の下にプロジェクトの名前のフォルダを作る
-    public void SlangcFallback_LaunchesBuiltDllDespiteMsBuildOutputSettings(string variable, string? value, string subdir)
+    [MemberData(nameof(MsBuildOutputSettings))]
+    public void SlangcFallback_LaunchesFreshlyBuiltDllDespiteMsBuildOutputSettings(string variable, string? value)
     {
         var checkout = MakeCheckout("SLANGCompiler.CLI", "SLANGCompiler.Core");
-        var staleDll = Path.Combine(DevtoolDir(checkout, "SLANGCompiler.CLI"), "slangc.dll");
-        WithMsBuildEnvAndStaleDll(staleDll, variable, value, elsewhere =>
+        var devtool = DevtoolDir(checkout, "SLANGCompiler.CLI");
+        var staleDll = Path.Combine(devtool, "slangc.dll");
+        WithMsBuildSettingAndStaleDll(checkout, "SLANGCompiler.CLI", staleDll, variable, value, () =>
         {
             // slangbuild が slangc を動かす道 (Driver.SpawnSlangc も DevToolBuild.CreateStartInfo で作る)
             var tool = new ResolvedTool(Dotnet(), ResolutionKind.DotnetRun, Csproj(checkout, "SLANGCompiler.CLI"));
-            var psi = DevToolBuild.CreateStartInfo(tool, "slangc", new[] { "-E", "x1native", "-o", "OUT.ASM", "PROG.SL" }, out var log);
-            Assert.True(psi != null, log);
-            Assert.Equal(Path.Combine(DevtoolDir(checkout, "SLANGCompiler.CLI"), subdir, "slangc.dll"), psi!.ArgumentList[0]);
-            Assert.False(File.Exists(Path.Combine(elsewhere, "slangc.dll")), "環境変数の OutDir に組み立てた");
-            psi.WorkingDirectory = _pinnedDir;
-            psi.Environment["SLANG_HOME"] = _repo;   // ランタイムと env はこの木のもの
-            var (code, _, stderr) = RunToEnd(psi);
-            Assert.True(code == 0, stderr);
-            Assert.True(File.Exists(Path.Combine(_pinnedDir, "OUT.ASM")), stderr);
+            var psi = DevToolBuild.CreateStartInfo(tool, "slangc", new[] { "-E", "x1native", "-o", "OUT.ASM", "PROG.SL" },
+                                                   out var log, out var built);
+            Assert.True(psi != null && built != null, log);
+            using (built)
+            {
+                // 動かす dll は、この呼び出しだけの写し bin/devtool/run/<新しい名前> の中のもの
+                Assert.Equal(built!.Dll, psi!.ArgumentList[0]);
+                Assert.Equal(Path.Combine(devtool, "run"), Path.GetDirectoryName(built.Directory));
+                Assert.StartsWith(built.Directory + Path.DirectorySeparatorChar, built.Dll);
+                psi.WorkingDirectory = _pinnedDir;
+                psi.Environment["SLANG_HOME"] = _repo;   // ランタイムと env はこの木のもの
+                var (code, _, stderr) = RunToEnd(psi);
+                Assert.True(code == 0, stderr);
+                Assert.True(File.Exists(Path.Combine(_pinnedDir, "OUT.ASM")), stderr);
+            }
+            Assert.False(Directory.Exists(built.Directory), "組み立てのフォルダを消していない");
         });
     }
 
     [Theory]
-    [InlineData("OutDir", null)]
-    [InlineData("GenerateProjectSpecificOutputFolder", "true")]
-    public void HuBasicFallback_LaunchesBuiltDllDespiteMsBuildOutputSettings(string variable, string? value)
+    [MemberData(nameof(MsBuildOutputSettings))]
+    public void HuBasicFallback_LaunchesFreshlyBuiltDllDespiteMsBuildOutputSettings(string variable, string? value)
     {
         // hubasic2sl が slangbuild を動かす道 (SlangbuildRunner.Run)。AILZ80ASM も slangc も要らない。
-        // 置き場の壊れた dll を動かせば止まる
+        // 前の残りの壊れた dll を動かせば止まる
         var checkout = MakeCheckout("SLANGCompiler.Build", "SLANGCompiler.Core", "SLANGCompiler.SlfsPack");
-        var staleDll = Path.Combine(DevtoolDir(checkout, "SLANGCompiler.Build"), "slangbuild.dll");
-        WithMsBuildEnvAndStaleDll(staleDll, variable, value, elsewhere =>
+        var devtool = DevtoolDir(checkout, "SLANGCompiler.Build");
+        var staleDll = Path.Combine(devtool, "slangbuild.dll");
+        WithMsBuildSettingAndStaleDll(checkout, "SLANGCompiler.Build", staleDll, variable, value, () =>
         {
             var tool = new SlangbuildRunner.Resolved(Dotnet(), Csproj(checkout, "SLANGCompiler.Build"));
             Assert.Equal(0, SlangbuildRunner.Run(tool, new[] { "--version" }, _pinnedDir));
-            Assert.False(File.Exists(Path.Combine(elsewhere, "slangbuild.dll")), "環境変数の OutDir に組み立てた");
+            AssertNoBuildFolderLeft(devtool);
         });
     }
 
-    /// <summary>道具を一時の木の写しの bin/devtool に組み立てる (試験の下ごしらえ。本番と同じ DevToolBuild を使う)</summary>
+    /// <summary>道具を一時の木の写しに組み立てる (試験の下ごしらえ。本番と同じ DevToolBuild を使う。消すのは一時の木ごと)</summary>
     private static string BuildInto(string checkout, string project, string assembly)
     {
-        var dll = DevToolBuild.Build(Dotnet(), Csproj(checkout, project), assembly, out var log);
-        Assert.True(dll != null, log);
-        return dll!;
+        var built = DevToolBuild.Build(Dotnet(), Csproj(checkout, project), assembly, out var log);
+        Assert.True(built != null, log);
+        return built!.Dll;
     }
 
     [SkippableFact]
@@ -237,9 +276,57 @@ public class DevToolFallbackTests : IDisposable
         psi.Environment["SLANG_HOME"] = _repo;
         var (code, stdout, stderr) = RunToEnd(psi);
         Assert.True(code == 0, stdout + stderr);
-        Assert.True(File.Exists(Path.Combine(DevtoolDir(checkout, "SLANGCompiler.CLI"), "slangc.dll")),
+        Assert.True(Directory.Exists(Path.Combine(checkout, "src", "SLANGCompiler.CLI", "obj")),
             "木の写しの CLI を組み立てていない (最後の手に行き着いていない)");
+        AssertNoBuildFolderLeft(DevtoolDir(checkout, "SLANGCompiler.CLI"));
         Assert.True(File.Exists(Path.Combine(_pinnedDir, "PROG.bin")), stdout + stderr);
+    }
+
+    [SkippableFact]
+    public void Slangbuild_ConcurrentFallbacksWithDifferentOutputLayouts_BothSucceed()
+    {
+        // 2 つの slangbuild が同時に、木の写しの CLI を最後の手で組み立てる。片方は GenerateProjectSpecificOutputFolder で
+        // 出力の形が違う。組み立ては錠で 1 つずつになり、どちらも自分の写しを動かすので、相手の組み立てに消されない
+        Skip.IfNot(File.Exists(Assembler), "AILZ80ASM がない");
+        var dotnet = Dotnet();
+        Skip.IfNot(Path.IsPathRooted(dotnet), "dotnet の場所が分からない");
+
+        var checkout = MakeCheckout("SLANGCompiler.CLI", "SLANGCompiler.Core", "SLANGCompiler.Build", "SLANGCompiler.SlfsPack");
+        var slangbuild = BuildInto(checkout, "SLANGCompiler.Build", "slangbuild");
+        var pathDir = IsolatedPath(dotnet);
+        Skip.If(pathDir == null, "dotnet へのリンクを作れない");
+
+        var second = NewTempDir("slang_pinned2_");
+        File.Copy(Path.Combine(_pinnedDir, "global.json"), Path.Combine(second, "global.json"));
+        File.WriteAllText(Path.Combine(second, "PROG.SL"), Source);
+
+        var runs = new[] { (Dir: _pinnedDir, ProjectFolder: false), (Dir: second, ProjectFolder: true) }.Select(r =>
+        {
+            var psi = new ProcessStartInfo(dotnet)
+            {
+                WorkingDirectory = r.Dir,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            foreach (var arg in new[] { slangbuild, "-E", "x1native", "PROG.SL", "--asm", Assembler })
+                psi.ArgumentList.Add(arg);
+            psi.Environment["PATH"] = pathDir!;
+            psi.Environment["SLANG_HOME"] = _repo;
+            if (r.ProjectFolder) psi.Environment["GenerateProjectSpecificOutputFolder"] = "true";
+            var proc = Process.Start(psi)!;
+            return (r.Dir, Proc: proc, Out: proc.StandardOutput.ReadToEndAsync(), Err: proc.StandardError.ReadToEndAsync());
+        }).ToList();   // 2 つとも動かしてから待つ
+
+        foreach (var r in runs)
+        {
+            r.Proc.WaitForExit();
+            var text = r.Out.Result + r.Err.Result;
+            Assert.True(r.Proc.ExitCode == 0, text);
+            Assert.True(File.Exists(Path.Combine(r.Dir, "PROG.bin")), text);
+            r.Proc.Dispose();
+        }
+        AssertNoBuildFolderLeft(DevtoolDir(checkout, "SLANGCompiler.CLI"));
     }
 
     [SkippableFact]
@@ -266,10 +353,12 @@ public class DevToolFallbackTests : IDisposable
         psi.Environment["AILZ80ASM_PATH"] = Assembler;
         var (code, stdout, stderr) = RunToEnd(psi);
         Assert.True(code == 0, stdout + stderr);
-        Assert.True(File.Exists(Path.Combine(DevtoolDir(checkout, "SLANGCompiler.Build"), "slangbuild.dll")),
+        Assert.True(Directory.Exists(Path.Combine(checkout, "src", "SLANGCompiler.Build", "obj")),
             "木の写しの Build を組み立てていない (最後の手に行き着いていない)");
-        Assert.True(File.Exists(Path.Combine(DevtoolDir(checkout, "SLANGCompiler.CLI"), "slangc.dll")),
+        Assert.True(Directory.Exists(Path.Combine(checkout, "src", "SLANGCompiler.CLI", "obj")),
             "木の写しの CLI を組み立てていない");
+        AssertNoBuildFolderLeft(DevtoolDir(checkout, "SLANGCompiler.Build"));
+        AssertNoBuildFolderLeft(DevtoolDir(checkout, "SLANGCompiler.CLI"));
         Assert.True(File.Exists(Path.Combine(_pinnedDir, "PROG.d88")), stdout + stderr);
     }
 }
