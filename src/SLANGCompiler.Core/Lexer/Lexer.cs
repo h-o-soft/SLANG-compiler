@@ -278,7 +278,8 @@ public class Lexer
             Advance(); // consume '.'
             while (!IsAtEnd && char.IsDigit(Peek())) Advance();
             string ftext = _source[startPos.._pos];
-            double fval = double.Parse(ftext);
+            // 小数点はいつも "." (今の地域の書き方に左右されない。CLI とブラウザで同じ値にする)
+            double fval = double.Parse(ftext, System.Globalization.CultureInfo.InvariantCulture);
             return MakeToken(TokenKind.FloatLiteral, ftext, start, fval);
         }
 

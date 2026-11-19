@@ -118,6 +118,8 @@ public class EnvironmentLoader
         {
             foreach (var lib in raw.Libraries)
             {
+                if (string.IsNullOrWhiteSpace(lib))
+                    throw new InvalidDataException($"`libraries` has an empty entry in {envFilePath}.");
                 // runtime.yml → runtime.asm, liblsx_print.yml → liblsx_print.asm
                 var asmName = Path.ChangeExtension(lib, ".asm");
                 config.Libraries.Add(asmName);

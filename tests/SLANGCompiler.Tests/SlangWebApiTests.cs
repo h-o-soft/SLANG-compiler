@@ -172,6 +172,39 @@ public class SlangWebApiTests : IDisposable
     }
 
     [Fact]
+    public void Compile_LiteralLoneSurrogateInOptions_ReturnsError()
+    {
+        // JS の文字列は UTF-16 のまま渡るので、対になっていないサロゲートがそのまま入ることがある (UTF-8 にできない)
+        foreach (var options in new[] { "{\"env\":\"\ud800\"}", "{\"\udc00\":\"x1\"}" })
+        {
+            var r = Parse(SlangWebApi.Compile(Path.Combine(_dir, "OK.SL"), options));
+            Assert.False(r.GetProperty("ok").GetBoolean());
+            Assert.StartsWith("slangc: ", r.GetProperty("error").GetString());
+        }
+    }
+
+    [Fact]
+    public void Compile_EmptyLibraryEntryInEnv_ReturnsEnvError()
+    {
+        var lib = Path.Combine(_dir, "lib");
+        Directory.CreateDirectory(Path.Combine(lib, "env"));
+        File.WriteAllText(Path.Combine(lib, "env", "nulllib.env"), "env_type: 99\nos_type: 99\nlibraries: [null]\n");
+        var path = Source("OK.SL", "VAR J;\nMAIN()\nBEGIN\n  J = 1;\nEND;\n");
+        var r = Parse(SlangWebApi.Compile(path, JsonSerializer.Serialize(new { env = "nulllib", libPaths = new[] { lib, _repo } })));
+        Assert.False(r.GetProperty("ok").GetBoolean());
+        Assert.StartsWith("Error: Failed to load env file for 'nulllib': `libraries` has an empty entry", Lines(r, "log").Single());
+    }
+
+    [Fact]
+    public void Compile_PreprocessorDivisionOverflow_DoesNotThrow()
+    {
+        // #IF の -2147483648 / -1 は、+ - * と同じく回り込む (例外で止まらない)
+        var path = Source("IF.SL", "#IF $80000000 / -1\nVAR K;\n#ENDIF\nVAR J;\nMAIN()\nBEGIN\n  J = 1;\nEND;\n");
+        var r = Parse(SlangWebApi.Compile(path, Options("x1")));
+        Assert.True(r.GetProperty("ok").GetBoolean(), r.GetRawText());
+    }
+
+    [Fact]
     public void Version_ReportsSlangcVersion()
     {
         var v = Parse(SlangWebApi.Version());

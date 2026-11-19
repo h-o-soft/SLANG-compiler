@@ -85,6 +85,17 @@ public class HuDiskWebApiTests : IDisposable
         Assert.StartsWith("hufs: ", r.GetProperty("error").GetString());
     }
 
+    [Fact]
+    public void BuildHuDisk_LiteralLoneSurrogateInOptions_ReturnsError()
+    {
+        foreach (var options in new[] { "{\"mainName\":\"\ud800\"}", "{\"\udc00\":\"PROG\"}" })
+        {
+            var r = Parse(HuDiskWebApi.BuildHuDisk(Main, options));
+            Assert.False(r.GetProperty("ok").GetBoolean());
+            Assert.StartsWith("hufs: ", r.GetProperty("error").GetString());
+        }
+    }
+
     [Theory]
     [InlineData("ｱ")]                    // 表示できる ASCII でない (IPL の見出しに書けない)
     [InlineData("ABCDEFGHIJKLMN")]       // 14 文字

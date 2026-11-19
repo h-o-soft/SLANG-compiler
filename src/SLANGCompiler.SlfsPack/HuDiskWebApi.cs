@@ -53,8 +53,9 @@ public static class HuDiskWebApi
         {
             doc = JsonDocument.Parse(optionsJson);
         }
-        catch (JsonException e)
+        catch (Exception e) when (e is JsonException or ArgumentException)
         {
+            // JSON の誤りと、対になっていない UTF-16 のサロゲートがそのまま入った文字列 (UTF-8 にできない)
             return $"hufs: オプションの JSON を読めません: {e.Message}";
         }
         using (doc)

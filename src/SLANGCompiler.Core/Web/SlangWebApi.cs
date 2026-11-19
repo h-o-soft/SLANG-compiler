@@ -46,10 +46,9 @@ public static class SlangWebApi
                 }
             }
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or FormatException
-                                     or ArgumentException or InvalidOperationException or InvalidDataException)
+        catch (Exception e)
         {
-            // 読めないファイル・書き方の違うランタイムなど。CLI では例外で止まる所。JS には例外でなく、それまでの log と一緒に返す
+            // 読めないファイル・書き方の違うランタイムなど、CLI では例外で止まる所。JS には例外を投げず、それまでの log と一緒に返す
             result = null;
             log.WriteLine($"slangc: error: {e.Message}");
         }
@@ -106,8 +105,9 @@ public static class SlangWebApi
         {
             doc = JsonDocument.Parse(optionsJson);
         }
-        catch (JsonException e)
+        catch (Exception e) when (e is JsonException or ArgumentException)
         {
+            // JSON の誤りと、対になっていない UTF-16 のサロゲートがそのまま入った文字列 (UTF-8 にできない)
             return $"slangc: オプションの JSON を読めません: {e.Message}";
         }
         using (doc)

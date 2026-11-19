@@ -539,7 +539,7 @@ public class Preprocessor
         {
             var kind = tokens[pos].Kind;
             if (kind == TokenKind.Star) { pos++; var r = EvalUnary(tokens, ref pos); if (r == null) return null; left = left.Value * r.Value; }
-            else if (kind == TokenKind.Slash) { pos++; var r = EvalUnary(tokens, ref pos); if (r == null) return null; left = r.Value != 0 ? left.Value / r.Value : 0; }
+            else if (kind == TokenKind.Slash) { pos++; var r = EvalUnary(tokens, ref pos); if (r == null) return null; left = r.Value == 0 ? 0 : r.Value == -1 ? unchecked(-left.Value) : left.Value / r.Value; }   // -2147483648 / -1 も + - * と同じく回り込む
             else break;
         }
         return left;
