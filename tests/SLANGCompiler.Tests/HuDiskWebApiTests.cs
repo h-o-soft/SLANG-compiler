@@ -75,11 +75,25 @@ public class HuDiskWebApiTests : IDisposable
     [InlineData("{\"mainName\":\"PROG\",\"add\":\"X\"}")]
     [InlineData("{\"mainName\":\"PROG\",\"add\":[1]}")]
     [InlineData("{\"mainName\":\"PROG\",\"name\":\"X\"}")]
+    [InlineData("{\"mainName\":\"\\ud800\"}")]                  // 対になっていないサロゲート (値)
+    [InlineData("{\"\\ud800\":\"PROG\"}")]                       // 対になっていないサロゲート (項目の名前)
+    [InlineData("{\"mainName\":\"PROG\",\"add\":[\"\\udc00\"]}")]
     public void BuildHuDisk_BadOptions_ReturnsError(string options)
     {
         var r = Parse(HuDiskWebApi.BuildHuDisk(Main, options));
         Assert.False(r.GetProperty("ok").GetBoolean());
         Assert.StartsWith("hufs: ", r.GetProperty("error").GetString());
+    }
+
+    [Theory]
+    [InlineData("ｱ")]                    // 表示できる ASCII でない (IPL の見出しに書けない)
+    [InlineData("ABCDEFGHIJKLMN")]       // 14 文字
+    [InlineData("TAB\tNAME")]
+    public void BuildHuDisk_InvalidBootName_ReturnsSlangbuildError(string name)
+    {
+        var r = Parse(HuDiskWebApi.BuildHuDisk(Main, JsonSerializer.Serialize(new { mainName = name })));
+        Assert.False(r.GetProperty("ok").GetBoolean());
+        Assert.Equal($"hufs: disk main name '{name}' invalid ({BootName.Rule})", r.GetProperty("error").GetString());
     }
 
     [Fact]
@@ -112,7 +126,7 @@ public class HuDiskWebApiTests : IDisposable
 
         var lib = Path.Combine(_dir, "lib");
         Directory.CreateDirectory(Path.Combine(lib, "env"));
-        var envText = File.ReadAllText(Path.Combine(repo, "runtime", "env", "x1native_hufs.env"))
+        var envText = File.ReadAllText(Path.Combine(repo, "runtime", "env", "x1native_hufs.env")).Replace("\r\n", "\n")
             .Replace("default_org:\t\"$1000\"", "default_org:\t\"$2000\"")
             .Replace("  main_load: \"$1000\"\n", "  main_load: \"$2000\"\n")
             .Replace("  main_exec: \"$1000\"\n", "");
@@ -124,6 +138,8 @@ public class HuDiskWebApiTests : IDisposable
         File.WriteAllText(sl, "VAR J;\nMAIN()\nBEGIN\n  J = 1;\nEND;\n");
         var output = Path.Combine(_dir, "PROG");
 
+        // この試験と同じ組み立ての slangbuild (試験の出力にある slangbuild.dll) を動かす
+        var slangbuild = typeof(SLANGCompiler.Build.Driver).Assembly.Location;
         var psi = new ProcessStartInfo("dotnet")
         {
             WorkingDirectory = repo,
@@ -131,8 +147,7 @@ public class HuDiskWebApiTests : IDisposable
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
-        foreach (var a in new[] { "run", "--project", Path.Combine(repo, "src", "SLANGCompiler.Build"), "--no-build", "--",
+        foreach (var a in new[] { slangbuild,
                                   "-E", "hufs2000", "-L", lib, sl, "-o", output, "--emit", "disk",
                                   "--hufs-add", $"GREET.TXT={greet},text", "--disk-main-name", "PROG",
                                   "--asm", asm, "--slangc", TestTools.SlangcPath })

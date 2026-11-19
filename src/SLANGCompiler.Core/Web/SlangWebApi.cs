@@ -29,19 +29,29 @@ public static class SlangWebApi
         using var log = new StringWriter();
         var paths = new PathResolver(includePaths, libPaths);
         SlangCompileResult? result = null;
-        var resolution = SlangCompilation.ResolveEnvironment(env, paths, log);
-        if (resolution != null)
+        try
         {
-            if (!File.Exists(sourcePath))
-                log.WriteLine($"Error: File not found: {sourcePath}");
-            else
+            var resolution = SlangCompilation.ResolveEnvironment(env, paths, log);
+            if (resolution != null)
             {
-                var diagnostics = new DiagnosticBag();
-                result = SlangCompilation.CompileFile(sourcePath, resolution.Value.Config, paths, diagnostics, log);
-                // CLI は、全部のファイルが通ったあとに、もう一度 diagnostics を書く (warning があれば)
-                if (result.Ok && diagnostics.Diagnostics.Count > 0)
-                    diagnostics.WriteTo(log);
+                if (!File.Exists(sourcePath))
+                    log.WriteLine($"Error: File not found: {sourcePath}");
+                else
+                {
+                    var diagnostics = new DiagnosticBag();
+                    result = SlangCompilation.CompileFile(sourcePath, resolution.Value.Config, paths, diagnostics, log);
+                    // CLI は、全部のファイルが通ったあとに、もう一度 diagnostics を書く (warning があれば)
+                    if (result.Ok && diagnostics.Diagnostics.Count > 0)
+                        diagnostics.WriteTo(log);
+                }
             }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or FormatException
+                                     or ArgumentException or InvalidOperationException or InvalidDataException)
+        {
+            // 読めないファイル・書き方の違うランタイムなど。CLI では例外で止まる所。JS には例外でなく、それまでの log と一緒に返す
+            result = null;
+            log.WriteLine($"slangc: error: {e.Message}");
         }
 
         return Json(w =>
@@ -102,39 +112,55 @@ public static class SlangWebApi
         }
         using (doc)
         {
-            if (doc.RootElement.ValueKind != JsonValueKind.Object)
-                return "slangc: オプションの JSON は object で書いてください";
-            bool hasEnv = false;
-            foreach (var p in doc.RootElement.EnumerateObject())
+            try
             {
-                switch (p.Name)
-                {
-                    case "env":
-                        if (p.Value.ValueKind != JsonValueKind.String || string.IsNullOrEmpty(p.Value.GetString()))
-                            return "slangc: env は空でない文字列です";
-                        env = p.Value.GetString()!;
-                        hasEnv = true;
-                        break;
-                    case "includePaths":
-                    case "libPaths":
-                    {
-                        var list = p.Name == "includePaths" ? includePaths : libPaths;
-                        if (p.Value.ValueKind != JsonValueKind.Array)
-                            return $"slangc: {p.Name} は文字列の配列です";
-                        foreach (var e in p.Value.EnumerateArray())
-                        {
-                            if (e.ValueKind != JsonValueKind.String || string.IsNullOrEmpty(e.GetString()))
-                                return $"slangc: {p.Name} は文字列の配列です";
-                            list.Add(e.GetString()!);
-                        }
-                        break;
-                    }
-                    default:
-                        return $"slangc: 知らないオプションです: {p.Name}";
-                }
+                return ReadOptions(doc.RootElement, out env, out includePaths, out libPaths);
             }
-            if (!hasEnv) return "slangc: オプションの JSON に env がありません";
+            catch (Exception e) when (e is InvalidOperationException or ArgumentException or FormatException)
+            {
+                // 項目の名前や文字列の値を読めないとき (対になっていないサロゲートの \ud800 など)
+                return $"slangc: オプションの JSON を読めません: {e.Message}";
+            }
         }
+    }
+
+    private static string? ReadOptions(JsonElement root, out string env, out List<string> includePaths, out List<string> libPaths)
+    {
+        env = "";
+        includePaths = new List<string>();
+        libPaths = new List<string>();
+        if (root.ValueKind != JsonValueKind.Object)
+            return "slangc: オプションの JSON は object で書いてください";
+        bool hasEnv = false;
+        foreach (var p in root.EnumerateObject())
+        {
+            switch (p.Name)
+            {
+                case "env":
+                    if (p.Value.ValueKind != JsonValueKind.String || string.IsNullOrEmpty(p.Value.GetString()))
+                        return "slangc: env は空でない文字列です";
+                    env = p.Value.GetString()!;
+                    hasEnv = true;
+                    break;
+                case "includePaths":
+                case "libPaths":
+                {
+                    var list = p.Name == "includePaths" ? includePaths : libPaths;
+                    if (p.Value.ValueKind != JsonValueKind.Array)
+                        return $"slangc: {p.Name} は文字列の配列です";
+                    foreach (var e in p.Value.EnumerateArray())
+                    {
+                        if (e.ValueKind != JsonValueKind.String || string.IsNullOrEmpty(e.GetString()))
+                            return $"slangc: {p.Name} は文字列の配列です";
+                        list.Add(e.GetString()!);
+                    }
+                    break;
+                }
+                default:
+                    return $"slangc: 知らないオプションです: {p.Name}";
+            }
+        }
+        if (!hasEnv) return "slangc: オプションの JSON に env がありません";
         return null;
     }
 

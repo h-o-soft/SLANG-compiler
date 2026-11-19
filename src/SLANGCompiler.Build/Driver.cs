@@ -205,7 +205,7 @@ public class Driver
                 {
                     Console.Error.WriteLine(
                         $"slangbuild: disk main name '{name}' ({source}) invalid "
-                        + "(ASCII printable 0x20-0x7E, 1..13 char)");
+                        + $"({SLANGCompiler.SlfsPack.BootName.Rule})");
                     return 1;
                 }
                 if (_opts.Verbose)

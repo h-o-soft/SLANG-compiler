@@ -38,11 +38,5 @@ public static class SlfsMainName
     /// X1 の FileName と同じ: ASCII printable (0x20-0x7E) + 1..13 char
     /// (= `--tape-name` と同じ規律、 silent truncate しない)。
     /// </summary>
-    public static bool IsValid(string name)
-    {
-        if (string.IsNullOrEmpty(name) || name.Length > 13) return false;
-        foreach (var ch in name)
-            if (ch < 0x20 || ch > 0x7E) return false;
-        return true;
-    }
+    public static bool IsValid(string name) => SLANGCompiler.SlfsPack.BootName.IsValid(name);
 }

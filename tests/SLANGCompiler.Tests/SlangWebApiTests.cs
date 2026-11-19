@@ -145,11 +145,30 @@ public class SlangWebApiTests : IDisposable
     [InlineData("{\"env\":\"x1\",\"includePaths\":\"/a\"}")]
     [InlineData("{\"env\":\"x1\",\"libPaths\":[1]}")]
     [InlineData("{\"env\":\"x1\",\"output\":\"a\"}")]
+    [InlineData("{\"env\":\"\\ud800\"}")]                         // 対になっていないサロゲート (値)
+    [InlineData("{\"\\ud800\":\"x1\"}")]                          // 対になっていないサロゲート (項目の名前)
+    [InlineData("{\"env\":\"x1\",\"libPaths\":[\"\\udc00\"]}")]
     public void Compile_BadOptions_ReturnsError(string options)
     {
         var r = Parse(SlangWebApi.Compile(Path.Combine(_dir, "OK.SL"), options));
         Assert.False(r.GetProperty("ok").GetBoolean());
         Assert.StartsWith("slangc: ", r.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public void Compile_UnreadableRuntime_ReturnsLogInsteadOfThrowing()
+    {
+        // 書き方の違うランタイム (@resident の値が無い言葉) は、CLI では例外で止まる。
+        // ブラウザの口は例外を JS に投げず、それまでの log に理由を足して ok:false を返す
+        var lib = Path.Combine(_dir, "lib");
+        Directory.CreateDirectory(Path.Combine(lib, "env"));
+        File.WriteAllText(Path.Combine(lib, "env", "badlib.env"), "env_type: 99\nos_type: 99\nlibraries:\n  - runtime.yml\n  - bad.yml\n");
+        File.WriteAllText(Path.Combine(lib, "bad.asm"), "; @name FOO\n; @resident nonsense\nRET\n");
+        var path = Source("OK.SL", "VAR J;\nMAIN()\nBEGIN\n  J = 1;\nEND;\n");
+        var r = Parse(SlangWebApi.Compile(path, JsonSerializer.Serialize(new { env = "badlib", libPaths = new[] { lib, _repo } })));
+        Assert.False(r.GetProperty("ok").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, r.GetProperty("asm").ValueKind);
+        Assert.StartsWith("slangc: error: ", Lines(r, "log").Last());
     }
 
     [Fact]
