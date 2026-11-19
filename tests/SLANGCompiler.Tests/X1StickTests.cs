@@ -68,7 +68,8 @@ public class X1StickTests
     public void Stick_ReadsPsgPortAndRestoresInterruptState()
     {
         // 範囲の検査の後から .STICK_INVALID の前までは、この並びのとおり:
-        // - IFF2 を LD A,I で P/V に写して覚え (PUSH AF)、DI してから PSG を選んで読む
+        // - IFF2 を LD A,I で P/V に写す。NMOS の Z80 で、LD A,I の終わりに割り込みを受けて P/V が 0 になったときのため、
+        //   1 回目が 0 (PO) ならもう 1 回 LD A,I する。すぐ DI して、P/V を PUSH AF で覚えてから PSG を選んで読む
         // - レジスタ (14 + 番号) を $1C00 で選び、すぐ後に $1Bxx から読む
         // - 覚えた P/V で、割り込みが止まっていたなら RET PO でそのまま戻り、許可だったときだけ EI
         var lines = CodeLines(LoadStick());
@@ -76,8 +77,11 @@ public class X1StickTests
         Assert.Equal(new[]
         {
             "LD A,I",
-            "PUSH AF",
+            "JP PE,.STICK_IFF",
+            "LD A,I",
+            ".STICK_IFF",
             "DI",
+            "PUSH AF",
             "LD A,L",
             "ADD A,$0E",
             "LD BC,$1C00",
