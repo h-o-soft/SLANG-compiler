@@ -221,6 +221,53 @@ public class SlangWebApiTests : IDisposable
         Assert.True(ok.GetProperty("ok").GetBoolean(), ok.GetRawText());
     }
 
+    private static string Repeat(string s, int n) => string.Concat(Enumerable.Repeat(s, n));
+
+    public static TheoryData<string, string> DeepSources => new()
+    {
+        // 式の括弧・単項の演算子 (空白で区切る。続けると -- の字句になる)・文の入れ子・#IF の入れ子
+        { "parens", "VAR J;\nMAIN()\nBEGIN\n  J = " + Repeat("(", 10000) + "1" + Repeat(")", 10000) + ";\nEND;\n" },
+        { "unary", "VAR J;\nMAIN()\nBEGIN\n  J = " + Repeat("- ", 10000) + "1;\nEND;\n" },
+        { "blocks", "VAR J;\nMAIN()\nBEGIN\n" + Repeat("{\n", 10000) + "J = 1;\n" + Repeat("}\n", 10000) + "END;\n" },
+        { "ifblocks", Repeat("#IF 1\n", 10000) + "VAR J;\n" + Repeat("#ENDIF\n", 10000) + "MAIN()\nBEGIN\n  J = 1;\nEND;\n" },
+    };
+
+    [Theory]
+    [MemberData(nameof(DeepSources))]
+    public void Compile_DeeplyNestedSource_ReturnsErrorAndNextCompileWorks(string kind, string text)
+    {
+        // 深すぎる入れ子は、スタックを使い果たす前に source の error にする。そのあとも同じ口でコンパイルできる
+        var r = Parse(SlangWebApi.Compile(Source($"DEEP_{kind}.SL", text), Options("x1")));
+        Assert.False(r.GetProperty("ok").GetBoolean());
+        Assert.Contains(Lines(r, "log"), l => l.Contains("nested too deeply"));
+
+        var ok = Parse(SlangWebApi.Compile(Source("OK.SL", "VAR J;\nMAIN()\nBEGIN\n  J = 1;\nEND;\n"), Options("x1")));
+        Assert.True(ok.GetProperty("ok").GetBoolean(), ok.GetRawText());
+    }
+
+    [Theory]
+    [InlineData("parens")]
+    [InlineData("blocks")]
+    public void Compile_NestingBelowLimit_StillCompiles(string kind)
+    {
+        // 上限より少し浅い入れ子は、後の段 (意味・IR・コード生成) も含めてふつうに通る
+        var text = kind == "parens"
+            ? "VAR J;\nMAIN()\nBEGIN\n  J = " + Repeat("(", 200) + "1" + Repeat(")", 200) + ";\nEND;\n"
+            : "VAR J;\nMAIN()\nBEGIN\n" + Repeat("{\n", 200) + "J = 1;\n" + Repeat("}\n", 200) + "END;\n";
+        var r = Parse(SlangWebApi.Compile(Source($"NEST_{kind}.SL", text), Options("x1")));
+        Assert.True(r.GetProperty("ok").GetBoolean(), r.GetRawText());
+    }
+
+    [Fact]
+    public void Compile_DeepIfExpression_ErrorPointsAtDirective()
+    {
+        // #IF の式の入れ子の error は、#IF を書いたファイルと行を指す (式を字句にし直した仮の名前ではない)
+        var path = Source("IFDEEP.SL", "VAR J;\n#IF " + Repeat("(", 1000) + "1" + Repeat(")", 1000) + "\nVAR K;\n#ENDIF\nMAIN()\nBEGIN\n  J = 1;\nEND;\n");
+        var r = Parse(SlangWebApi.Compile(path, Options("x1")));
+        var line = Lines(r, "log").First(l => l.Contains("#IF expression is nested too deeply"));
+        Assert.StartsWith(path + ":2:", line);
+    }
+
     [Fact]
     public void Version_ReportsSlangcVersion()
     {

@@ -426,8 +426,15 @@ public class Preprocessor
         }
 
         // 採用したトークンを、同じファイルの文脈で処理する（内側の#IFを評価。#INCLUDE はこのファイルの場所から探し、
-        // #CHAIN ならこのファイルの残りも止める）
-        ProcessTokens(collect, ctx, result);
+        // #CHAIN ならこのファイルの残りも止める）。入れ子の #IF の深さには上限を置く (深すぎるとスタックを使い果たす)
+        if (_ifBlockNesting >= MaxIfNesting)
+        {
+            _diagnostics.Error($"#IF blocks are nested too deeply (more than {MaxIfNesting} levels)", ifToken.Span);
+            return i;
+        }
+        _ifBlockNesting++;
+        try { ProcessTokens(collect, ctx, result); }
+        finally { _ifBlockNesting--; }
 
         return i;
     }
@@ -441,6 +448,7 @@ public class Preprocessor
         if (int.TryParse(expr, out int val)) return val != 0;
 
         // 式をトークン化して再帰下降で評価
+        _ifSpan = ifToken.Span;
         var tokens = new Lexer(expr, "#IF").Tokenize();
         int pos = 0;
         int? result = EvalBitOps(tokens, ref pos);
@@ -548,6 +556,9 @@ public class Preprocessor
     /// <summary>#IF の式の入れ子 (単項の演算子と括弧) の深さの上限。越えたら error (深すぎる式でスタックを使い果たさないように)</summary>
     private const int MaxIfNesting = 256;
     private int _ifNesting;
+    private int _ifBlockNesting;
+    /// <summary>評価している #IF の書いてある所 (式の error はここを指す。式は "#IF" という名前で字句にし直すので)</summary>
+    private SourceSpan _ifSpan = SourceSpan.Unknown;
 
     /// <summary>- / NOT / CPL</summary>
     private int? EvalUnary(List<Token> tokens, ref int pos)
@@ -558,8 +569,7 @@ public class Preprocessor
         {
             if (_ifNesting > MaxIfNesting)
             {
-                var at = tokens[Math.Min(pos, tokens.Count - 1)];
-                _diagnostics.Error($"#IF expression is nested too deeply (more than {MaxIfNesting} levels)", at.Span);
+                _diagnostics.Error($"#IF expression is nested too deeply (more than {MaxIfNesting} levels)", _ifSpan);
                 return null;
             }
             if (pos < tokens.Count)
