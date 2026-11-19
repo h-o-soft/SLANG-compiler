@@ -134,13 +134,15 @@ RET
 ; PSG を使う間は割り込みを止め、割り込みの状態は呼ぶ前のまま戻す。
 ; 状態は LD A,I (IFF2 を P/V に写す) で知る。NMOS の Z80 は、LD A,I の終わりで割り込みを受けると、許可でも P/V が 0 になる。
 ; そこで、スタックのすぐ下に 0 を置いてから LD A,I し、P/V が 0 なら、そこが割り込みの戻り先 (上位は 0 でない) で
-; 上書きされていないかを見る。上書きされていれば、割り込みを受けた (= 許可だった)
+; 上書きされていないかを見る。上書きされていれば、何かの割り込みを受けた (止めていても NMI は入る) ので、もう一度確かめる。
+; P/V が 1 なら許可、P/V が 0 で上書きされていなければ止まっていた
 LD A,H
 OR A
 JR NZ,.STICK_INVALID
 LD A,L
 CP 2
 JR NC,.STICK_INVALID
+.STICK_PROBE
 XOR A
 PUSH AF
 POP AF
@@ -150,7 +152,7 @@ DEC SP
 DEC SP
 POP AF
 OR A
-JR NZ,.STICK_ON
+JR NZ,.STICK_PROBE
 LD D,A
 JR .STICK_READ
 .STICK_ON

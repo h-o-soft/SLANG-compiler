@@ -69,7 +69,8 @@ public class X1StickTests
     {
         // 範囲の検査の後から .STICK_INVALID の前までは、この並びのとおり:
         // - 割り込みの状態: スタックのすぐ下に 0 を置いて LD A,I。P/V が 1 なら許可。0 なら、置いた所が
-        //   割り込みの戻り先で上書きされたか (NMOS の Z80 の LD A,I) を見て、上書きされていれば許可。D に 1 (許可)・0 (止まっていた)
+        //   割り込みの戻り先で上書きされたか (NMOS の Z80 の LD A,I、止めていても入る NMI) を見て、上書きされていればもう一度確かめる。
+        //   P/V が 0 で上書きされていなければ止まっていた。D に 1 (許可)・0 (止まっていた)
         // - DI してから、レジスタ 7 を読んで E に覚え、そのポートのビット (A は 6、B は 7) を 0 (入力) にして書く
         // - レジスタ (14 + 番号) を $1C00 で選んで、すぐ $1Bxx から読む
         // - レジスタ 7 を E に戻し、D が 0 ならそのまま戻り、1 なら EI して戻る
@@ -77,6 +78,7 @@ public class X1StickTests
         int invalid = Array.IndexOf(lines, ".STICK_INVALID");
         Assert.Equal(new[]
         {
+            ".STICK_PROBE",
             "XOR A",
             "PUSH AF",
             "POP AF",
@@ -86,7 +88,7 @@ public class X1StickTests
             "DEC SP",
             "POP AF",
             "OR A",
-            "JR NZ,.STICK_ON",
+            "JR NZ,.STICK_PROBE",
             "LD D,A",
             "JR .STICK_READ",
             ".STICK_ON",
