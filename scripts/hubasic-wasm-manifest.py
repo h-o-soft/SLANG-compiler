@@ -288,6 +288,8 @@ def cmd_write(repo, out, sha, dirty, version, asm, asm_version, cases, hufs_add,
 
 
 def cmd_verify(out):
+    if not os.path.isfile(os.path.join(out, "manifest.json")):
+        fail(f"{out} に manifest.json がありません (組み立てが途中で止まった束か、束ではありません)")
     with open(os.path.join(out, "manifest.json"), encoding="utf-8") as f:
         m = json.load(f)
     paths = [e["path"] for e in m["files"]]

@@ -25,22 +25,11 @@ if [ $# -ne 1 ]; then
   echo "使い方: $0 <出力フォルダ>" >&2
   exit 2
 fi
-# 束のファイルは、ほかの人やサーバーも読めるように作る (持ち主だけが読める umask の環境でも)
-umask 022
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$1"
-# 出力フォルダは、シンボリックリンクをたどった本当の場所にする (最後に、その場所へ付け替えるので)
-OUT="$(cd "$1" && pwd -P)"
+OUT="$(cd "$1" && pwd)"
 if [ -n "$(ls -A "$OUT")" ]; then
   echo "build-hubasic-wasm: $OUT が空ではありません (消すか、別のフォルダを指定してください)" >&2
-  exit 2
-fi
-# 束は最後に 1 回の付け替えで置くので、出力フォルダの許可は持ち主・グループ・許可のビットだけを引き継ぐ。
-# ACL (拡張の許可) のある出力フォルダは引き継げないので、何かを作る前に止める
-if ! python3 -I -c 'import os, sys
-names = os.listxattr(sys.argv[1]) if hasattr(os, "listxattr") else []
-sys.exit(1 if any(n.startswith("system.posix_acl") for n in names) else 0)' "$OUT"; then
-  echo "build-hubasic-wasm: $OUT には ACL があります。ACL の無いフォルダを指定してください (束は付け替えで置くので、ACL を引き継げません)" >&2
   exit 2
 fi
 # slangc は今の作業フォルダの runtime/ を先に探すので、この木の根から動かす
@@ -76,14 +65,10 @@ if ! command -v "$NODE" > /dev/null 2>&1 \
 fi
 
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
-# 束は出力フォルダの隣の一時のフォルダで作り、manifest と CLI との比べ合わせが全部通ってから、
-# 1 回の名前の付け替え (rename) で出力フォルダにする。途中で止まったら出力フォルダは空のまま。
-# 付け替えは、出力フォルダが空でなくなっていれば失敗する (同時に動いたほかの組み立てを上書きしない)
-FINAL="$OUT"
-STAGE="$(mktemp -d "$(dirname "$FINAL")/.$(basename "$FINAL").building.XXXXXX")"
-trap 'rm -rf "$TMP" "$STAGE"' EXIT
-OUT="$STAGE"
+# 束は出力フォルダに直に作る (許可は呼んだ人の umask と出力フォルダのまま)。manifest.json は、manifest の検査と
+# CLI との比べ合わせが全部通ったときだけ残し、途中で止まったら消す。manifest の無い束は、検査も取り込みも通らない
+COMPLETE=false
+trap 'rm -rf "$TMP"; [ "$COMPLETE" = true ] || rm -f "$OUT/manifest.json"' EXIT
 
 echo "[1/5] CLI (hubasic2sl・slangc・slangbuild) を組み立てます"
 for p in SLANGCompiler.HuBasic SLANGCompiler.CLI SLANGCompiler.Build; do
@@ -147,17 +132,5 @@ python3 -I scripts/hubasic-wasm-manifest.py verify "$OUT"
 echo "[5/5] wasm の変換・コンパイル・ディスク作りを CLI と比べます"
 "$NODE" scripts/hubasic-wasm-smoke.mjs "$OUT" "$REPO" "$HUB" "$SLANGC_DLL"
 
-# 全部通ったので、出力フォルダに付け替える (空のフォルダへの rename。空でなければ失敗する)。
-# 一時のフォルダは持ち主だけが読める作りなので、付け替える前に、出力フォルダのグループと許可のビットに合わせる
-# (グループを合わせられなければ、付け替えずに止める)
-if ! python3 -I -c 'import os, stat, sys
-st = os.stat(sys.argv[2])
-if os.stat(sys.argv[1]).st_gid != st.st_gid:
-    os.chown(sys.argv[1], -1, st.st_gid)
-os.chmod(sys.argv[1], stat.S_IMODE(st.st_mode))
-os.rename(sys.argv[1], sys.argv[2])' "$STAGE" "$FINAL"; then
-  echo "build-hubasic-wasm: $FINAL に置けませんでした (組み立ての間に空でなくなったか、別のファイルシステムです)" >&2
-  exit 1
-fi
-python3 -I scripts/hubasic-wasm-manifest.py verify "$FINAL"
-echo "build-hubasic-wasm: $FINAL にできました (SHA $SHA、dirty $DIRTY)"
+COMPLETE=true
+echo "build-hubasic-wasm: $OUT にできました (SHA $SHA、dirty $DIRTY)"

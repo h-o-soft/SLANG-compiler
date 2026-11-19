@@ -137,15 +137,32 @@ try {
     };
   }
 
-  // wasm の slangc: 束の runtime・env・include だけを見る。ソースは、そのソースのある dir ごと同じ絶対の道で入れる
+  // リポジトリの見本は、そのフォルダの git に入っているファイルだけを一時の所に写し、CLI も wasm もその写しで比べる
+  // (git に入っていない手元のファイルが、比べ合わせを止めたり、束の include を隠したりしないように)
+  const fixtureRoot = path.join(tmp, 'fixture');
+  const copiedDirs = new Set();
+  function fixture(src) {
+    const rel = path.relative(repo, src);
+    const dirRel = path.dirname(rel);
+    if (!copiedDirs.has(dirRel)) {
+      const r = spawnSync('git', ['-C', repo, 'ls-files', '-z', '--', dirRel], { encoding: 'utf8' });
+      if (r.status !== 0) throw new Error(`git ls-files: ${r.stderr}`);
+      for (const f of r.stdout.split('\0').filter(f => f.length > 0 && path.dirname(f) === dirRel)) {
+        fs.mkdirSync(path.join(fixtureRoot, dirRel), { recursive: true });
+        fs.copyFileSync(path.join(repo, f), path.join(fixtureRoot, f));
+      }
+      copiedDirs.add(dirRel);
+    }
+    return path.join(fixtureRoot, rel);
+  }
+
+  // wasm の slangc: 束の runtime・env・include だけを見る。ソースは、そのソースのある dir の普通のファイルを同じ絶対の道で入れる
   const uploaded = new Set();
   function wasmSlangc(src, env) {
     const dir = path.dirname(src);
     if (!uploaded.has(dir)) {
-      for (const f of fs.readdirSync(dir)) {
-        const p = path.join(dir, f);
-        if (fs.statSync(p).isFile()) slang.PutFile(p, new Uint8Array(fs.readFileSync(p)));
-      }
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true }).filter(e => e.isFile()))
+        slang.PutFile(path.join(dir, ent.name), new Uint8Array(fs.readFileSync(path.join(dir, ent.name))));
       uploaded.add(dir);
     }
     const r = JSON.parse(slang.Compile(src, JSON.stringify({ env, libPaths: [bundle], includePaths: bundleIncludes })));
@@ -191,7 +208,7 @@ try {
   const NEEDS_NON_X1_INCLUDE = ['MSXLSX.SL', 'MSXROM.SL', 'MSXSPDRV2.SL', 'MSXSPDRV.SL'];
   check(JSON.stringify(listed) === JSON.stringify([...X1_EXAMPLES].sort()), 'x1 の見本の一覧が examples と合う');
   for (const f of X1_EXAMPLES) {
-    const src = path.join(repo, 'examples', f);
+    const src = fixture(path.join(repo, 'examples', f));
     if (NEEDS_NON_X1_INCLUDE.includes(f)) {
       const a = cliSlangc(src, 'x1');
       const b = wasmSlangc(src, 'x1');
