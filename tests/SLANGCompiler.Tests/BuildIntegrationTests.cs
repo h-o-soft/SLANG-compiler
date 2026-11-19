@@ -209,6 +209,25 @@ public class BuildIntegrationTests : IDisposable
         Assert.True(File.Exists(Path.Combine(_tempDir, "flog.bin")), $"bin not produced. stderr: {stderr}");
     }
 
+    [SkippableFact]
+    public void Stick_LinksOnlyWhenUsed_X1Native()
+    {
+        // X1 の STICK (libx1_base) を呼ぶプログラムは組み立てられ、ASM に STICK が入る。呼ばないプログラムには入らない
+        Skip.IfNot(File.Exists(_ailz80AsmPath), "AILZ80ASM がない");
+        var withPath = Path.Combine(_tempDir, "stick.SL");
+        File.WriteAllText(withPath, "VAR J;\nMAIN()\nBEGIN\n  J = STICK(0) + STICK(1);\n  IF (J & $01) == 0 THEN PRINT(\"UP\");\nEND;\n");
+        var (code, stdout, stderr) = RunSlangbuild(withPath, "-E", "x1native", "--keep-asm");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        Assert.True(File.Exists(Path.Combine(_tempDir, "stick.bin")), $"bin not produced. stderr: {stderr}");
+        Assert.Matches(@"(?m)^STICK:", File.ReadAllText(Path.Combine(_tempDir, "stick.ASM")));
+
+        var withoutPath = Path.Combine(_tempDir, "nostick.SL");
+        File.WriteAllText(withoutPath, "VAR J;\nMAIN()\nBEGIN\n  J = 1;\nEND;\n");
+        (code, stdout, stderr) = RunSlangbuild(withoutPath, "-E", "x1native", "--keep-asm");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        Assert.DoesNotMatch(@"(?m)^STICK:", File.ReadAllText(Path.Combine(_tempDir, "nostick.ASM")));
+    }
+
     [Theory]
     [InlineData("", true)]
     [InlineData("ORG $D000;", false)]                              // コードが WORK に重なる
