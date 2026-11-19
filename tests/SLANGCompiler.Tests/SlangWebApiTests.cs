@@ -259,6 +259,18 @@ public class SlangWebApiTests : IDisposable
     }
 
     [Fact]
+    public void Compile_DeepConstInitializer_ReportsSourceError()
+    {
+        // CONST の右辺は前処理でも読む (#IF に使う値)。入れ子が深すぎても例外で止まらず、構文の error がその行を指す
+        var path = Source("CONSTDEEP.SL", "VAR J;\nCONST A = " + Repeat("(", 10000) + "1" + Repeat(")", 10000) + ";\nMAIN()\nBEGIN\n  J = A;\nEND;\n");
+        var r = Parse(SlangWebApi.Compile(path, Options("x1")));
+        Assert.False(r.GetProperty("ok").GetBoolean());
+        var line = Lines(r, "log").First(l => l.Contains("nested too deeply"));
+        Assert.StartsWith(path + ":2:", line);
+        Assert.DoesNotContain(Lines(r, "log"), l => l.StartsWith("slangc: error:"));
+    }
+
+    [Fact]
     public void Compile_DeepIfExpression_ErrorPointsAtDirective()
     {
         // #IF の式の入れ子の error は、#IF を書いたファイルと行を指す (式を字句にし直した仮の名前ではない)

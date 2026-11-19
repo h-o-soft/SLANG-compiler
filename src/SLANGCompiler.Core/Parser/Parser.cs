@@ -1086,9 +1086,18 @@ public class Parser
     {
         var diag = new DiagnosticBag();
         var p = new Parser(tokens, diag) { _pos = start };
-        var e = p.ParseNcExpr();
-        end = p._pos;
-        return diag.HasErrors ? null : e;
+        try
+        {
+            var e = p.ParseNcExpr();
+            end = p._pos;
+            return diag.HasErrors ? null : e;
+        }
+        catch (NestingTooDeepException)
+        {
+            // 入れ子が深すぎる: 値は決めない。あとの構文の読み取りが、同じ所で source の error を書く
+            end = p._pos;
+            return null;
+        }
     }
 
     private Expression ParseAssign()
