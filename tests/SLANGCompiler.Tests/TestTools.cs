@@ -8,7 +8,8 @@ namespace SLANGCompiler.Tests;
 /// 試験が slangbuild を動かすときに --slangc で渡す slangc。slangbuild は slangc を同梱・開発の publish・PATH から探し、
 /// どこにも無ければ止まるので、試験は今の木の slangc を明示して渡す。
 /// 試験のプロセスごとに 1 回、今の木の CLI をこのプロセスだけの一時のフォルダに publish する
-/// (前に publish した古い slangc を使わず、同時に動くほかの試験のプロセスとも取り合わない。終わったら消す)
+/// (前に publish した古い slangc を使わない。restore と途中のファイルも --artifacts-path でそのフォルダに置くので、
+/// 同じ CLI のプロジェクトを dotnet run する試験や、同時に動くほかの試験のプロセスとも取り合わない。終わったら消す)
 /// </summary>
 internal static class TestTools
 {
@@ -56,7 +57,8 @@ internal static class TestTools
         };
         psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
         foreach (var a in new[] { "publish", "src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj", "-c", "Release", "-r", rid,
-                                  "--self-contained", "true", "-p:PublishSingleFile=true", "-o", outDir })
+                                  "--self-contained", "true", "-p:PublishSingleFile=true", "-o", outDir,
+                                  "--artifacts-path", Path.Combine(outDir, "artifacts") })
             psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         var stdoutTask = proc.StandardOutput.ReadToEndAsync();
