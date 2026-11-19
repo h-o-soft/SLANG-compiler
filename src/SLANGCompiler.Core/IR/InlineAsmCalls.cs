@@ -1,7 +1,7 @@
 namespace SLANGCompiler.IR;
 
 /// <summary>
-/// #ASM の中の `CALL 名前` の行を読む。コード生成がランタイムを選ぶのと、モジュールの呼び出しをたどるのに使う
+/// #ASM の中の `CALL 名前` の行を読む。トップレベルの #ASM から、呼ぶランタイムを選ぶのに使う
 /// </summary>
 public static class InlineAsmCalls
 {
@@ -52,15 +52,4 @@ public static class InlineAsmCalls
             .Select(i => i.Dest.Kind == IrOperandKind.Temp ? i.Src1.Name : i.Dest.Name)
             .Where(a => a != null)
             .Select(a => a!);
-
-    /// <summary>
-    /// 組む単位 (本体は overlay = null、モジュールはその overlay) の #ASM から見えるラベル。
-    /// 本体: 本体のトップレベルの #ASM と本体の関数の #ASM。モジュール: そのモジュールの関数の #ASM と、
-    /// 本体のトップレベルの #ASM (モジュールから借りられる。本体の関数の中の #ASM のラベルは借りられない)
-    /// </summary>
-    public static HashSet<string> VisibleLabels(IrModule module, OverlayModule? overlay)
-    {
-        var texts = TopLevel(module).Concat(InFunctions(overlay == null ? module.Functions : overlay.Functions));
-        return new HashSet<string>(Labels(texts.SelectMany(a => a.Split('\n'))), StringComparer.OrdinalIgnoreCase);
-    }
 }

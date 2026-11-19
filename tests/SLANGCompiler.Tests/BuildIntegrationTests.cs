@@ -216,9 +216,11 @@ public class BuildIntegrationTests : IDisposable
     [InlineData("#ASM\nFOO:\n\tCALL M8ALIB.M8ALOAD\n\tRET\n#END\nMAIN()\nBEGIN\nEND;\n")]              // @lib のあるランタイムを名前空間つきで
     [InlineData("#ASM\nFOO:\n\tCALL NAME_SPACE_DEFAULT.MULHLDE\n\tRET\n#END\nMAIN()\nBEGIN\nEND;\n")]    // @lib の無いランタイム
     [InlineData("#ASM\nMULHLDE:\n\tRET\nFOO:\n\tCALL NAME_SPACE_DEFAULT.MULHLDE\n\tRET\n#END\nMAIN()\nBEGIN\nEND;\n")]   // 自分のラベルなら、ランタイムを重ねて入れない
+    [InlineData("#ASM\n[M8ALIB]\nM8ALOAD:\n\tRET\n[NAME_SPACE_DEFAULT]\nFOO:\n\tCALL M8ALIB.M8ALOAD\n\tRET\n#END\nMAIN()\nBEGIN\nEND;\n")]   // ランタイムの名前空間に自分で決めたラベル
     public void InlineAsmQualifiedCall_Builds(string source)
     {
-        // #ASM の CALL を名前空間つきで書いても、そのランタイムが入って組み立てられる (ほかに入れるものが無くても)
+        // トップレベルの #ASM の CALL を名前空間つきで書いても、そのランタイムが入って組み立てられる (ほかに入れるものが無くても)。
+        // 自分で同じ名前のラベルを決めているときは、ランタイムを重ねて入れない
         Skip.IfNot(File.Exists(_ailz80AsmPath), "AILZ80ASM がない");
         var slPath = Path.Combine(_tempDir, "qual.SL");
         File.WriteAllText(slPath, source);

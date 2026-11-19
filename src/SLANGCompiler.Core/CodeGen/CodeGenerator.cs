@@ -98,9 +98,6 @@ public class CodeGenerator
         foreach (var f in _module.Functions) EmitFunction(f);
         var mainCalled = new HashSet<string>(_calledFunctions, StringComparer.OrdinalIgnoreCase);
 
-        // トップレベルの #ASM の CALL (#ASM はモジュールの外にだけ書ける)
-        mainCalled.UnionWith(GlobalAsmCallNames());
-
         // address symbol deps (CONST 式等で参照される runtime ラベル)
         foreach (var dep in _module.AddressSymbolDeps)
             if (_runtimeManager.Functions.ContainsKey(dep)) mainCalled.Add(dep);
@@ -125,7 +122,8 @@ public class CodeGenerator
             ? new[] { "SLANGINIT" }
             : Array.Empty<string>();
 
-        _runtimePlan = RuntimePlanner.Build(mainCalled, _module.Overlays,
+        // トップレベルの #ASM の CALL で呼ぶランタイムも本体に入れる (ランタイムを選ぶためだけ。関数の取り込みには使わない)
+        _runtimePlan = RuntimePlanner.Build(mainCalled.Concat(GlobalAsmRuntimeCalls()), _module.Overlays,
             overlayCalled, _runtimeManager, inlineNames);
 
         // PR-B2: per-target called functions を保持し、Exports/Imports セクション emit
@@ -347,7 +345,7 @@ public class CodeGenerator
         if (_runtimeManager != null && _runtimePlan == null)
         {
             var userFuncs = new HashSet<string>(_module.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
-            foreach (var name in _calledFunctions.Concat(GlobalAsmCallNames()))
+            foreach (var name in _calledFunctions.Concat(GlobalAsmRuntimeCalls()))
             {
                 if (!userFuncs.Contains(name))
                     _runtimeManager.MarkUsed(name);
@@ -632,51 +630,37 @@ public class CodeGenerator
     // #ASM の行の頭で決めるラベル (`名前:` と `名前 EQU`。前の空白はよい)
     private static IEnumerable<string> AsmLineLabels(IEnumerable<string> lines) => InlineAsmCalls.Labels(lines);
 
-    // #ASM の CALL がその単位で見える #ASM のラベル (InlineAsmCalls.VisibleLabels) なら、それを呼ぶものとして、ランタイムは入れない
-    // (入れると同名のラベルになる)。利用者の関数の名前は除かない (モジュールの関数の取り込みに使うため)
-    private HashSet<string>? _mainAsmLabels;
-    private readonly Dictionary<OverlayModule, HashSet<string>> _overlayAsmLabels = new();
-    private HashSet<string>? _userFunctionNames;
-
-    private HashSet<string> AsmLabelsFor(IrFunction? func)
-    {
-        var overlay = func == null ? null : _module.Overlays.FirstOrDefault(o => o.Functions.Contains(func));
-        if (overlay == null)
-            return _mainAsmLabels ??= InlineAsmCalls.VisibleLabels(_module, null);
-        if (!_overlayAsmLabels.TryGetValue(overlay, out var labels))
-            _overlayAsmLabels[overlay] = labels = InlineAsmCalls.VisibleLabels(_module, overlay);
-        return labels;
-    }
-
     /// <summary>
-    /// #ASM の中の CALL の名前。その単位で見える #ASM のラベル (利用者の関数の名前でないもの) は除く。
-    /// `ライブラリ名.名前` (@lib のあるランタイム) は、ランタイムの名前にする
+    /// トップレベル (関数の外) の #ASM の CALL の行で呼ぶランタイムの名前 (ライブラリの #ASM が呼ぶ MULHLDE など)。
+    /// 入れるのは、ランタイムの関数で、次のどれでもないものだけ (入れると同じ名前の定義が 2 つになるか、決まりを外れるため):
+    ///   - 利用者の関数の名前 (本体・モジュール)
+    ///   - 本体の #ASM (トップレベル・関数の中) で行の頭に決めたラベルと同じ名前 (名前空間は見ずに、名前だけで比べる)
+    ///   - ZXN_MODULE (#MODULE の検査は、トップレベルの #ASM を通る呼び出しをたどらないため)
+    /// 関数の中の #ASM の CALL は、いままでどおり EmitFunction で集める
     /// </summary>
-    private IEnumerable<string> AsmCallNames(string asm, IrFunction? func)
+    private IEnumerable<string> GlobalAsmRuntimeCalls()
     {
-        var labels = AsmLabelsFor(func);
-        _userFunctionNames ??= new HashSet<string>(
+        if (_runtimeManager == null) yield break;
+        var topLevel = InlineAsmCalls.TopLevel(_module).ToList();
+        if (topLevel.Count == 0) yield break;
+        var userFuncs = new HashSet<string>(
             _module.Functions.Concat(_module.Overlays.SelectMany(o => o.Functions)).Select(f => f.Name),
             StringComparer.OrdinalIgnoreCase);
-        foreach (var name in InlineAsmCalls.Names(asm))
+        var labels = new HashSet<string>(
+            InlineAsmCalls.Labels(topLevel.Concat(InlineAsmCalls.InFunctions(_module.Functions)).SelectMany(a => a.Split('\n'))),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in topLevel.SelectMany(InlineAsmCalls.Names))
         {
-            if (labels.Contains(name) && !_userFunctionNames.Contains(name)) continue;
-            yield return RuntimeNameOf(name);
+            var dot = raw.LastIndexOf('.');
+            var bare = dot < 0 ? raw : raw[(dot + 1)..];
+            if (!_runtimeManager.Functions.TryGetValue(bare, out var func)) continue;
+            // `ライブラリ名.名前` は、そのランタイムの @lib と合うときだけ
+            if (dot >= 0 && !string.Equals(raw[..dot], func.LibName, StringComparison.OrdinalIgnoreCase)) continue;
+            if (userFuncs.Contains(bare) || labels.Contains(bare)) continue;
+            if (string.Equals(func.Name, "ZXN_MODULE", StringComparison.OrdinalIgnoreCase)) continue;
+            yield return bare;
         }
     }
-
-    private string RuntimeNameOf(string name)
-    {
-        var dot = name.LastIndexOf('.');
-        if (dot <= 0 || _runtimeManager == null) return name;
-        var bare = name[(dot + 1)..];
-        return _runtimeManager.Functions.TryGetValue(bare, out var f)
-               && string.Equals(name[..dot], f.LibName, StringComparison.OrdinalIgnoreCase) ? bare : name;
-    }
-
-    /// <summary>トップレベルの #ASM の中の CALL の名前 (ランタイムを選ぶため。関数の中の #ASM は EmitFunction で集める)</summary>
-    private IEnumerable<string> GlobalAsmCallNames() =>
-        InlineAsmCalls.TopLevel(_module).SelectMany(a => AsmCallNames(a, null));
 
     /// <summary>トップレベルのインラインASM（#ASMブロック）を出力</summary>
     private void EmitGlobalPlainAsm()
@@ -2577,9 +2561,17 @@ public class CodeGenerator
                 if (asmCode != null)
                 {
                     _e.Raw(asmCode);
-                    // #ASM の CALL の名前を _calledFunctions に入れる (ランタイムを選ぶため)
-                    foreach (var name in AsmCallNames(asmCode, _currentFunction))
-                        _calledFunctions.Add(name);
+                    // InlineAsm内のCALL命令を_calledFunctionsに登録
+                    foreach (var line in asmCode.Split('\n'))
+                    {
+                        var trimmed = line.Trim();
+                        if (trimmed.StartsWith("CALL\t") || trimmed.StartsWith("CALL "))
+                        {
+                            var funcName = trimmed[5..].Trim().Split(';')[0].Trim();
+                            if (!string.IsNullOrEmpty(funcName))
+                                _calledFunctions.Add(funcName);
+                        }
+                    }
                 }
                 break;
 

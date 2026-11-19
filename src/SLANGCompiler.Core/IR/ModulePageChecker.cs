@@ -70,101 +70,77 @@ public static class ModulePageChecker
     /// 関数が呼ぶ名前: IR の呼び出しと、#ASM の中の `CALL 名前` の行 (コード生成がランタイムを選ぶのと同じ読み方)。
     /// `CALL(番地)`・関数の番地を使う呼び出しは入らない
     /// </summary>
-    private static IEnumerable<string> CalledNames(IrFunction f) =>
-        IrCalledNames(f).Concat(InlineAsmCalls.InFunctions(new[] { f }).SelectMany(InlineAsmCalls.Names));
-
-    private static IEnumerable<string> IrCalledNames(IrFunction f) =>
-        f.Instructions.Where(i => i.Op == IrOp.Call && i.Src1.Kind == IrOperandKind.Symbol && i.Src1.Name != null)
-                      .Select(i => i.Src1.Name!);
-
-    private static bool IsModuleMap(string name) =>
-        string.Equals(name, ModuleMapName, StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// 呼び出しの表の 1 つ: 持ち主のモジュール (本体は null)、呼ぶ名前、ランタイムの ZXN_MODULE を呼ぶか
-    /// (その単位で見える #ASM のラベルに ZXN_MODULE があれば、それはランタイムではない。コード生成と同じ)
-    /// </summary>
-    private sealed record Node(OverlayModule? Owner, List<string> Calls, bool CallsMap);
-
-    /// <summary>
-    /// 呼び出しの表 (名前 → Node)。関数と、本体のトップレベルの #ASM の行の頭のラベル (モジュールの #ASM から CALL できる)。
-    /// トップレベルの #ASM は #ASM ... #END の 1 つずつを塊として扱う: ラベルを呼ぶと、そのラベルのある塊の中の CALL の行を全部呼ぶとみなす
-    /// (塊の中のラベルの間の切れ目や、どこで戻るかは読まない。多めにたどる)
-    /// </summary>
-    private static Dictionary<string, Node> CallGraph(IrModule module)
+    private static IEnumerable<string> CalledNames(IrFunction f)
     {
-        var mainLabels = InlineAsmCalls.VisibleLabels(module, null);
-        // SLANG の呼び出しはいつもランタイム。#ASM の CALL は、見えるラベルに同じ名前が無いときだけ
-        bool AsmCallsMap(IEnumerable<string> asmCalls, HashSet<string> labels) =>
-            !labels.Contains(ModuleMapName) && asmCalls.Any(IsModuleMap);
-        bool FuncCallsMap(IrFunction f, HashSet<string> labels) =>
-            IrCalledNames(f).Any(IsModuleMap)
-            || AsmCallsMap(InlineAsmCalls.InFunctions(new[] { f }).SelectMany(InlineAsmCalls.Names), labels);
-
-        var g = new Dictionary<string, Node>(StringComparer.OrdinalIgnoreCase);
-        foreach (var f in module.Functions)
-            g[f.Name] = new Node(null, CalledNames(f).ToList(), FuncCallsMap(f, mainLabels));
-        foreach (var o in module.Overlays)
+        foreach (var i in f.Instructions)
         {
-            var labels = InlineAsmCalls.VisibleLabels(module, o);
-            foreach (var f in o.Functions)
-                g[f.Name] = new Node(o, CalledNames(f).ToList(), FuncCallsMap(f, labels));
+            if (i.Op == IrOp.Call && i.Src1.Kind == IrOperandKind.Symbol && i.Src1.Name != null)
+                yield return i.Src1.Name;
+            else if (i.Op == IrOp.InlineAsm)
+            {
+                var asm = i.Dest.Kind == IrOperandKind.Temp ? i.Src1.Name : i.Dest.Name;
+                if (asm == null) continue;
+                foreach (var line in asm.Split('\n'))
+                {
+                    // `CALL 名前`・`CALL Z,名前` (条件つきも)。大文字・小文字は問わない
+                    var t = line.Trim();
+                    if (t.Length < 5 || !t.StartsWith("CALL", StringComparison.OrdinalIgnoreCase) || (t[4] != ' ' && t[4] != '\t')) continue;
+                    var operand = t[5..].Split(';')[0].Trim();
+                    var name = operand[(operand.LastIndexOf(',') + 1)..].Trim();
+                    if (name.Length > 0) yield return name;
+                }
+            }
         }
-        foreach (var block in InlineAsmCalls.TopLevel(module))
-        {
-            var calls = InlineAsmCalls.Names(block).ToList();
-            var node = new Node(null, calls, AsmCallsMap(calls, mainLabels));
-            foreach (var label in InlineAsmCalls.Labels(block.Split('\n')))
-                g.TryAdd(label, node);
-        }
-        return g;
     }
+
+    private static bool CallsModuleMap(IrFunction f) =>
+        CalledNames(f).Any(n => string.Equals(n, ModuleMapName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// (module_pages のある env で、ランタイムの ZXN_MODULE のとき)
     /// ZXN_MODULE(n) を使うなら、全部のモジュールに PAGE が要る (表を作るため)。ZXN_MODULE は本体からだけ呼べる:
-    /// モジュールの関数から静的にたどって届くもの (本体の関数・トップレベルの #ASM を通るものも) はエラー (自分の窓を付け替えると、戻る先が消えるため)
+    /// モジュールの関数から静的にたどって届くもの (本体の関数を通るものも) はエラー (自分の窓を付け替えると、戻る先が消えるため)
     /// </summary>
     private static void CheckModuleMap(IrModule module, List<(string, SourceSpan)> errors)
     {
         var all = module.Functions.Concat(module.Overlays.SelectMany(o => o.Functions)).ToList();
         // 利用者が ZXN_MODULE という名前の関数を書いたなら、それはランタイムの ZXN_MODULE ではない
-        if (all.Any(f => IsModuleMap(f.Name))) return;
-        var g = CallGraph(module);
-        // トップレベルの #ASM の CALL でも、ランタイムの ZXN_MODULE が入る (ラベルの無い塊も)
-        var mainLabels = InlineAsmCalls.VisibleLabels(module, null);
-        if (!g.Values.Any(n => n.CallsMap)
-            && (mainLabels.Contains(ModuleMapName) || !InlineAsmCalls.TopLevel(module).SelectMany(InlineAsmCalls.Names).Any(IsModuleMap))) return;
+        if (all.Any(f => string.Equals(f.Name, ModuleMapName, StringComparison.OrdinalIgnoreCase))) return;
+        if (!all.Any(CallsModuleMap)) return;
         foreach (var o in module.Overlays.Where(o => o.Page == null))
             errors.Add(($"ZXN_MODULE needs PAGE on every #MODULE (#MODULE {o.Index} has none)", o.Span));
 
+        var funcs = all.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
         foreach (var o in module.Overlays)
         {
             var seen = new HashSet<string>(o.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
-            var queue = new Queue<string>(o.Functions.Select(f => f.Name));
+            var queue = new Queue<IrFunction>(o.Functions);
             while (queue.Count > 0)
             {
-                var name = queue.Dequeue();
-                var node = g[name];
-                if (node.CallsMap)
+                var f = queue.Dequeue();
+                if (CallsModuleMap(f))
                 {
-                    errors.Add(($"ZXN_MODULE is reached from #MODULE {o.Index} (through {name}); call it from the main program only", o.Span));
+                    errors.Add(($"ZXN_MODULE is reached from #MODULE {o.Index} (through {f.Name}); call it from the main program only", o.Span));
                     break;
                 }
-                foreach (var n in node.Calls)
-                    if (g.ContainsKey(n) && seen.Add(n))
-                        queue.Enqueue(n);
+                foreach (var n in CalledNames(f))
+                    if (funcs.TryGetValue(n, out var callee) && seen.Add(callee.Name))
+                        queue.Enqueue(callee);
             }
         }
     }
 
-    /// <summary>
-    /// 窓が同じ PAGE のモジュールどうしの呼び出しを、呼び出しの表からたどる (IR の呼び出しと #ASM の CALL の行。
-    /// 本体のトップレベルの #ASM を通るものも。CALL(番地)・関数の番地はたどらない)
-    /// </summary>
+    /// <summary>窓が同じ PAGE のモジュールどうしの呼び出しを、呼び出しの表からたどる (IR の呼び出しと #ASM の CALL の行。CALL(番地)・関数の番地はたどらない)</summary>
     private static void CheckCalls(IrModule module, List<OverlayModule> paged, List<(string, SourceSpan)> errors)
     {
-        var g = CallGraph(module);
+        var owner = new Dictionary<string, OverlayModule?>(StringComparer.OrdinalIgnoreCase);
+        var funcs = new Dictionary<string, IrFunction>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in module.Functions) { owner[f.Name] = null; funcs[f.Name] = f; }
+        foreach (var o in module.Overlays)
+            foreach (var f in o.Functions) { owner[f.Name] = o; funcs[f.Name] = f; }
+
+        IEnumerable<string> Callees(IrFunction f) => CalledNames(f).Where(funcs.ContainsKey);
+
         foreach (var a in paged)
         {
             int slot = a.OrgAddress >> 13;
@@ -174,10 +150,10 @@ public static class ModulePageChecker
             OverlayModule? hit = null;
             while (queue.Count > 0 && hit == null)
             {
-                foreach (var callee in g[queue.Dequeue()].Calls.Where(g.ContainsKey))
+                foreach (var callee in Callees(funcs[queue.Dequeue()]))
                 {
                     if (!seen.Add(callee)) continue;
-                    var b = g[callee].Owner;
+                    var b = owner[callee];
                     if (b != null && b != a && b.Page != null && (b.OrgAddress >> 13) == slot)
                     {
                         hit = b;

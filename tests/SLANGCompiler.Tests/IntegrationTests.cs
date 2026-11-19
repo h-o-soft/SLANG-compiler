@@ -521,7 +521,6 @@ public class IntegrationTests : IDisposable
     [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN FA(X); END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]
     [InlineData("HOP(X) BEGIN RETURN FA(X); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN HOP(X); END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]
     [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN\n#ASM\n CALL FA\n#END\nRETURN X; END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]   // #ASM の CALL も
-    [InlineData("#ASM\nHOPA:\n CALL FA\n RET\n#END\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN\n#ASM\n CALL HOPA\n#END\nRETURN X; END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]   // トップレベルの #ASM を通っても
     public void ZxnModulePage_Errors(string modules, string message)
     {
         var stderr = CompileExpectError(PagedHead + modules, "zxn");
@@ -590,14 +589,6 @@ public class IntegrationTests : IDisposable
                 "ZXN_MODULE is reached from #MODULE 0 (through FA); call it from the main program only")]   // モジュールの #ASM の CALL も
     [InlineData("SW() BEGIN\n#ASM\n LD HL,1\n XOR A\n call z,ZXN_MODULE\n#END\nEND;\nMAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN SW(); RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
                 "ZXN_MODULE is reached from #MODULE 0 (through SW); call it from the main program only")]   // 条件つきの CALL・小文字も
-    [InlineData("#ASM\nTOPSW:\n LD HL,1\n CALL ZXN_MODULE\n RET\n#END\nMAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN\n#ASM\n CALL TOPSW\n#END\nRETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
-                "ZXN_MODULE is reached from #MODULE 0 (through TOPSW); call it from the main program only")]   // トップレベルの #ASM を通っても
-    [InlineData("#ASM\nTOPSW:\n LD HL,0\n CALL NAME_SPACE_DEFAULT.ZXN_MODULE\n RET\n#END\nMAIN() BEGIN R = FA(1); END;\n#MODULE $C000\nFA(X) BEGIN RETURN X; END;\n#END\n",
-                "ZXN_MODULE needs PAGE on every #MODULE (#MODULE 0 has none)")]   // トップレベルの #ASM の CALL だけで入っても
-    [InlineData("#ASM\nTOPSW:\n LD HL,1\n CALL ZXN_MODULE\n RET\n#END\nMAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN\n#ASM\n CALL NAME_SPACE_DEFAULT.TOPSW\n#END\nRETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
-                "ZXN_MODULE is reached from #MODULE 0 (through TOPSW); call it from the main program only")]   // 名前空間つきで呼んでも
-    [InlineData("MAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN\n#ASM\nL1: CALL ZXN_MODULE\n#END\nRETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
-                "ZXN_MODULE is reached from #MODULE 0 (through FA); call it from the main program only")]   // ラベルと同じ行の CALL も
     public void ZxnModuleMap_Errors(string source, string message)
     {
         var stderr = CompileExpectError(MapHead + source, "zxn");
@@ -1655,55 +1646,44 @@ SUB() BEGIN END;
     }
 
     [Theory]
-    [InlineData("#ASM\nFOO:\n\tcall MULHLDE\n\tRET\n#END\nMAIN() BEGIN END;\n")]           // トップレベルの #ASM (小文字の call)
-    [InlineData("MAIN() BEGIN\n#ASM\n\tcall MULHLDE\n#END\nEND;\n")]                          // 関数の中の #ASM (小文字の call)
-    [InlineData("MAIN() BEGIN\n#ASM\n\tOR A\n\tCALL Z,MULHLDE\n#END\nEND;\n")]              // 条件つきの CALL
+    [InlineData("#ASM\nFOO:\n\tcall MULHLDE\n\tRET\n#END\nMAIN() BEGIN END;\n")]                  // 小文字の call
+    [InlineData("#ASM\nFOO:\n\tOR A\n\tCALL Z,MULHLDE\n\tRET\n#END\nMAIN() BEGIN END;\n")]       // 条件つきの CALL
     [InlineData("#ASM\nENTRY: call MULHLDE\n\tRET\n#END\nMAIN() BEGIN END;\n")]                     // ラベルと同じ行の CALL
-    public void InlineAsmCall_SelectsRuntime(string source)
+    public void TopLevelAsmCall_SelectsRuntime(string source)
     {
-        // #ASM の中の CALL で呼ぶランタイムも入る (ほかに入れるものが無くても)
+        // トップレベルの #ASM の CALL で呼ぶランタイムも入る (ほかに入れるものが無くても)
         var asm = CompileWithCli(source);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(asm, @"(?m)^MULHLDE:"));
+        Assert.Contains(".mul1", asm);   // ランタイムの MULHLDE の中のラベル
     }
 
     [Theory]
-    [InlineData("#ASM\nMULHLDE:\n\tRET\n#END\n#ASM\nFOO:\n\tCALL MULHLDE\n\tRET\n#END\nMAIN() BEGIN END;\n")]
-    [InlineData("#ASM\nMULHLDE:\n\tRET\n#END\nMAIN() BEGIN\n#ASM\n\tcall MULHLDE\n#END\nEND;\n")]
-    public void InlineAsmCall_OwnLabel_DoesNotSelectRuntime(string source)
+    [InlineData("#ASM\nMULHLDE:\n\tRET\n#END\n#ASM\nFOO:\n\tCALL MULHLDE\n\tRET\n#END\nMAIN() BEGIN END;\n")]           // トップレベルの #ASM のラベル
+    [InlineData("#ASM\nFOO:\n\tCALL MULHLDE\n\tRET\n#END\nMAIN() BEGIN\n#ASM\nMULHLDE:\n\tRET\n#END\nEND;\n")]            // 本体の関数の中の #ASM のラベル
+    [InlineData("#ASM\nFOO:\n\tCALL MULHLDE\n\tRET\n#END\nMULHLDE() BEGIN END;\nMAIN() BEGIN END;\n")]                     // SLANG の関数
+    public void TopLevelAsmCall_OwnDefinition_DoesNotSelectRuntime(string source)
     {
-        // #ASM で自分が決めたラベルを CALL するときは、同じ名前のランタイムを入れない (同名のラベルにしない)
+        // 自分で決めた同じ名前のラベル・関数を呼ぶときは、ランタイムを入れない (同じ名前の定義を 2 つにしない)
         var asm = CompileWithCli(source);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(asm, @"(?m)^MULHLDE:"));
-        Assert.DoesNotContain(".mul1", asm);   // ランタイムの MULHLDE の中のラベル
+        Assert.DoesNotContain(".mul1", asm);
     }
 
     [Fact]
-    public void InlineAsmCall_OverlayLabel_DoesNotSuppressMainRuntime()
+    public void TopLevelAsmCall_OverlayFunctionName_NoImport()
     {
-        // モジュールの #ASM が決めたラベルは本体からは見えない。本体の #ASM の CALL はランタイムを入れる
-        var source = "MAIN() BEGIN\n#ASM\n\tCALL MULHLDE\n#END\nEND;\n#MODULE $8000\nFA() BEGIN\n#ASM\nMULHLDE:\n\tRET\n#END\nEND;\n#END\n";
+        // トップレベルの #ASM の CALL は、ランタイムを選ぶためだけに読む。本体の FOO を呼ぶもので、モジュールの関数 FOO を取り込まない
+        var source = "VAR X;\n#ASM\nFOO:\n\tRET\nBAR:\n\tCALL FOO\n\tRET\n#END\nMAIN() BEGIN X = 1; END;\n#MODULE $8000\nFOO() BEGIN RETURN 1; END;\n#END\n";
         var (mainAsm, _) = CompileWithOverlays(source);
-        Assert.Contains(".mul1", mainAsm);
-    }
-
-    [Theory]
-    // 別の #ASM の塊が ZXN_MODULE を呼んでも、モジュールが呼ぶ塊 (HELPER) は呼ばないので通る
-    [InlineData("#ASM\nHELPER:\n RET\n#END\n#ASM\nMAPPER:\n LD HL,1\n CALL ZXN_MODULE\n RET\n#END\nMAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN\n#ASM\n CALL HELPER\n#END\nRETURN X; END;\n#END\n")]
-    // 自分で決めた ZXN_MODULE のラベルはランタイムではないので、PAGE は要らない
-    [InlineData("#ASM\nZXN_MODULE:\n RET\nTOPSW:\n CALL ZXN_MODULE\n RET\n#END\nMAIN() BEGIN R = FA(1); END;\n#MODULE $C000\nFA(X) BEGIN RETURN X; END;\n#END\n")]
-    public void ZxnModuleMap_InlineAsm_Ok(string source)
-    {
-        CompileWithCli(MapHead + source, "zxn");
+        Assert.DoesNotContain("; EXTERN FOO", mainAsm);
     }
 
     [Fact]
-    public void InlineAsmCall_MainLabel_KeepsOverlayFunctionImport()
+    public void TopLevelAsmCall_ZxnModule_NotSelected()
     {
-        // 本体のトップレベルの #ASM とモジュール 0 の関数の両方に FOO がある。モジュール 1 の #ASM の CALL FOO は、
-        // いままでどおりモジュール 0 の FOO を取り込む
-        var source = "VAR X;\n#ASM\nFOO:\n\tRET\n#END\nMAIN() BEGIN X = BAR(); END;\n#MODULE $8000\nFOO() BEGIN RETURN 1; END;\n#END\n#MODULE $A000\nBAR() BEGIN\n#ASM\n\tCALL FOO\n#END\nRETURN 2; END;\n#END\n";
-        var (_, overlays) = CompileWithOverlays(source);
-        var m1 = overlays.Single(kv => kv.Key.EndsWith("_m1.ASM", StringComparison.OrdinalIgnoreCase) || kv.Key.EndsWith("_m1", StringComparison.OrdinalIgnoreCase)).Value;
-        Assert.Contains("; EXTERN FOO  ; defined in", m1);
+        // ZXN_MODULE はトップレベルの #ASM の CALL からは入れない (#MODULE の検査がトップレベルの #ASM を通る呼び出しをたどらないため)。
+        // いままでどおり、PAGE の無いモジュールもエラーにしない
+        var asm = CompileWithCli(MapHead + "#ASM\nTOPSW:\n\tLD HL,0\n\tCALL ZXN_MODULE\n\tRET\n#END\nMAIN() BEGIN R = FA(1); END;\n#MODULE $C000\nFA(X) BEGIN RETURN X; END;\n#END\n", "zxn");
+        Assert.DoesNotContain("__MODTBL", asm);
     }
 }
