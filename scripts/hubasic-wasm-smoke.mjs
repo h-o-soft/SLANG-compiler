@@ -23,6 +23,12 @@ if (!bundle || !repo || !cliDll || !slangcDll) {
   process.exit(2);
 }
 
+// wasm の中のファイルシステムは / 区切りなので、この確かめは / 区切りの道の OS (Linux・macOS) で動かす
+if (process.platform === 'win32') {
+  console.error('hubasic-wasm-smoke: Windows では動かせません (WSL などの Linux で動かしてください)');
+  process.exit(1);
+}
+
 const [major, minor] = process.versions.node.split('.').map(Number);
 if (major < 22 || (major === 22 && minor < 7)) {
   console.error(`hubasic-wasm-smoke: node ${process.versions.node} は古いので確かめられません (22.7 以上が要ります)`);
@@ -102,6 +108,10 @@ try {
     }
   };
   for (const d of ['env', 'runtime', 'include']) putTree(path.join(bundle, d));
+  // include は manifest の slangTestdata.includePaths (束の根からの相対) を使う (X1Pen と同じ読み方)
+  const bundleIncludes = manifest.slangTestdata.includePaths.map(p => path.join(bundle, p));
+  check(bundleIncludes.length > 0 && bundleIncludes.every(d => fs.existsSync(path.join(d, 'GRAPHF.LIB'))),
+        `slangTestdata.includePaths (${manifest.slangTestdata.includePaths}) に束の include がある`);
 
   // CLI の slangc の期待の値: リポジトリの全部の runtime と include で動かす (束の写し漏れも見つかるように)。
   // 一時の dir を CWD・HOME にし、SLANG_HOME を消して、-L <リポジトリ> -I <リポジトリ>/include だけを見る
@@ -138,9 +148,9 @@ try {
       }
       uploaded.add(dir);
     }
-    const r = JSON.parse(slang.Compile(src, JSON.stringify({ env, libPaths: [bundle], includePaths: [path.join(bundle, 'include')] })));
+    const r = JSON.parse(slang.Compile(src, JSON.stringify({ env, libPaths: [bundle], includePaths: bundleIncludes })));
     // include の中の診断は、束の include の道を書く。CLI (リポジトリの include) と比べるために道を揃える
-    const fix = s => s.split(path.join(bundle, 'include')).join(path.join(repo, 'include'));
+    const fix = s => bundleIncludes.reduce((t, d) => t.split(d).join(path.join(repo, 'include')), s);
     return {
       ok: r.ok,
       asm: r.asm === null ? null : lf(r.asm),
@@ -170,10 +180,12 @@ try {
     'X1NATIVE_HELLO.SL', 'X1SGL_PRINT_TEST.SL', 'X1SGL.SL', 'chip/CHIPTEST.SL', 'spr/SPRTEST2.SL', 'spr/SPRTEST3.SL',
     'spr/SPRTEST.SL', 'tile/TILETEST.SL', 'tilespr/TILSPRTEST.SL', 'ui/UITEST.SL',
   ];
-  const listed = [
-    ...fs.readdirSync(path.join(repo, 'examples')).filter(f => /\.SL$/.test(f)),
-    ...['chip', 'spr', 'tile', 'tilespr', 'ui'].flatMap(d => fs.readdirSync(path.join(repo, 'examples', d)).filter(f => /\.SL$/.test(f)).map(f => `${d}/${f}`)),
-  ].sort();
+  // git に入っている見本の一覧と比べる (git に入っていない手元の .SL は数えない)
+  const tracked = spawnSync('git', ['-C', repo, 'ls-files', '--', 'examples/*.SL',
+    ...['chip', 'spr', 'tile', 'tilespr', 'ui'].map(d => `examples/${d}/*.SL`)], { encoding: 'utf8' });
+  if (tracked.status !== 0) throw new Error(`git ls-files: ${tracked.stderr}`);
+  const listed = tracked.stdout.split('\n').filter(l => l.length > 0)
+    .map(l => l.slice('examples/'.length)).filter(f => !f.includes('/') || /^(chip|spr|tile|tilespr|ui)\/[^/]+$/.test(f)).sort();
   // x1 の env では CLI で組めるが、束に入れない include (X1 向けでない MSXGRP.LIB) を使う見本。
   // wasm では、その include が無いと言って止まる (束が X1 向けの include だけを持つことの確かめ)
   const NEEDS_NON_X1_INCLUDE = ['MSXLSX.SL', 'MSXROM.SL', 'MSXSPDRV2.SL', 'MSXSPDRV.SL'];
@@ -209,7 +221,8 @@ try {
   check(!manifest.testdata.cases.some(c => c.name === 'FILEIO'), 'testdata (x1native_slfs) に FILEIO が混ざっていない');
   for (const c of manifest.hufsTestdata.cases) {
     const env = manifest.envs[manifest.hufsTestdata.env];
-    const add = c.hufsAdd.map(a => `${a.name}=${path.join(bundle, a.file)},${a.kind}`);
+    // --hufs-add と同じ書き方。raw は種類の後ろ付けを書かない (,text と ,bin だけがある)
+    const add = c.hufsAdd.map(a => `${a.name}=${path.join(bundle, a.file)}${a.kind === 'raw' ? '' : `,${a.kind}`}`);
     for (const a of c.hufsAdd) slang.PutFile(path.join(bundle, a.file), new Uint8Array(fs.readFileSync(path.join(bundle, a.file))));
     const r = JSON.parse(slang.BuildHuDisk(new Uint8Array(fs.readFileSync(path.join(bundle, c.bin))),
       JSON.stringify({ mainName: c.diskMainName, load: env.diskMainLoad, exec: env.diskMainExec, add })));

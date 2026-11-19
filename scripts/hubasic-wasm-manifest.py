@@ -308,8 +308,13 @@ def cmd_verify(out):
             fail(f"{name} が束にありません")
     if not m["testdata"]["cases"]:
         fail("testdata が空です")
-    # 前の版の束 (hufsTestdata・slangTestdata・slangcVersion の無い manifest) は、前からの項目だけを確かめる
-    current = "slangcVersion" in m
+    # 前の版の束 (hufsTestdata・slangTestdata・slangcVersion がどれも無い manifest) は、前からの項目だけを確かめる。
+    # どれかだけがある manifest は、途中までしか書けていないので止める
+    new_keys = ("slangcVersion", "hufsTestdata", "slangTestdata")
+    present = [k for k in new_keys if k in m]
+    if present and len(present) != len(new_keys):
+        fail(f"manifest に {', '.join(k for k in new_keys if k not in m)} がありません ({', '.join(present)} はあるので、今の形の manifest です)")
+    current = bool(present)
     for key in ("testdata", "hufsTestdata") if current else ("testdata",):
         if m[key]["env"] not in m["envs"]:
             fail(f"{key} の env ({m[key]['env']}) が束にありません")
@@ -321,9 +326,6 @@ def cmd_verify(out):
                 if add["file"] not in listed:
                     fail(f"{key} の {case['name']} の足すファイル ({add['file']}) が束にありません")
     if current:
-        for key in ("hufsTestdata", "slangTestdata"):
-            if key not in m:
-                fail(f"manifest に {key} がありません (slangcVersion のある manifest には要ります)")
         if not m["hufsTestdata"]["cases"]:
             fail("hufsTestdata が空です")
         if not m["slangTestdata"]["cases"]:
@@ -332,9 +334,12 @@ def cmd_verify(out):
             for key in SLANG_TESTDATA_EXTS:
                 if case.get(key) not in listed:
                     fail(f"SLANG タブ用の testdata の {case['name']} の {key} ({case.get(key)}) が束にありません")
+        include_paths = m["slangTestdata"].get("includePaths") or []
+        if not include_paths:
+            fail("slangTestdata に includePaths がありません")
         for name in INCLUDE_FILES:
-            if f"include/{name}" not in listed:
-                fail(f"include/{name} が束にありません")
+            if not any(f"{p.rstrip('/')}/{name}" in listed for p in include_paths):
+                fail(f"{name} が slangTestdata の includePaths ({include_paths}) のどこにもありません")
     for env in m["envs"].values():
         for lib in env["libraries"]:
             if f"runtime/{lib}" not in listed:

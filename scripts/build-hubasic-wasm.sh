@@ -25,11 +25,22 @@ if [ $# -ne 1 ]; then
   echo "使い方: $0 <出力フォルダ>" >&2
   exit 2
 fi
+# 束のファイルは、ほかの人やサーバーも読めるように作る (持ち主だけが読める umask の環境でも)
+umask 022
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$1"
-OUT="$(cd "$1" && pwd)"
+# 出力フォルダは、シンボリックリンクをたどった本当の場所にする (最後に、その場所へ付け替えるので)
+OUT="$(cd "$1" && pwd -P)"
 if [ -n "$(ls -A "$OUT")" ]; then
   echo "build-hubasic-wasm: $OUT が空ではありません (消すか、別のフォルダを指定してください)" >&2
+  exit 2
+fi
+# 束は最後に 1 回の付け替えで置くので、出力フォルダの許可は持ち主・グループ・許可のビットだけを引き継ぐ。
+# ACL (拡張の許可) のある出力フォルダは引き継げないので、何かを作る前に止める
+if ! python3 -I -c 'import os, sys
+names = os.listxattr(sys.argv[1]) if hasattr(os, "listxattr") else []
+sys.exit(1 if any(n.startswith("system.posix_acl") for n in names) else 0)' "$OUT"; then
+  echo "build-hubasic-wasm: $OUT には ACL があります。ACL の無いフォルダを指定してください (束は付け替えで置くので、ACL を引き継げません)" >&2
   exit 2
 fi
 # slangc は今の作業フォルダの runtime/ を先に探すので、この木の根から動かす
@@ -137,8 +148,14 @@ echo "[5/5] wasm の変換・コンパイル・ディスク作りを CLI と比�
 "$NODE" scripts/hubasic-wasm-smoke.mjs "$OUT" "$REPO" "$HUB" "$SLANGC_DLL"
 
 # 全部通ったので、出力フォルダに付け替える (空のフォルダへの rename。空でなければ失敗する)。
-# 一時のフォルダは持ち主だけが読める作りなので、付け替える前に、出力フォルダの許可 (ほかの人が読めるかなど) に合わせる
-if ! python3 -I -c 'import os, stat, sys; os.chmod(sys.argv[1], stat.S_IMODE(os.stat(sys.argv[2]).st_mode)); os.rename(sys.argv[1], sys.argv[2])' "$STAGE" "$FINAL"; then
+# 一時のフォルダは持ち主だけが読める作りなので、付け替える前に、出力フォルダのグループと許可のビットに合わせる
+# (グループを合わせられなければ、付け替えずに止める)
+if ! python3 -I -c 'import os, stat, sys
+st = os.stat(sys.argv[2])
+if os.stat(sys.argv[1]).st_gid != st.st_gid:
+    os.chown(sys.argv[1], -1, st.st_gid)
+os.chmod(sys.argv[1], stat.S_IMODE(st.st_mode))
+os.rename(sys.argv[1], sys.argv[2])' "$STAGE" "$FINAL"; then
   echo "build-hubasic-wasm: $FINAL に置けませんでした (組み立ての間に空でなくなったか、別のファイルシステムです)" >&2
   exit 1
 fi
