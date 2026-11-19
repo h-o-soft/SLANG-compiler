@@ -629,37 +629,56 @@ public class CodeGenerator
         }
     }
 
-    // #ASM の行の頭で決めるラベル (`名前:` と `名前 EQU`。前の空白はよい)。AILZ80ASM の書き方を全部は追わない (拾えない書き方はアセンブルのエラーのまま)
-    private static readonly System.Text.RegularExpressions.Regex AsmLineLabel =
-        new(@"^\s*([A-Za-z_][A-Za-z0-9_]*)(?::|\s+EQU\b)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    // #ASM の行の頭で決めるラベル (`名前:` と `名前 EQU`。前の空白はよい)
+    private static IEnumerable<string> AsmLineLabels(IEnumerable<string> lines) => InlineAsmCalls.Labels(lines);
 
-    private static IEnumerable<string> AsmLineLabels(IEnumerable<string> lines) =>
-        lines.Select(line => AsmLineLabel.Match(line))
-             .Where(m => m.Success)
-             .Select(m => m.Groups[1].Value);
+    // #ASM で決めるラベルを、組む単位ごとに集める。#ASM の CALL がその単位で見えるラベルなら、それを呼ぶものとして、ランタイムは入れない
+    // (入れると同名のラベルになる)。本体: トップレベルの #ASM と本体の関数の #ASM。モジュール: そのモジュールの関数の #ASM と、
+    // 本体のトップレベルの #ASM (モジュールから借りられる。本体の関数の中の #ASM のラベルは借りられない)
+    private HashSet<string>? _mainAsmLabels;
+    private readonly Dictionary<OverlayModule, HashSet<string>> _overlayAsmLabels = new();
 
-    // #ASM で決めるラベル (トップレベルと関数の中、本体とモジュールの全部)。#ASM の CALL がこの名前なら、ランタイムを入れない
-    // (自分で書いた同じ名前のラベルを呼んでいるので、ランタイムを入れると同名のラベルになる)
-    private HashSet<string>? _asmDefinedLabels;
-    private HashSet<string> AsmDefinedLabels => _asmDefinedLabels ??= new HashSet<string>(
-        AsmLineLabels(_module.GlobalData
-                .Concat(_module.Functions.SelectMany(f => f.Instructions))
-                .Concat(_module.Overlays.SelectMany(o => o.Functions).SelectMany(f => f.Instructions))
-                .Where(i => i.Op == IrOp.InlineAsm)
-                .Select(i => i.Dest.Kind == IrOperandKind.Temp ? i.Src1.Name : i.Dest.Name)
-                .Where(a => a != null)
-                .SelectMany(a => a!.Split('\n'))),
-        StringComparer.OrdinalIgnoreCase);
+    private static HashSet<string> LabelSet(IEnumerable<string> asmTexts) =>
+        new(AsmLineLabels(asmTexts.SelectMany(a => a.Split('\n'))), StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>#ASM の中の CALL の名前。#ASM で自分が決めたラベルは除く</summary>
-    private IEnumerable<string> AsmCallNames(string asm) =>
-        InlineAsmCalls.Names(asm).Where(n => !AsmDefinedLabels.Contains(n));
+    private HashSet<string> AsmLabelsFor(IrFunction? func)
+    {
+        var overlay = func == null ? null : _module.Overlays.FirstOrDefault(o => o.Functions.Contains(func));
+        if (overlay == null)
+            return _mainAsmLabels ??= LabelSet(InlineAsmCalls.TopLevel(_module).Concat(InlineAsmCalls.InFunctions(_module.Functions)));
+        if (!_overlayAsmLabels.TryGetValue(overlay, out var labels))
+            _overlayAsmLabels[overlay] = labels = LabelSet(InlineAsmCalls.TopLevel(_module).Concat(InlineAsmCalls.InFunctions(overlay.Functions)));
+        return labels;
+    }
+
+    /// <summary>
+    /// #ASM の中の CALL の名前。その単位で見える #ASM のラベルは除く。`ライブラリ名.名前` (@lib のあるランタイム) と
+    /// `NAME_SPACE_DEFAULT.名前` (@lib の無いランタイム) は、ランタイムの名前にする
+    /// </summary>
+    private IEnumerable<string> AsmCallNames(string asm, IrFunction? func)
+    {
+        var labels = AsmLabelsFor(func);
+        foreach (var name in InlineAsmCalls.Names(asm))
+        {
+            if (labels.Contains(name)) continue;
+            yield return RuntimeNameOf(name);
+        }
+    }
+
+    private string RuntimeNameOf(string name)
+    {
+        var dot = name.LastIndexOf('.');
+        if (dot <= 0 || _runtimeManager == null) return name;
+        var ns = name[..dot];
+        var bare = name[(dot + 1)..];
+        if (!_runtimeManager.Functions.TryGetValue(bare, out var f)) return name;
+        var expected = f.LibName ?? "NAME_SPACE_DEFAULT";
+        return string.Equals(ns, expected, StringComparison.OrdinalIgnoreCase) ? bare : name;
+    }
 
     /// <summary>トップレベルの #ASM の中の CALL の名前 (ランタイムを選ぶため。関数の中の #ASM は EmitFunction で集める)</summary>
     private IEnumerable<string> GlobalAsmCallNames() =>
-        _module.GlobalData
-            .Where(i => i.Op == IrOp.InlineAsm && i.Dest.Kind == IrOperandKind.AsmString)
-            .SelectMany(i => AsmCallNames(i.Dest.Name!));
+        InlineAsmCalls.TopLevel(_module).SelectMany(a => AsmCallNames(a, null));
 
     /// <summary>トップレベルのインラインASM（#ASMブロック）を出力</summary>
     private void EmitGlobalPlainAsm()
@@ -2561,7 +2580,7 @@ public class CodeGenerator
                 {
                     _e.Raw(asmCode);
                     // #ASM の CALL の名前を _calledFunctions に入れる (ランタイムを選ぶため)
-                    foreach (var name in AsmCallNames(asmCode))
+                    foreach (var name in AsmCallNames(asmCode, _currentFunction))
                         _calledFunctions.Add(name);
                 }
                 break;

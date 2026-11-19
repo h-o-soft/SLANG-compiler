@@ -212,6 +212,20 @@ public class BuildIntegrationTests : IDisposable
         Assert.Matches(@"(?m)^MULHLDE:", File.ReadAllText(Path.Combine(_tempDir, "chip.ASM")));
     }
 
+    [SkippableTheory]
+    [InlineData("#ASM\nFOO:\n\tCALL M8ALIB.M8ALOAD\n\tRET\n#END\nMAIN()\nBEGIN\nEND;\n")]              // @lib のあるランタイムを名前空間つきで
+    [InlineData("#ASM\nFOO:\n\tCALL NAME_SPACE_DEFAULT.MULHLDE\n\tRET\n#END\nMAIN()\nBEGIN\nEND;\n")]    // @lib の無いランタイム
+    public void InlineAsmQualifiedCall_Builds(string source)
+    {
+        // #ASM の CALL を名前空間つきで書いても、そのランタイムが入って組み立てられる (ほかに入れるものが無くても)
+        Skip.IfNot(File.Exists(_ailz80AsmPath), "AILZ80ASM がない");
+        var slPath = Path.Combine(_tempDir, "qual.SL");
+        File.WriteAllText(slPath, source);
+        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "x1", "--keep-asm");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        Assert.True(File.Exists(Path.Combine(_tempDir, "qual.bin")), $"bin not produced. stderr: {stderr}");
+    }
+
     [Theory]
     [InlineData("", true)]
     [InlineData("ORG $D000;", false)]                              // コードが WORK に重なる

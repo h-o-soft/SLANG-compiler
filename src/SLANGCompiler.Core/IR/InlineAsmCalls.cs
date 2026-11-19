@@ -20,4 +20,28 @@ public static class InlineAsmCalls
             if (name.Length > 0) yield return name;
         }
     }
+
+    // 行の頭で決めるラベル (`名前:` と `名前 EQU`。前の空白はよい)。AILZ80ASM の書き方を全部は追わない (拾えない書き方はアセンブルのエラーのまま)
+    private static readonly System.Text.RegularExpressions.Regex LineLabel =
+        new(@"^\s*([A-Za-z_][A-Za-z0-9_]*)(?::|\s+EQU\b)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>#ASM の行の頭で決めるラベル</summary>
+    public static IEnumerable<string> Labels(IEnumerable<string> lines) =>
+        lines.Select(line => LineLabel.Match(line))
+             .Where(m => m.Success)
+             .Select(m => m.Groups[1].Value);
+
+    /// <summary>トップレベル (関数の外) の #ASM の中身</summary>
+    public static IEnumerable<string> TopLevel(IrModule module) =>
+        module.GlobalData
+            .Where(i => i.Op == IrOp.InlineAsm && i.Dest.Kind == IrOperandKind.AsmString && i.Dest.Name != null)
+            .Select(i => i.Dest.Name!);
+
+    /// <summary>関数の中の #ASM の中身</summary>
+    public static IEnumerable<string> InFunctions(IEnumerable<IrFunction> functions) =>
+        functions.SelectMany(f => f.Instructions)
+            .Where(i => i.Op == IrOp.InlineAsm)
+            .Select(i => i.Dest.Kind == IrOperandKind.Temp ? i.Src1.Name : i.Dest.Name)
+            .Where(a => a != null)
+            .Select(a => a!);
 }

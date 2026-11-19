@@ -521,6 +521,7 @@ public class IntegrationTests : IDisposable
     [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN FA(X); END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]
     [InlineData("HOP(X) BEGIN RETURN FA(X); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN HOP(X); END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]
     [InlineData("#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN\n#ASM\n CALL FA\n#END\nRETURN X; END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]   // #ASM の CALL も
+    [InlineData("#ASM\nHOPA:\n CALL FA\n RET\n#END\n#MODULE $C000 PAGE 40\nFA(X) BEGIN RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN\n#ASM\n CALL HOPA\n#END\nRETURN X; END;\n#END\n", "#MODULE 1 ($C000) reaches FA of #MODULE 0 ($C000) in the same window")]   // トップレベルの #ASM を通っても
     public void ZxnModulePage_Errors(string modules, string message)
     {
         var stderr = CompileExpectError(PagedHead + modules, "zxn");
@@ -589,6 +590,10 @@ public class IntegrationTests : IDisposable
                 "ZXN_MODULE is reached from #MODULE 0 (through FA); call it from the main program only")]   // モジュールの #ASM の CALL も
     [InlineData("SW() BEGIN\n#ASM\n LD HL,1\n XOR A\n call z,ZXN_MODULE\n#END\nEND;\nMAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN SW(); RETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
                 "ZXN_MODULE is reached from #MODULE 0 (through SW); call it from the main program only")]   // 条件つきの CALL・小文字も
+    [InlineData("#ASM\nTOPSW:\n LD HL,1\n CALL ZXN_MODULE\n RET\n#END\nMAIN() BEGIN ZXN_MODULE(0); R = FA(1); END;\n#MODULE $C000 PAGE 40\nFA(X) BEGIN\n#ASM\n CALL TOPSW\n#END\nRETURN X; END;\n#END\n#MODULE $C000 PAGE 41\nFB(X) BEGIN RETURN X; END;\n#END\n",
+                "ZXN_MODULE is reached from #MODULE 0 (through TOPSW); call it from the main program only")]   // トップレベルの #ASM を通っても
+    [InlineData("#ASM\nTOPSW:\n LD HL,0\n CALL NAME_SPACE_DEFAULT.ZXN_MODULE\n RET\n#END\nMAIN() BEGIN R = FA(1); END;\n#MODULE $C000\nFA(X) BEGIN RETURN X; END;\n#END\n",
+                "ZXN_MODULE needs PAGE on every #MODULE (#MODULE 0 has none)")]   // トップレベルの #ASM の CALL だけで入っても
     public void ZxnModuleMap_Errors(string source, string message)
     {
         var stderr = CompileExpectError(MapHead + source, "zxn");
@@ -1665,5 +1670,14 @@ SUB() BEGIN END;
         var asm = CompileWithCli(source);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(asm, @"(?m)^MULHLDE:"));
         Assert.DoesNotContain(".mul1", asm);   // ランタイムの MULHLDE の中のラベル
+    }
+
+    [Fact]
+    public void InlineAsmCall_OverlayLabel_DoesNotSuppressMainRuntime()
+    {
+        // モジュールの #ASM が決めたラベルは本体からは見えない。本体の #ASM の CALL はランタイムを入れる
+        var source = "MAIN() BEGIN\n#ASM\n\tCALL MULHLDE\n#END\nEND;\n#MODULE $8000\nFA() BEGIN\n#ASM\nMULHLDE:\n\tRET\n#END\nEND;\n#END\n";
+        var (mainAsm, _) = CompileWithOverlays(source);
+        Assert.Contains(".mul1", mainAsm);
     }
 }
