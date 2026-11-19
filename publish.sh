@@ -75,7 +75,7 @@ createRelease() {
   # examples/x1pen は x1 の env の見本 (画面・音・入力)。SL と説明だけを写す
   if [ -d "../../examples/x1pen" ]; then
     mkdir -p examples/x1pen
-    cp ../../examples/x1pen/*.SL       examples/x1pen/ 2>/dev/null
+    for f in SCREEN.SL SOUND.SL INPUT.SL; do cp "../../examples/x1pen/$f" examples/x1pen/ 2>/dev/null; done
     cp ../../examples/x1pen/README.md  examples/x1pen/ 2>/dev/null
   fi
 

@@ -66,11 +66,13 @@ fi
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-# 束は一時の所で作り、manifest と CLI との比べ合わせが全部通ってから出力フォルダに写す
-# (途中で止まったら、出力フォルダは空のまま)
+# 束は出力フォルダの隣の一時のフォルダで作り、manifest と CLI との比べ合わせが全部通ってから、
+# 1 回の名前の付け替え (rename) で出力フォルダにする。途中で止まったら出力フォルダは空のまま。
+# 付け替えは、出力フォルダが空でなくなっていれば失敗する (同時に動いたほかの組み立てを上書きしない)
 FINAL="$OUT"
-OUT="$TMP/bundle"
-mkdir "$OUT"
+STAGE="$(mktemp -d "$(dirname "$FINAL")/.$(basename "$FINAL").building.XXXXXX")"
+trap 'rm -rf "$TMP" "$STAGE"' EXIT
+OUT="$STAGE"
 
 echo "[1/5] CLI (hubasic2sl・slangc・slangbuild) を組み立てます"
 for p in SLANGCompiler.HuBasic SLANGCompiler.CLI SLANGCompiler.Build; do
@@ -133,7 +135,10 @@ python3 -I scripts/hubasic-wasm-manifest.py verify "$OUT"
 echo "[5/5] wasm の変換・コンパイル・ディスク作りを CLI と比べます"
 "$NODE" scripts/hubasic-wasm-smoke.mjs "$OUT" "$REPO" "$HUB" "$SLANGC_DLL"
 
-# 全部通ったので、出力フォルダに写して、写した先でも manifest と合うかを確かめる
-cp -R "$OUT/." "$FINAL/"
+# 全部通ったので、出力フォルダに付け替える (空のフォルダへの rename。空でなければ失敗する)
+if ! python3 -I -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$STAGE" "$FINAL"; then
+  echo "build-hubasic-wasm: $FINAL に置けませんでした (組み立ての間に空でなくなったか、別のファイルシステムです)" >&2
+  exit 1
+fi
 python3 -I scripts/hubasic-wasm-manifest.py verify "$FINAL"
 echo "build-hubasic-wasm: $FINAL にできました (SHA $SHA、dirty $DIRTY)"

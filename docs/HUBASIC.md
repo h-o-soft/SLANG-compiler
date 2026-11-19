@@ -109,8 +109,9 @@ scripts/build-hubasic-wasm.sh out/hubasic-wasm
   ファイルの命令の組の印の番号 (`basFileAbi`)、
   env ごとの `envType`・`osType`・`defaultOrg`・`defines`・`libraries` (順番どおり)・`defaultDiskMainName`・`diskMainLoad`・`diskMainExec`・`diskVolume`・
   `diskTool` (`slfs-pack` = SLFS のディスク、`hufs-pack` = Hu-BASIC と同じ形のディスク。ブラウザの側でディスクを作るときに見分ける)、
-  testdata を作ったアセンブラ (`assembler`: 版と sha256)、`testdata` (ケースごとのファイル・起動名・`env`、足したファイルの `hufsAdd`
-  (`name`・`file`・`kind`)。いちばん上の `env` は前からの既定の値)、`slangTestdata` (`env`・`includePaths`・ケースごとの `sl`・`asm`・`bin`)、
+  testdata を作ったアセンブラ (`assembler`: 版と sha256)、`testdata` (`x1native_slfs` で組む例。ケースごとのファイルと起動名)、
+  `hufsTestdata` (`x1native_hufs` で組むファイルの命令の例。ケースごとのファイル・起動名と、`--hufs-add` で足したファイルの `hufsAdd`
+  (`name`・`file`・`kind`))、`slangTestdata` (`env`・`includePaths`・ケースごとの `sl`・`asm`・`bin`)、
   slangc の版 (`slangcVersion`)、束の全部のファイルの `files` (path・sha256・size)
 
 スクリプトは、作ったあとに束が manifest と合っているか (ファイルの集まり・大きさ・sha256・testdata) を確かめます。

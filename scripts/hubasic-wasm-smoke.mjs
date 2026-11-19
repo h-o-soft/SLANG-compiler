@@ -62,7 +62,7 @@ function compare(bytes, name, options, args, what) {
   const ref = cli(bytes, name, args);
   const same = lf(web.sl) === ref.sl
     && JSON.stringify(web.diagnostics.map(d => d.text)) === JSON.stringify(ref.err.filter(l => !envNote(l)))
-    && (web.requiredEnv !== null) === ref.err.some(envNote)
+    && web.requiredEnv === (ref.err.map(l => envNote(l) && /slangbuild -E (\S+)/.exec(l)).find(m => m)?.[1] ?? null)
     && web.ok === (ref.sl !== null);
   check(same, what);
 }
@@ -81,10 +81,11 @@ try {
   // 診断 (ない行への GOTO の error と、何もしない KBUF の warning)
   compare(Buffer.from('10 KBUF ON\n20 GOTO 99\n'), 'ERR.BAS', {}, [], '診断 (error と warning)');
 
-  // 束の testdata の .SL は、同じ .BAS を wasm で変換したものと同じ
-  for (const c of manifest.testdata.cases) {
+  // 束の testdata (と hufsTestdata) の .SL は、同じ .BAS を wasm で変換したものと同じ
+  const groups = [manifest.testdata, manifest.hufsTestdata];
+  for (const g of groups) for (const c of g.cases) {
     const web = JSON.parse(api.Transpile(fs.readFileSync(path.join(bundle, c.bas)), path.basename(c.bas),
-                                         JSON.stringify(manifest.testdata.transpileOptions)));
+                                         JSON.stringify(g.transpileOptions)));
     check(web.ok && lf(web.sl) === lf(fs.readFileSync(path.join(bundle, c.sl), 'utf8')) && web.diskMainName === c.diskMainName,
           `testdata ${c.name} の .SL と起動名`);
   }
@@ -157,9 +158,9 @@ try {
     check(same && okAsExpected, `slangc ${what} (${env})${same ? '' : ' 違う'}${okAsExpected ? '' : ` 期待は ${expectOk ? '成功' : '失敗'}`}`);
   }
 
-  // 束の testdata の HuBASIC の .SL (それぞれの env)
-  for (const c of manifest.testdata.cases)
-    compareSlangc(path.join(bundle, c.sl), c.env ?? manifest.testdata.env, `testdata ${c.name}.SL`, true);
+  // 束の testdata・hufsTestdata の HuBASIC の .SL (それぞれの env)
+  for (const g of groups) for (const c of g.cases)
+    compareSlangc(path.join(bundle, c.sl), g.env, `testdata ${c.name}.SL`, true);
 
   // x1 の env で組む見本。全部、成功するはず (成功しない見本が出たら、ここの一覧を直す)
   const X1_EXAMPLES = [
@@ -201,11 +202,12 @@ try {
   }
 
   // Hu-BASIC の形のディスク: wasm の BuildHuDisk が、testdata の .d88 (slangbuild --emit disk --hufs-add で作ったもの) と同じ
-  const fileio = manifest.testdata.cases.find(c => c.name === 'FILEIO');
-  check(fileio?.env === 'x1native_hufs' && fileio.hufsAdd?.some(a => a.name === 'GREET.TXT' && a.kind === 'text'),
-        'testdata の FILEIO は x1native_hufs で、GREET.TXT を足してある (ディスクの比べ合わせを飛ばさない)');
-  for (const c of manifest.testdata.cases.filter(c => c.hufsAdd)) {
-    const env = manifest.envs[c.env];
+  const fileio = manifest.hufsTestdata.cases.find(c => c.name === 'FILEIO');
+  check(manifest.hufsTestdata.env === 'x1native_hufs' && fileio?.hufsAdd?.some(a => a.name === 'GREET.TXT' && a.kind === 'text'),
+        'hufsTestdata に、GREET.TXT を足した FILEIO がある (ディスクの比べ合わせを飛ばさない)');
+  check(!manifest.testdata.cases.some(c => c.name === 'FILEIO'), 'testdata (x1native_slfs) に FILEIO が混ざっていない');
+  for (const c of manifest.hufsTestdata.cases) {
+    const env = manifest.envs[manifest.hufsTestdata.env];
     const add = c.hufsAdd.map(a => `${a.name}=${path.join(bundle, a.file)},${a.kind}`);
     for (const a of c.hufsAdd) slang.PutFile(path.join(bundle, a.file), new Uint8Array(fs.readFileSync(path.join(bundle, a.file))));
     const r = JSON.parse(slang.BuildHuDisk(new Uint8Array(fs.readFileSync(path.join(bundle, c.bin))),
