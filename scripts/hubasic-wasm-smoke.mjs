@@ -16,7 +16,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
-const [bundle, repo, cliDll, slangcDll] = process.argv.slice(2);
+// 道は呼んだ人の作業フォルダからの相対でもよい (CLI を一時の dir で動かすので、先に絶対の道にする)
+const [bundle, repo, cliDll, slangcDll] = process.argv.slice(2).map(p => p && path.resolve(p));
 if (!bundle || !repo || !cliDll || !slangcDll) {
   console.error('使い方: node hubasic-wasm-smoke.mjs <一式のフォルダ> <リポジトリ> <hubasic2sl.dll> <slangc.dll>');
   process.exit(2);

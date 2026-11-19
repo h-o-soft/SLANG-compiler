@@ -308,7 +308,9 @@ def cmd_verify(out):
             fail(f"{name} が束にありません")
     if not m["testdata"]["cases"]:
         fail("testdata が空です")
-    for key in ("testdata", "hufsTestdata"):
+    # 前の版の束 (hufsTestdata・slangTestdata・slangcVersion の無い manifest) は、前からの項目だけを確かめる
+    current = "slangcVersion" in m
+    for key in ("testdata", "hufsTestdata") if current else ("testdata",):
         if m[key]["env"] not in m["envs"]:
             fail(f"{key} の env ({m[key]['env']}) が束にありません")
         for case in m[key]["cases"]:
@@ -318,17 +320,21 @@ def cmd_verify(out):
             for add in case.get("hufsAdd", []):
                 if add["file"] not in listed:
                     fail(f"{key} の {case['name']} の足すファイル ({add['file']}) が束にありません")
-    if not m["hufsTestdata"]["cases"]:
-        fail("hufsTestdata が空です")
-    if not m["slangTestdata"]["cases"]:
-        fail("SLANG タブ用の testdata が空です")
-    for case in m["slangTestdata"]["cases"]:
-        for key in SLANG_TESTDATA_EXTS:
-            if case.get(key) not in listed:
-                fail(f"SLANG タブ用の testdata の {case['name']} の {key} ({case.get(key)}) が束にありません")
-    for name in INCLUDE_FILES:
-        if f"include/{name}" not in listed:
-            fail(f"include/{name} が束にありません")
+    if current:
+        for key in ("hufsTestdata", "slangTestdata"):
+            if key not in m:
+                fail(f"manifest に {key} がありません (slangcVersion のある manifest には要ります)")
+        if not m["hufsTestdata"]["cases"]:
+            fail("hufsTestdata が空です")
+        if not m["slangTestdata"]["cases"]:
+            fail("SLANG タブ用の testdata が空です")
+        for case in m["slangTestdata"]["cases"]:
+            for key in SLANG_TESTDATA_EXTS:
+                if case.get(key) not in listed:
+                    fail(f"SLANG タブ用の testdata の {case['name']} の {key} ({case.get(key)}) が束にありません")
+        for name in INCLUDE_FILES:
+            if f"include/{name}" not in listed:
+                fail(f"include/{name} が束にありません")
     for env in m["envs"].values():
         for lib in env["libraries"]:
             if f"runtime/{lib}" not in listed:

@@ -116,8 +116,9 @@ done
 # X1Pen の SLANG タブ用 (x1 の env): 見本の .SL と、組んだ .ASM・.bin だけを置く
 mkdir "$OUT/testdata/slang"
 SLANG_CASES=""
-for sl in examples/x1pen/*.SL; do
-  name="$(basename "$sl" .SL)"
+# 見本は名前を書いて選ぶ (git に入っていない手元の .SL を束に入れない。publish.sh と同じ一覧)
+for name in SCREEN SOUND INPUT; do
+  sl="examples/x1pen/$name.SL"
   work="$TMP/slang-$name"
   mkdir "$work"
   cp "$sl" "$work/$name.SL"
@@ -135,8 +136,9 @@ python3 -I scripts/hubasic-wasm-manifest.py verify "$OUT"
 echo "[5/5] wasm の変換・コンパイル・ディスク作りを CLI と比べます"
 "$NODE" scripts/hubasic-wasm-smoke.mjs "$OUT" "$REPO" "$HUB" "$SLANGC_DLL"
 
-# 全部通ったので、出力フォルダに付け替える (空のフォルダへの rename。空でなければ失敗する)
-if ! python3 -I -c 'import os, sys; os.rename(sys.argv[1], sys.argv[2])' "$STAGE" "$FINAL"; then
+# 全部通ったので、出力フォルダに付け替える (空のフォルダへの rename。空でなければ失敗する)。
+# 一時のフォルダは持ち主だけが読める作りなので、付け替える前に、出力フォルダの許可 (ほかの人が読めるかなど) に合わせる
+if ! python3 -I -c 'import os, stat, sys; os.chmod(sys.argv[1], stat.S_IMODE(os.stat(sys.argv[2]).st_mode)); os.rename(sys.argv[1], sys.argv[2])' "$STAGE" "$FINAL"; then
   echo "build-hubasic-wasm: $FINAL に置けませんでした (組み立ての間に空でなくなったか、別のファイルシステムです)" >&2
   exit 1
 fi
