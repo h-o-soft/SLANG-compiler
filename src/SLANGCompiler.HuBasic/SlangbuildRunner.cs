@@ -57,12 +57,15 @@ internal sealed class SlangbuildRunner
 
     /// <summary>
     /// slangbuild を動かして終了コードを返す。stdout・stderr は受け取らずにそのまま流す。
-    /// workingDirectory を省けば今の作業フォルダ (試験が、古い SDK に決めたフォルダから呼ぶときに使う)
+    /// workingDirectory を省けば今の作業フォルダ、environment は足す環境変数 (どちらも試験が使う)
     /// </summary>
-    internal static int Run(Resolved tool, IEnumerable<string> args, string? workingDirectory = null)
+    internal static int Run(Resolved tool, IEnumerable<string> args, string? workingDirectory = null,
+                            IReadOnlyDictionary<string, string>? environment = null)
     {
         var psi = new ProcessStartInfo { FileName = tool.FileName, UseShellExecute = false };
         if (workingDirectory != null) psi.WorkingDirectory = workingDirectory;
+        if (environment != null)
+            foreach (var (k, v) in environment) psi.Environment[k] = v;
         if (tool.Project != null)
         {
             var dll = BuildDevSlangbuild(tool.FileName, tool.Project);
@@ -75,11 +78,12 @@ internal sealed class SlangbuildRunner
         return proc.ExitCode;
     }
 
-    /// <summary>組み立てた slangbuild の置き場 (csproj のフォルダから)。TargetFramework と合わせる</summary>
-    internal const string DevOutputSubdir = "bin/Release/net10.0";
+    /// <summary>組み立てた slangbuild の置き場 (csproj のフォルダから)。`-o` で決めるので、MSBuild の出力先の設定に左右されない</summary>
+    internal static readonly string DevOutputSubdir = Path.Combine("bin", "devtool");
 
     /// <summary>
-    /// 開発の木の slangbuild を、csproj のフォルダを作業フォルダにして (その木の global.json が効く) Release で組み立て、dll の道を返す。
+    /// 開発の木の slangbuild を、csproj のフォルダを作業フォルダにして (その木の global.json が効く) Release で
+    /// &lt;csproj のフォルダ&gt;/bin/devtool に組み立て、dll の道を返す。
     /// 失敗したら組み立ての出力を stderr に書いて null
     /// </summary>
     private static string? BuildDevSlangbuild(string dotnet, string csproj)
@@ -93,13 +97,14 @@ internal sealed class SlangbuildRunner
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-nologo", "-v", "q" })
+        var outDir = Path.Combine(projectDir, DevOutputSubdir);
+        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-o", outDir, "-nologo", "-v", "q" })
             psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         var stderrTask = proc.StandardError.ReadToEndAsync();
         var stdout = proc.StandardOutput.ReadToEnd();
         proc.WaitForExit();
-        var dll = Path.Combine(projectDir, DevOutputSubdir, "slangbuild.dll");
+        var dll = Path.Combine(outDir, "slangbuild.dll");
         if (proc.ExitCode == 0 && File.Exists(dll)) return dll;
         Console.Error.Write(stdout + stderrTask.Result);
         Console.Error.WriteLine($"hubasic2sl: slangbuild を組み立てられませんでした ({csproj})");

@@ -1396,37 +1396,11 @@ public class Driver
     private int SpawnSlangc(ResolvedTool slangc, string inputPath, string outAsmPath, string env,
                             IList<string>? extraIncludePaths = null)
     {
-        var psi = new ProcessStartInfo
-        {
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-        };
-
-        if (slangc.Kind == ResolutionKind.DotnetRun)
-        {
-            // 開発の木の slangc: 木の SDK の決まりで組み立ててから、dotnet <slangc.dll> -E <env> -o <out> <input>
-            // (dotnet run --project は呼んだ人のフォルダの global.json で SDK を選んでしまう。DevToolBuild を参照)
-            var dll = DevToolBuild.Build(slangc.Path, slangc.ProjectPath!, "slangc", out var buildLog);
-            if (dll == null)
-            {
-                Console.Error.Write(buildLog);
-                Console.Error.WriteLine($"slangbuild: failed to build slangc ({slangc.ProjectPath})");
-                return 1;
-            }
-            psi.FileName = slangc.Path; // dotnet
-            psi.ArgumentList.Add(dll);
-        }
-        else
-        {
-            psi.FileName = slangc.Path;
-        }
-        psi.ArgumentList.Add("-E");
-        psi.ArgumentList.Add(env);
+        var args = new List<string> { "-E", env };
         foreach (var p in _opts.IncludePaths)
         {
-            psi.ArgumentList.Add("-I");
-            psi.ArgumentList.Add(p);
+            args.Add("-I");
+            args.Add(p);
         }
         // extraIncludePaths: caller 指定の追加 -I (= 例 SLFS Phase 3 で
         // generated header 配置 outputDir、 常時 add 副作用回避のため明示渡し)
@@ -1434,18 +1408,29 @@ public class Driver
         {
             foreach (var p in extraIncludePaths)
             {
-                psi.ArgumentList.Add("-I");
-                psi.ArgumentList.Add(p);
+                args.Add("-I");
+                args.Add(p);
             }
         }
         foreach (var p in _opts.LibraryPaths)
         {
-            psi.ArgumentList.Add("-L");
-            psi.ArgumentList.Add(p);
+            args.Add("-L");
+            args.Add(p);
         }
-        psi.ArgumentList.Add("-o");
-        psi.ArgumentList.Add(outAsmPath);
-        psi.ArgumentList.Add(inputPath);
+        args.Add("-o");
+        args.Add(outAsmPath);
+        args.Add(inputPath);
+
+        // 開発の木の slangc (DotnetRun) は、木の SDK の決まりで組み立ててから dotnet <slangc.dll> で動かす (DevToolBuild を参照)
+        var psi = DevToolBuild.CreateStartInfo(slangc, "slangc", args, out var buildLog);
+        if (psi == null)
+        {
+            Console.Error.Write(buildLog);
+            Console.Error.WriteLine($"slangbuild: failed to build slangc ({slangc.ProjectPath})");
+            return 1;
+        }
+        psi.RedirectStandardOutput = true;
+        psi.RedirectStandardError = true;
 
         if (_opts.Verbose)
         {

@@ -27,7 +27,8 @@ hubasic2sl PROG.BAS --emit tape --wait line:480   # PROG.tap (テープ) を作�
 - ディスクイメージでは、BASIC のファイル名 (拡張子なし。13 文字まで、ASCII だけ) が IPL の起動名になります
   (変換した SLANG の頭の `// disk-main-name:` の行。`--disk-main-name <name>` で変えられます。[SLFS.md](SLFS.md))。
 - テープの名前は `PROG` です (`--tape-name <name>` で変えられます)。`--wav` で `.wav` も作れます ([X1.md](X1.md) を参照)。
-- slangbuild は、hubasic2sl と同じ所、その下の `bin/`、開発で publish したもの、PATH、`dotnet run` (開発のとき) の順に探します。
+- slangbuild は、hubasic2sl と同じ所、その下の `bin/`、開発で publish したもの、PATH、開発の木 (そのとき) の順に探します。
+  開発の木のときは、`src/SLANGCompiler.Build` をそのフォルダで `bin/devtool` に組み立ててから、今の作業フォルダのまま動かします。
   `--slangbuild <path>` で決めることもできます。
 - 使える条件は slangbuild を手で使うときと同じです: 配布の zip を解いたフォルダで setup-tools (AILZ80ASM などを取ってくる) をしてから install する
   (順が逆なら install し直す)。または、解いたフォルダの中で動かす。install の `--config-dir` を変えたときは `SLANG_HOME` をそこに向けます。
