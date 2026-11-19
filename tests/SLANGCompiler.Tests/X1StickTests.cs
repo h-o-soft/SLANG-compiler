@@ -68,7 +68,8 @@ public class X1StickTests
     public void Stick_ReadsPsgPortAndRestoresInterruptState()
     {
         // 範囲の検査の後から .STICK_INVALID の前までは、この並びのとおり:
-        // - 割り込みの状態: スタックのすぐ下に印 ($FFFF - LD A,I の次の番地。ここで受けた割り込みの戻り先にはならない) を置いて LD A,I。
+        // - 割り込みの状態: スタックのすぐ下に印 (上位も下位も、LD A,I の番地の上位 + $80。ここで受けた割り込みの戻り先は、
+        //   丸ごとでも 1 バイトだけでも、このバイトにならない) を置いて LD A,I。
         //   P/V が 1 なら許可。0 なら、置いた所が
         //   割り込みの戻り先で上書きされたか (NMOS の Z80 の LD A,I、止めていても入る NMI) を見て、上書きされていればもう一度確かめる。
         //   P/V が 0 で上書きされていなければ止まっていた。D に 1 (許可)・0 (止まっていた)
@@ -80,17 +81,17 @@ public class X1StickTests
         Assert.Equal(new[]
         {
             ".STICK_PROBE",
-            "LD DE,$FFFF-.STICK_IRQRET",
+            "LD DE,$0101 * (((.STICK_LDAI >> 8) + $80) & $FF)",
             "PUSH DE",
             "POP DE",
+            ".STICK_LDAI",
             "LD A,I",
-            ".STICK_IRQRET",
             "JP PE,.STICK_ON",
             "DEC SP",
             "DEC SP",
             "POP DE",
             "PUSH HL",
-            "LD HL,$FFFF-.STICK_IRQRET",
+            "LD HL,$0101 * (((.STICK_LDAI >> 8) + $80) & $FF)",
             "OR A",
             "SBC HL,DE",
             "POP HL",
@@ -132,6 +133,8 @@ public class X1StickTests
             "EI",
             "RET",
         }, lines[6..invalid]);
+        // 印は値として読み込む (式を括弧で始めると LD DE,(nn) の番地の読み出しになる)
+        Assert.DoesNotContain(lines, l => Regex.IsMatch(l, @"^LD\s+(DE|HL)\s*,\s*\("));
         // DI・EI はこの 1 回ずつだけ (範囲外の道では割り込みにも PSG にも触らない)
         Assert.Single(lines, "DI");
         Assert.Single(lines, "EI");

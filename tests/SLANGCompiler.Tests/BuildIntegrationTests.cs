@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Xunit;
 using SkippableFactAttribute = Xunit.SkippableFactAttribute;
 
@@ -165,6 +166,13 @@ public class BuildIntegrationTests : IDisposable
         Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
         Assert.True(File.Exists(Path.Combine(_tempDir, "stick.bin")), $"bin not produced. stderr: {stderr}");
         Assert.Matches(@"(?m)^STICK:", File.ReadAllText(Path.Combine(_tempDir, "stick.ASM")));
+        // 割り込みの状態を確かめる印は、値として読み込まれ (LD DE,nn = 11、LD HL,nn = 21)、上位も下位も「.STICK_LDAI の上位 + $80」
+        var lst = File.ReadAllText(Path.Combine(_tempDir, "stick.LST"));
+        var ldai = Regex.Match(lst, @"(?m)^\s+([0-9A-F]{4})\s+\.STICK_LDAI\s*$");
+        Assert.True(ldai.Success, "LST に .STICK_LDAI がない");
+        var mark = ((Convert.ToInt32(ldai.Groups[1].Value, 16) >> 8) + 0x80 & 0xFF).ToString("X2");
+        Assert.Matches($@"(?m)^\S+\s+[0-9A-F]{{4}}\s+11{mark}{mark}\s+\d+\s+LD DE,\$0101", lst);
+        Assert.Matches($@"(?m)^\S+\s+[0-9A-F]{{4}}\s+21{mark}{mark}\s+\d+\s+LD HL,\$0101", lst);
 
         var withoutPath = Path.Combine(_tempDir, "nostick.SL");
         File.WriteAllText(withoutPath, "VAR J;\nMAIN()\nBEGIN\n  J = 1;\nEND;\n");
