@@ -26,6 +26,9 @@ if [ $# -ne 1 ]; then
   exit 2
 fi
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
+# SHA と dirty は、出力フォルダや印 (.building) を作る前に読む (出力フォルダがリポジトリの中でも dirty にならないように)
+SHA="$(git -C "$REPO" rev-parse HEAD)"
+if [ -n "$(git -C "$REPO" status --porcelain)" ]; then DIRTY=true; else DIRTY=false; fi
 mkdir -p "$1"
 OUT="$(cd "$1" && pwd)"
 # 出力フォルダに書くのは 1 つの組み立てだけ。先に印 (.building) を作り (作れなければ、ほかの組み立てが書いている)、
@@ -42,9 +45,6 @@ fi
 # slangc は今の作業フォルダの runtime/ を先に探すので、この木の根から動かす
 cd "$REPO"
 
-# SHA と dirty は何かを作る前に読む (出力フォルダがリポジトリの中でも dirty にならないように)
-SHA="$(git rev-parse HEAD)"
-if [ -n "$(git status --porcelain)" ]; then DIRTY=true; else DIRTY=false; fi
 VERSION="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/SLANGCompiler.HuBasic/SLANGCompiler.HuBasic.csproj | head -1)"
 
 # 組み立て直した slangc・slangbuild (と AILZ80ASM) は apphost なので、dotnet の場所を伝える

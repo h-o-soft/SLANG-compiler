@@ -175,6 +175,16 @@ def sl_env(sl_path, default):
     return default
 
 
+def hu_disk_name(name):
+    """HuName.Parse と同じく、ディスクの上の名前として比べる形 (ドライブの 0: を除き、名前と拡張子の後ろの空白を除く)"""
+    if name.startswith("0:"):
+        name = name[2:]
+    base, dot, ext = name.rpartition(".")
+    if not dot:
+        base, ext = name, ""
+    return (base.rstrip(" "), ext.rstrip(" "))
+
+
 def parse_hufs_add(spec):
     """「例の名前:名前=ファイル,種類」を ; でつないだものを {例の名前: [{name, file, kind}]} にする"""
     adds = {}
@@ -342,10 +352,10 @@ def cmd_verify(out, manifest_path=None):
             for add in adds:
                 if not isinstance(add, dict) or not add.get("name") or add.get("kind") not in ("text", "bin", "raw"):
                     fail(f"{key} の {case['name']} の hufsAdd の項目がおかしいです: {add}")
-                # ディスクの上の名前は同じものを 2 つ足せない (大文字と小文字は区別する。ドライブの 0: は名前に入らない)
-                disk_name = add["name"][2:] if add["name"].startswith("0:") else add["name"]
+                # ディスクの上の名前は同じものを 2 つ足せない (HuName と同じ比べ方。大文字と小文字は区別する)
+                disk_name = hu_disk_name(add["name"])
                 if disk_name in disk_names:
-                    fail(f"{key} の {case['name']} の hufsAdd に {disk_name} が 2 つあります")
+                    fail(f"{key} の {case['name']} の hufsAdd に {add['name']} と同じ名前があります")
                 disk_names.add(disk_name)
                 if add.get("file") not in listed:
                     fail(f"{key} の {case['name']} の足すファイル ({add.get('file')}) が束にありません")
@@ -354,6 +364,15 @@ def cmd_verify(out, manifest_path=None):
     if current:
         if not m["hufsTestdata"]["cases"]:
             fail("hufsTestdata が空です")
+        # ファイルの命令の例 FILEIO は hufsTestdata にちょうど 1 つ (testdata には入れない)
+        if [c["name"] for c in m["hufsTestdata"]["cases"]].count("FILEIO") != 1:
+            fail("hufsTestdata に FILEIO の例がちょうど 1 つありません")
+        if any(c["name"] == "FILEIO" for c in m["testdata"]["cases"]):
+            fail("testdata に FILEIO があります (hufsTestdata に入れるものです)")
+        # env の値は、束の env ファイルから読み直したものと同じでなければならない
+        for name, values in m["envs"].items():
+            if read_env(os.path.join(out, "env", name + ".env")) != values:
+                fail(f"manifest の envs の {name} が、束の env/{name}.env と合いません")
         if m["slangTestdata"].get("env") not in m["envs"]:
             fail(f"slangTestdata の env ({m['slangTestdata'].get('env')}) が束にありません")
         if m["slangTestdata"]["env"] != SLANG_TESTDATA_ENV:
