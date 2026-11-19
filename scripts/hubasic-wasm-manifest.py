@@ -29,6 +29,8 @@ INCLUDE_FILES = ["CHIPLIB.LIB", "GRAPH.LIB", "GRAPHF.LIB", "SOROBAN.LIB", "SPRLI
 # SLANG タブ用の試験データの env と、そのファイルの拡張子
 SLANG_TESTDATA_ENV = "x1"
 SLANG_TESTDATA_EXTS = {"sl": "SL", "asm": "ASM", "bin": "bin"}
+# SLANG タブ用の試験データの見本 (examples/x1pen。build-hubasic-wasm.sh と publish.sh と同じ一覧)
+SLANG_TESTDATA_CASES = ["SCREEN", "SOUND", "INPUT"]
 # 束の根に写すライセンスの表示 (runtime/ の .asm を配るので要る。libfloat.asm は Apache 2.0)
 LICENSE_FILES = ["LICENSE", "LICENSE-APACHE-2.0.txt"]
 TESTDATA_ENV = "x1native_slfs"
@@ -359,8 +361,9 @@ def cmd_verify(out, manifest_path=None):
                 disk_names.add(disk_name)
                 if add.get("file") not in listed:
                     fail(f"{key} の {case['name']} の足すファイル ({add.get('file')}) が束にありません")
-            if case["name"] == "FILEIO" and not any(a["name"] == "GREET.TXT" and a["kind"] == "text" for a in adds):
-                fail(f"{key} の FILEIO に、GREET.TXT (text) を足した記録がありません")
+            if case["name"] == "FILEIO" and not any(a["name"] == "GREET.TXT" and a["kind"] == "text"
+                                                    and a["file"] == "testdata/FILEIO.GREET.TXT" for a in adds):
+                fail(f"{key} の FILEIO に、GREET.TXT (text、testdata/FILEIO.GREET.TXT から) を足した記録がありません")
     if current:
         if not m["hufsTestdata"]["cases"]:
             fail("hufsTestdata が空です")
@@ -369,23 +372,40 @@ def cmd_verify(out, manifest_path=None):
             fail("hufsTestdata に FILEIO の例がちょうど 1 つありません")
         if any(c["name"] == "FILEIO" for c in m["testdata"]["cases"]):
             fail("testdata に FILEIO があります (hufsTestdata に入れるものです)")
-        # env の値は、束の env ファイルから読み直したものと同じでなければならない
-        for name, values in m["envs"].items():
-            if read_env(os.path.join(out, "env", name + ".env")) != values:
+        # env はちょうど決まった 4 つ。名前と束のファイルを確かめてから、束の env ファイルを読み直して値を比べる
+        # (manifest の名前から束の外の道を作って読まないように、読むのは一覧にある束のファイルだけ)
+        if sorted(m["envs"]) != sorted(ENVS):
+            fail(f"manifest の envs は {', '.join(ENVS)} のはずです ({', '.join(m['envs'])})")
+        for name in ENVS:
+            if f"env/{name}.env" not in listed:
+                fail(f"env/{name}.env が束にありません")
+            if read_env(os.path.join(out, "env", name + ".env")) != m["envs"][name]:
                 fail(f"manifest の envs の {name} が、束の env/{name}.env と合いません")
+        # HuBASIC の例の起動名は、束の .SL の頭の `// disk-main-name:` と同じ
+        for key in ("testdata", "hufsTestdata"):
+            for case in m[key]["cases"]:
+                if case.get("diskMainName") != disk_main_name(os.path.join(out, case["sl"])) or not case.get("diskMainName"):
+                    fail(f"{key} の {case['name']} の diskMainName ({case.get('diskMainName')}) が、{case['sl']} の起動名と合いません")
         if m["slangTestdata"].get("env") not in m["envs"]:
             fail(f"slangTestdata の env ({m['slangTestdata'].get('env')}) が束にありません")
         if m["slangTestdata"]["env"] != SLANG_TESTDATA_ENV:
             fail(f"slangTestdata の env は {SLANG_TESTDATA_ENV} のはずです ({m['slangTestdata']['env']})")
         if not m["slangTestdata"]["cases"]:
             fail("SLANG タブ用の testdata が空です")
+        # SLANG タブ用の見本は、決まった 3 つがちょうど 1 つずつで、それぞれ自分の .SL・.ASM・.bin を指す
+        if sorted(c.get("name") for c in m["slangTestdata"]["cases"]) != sorted(SLANG_TESTDATA_CASES):
+            fail(f"slangTestdata の見本は {', '.join(SLANG_TESTDATA_CASES)} のはずです")
         for case in m["slangTestdata"]["cases"]:
-            for key in SLANG_TESTDATA_EXTS:
-                if case.get(key) not in listed:
-                    fail(f"SLANG タブ用の testdata の {case['name']} の {key} ({case.get(key)}) が束にありません")
-        include_paths = m["slangTestdata"].get("includePaths") or []
-        if not include_paths:
-            fail("slangTestdata に includePaths がありません")
+            for key, ext in SLANG_TESTDATA_EXTS.items():
+                if case.get(key) != f"testdata/slang/{case['name']}.{ext}" or case.get(key) not in listed:
+                    fail(f"SLANG タブ用の testdata の {case['name']} の {key} ({case.get(key)}) がおかしいか、束にありません")
+        include_paths = m["slangTestdata"].get("includePaths")
+        if not isinstance(include_paths, list) or not include_paths:
+            fail("slangTestdata に includePaths の一覧がありません")
+        for p in include_paths:
+            # 束の根からの相対の道だけ (絶対の道・.. ・空は使えない)
+            if not isinstance(p, str) or not p or p.startswith("/") or "\\" in p or ".." in p.split("/"):
+                fail(f"slangTestdata の includePaths に使えない道があります: {p!r}")
         for name in INCLUDE_FILES:
             if not any(f"{p.rstrip('/')}/{name}" in listed for p in include_paths):
                 fail(f"{name} が slangTestdata の includePaths ({include_paths}) のどこにもありません")
