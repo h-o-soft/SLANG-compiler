@@ -1405,14 +1405,17 @@ public class Driver
 
         if (slangc.Kind == ResolutionKind.DotnetRun)
         {
-            // dotnet run --project <csproj> -c Release -- -E <env> -o <out> <input>
+            // 開発の木の slangc: 木の SDK の決まりで組み立ててから、dotnet <slangc.dll> -E <env> -o <out> <input>
+            // (dotnet run --project は呼んだ人のフォルダの global.json で SDK を選んでしまう。DevToolBuild を参照)
+            var dll = DevToolBuild.Build(slangc.Path, slangc.ProjectPath!, "slangc", out var buildLog);
+            if (dll == null)
+            {
+                Console.Error.Write(buildLog);
+                Console.Error.WriteLine($"slangbuild: failed to build slangc ({slangc.ProjectPath})");
+                return 1;
+            }
             psi.FileName = slangc.Path; // dotnet
-            psi.ArgumentList.Add("run");
-            psi.ArgumentList.Add("--project");
-            psi.ArgumentList.Add(slangc.ProjectPath!);
-            psi.ArgumentList.Add("-c");
-            psi.ArgumentList.Add("Release");
-            psi.ArgumentList.Add("--");
+            psi.ArgumentList.Add(dll);
         }
         else
         {

@@ -10,13 +10,14 @@ namespace SLANGCompiler.HuBasic.CLI;
 /// 2) 同梱: hubasic2sl と同じ所の slangbuild(.exe)、その下の bin/slangbuild(.exe) (配布の bin/、install で入れた所)
 /// 3) 開発で publish したもの: src/SLANGCompiler.Build/bin/(Release|Debug)/net10.0/&lt;今の OS の RID&gt;/publish/slangbuild(.exe)
 /// 4) PATH の上の slangbuild(.exe)
-/// 5) dotnet run --project src/SLANGCompiler.Build/SLANGCompiler.Build.csproj -c Release --
+/// 5) 開発の木: src/SLANGCompiler.Build/SLANGCompiler.Build.csproj をその木の SDK の決まりで組み立て、dotnet &lt;slangbuild.dll&gt; で動かす
+///    (dotnet run --project は呼んだ人のフォルダの global.json で SDK を選んでしまうので使わない)
 /// </summary>
 internal sealed class SlangbuildRunner
 {
     private static string ExeSuffix => RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? ".exe" : "";
 
-    /// <summary>見つけた slangbuild。Project があれば FileName は dotnet で、dotnet run --project Project で動かす</summary>
+    /// <summary>見つけた slangbuild。Project があれば FileName は dotnet で、Project を組み立てた dll を dotnet で動かす</summary>
     internal sealed record Resolved(string FileName, string? Project = null);
 
     private readonly string _baseDir;
@@ -54,17 +55,55 @@ internal sealed class SlangbuildRunner
         return null;
     }
 
-    /// <summary>slangbuild を動かして終了コードを返す。stdout・stderr は受け取らずにそのまま流す</summary>
-    internal static int Run(Resolved tool, IEnumerable<string> args)
+    /// <summary>
+    /// slangbuild を動かして終了コードを返す。stdout・stderr は受け取らずにそのまま流す。
+    /// workingDirectory を省けば今の作業フォルダ (試験が、古い SDK に決めたフォルダから呼ぶときに使う)
+    /// </summary>
+    internal static int Run(Resolved tool, IEnumerable<string> args, string? workingDirectory = null)
     {
         var psi = new ProcessStartInfo { FileName = tool.FileName, UseShellExecute = false };
+        if (workingDirectory != null) psi.WorkingDirectory = workingDirectory;
         if (tool.Project != null)
-            foreach (var a in new[] { "run", "--project", tool.Project, "-c", "Release", "--" })
-                psi.ArgumentList.Add(a);
+        {
+            var dll = BuildDevSlangbuild(tool.FileName, tool.Project);
+            if (dll == null) return 1;
+            psi.ArgumentList.Add(dll);
+        }
         foreach (var a in args) psi.ArgumentList.Add(a);
         using var proc = Process.Start(psi)!;
         proc.WaitForExit();
         return proc.ExitCode;
+    }
+
+    /// <summary>組み立てた slangbuild の置き場 (csproj のフォルダから)。TargetFramework と合わせる</summary>
+    internal const string DevOutputSubdir = "bin/Release/net10.0";
+
+    /// <summary>
+    /// 開発の木の slangbuild を、csproj のフォルダを作業フォルダにして (その木の global.json が効く) Release で組み立て、dll の道を返す。
+    /// 失敗したら組み立ての出力を stderr に書いて null
+    /// </summary>
+    private static string? BuildDevSlangbuild(string dotnet, string csproj)
+    {
+        var projectDir = Path.GetDirectoryName(Path.GetFullPath(csproj))!;
+        var psi = new ProcessStartInfo
+        {
+            FileName = dotnet,
+            WorkingDirectory = projectDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var a in new[] { "build", Path.GetFullPath(csproj), "-c", "Release", "-nologo", "-v", "q" })
+            psi.ArgumentList.Add(a);
+        using var proc = Process.Start(psi)!;
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        var stdout = proc.StandardOutput.ReadToEnd();
+        proc.WaitForExit();
+        var dll = Path.Combine(projectDir, DevOutputSubdir, "slangbuild.dll");
+        if (proc.ExitCode == 0 && File.Exists(dll)) return dll;
+        Console.Error.Write(stdout + stderrTask.Result);
+        Console.Error.WriteLine($"hubasic2sl: slangbuild を組み立てられませんでした ({csproj})");
+        return null;
     }
 
     /// <summary>開発で publish した slangbuild。今の OS の RID だけを見て、同じ RID に Release と Debug があれば新しい方</summary>

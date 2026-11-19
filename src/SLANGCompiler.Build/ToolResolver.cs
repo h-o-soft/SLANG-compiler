@@ -32,7 +32,7 @@ public class ToolResolver
     ///    が見つかればそれ (= dev 環境で publish 済みの最新 slangc を PATH 上の
     ///    旧版より優先)
     /// 4) PATH 上の slangc (= 配布版を OS にインストールしたケース)
-    /// 5) dev fallback: dotnet (= caller が `dotnet run --project ...` を組み立てる)
+    /// 5) dev fallback: dotnet (= caller が DevToolBuild で CLI の csproj を組み立て、`dotnet &lt;slangc.dll&gt;` で動かす)
     /// </summary>
     public ResolvedTool ResolveSlangc(string? cliOverride)
     {
@@ -55,7 +55,7 @@ public class ToolResolver
         var onPath = FindOnPath(name);
         if (onPath != null) return new ResolvedTool(onPath, ResolutionKind.DirectExe);
 
-        // 5) dev fallback: dotnet run --project <repo>/src/SLANGCompiler.CLI/...
+        // 5) dev fallback: <repo>/src/SLANGCompiler.CLI/... を組み立てて dotnet で動かす (DevToolBuild)
         var dotnet = FindOnPath($"dotnet{ExeSuffix}");
         if (dotnet != null)
         {
@@ -580,7 +580,7 @@ public enum ResolutionKind
 {
     /// <summary>実行ファイルを直接 spawn (slangc / AILZ80ASM / Windows の HuDisk.exe)</summary>
     DirectExe,
-    /// <summary>dotnet run --project &lt;csproj&gt; 経由 (dev fallback、slangc 用)</summary>
+    /// <summary>開発の木の csproj を組み立てて dotnet で動かす (dev fallback、slangc 用。DevToolBuild)</summary>
     DotnetRun,
     /// <summary>mono &lt;assembly.exe&gt; 経由 (Linux/macOS の HuDisk.exe 用)</summary>
     MonoRun,
