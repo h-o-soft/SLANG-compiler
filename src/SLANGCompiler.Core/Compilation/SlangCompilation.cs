@@ -62,7 +62,9 @@ public static class SlangCompilation
     /// <summary>
     /// 1 つのソースをコンパイルする。ファイルが有るかは呼ぶ側が確かめる。
     /// diagnostics は呼ぶ側のもの (CLI は入力のファイルのあいだで 1 つを使い回す)。
-    /// エラーで止まったら、それまでの diagnostics を log に書いて Ok=false を返す (CLI はそこで終了コード 1)
+    /// エラーで止まったら、それまでの diagnostics を log に書いて Ok=false を返す (CLI はそこで終了コード 1)。
+    /// 成功したときは、warning などの診断は diagnostics に残ったまま log には書かない。呼ぶ側が最後に diagnostics.WriteTo で書く
+    /// (CLI は全部の入力のファイルの後に 1 度書く。SlangWebApi も同じ)
     /// </summary>
     public static SlangCompileResult CompileFile(string filePath, EnvironmentConfig envConfig, PathResolver pathResolver,
                                                  DiagnosticBag diagnostics, TextWriter log, SlangCompileOptions? options = null)

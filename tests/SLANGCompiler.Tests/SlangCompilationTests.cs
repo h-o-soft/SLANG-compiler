@@ -123,7 +123,7 @@ public class SlangCompilationTests : IDisposable
         Assert.True(r.Ok, log);
         Assert.NotEmpty(r.Overlays);
         Assert.NotNull(r.ModulesLines);
-        Assert.All(r.ModulesLines!, l => Assert.Matches(@"^\d+ \$[0-9A-F]{4} \d+$", l));
+        Assert.Equal(new[] { "0 $C000 40", "1 $C000 41", "2 $0010 30" }, r.ModulesLines);
         Assert.StartsWith("; SLANG Shared Symbols (auto-generated)", r.SharedSymbolsInc);
     }
 
