@@ -386,7 +386,7 @@ default では Linux/macOS は `~/.local/bin` (binary) + `~/.config/SLANG/` (lib
 
 ### 前提条件
 
-- **.NET 8 SDK** (必須) — slangc / slangbuild のビルドに必要
+- **.NET 10 SDK** (必須) — slangc / slangbuild のビルドに必要
 - **Python 3.x** (一部の機能で必要)
   - PCG / フォント変換ツール (`tools/png_to_asm.py`, `tools/charmap-encode.py`)
   - これらを使わない通常のコンパイル / 単一バイナリ実行には不要

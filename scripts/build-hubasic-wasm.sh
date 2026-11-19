@@ -60,9 +60,9 @@ for p in SLANGCompiler.HuBasic SLANGCompiler.CLI SLANGCompiler.Build; do
   dotnet build "src/$p/$p.csproj" -c Release --nologo -v q > "$TMP/build-$p.log" 2>&1 \
     || { cat "$TMP/build-$p.log" >&2; exit 1; }
 done
-HUB="$REPO/src/SLANGCompiler.HuBasic/bin/Release/net8.0/hubasic2sl.dll"
-SLANGC="$REPO/src/SLANGCompiler.CLI/bin/Release/net8.0/slangc"
-SLANGBUILD="$REPO/src/SLANGCompiler.Build/bin/Release/net8.0/slangbuild"
+HUB="$REPO/src/SLANGCompiler.HuBasic/bin/Release/net10.0/hubasic2sl.dll"
+SLANGC="$REPO/src/SLANGCompiler.CLI/bin/Release/net10.0/slangc"
+SLANGBUILD="$REPO/src/SLANGCompiler.Build/bin/Release/net10.0/slangbuild"
 
 echo "[2/5] wasm を組み立てます"
 dotnet publish src/SLANGCompiler.HuBasic.Wasm/SLANGCompiler.HuBasic.Wasm.csproj -c Release -o "$TMP/publish" --nologo -v q > "$TMP/publish.log" 2>&1 \

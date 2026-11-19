@@ -1214,15 +1214,15 @@ public class HuBasicEmitTests
         try
         {
             var name = OperatingSystem.IsWindows() ? "slangbuild.exe" : "slangbuild";
-            // リポジトリの形を真似る: <dir>/src/SLANGCompiler.HuBasic/bin/Release/net8.0 が hubasic2sl の置き場
-            var baseDir = Path.Combine(dir, "src", "SLANGCompiler.HuBasic", "bin", "Release", "net8.0");
+            // リポジトリの形を真似る: <dir>/src/SLANGCompiler.HuBasic/bin/Release/net10.0 が hubasic2sl の置き場
+            var baseDir = Path.Combine(dir, "src", "SLANGCompiler.HuBasic", "bin", "Release", "net10.0");
             Directory.CreateDirectory(baseDir);
             var runner = new SLANGCompiler.HuBasic.CLI.SlangbuildRunner(baseDir);
             var os = OperatingSystem.IsWindows() ? "win" : OperatingSystem.IsMacOS() ? "osx" : "linux";
             var arch = System.Runtime.InteropServices.RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant();
             string Publish(string config)
             {
-                var d = Path.Combine(dir, "src", "SLANGCompiler.Build", "bin", config, "net8.0", $"{os}-{arch}", "publish");
+                var d = Path.Combine(dir, "src", "SLANGCompiler.Build", "bin", config, "net10.0", $"{os}-{arch}", "publish");
                 Directory.CreateDirectory(d);
                 File.WriteAllText(Path.Combine(d, name), "");
                 return Path.Combine(d, name);

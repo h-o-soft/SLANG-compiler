@@ -8,7 +8,7 @@ namespace SLANGCompiler.HuBasic.CLI;
 /// (slangbuild の ToolResolver.ResolveSlangc。Build と Core を参照すると単一ファイルが大きくなるので写した):
 /// 1) --slangbuild
 /// 2) 同梱: hubasic2sl と同じ所の slangbuild(.exe)、その下の bin/slangbuild(.exe) (配布の bin/、install で入れた所)
-/// 3) 開発で publish したもの: src/SLANGCompiler.Build/bin/(Release|Debug)/net8.0/&lt;今の OS の RID&gt;/publish/slangbuild(.exe)
+/// 3) 開発で publish したもの: src/SLANGCompiler.Build/bin/(Release|Debug)/net10.0/&lt;今の OS の RID&gt;/publish/slangbuild(.exe)
 /// 4) PATH の上の slangbuild(.exe)
 /// 5) dotnet run --project src/SLANGCompiler.Build/SLANGCompiler.Build.csproj -c Release --
 /// </summary>
@@ -75,7 +75,7 @@ internal sealed class SlangbuildRunner
         foreach (var rid in CurrentOsRids())
         {
             var newest = new[] { "Release", "Debug" }
-                .Select(c => Path.Combine(binRoot, c, "net8.0", rid, "publish", name))
+                .Select(c => Path.Combine(binRoot, c, "net10.0", rid, "publish", name))
                 .Where(File.Exists)
                 .OrderByDescending(File.GetLastWriteTimeUtc)
                 .FirstOrDefault();

@@ -28,7 +28,7 @@ public class ToolResolver
     /// 1) cliOverride (--slangc 引数)
     /// 2) bundled: {baseDir}/slangc(.exe), {baseDir}/bin/slangc(.exe)
     /// 3) dev publish: repo root を辿って
-    ///    src/SLANGCompiler.CLI/bin/(Release|Debug)/net8.0/&lt;RID&gt;/publish/slangc(.exe)
+    ///    src/SLANGCompiler.CLI/bin/(Release|Debug)/net10.0/&lt;RID&gt;/publish/slangc(.exe)
     ///    が見つかればそれ (= dev 環境で publish 済みの最新 slangc を PATH 上の
     ///    旧版より優先)
     /// 4) PATH 上の slangc (= 配布版を OS にインストールしたケース)
@@ -71,7 +71,7 @@ public class ToolResolver
 
     /// <summary>
     /// dev 環境想定: repo root を起点に slangc の publish 物を探す。
-    /// <c>src/SLANGCompiler.CLI/bin/(Release|Debug)/net8.0/&lt;RID&gt;/publish/slangc(.exe)</c>
+    /// <c>src/SLANGCompiler.CLI/bin/(Release|Debug)/net10.0/&lt;RID&gt;/publish/slangc(.exe)</c>
     /// 配布物の `<root>/bin/slangc` パターンには触れない (= 通常解決順 2 が拾う想定)。
     ///
     /// **RID 選択** (Codex 指摘): 全 RID 走査で更新時刻最新を選ぶと、複数 RID 用に
@@ -91,7 +91,7 @@ public class ToolResolver
             DateTime newestTime = DateTime.MinValue;
             foreach (var config in new[] { "Release", "Debug" })
             {
-                var candidate = Path.Combine(binRoot, config, "net8.0", rid, "publish", name);
+                var candidate = Path.Combine(binRoot, config, "net10.0", rid, "publish", name);
                 if (!File.Exists(candidate)) continue;
                 var t = File.GetLastWriteTimeUtc(candidate);
                 if (t > newestTime)
@@ -561,7 +561,7 @@ public class ToolResolver
 
     /// <summary>
     /// dev 環境用: AppContext.BaseDirectory を起点に上位を辿って repo root を
-    /// 推定し、相対パスのファイルを探す。bin/Release/net8.0 配下から実行されている
+    /// 推定し、相対パスのファイルを探す。bin/Release/net10.0 配下から実行されている
     /// 想定で、最大 7 階層上まで探索。
     /// </summary>
     private string? LocateRepoFile(string relPath)

@@ -325,7 +325,7 @@ X1 IPL ROM (= X1_compatible_rom 等) が起動時に sector 0 を `$FE00` に lo
 
 - `runtime/libx1native_slfs.asm` (= FDC + FS_READ_BY_ID + X1FDC_WORK)
 - `runtime/env/x1native_slfs.env`
-- `src/SLANGCompiler.SlfsPack/` (= packer library + standalone CLI、 C# net8.0)
+- `src/SLANGCompiler.SlfsPack/` (= packer library + standalone CLI、 C# net10.0)
 - `src/SLANGCompiler.Build/DiskImageBuilder.cs` (= BuildSlfsPack 分岐、 library 直接呼出)
 - `examples/X1NATIVE_SLFS/` (= SLFSDEMO.SL + assets/)
 

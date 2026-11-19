@@ -15,9 +15,9 @@ public class X1NativeEnvTests
 {
     private static string EnvFilePath()
     {
-        // tests/SLANGCompiler.Tests/bin/Debug/net8.0/ から runtime/env/ に到達
+        // tests/SLANGCompiler.Tests/bin/Debug/net10.0/ から runtime/env/ に到達
         var baseDir = AppContext.BaseDirectory;
-        // 7 階層上が repo root (= bin/Debug/net8.0/SLANGCompiler.Tests/) → adjust
+        // 7 階層上が repo root (= bin/Debug/net10.0/SLANGCompiler.Tests/) → adjust
         var dir = new DirectoryInfo(baseDir);
         while (dir != null && !File.Exists(Path.Combine(dir.FullName, "runtime", "env", "x1native.env")))
         {

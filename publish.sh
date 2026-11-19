@@ -5,7 +5,7 @@ CSPROJ=src/SLANGCompiler.CLI/SLANGCompiler.CLI.csproj
 CSPROJ_BUILD=src/SLANGCompiler.Build/SLANGCompiler.Build.csproj
 CSPROJ_SLFS=src/SLANGCompiler.SlfsPack/SLANGCompiler.SlfsPack.csproj
 CSPROJ_HUBASIC=src/SLANGCompiler.HuBasic/SLANGCompiler.HuBasic.csproj
-TFM=net8.0
+TFM=net10.0
 
 createRelease() {
   cd publish-new/$1

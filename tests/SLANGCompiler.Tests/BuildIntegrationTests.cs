@@ -52,7 +52,7 @@ public class BuildIntegrationTests : IDisposable
         // 既存 publish 物があれば再利用 (テスト間で publish 重複を避ける)
         var rid = GetCurrentRid();
         var publishDir = Path.Combine(_projectRoot, "src", "SLANGCompiler.CLI",
-                                       "bin", "Release", "net8.0", rid, "publish");
+                                       "bin", "Release", "net10.0", rid, "publish");
         var exeName = OperatingSystem.IsWindows() ? "slangc.exe" : "slangc";
         var exePath = Path.Combine(publishDir, exeName);
         if (File.Exists(exePath)) return exePath;
