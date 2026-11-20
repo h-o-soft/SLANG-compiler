@@ -41,6 +41,9 @@ public class CodeGenerator
     // PR-B2 で main / overlay それぞれに Exports / Imports セクションを emit するときに
     // 参照する (= ユーザー関数の cross-reference 判定)。null は未収集状態。
     private HashSet<string>? _mainCalledFunctions;
+
+    // トップレベルの #ASM の `; @calls 名前,名前` の行で求めたランタイム (GlobalAsmDeclaredCalls で 1 度だけ読む)
+    private HashSet<string>? _globalAsmCalls;
     private Dictionary<int, HashSet<string>>? _overlayCalledFunctions;
     private bool IsCodeReadonly => _envConfig?.CodeReadonly == true;
 
@@ -122,7 +125,11 @@ public class CodeGenerator
             ? new[] { "SLANGINIT" }
             : Array.Empty<string>();
 
-        _runtimePlan = RuntimePlanner.Build(mainCalled, _module.Overlays,
+        // トップレベルの #ASM の `; @calls` は、本体の SLANG から呼んだのと同じに扱う (ユーザー関数の取り込みには使わない)
+        var mainRuntimeCalled = new HashSet<string>(mainCalled, StringComparer.OrdinalIgnoreCase);
+        mainRuntimeCalled.UnionWith(GlobalAsmDeclaredCalls());
+
+        _runtimePlan = RuntimePlanner.Build(mainRuntimeCalled, _module.Overlays,
             overlayCalled, _runtimeManager, inlineNames);
 
         // PR-B2: per-target called functions を保持し、Exports/Imports セクション emit
@@ -354,6 +361,8 @@ public class CodeGenerator
                 if (_runtimeManager.Functions.ContainsKey(dep))
                     _runtimeManager.MarkUsed(dep);
             }
+            foreach (var name in GlobalAsmDeclaredCalls())
+                _runtimeManager.MarkUsed(name);
         }
 
         // === Phase 3: ORG + ENV_TYPE/OS_TYPE ===
@@ -634,6 +643,72 @@ public class CodeGenerator
         lines.Select(line => AsmLineLabel.Match(line))
              .Where(m => m.Success)
              .Select(m => m.Groups[1].Value);
+
+    private static readonly System.Text.RegularExpressions.Regex GlobalAsmCallsLine =
+        new(@"^\s*;\s*@calls\s+(.+?)\s*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>
+    /// トップレベルの #ASM の `; @calls 名前,名前` の行から、入れるランタイムの名前を読む (ライブラリが求めるもの)。
+    /// 行の頭が `;` のものだけ (行の途中の注釈は読まない)。関数の中の #ASM は読まない。
+    /// 次の名前は警告を出して無視する (前と同じただの注釈になる): ランタイムに無い名前 (名前空間つきも)、
+    /// 利用者の関数と同じ名前、ZXN_MODULE に届くもの (#MODULE のページの検査はここをたどらない)。
+    /// </summary>
+    private HashSet<string> GlobalAsmDeclaredCalls()
+    {
+        if (_globalAsmCalls != null) return _globalAsmCalls;
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        _globalAsmCalls = result;
+        if (_runtimeManager == null) return result;
+
+        var userFuncs = new HashSet<string>(
+            _module.Functions.Concat(_module.Overlays.SelectMany(o => o.Functions)).Select(f => f.Name),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var inst in _module.GlobalData)
+        {
+            if (inst.Op != IrOp.InlineAsm || inst.Dest.Kind != IrOperandKind.AsmString) continue;
+            foreach (var line in inst.Dest.Name!.Split('\n'))
+            {
+                var m = GlobalAsmCallsLine.Match(line.TrimEnd('\r'));
+                if (!m.Success) continue;
+                foreach (var part in m.Groups[1].Value.Split(','))
+                {
+                    var name = part.Trim();
+                    if (name.Length == 0) continue;
+                    string? reason = null;
+                    if (!_runtimeManager.Functions.ContainsKey(name))
+                        reason = "not a runtime function";
+                    else if (userFuncs.Contains(name))
+                        reason = $"{name} is a user function";
+                    else if (ReachesZxnModule(name))
+                        reason = "reaches ZXN_MODULE; call ZXN_MODULE(n) from SLANG";
+                    if (reason != null)
+                    {
+                        _diagnostics?.Warning($"; @calls {name} is ignored: {reason}", inst.Span);
+                        continue;
+                    }
+                    result.Add(name);
+                }
+            }
+        }
+        return result;
+    }
+
+    /// <summary>ランタイムの name か、その @calls をたどった先のどこかが ZXN_MODULE か</summary>
+    private bool ReachesZxnModule(string name)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var stack = new Stack<string>();
+        stack.Push(name);
+        while (stack.Count > 0)
+        {
+            var n = stack.Pop();
+            if (!seen.Add(n)) continue;
+            if (!_runtimeManager!.Functions.TryGetValue(n, out var f)) continue;
+            if (f.Name.Equals("ZXN_MODULE", StringComparison.OrdinalIgnoreCase)) return true;
+            foreach (var dep in f.Dependencies) stack.Push(dep);
+        }
+        return false;
+    }
 
     /// <summary>トップレベルのインラインASM（#ASMブロック）を出力</summary>
     private void EmitGlobalPlainAsm()

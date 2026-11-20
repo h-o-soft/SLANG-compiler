@@ -38,6 +38,8 @@ MACHINE TILE_INVALIDATE(0): TileInvalidate;
 // ブロック 1: 実装
 // ============================================================
 #ASM
+; ランタイムの掛け算を使う (関数の外の #ASM の CALL ではランタイムが入らないので、次の行で求める)
+; @calls MULHLDE
 
 ; --- 定数 ---
 TILE_TVRAM	EQU	$3000	; テキスト VRAM (I/O, $3000-$37FF)
@@ -170,7 +172,7 @@ TileFillMap:
 	ld a,(_TILE_MAPW)
 	ld e,a
 	ld d,0
-	call _TileMulHLDE
+	call MULHLDE
 	; HL = (absY/2) * MAPW
 
 	; HL += SCROLLX/2 (行内オフセット)
@@ -323,26 +325,6 @@ _TileAnimCheck:
 	ret
 
 ; ============================================================
-; HL = HL * DE (16bit unsigned)
-; ============================================================
-_TileMulHLDE:
-	ld b,h
-	ld c,l
-	ld hl,0
-.mulLoop:
-	srl d
-	rr e
-	jr nc,.mulNoadd
-	add hl,bc
-.mulNoadd:
-	sla c
-	rl b
-	ld a,d
-	or e
-	jr nz,.mulLoop
-	ret
-
-; ============================================================
 ; 設定 API
 ; ============================================================
 
@@ -467,7 +449,7 @@ TileSetOfs:
 	push hl
 	ex de,hl		; HL = Y
 	ld de,40
-	call _TileMulHLDE	; HL = Y * 40
+	call MULHLDE	; HL = Y * 40
 	pop de			; DE = X
 	add hl,de
 	ld (_TILE_DE_BASE),hl

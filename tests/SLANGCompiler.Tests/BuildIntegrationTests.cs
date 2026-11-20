@@ -198,19 +198,23 @@ public class BuildIntegrationTests : IDisposable
     }
 
     [SkippableTheory]
-    [InlineData("x1")]
-    [InlineData("sosx1")]
-    public void ChipLib_BuildsAlone(string env)
+    [InlineData("x1", "CHIPLIB.LIB")]
+    [InlineData("sosx1", "CHIPLIB.LIB")]
+    [InlineData("x1", "TILELIB.LIB")]
+    [InlineData("sosx1", "TILELIB.LIB")]
+    [InlineData("x1", "TILESPR.LIB")]
+    [InlineData("sosx1", "TILESPR.LIB")]
+    public void ChipLib_BuildsAlone(string env, string lib)
     {
-        // CHIPLIB.LIB だけを取り込み、掛け算を書かないプログラムも組み立てられる
-        // (関数の外の #ASM の CALL ではランタイムの MULHLDE が入らないので、CHIPLIB.LIB は自分の _ChipMulHLDE を使う)
+        // ライブラリだけを取り込み、掛け算を書かないプログラムも組み立てられる
+        // (ライブラリのトップレベルの #ASM の `; @calls MULHLDE` で、ランタイムの MULHLDE が 1 つだけ入る)
         Skip.IfNot(File.Exists(_ailz80AsmPath), "AILZ80ASM がない");
         var slPath = Path.Combine(_tempDir, "chip.SL");
-        File.WriteAllText(slPath, "#INCLUDE CHIPLIB.LIB\nMAIN()\nBEGIN\nEND;\n");
+        File.WriteAllText(slPath, $"#INCLUDE {lib}\nMAIN()\nBEGIN\nEND;\n");
         var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", env, "-I", Path.Combine(_projectRoot, "include"), "--keep-asm");
         Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
         Assert.True(File.Exists(Path.Combine(_tempDir, "chip.bin")), $"bin not produced. stderr: {stderr}");
-        Assert.Matches(@"(?m)^_ChipMulHLDE:", File.ReadAllText(Path.Combine(_tempDir, "chip.ASM")));
+        Assert.Single(Regex.Matches(File.ReadAllText(Path.Combine(_tempDir, "chip.ASM")), @"(?m)^MULHLDE:"));
     }
 
     [Theory]
