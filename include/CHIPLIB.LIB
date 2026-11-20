@@ -115,6 +115,25 @@ ChipInit:
 	ld (_CHIP_PRIMARY),a
 	ret
 
+; HL = HL * DE (16bit unsigned)。A・BC・DE は壊す
+; ランタイムの MULHLDE は、関数の外の #ASM の CALL からは入らないので、ライブラリの中に持つ (TILELIB の _TileMulHLDE と同じ)
+_ChipMulHLDE:
+	ld b,h
+	ld c,l
+	ld hl,0
+.mulLoop:
+	srl d
+	rr e
+	jr nc,.mulNoadd
+	add hl,bc
+.mulNoadd:
+	sla c
+	rl b
+	ld a,d
+	or e
+	jr nz,.mulLoop
+	ret
+
 ; RAM を A の値でクリア (HL=先頭, BC=サイズ)
 _ChipClearRAM:
 	ld (hl),a
@@ -336,7 +355,7 @@ ChipFillMap:
 	ld l,a
 	ld e,(IY+4)	; _CHIP_MAPW。 可変サイズなので……
 	ld d,0
-	call MULHLDE	; 素朴に掛け算する
+	call _ChipMulHLDE	; 素朴に掛け算する
 	ex de,hl
 	add ix,de
 
@@ -1137,7 +1156,7 @@ ChipSprAdd:
 	ld h,0
 .ref_vvw1:
 	ld de,VVRAMWIDTH
-	call MULHLDE	; HL = Y * VVRAMWIDTH
+	call _ChipMulHLDE	; HL = Y * VVRAMWIDTH
 	ex de,hl
 
 	; _CHIP_SPRXがMAPXより小さい場合は負値になるが計算上問題ないはず
@@ -1436,7 +1455,7 @@ ChipSetVVRAMSize:
 	ld h,0
 	ld (_ChipSetVAdrOfs.ref_vvw+1),hl
 	pop hl
-	; ChipSprAdd: ld de,width (MULHLDE用)
+	; ChipSprAdd: ld de,width (_ChipMulHLDE用)
 	push hl
 	ld h,0
 	ld (ChipSprAdd.ref_vvw1+1),hl
