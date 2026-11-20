@@ -651,7 +651,9 @@ public class CodeGenerator
     /// トップレベルの #ASM の `; @calls 名前,名前` の行から、入れるランタイムの名前を読む (ライブラリが求めるもの)。
     /// 行の頭が `;` のものだけ (行の途中の注釈は読まない)。関数の中の #ASM は読まない。
     /// 次の名前は警告を出して無視する (前と同じただの注釈になる): ランタイムに無い名前 (名前空間つきも)、
-    /// 利用者の関数と同じ名前、ZXN_MODULE に届くもの (#MODULE のページの検査はここをたどらない)。
+    /// 別名や @calls をたどると利用者の関数と同じ名前に届くもの (入れるとラベルが 2 つになる)、
+    /// ZXN_MODULE に届くもの (#MODULE のページの検査はここをたどらない)。
+    /// 名前そのものが利用者の関数と同じなら、エラーにする (無視すると、#ASM の CALL が黙って利用者の関数を呼ぶ)。
     /// </summary>
     private HashSet<string> GlobalAsmDeclaredCalls()
     {
@@ -674,12 +676,23 @@ public class CodeGenerator
                 {
                     var name = part.Trim();
                     if (name.Length == 0) continue;
-                    string? reason = null;
                     if (!_runtimeManager.Functions.ContainsKey(name))
-                        reason = "not a runtime function";
-                    else if (userFuncs.Contains(name))
-                        reason = $"{name} is a user function";
-                    else if (ReachesZxnModule(name))
+                    {
+                        _diagnostics?.Warning($"; @calls {name} is ignored: not a runtime function", inst.Span);
+                        continue;
+                    }
+                    if (userFuncs.Contains(name))
+                    {
+                        // 無視すると、この #ASM の CALL が黙って利用者の関数を呼ぶので、エラーにする
+                        _diagnostics?.Error($"; @calls {name}: {name} is a user function, so the #ASM CALL would not reach the runtime function", inst.Span);
+                        continue;
+                    }
+                    var closure = RuntimeClosure(name);
+                    string? reason = null;
+                    var clash = closure.FirstOrDefault(userFuncs.Contains);
+                    if (clash != null)
+                        reason = $"needs {clash}, which is a user function";
+                    else if (closure.Contains("ZXN_MODULE"))
                         reason = "reaches ZXN_MODULE; call ZXN_MODULE(n) from SLANG";
                     if (reason != null)
                     {
@@ -693,21 +706,21 @@ public class CodeGenerator
         return result;
     }
 
-    /// <summary>ランタイムの name か、その @calls をたどった先のどこかが ZXN_MODULE か</summary>
-    private bool ReachesZxnModule(string name)
+    /// <summary>ランタイムの name と、その @calls をたどった先の関数の正規名 (別名は正規名にする。入れると出るラベル)</summary>
+    private List<string> RuntimeClosure(string name)
     {
+        var result = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var stack = new Stack<string>();
         stack.Push(name);
         while (stack.Count > 0)
         {
-            var n = stack.Pop();
-            if (!seen.Add(n)) continue;
-            if (!_runtimeManager!.Functions.TryGetValue(n, out var f)) continue;
-            if (f.Name.Equals("ZXN_MODULE", StringComparison.OrdinalIgnoreCase)) return true;
-            foreach (var dep in f.Dependencies) stack.Push(dep);
+            if (!_runtimeManager!.Functions.TryGetValue(stack.Pop(), out var f)) continue;
+            if (!seen.Add(f.Name)) continue;
+            result.Add(f.Name);
+            for (int i = f.Dependencies.Count - 1; i >= 0; i--) stack.Push(f.Dependencies[i]);
         }
-        return false;
+        return result;
     }
 
     /// <summary>トップレベルのインラインASM（#ASMブロック）を出力</summary>

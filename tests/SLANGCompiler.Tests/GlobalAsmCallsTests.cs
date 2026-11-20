@@ -15,7 +15,8 @@ namespace SLANGCompiler.Tests;
 /// </summary>
 public class GlobalAsmCallsTests : IDisposable
 {
-    // 試験用の小さなランタイム (A は B を、B は ZXN_MODULE を @calls で使う)
+    // 試験用の小さなランタイム (A は B を、B は ZXN_MODULE を、DIVHLDE は DIVHLDE8 を @calls で使う。BIT は RBIT の別名。
+    // LOC は @resident local)
     private const string Lib = @"; @name MULHLDE
 LD HL,1
 RET
@@ -37,6 +38,25 @@ RET
 ; @name ZXN_MODULE
 LD HL,3
 RET
+
+; @name RBIT
+; @alias BIT
+LD HL,5
+RET
+
+; @name DIVHLDE
+; @calls DIVHLDE8
+CALL DIVHLDE8
+RET
+
+; @name DIVHLDE8
+LD HL,6
+RET
+
+; @name LOC
+; @resident local
+LD HL,7
+RET
 ";
 
     private readonly string _repo = TestTools.RepoRoot();
@@ -56,6 +76,12 @@ RET
     /// <summary>試験用のランタイムで組む。direct なら GenerateAll を通さず Generate だけを呼ぶ (計画の無い道)</summary>
     private static (string Asm, DiagnosticBag Diag) Build(string source, bool direct = false)
     {
+        var (asm, _, diag) = BuildAll(source, direct);
+        return (asm, diag);
+    }
+
+    private static (string Asm, List<(string Name, string Asm)> Overlays, DiagnosticBag Diag) BuildAll(string source, bool direct = false)
+    {
         var diag = new DiagnosticBag();
         var tokens = new Lexer.Lexer(source).Tokenize();
         tokens = new Preprocessor(diag).Process(tokens, ".");
@@ -68,8 +94,9 @@ RET
         var rm = new RuntimeManager();
         rm.LoadFromString(Lib);
         var codeGen = new CodeGenerator(irModule, rm, null, diag);
-        var asm = direct ? codeGen.Generate() : codeGen.GenerateAll().MainAsm;
-        return (asm, diag);
+        if (direct) return (codeGen.Generate(), new List<(string, string)>(), diag);
+        var (mainAsm, overlays) = codeGen.GenerateAll();
+        return (mainAsm, overlays, diag);
     }
 
     private static int Defs(string asm, string label) => Regex.Matches(asm, $@"(?m)^{label}:").Count;
@@ -162,12 +189,58 @@ RET
     }
 
     [Fact]
-    public void UserFunctionSameName_WarnsAndOneDefinition()
+    public void UserFunctionSameName_Error()
     {
-        // (利用者の関数を呼ぶと、ランタイムの同じ名前のものも入るのは前から。ここでは呼ばずに `; @calls` だけを見る)
-        var (asm, diag) = Build("#ASM\n; @calls MULHLDE\n#END\nMULHLDE(X, Y)\nBEGIN\n  RETURN X;\nEND;\n" + EmptyMain);
-        Assert.Equal(1, Defs(asm, "MULHLDE"));
-        Assert.Equal(new[] { "; @calls MULHLDE is ignored: MULHLDE is a user function" }, Warnings(diag));
+        // 無視すると、#ASM の CALL MULHLDE が黙って利用者の関数を呼ぶので、エラーにする
+        var (_, diag) = Build("#ASM\n; @calls MULHLDE\n#END\nMULHLDE(X, Y)\nBEGIN\n  RETURN X;\nEND;\n" + EmptyMain);
+        var e = Assert.Single(diag.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Equal("; @calls MULHLDE: MULHLDE is a user function, so the #ASM CALL would not reach the runtime function", e.Message);
+    }
+
+    [Fact]
+    public void AliasOfUserFunction_WarnsAndIgnored()
+    {
+        // BIT は RBIT の別名。RBIT を入れると、利用者の RBIT とラベルが 2 つになる
+        var (asm, diag) = Build("#ASM\n; @calls BIT\n#END\nRBIT(X)\nBEGIN\n  RETURN X;\nEND;\n" + EmptyMain);
+        Assert.Equal(1, Defs(asm, "RBIT"));
+        Assert.Equal(new[] { "; @calls BIT is ignored: needs RBIT, which is a user function" }, Warnings(diag));
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void DependencyIsUserFunction_WarnsAndIgnored()
+    {
+        // DIVHLDE は @calls で DIVHLDE8 を使う。利用者の DIVHLDE8 とラベルが 2 つになる
+        var (asm, diag) = Build("#ASM\n; @calls DIVHLDE\n#END\nDIVHLDE8(X)\nBEGIN\n  RETURN X;\nEND;\n" + EmptyMain);
+        Assert.Equal(0, Defs(asm, "DIVHLDE"));
+        Assert.Equal(1, Defs(asm, "DIVHLDE8"));
+        Assert.Equal(new[] { "; @calls DIVHLDE is ignored: needs DIVHLDE8, which is a user function" }, Warnings(diag));
+        Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void Alias_BringsCanonicalOnce()
+    {
+        var (asm, diag) = Build("#ASM\n; @calls BIT, RBIT\n#END\n" + EmptyMain);
+        Assert.Equal(1, Defs(asm, "RBIT"));
+        Assert.Empty(Warnings(diag));
+    }
+
+    [Fact]
+    public void ResidentModule_LocalRuntime_UsesMainCopy()
+    {
+        // RESIDENT のモジュールが使う @resident local の関数は、ふつうはモジュールの中に写しを持つ。
+        // 本体の `; @calls` で本体に入れると、本体の SLANG から呼んだときと同じく、モジュールは本体のものを使う
+        const string module = "#MODULE $C000 RESIDENT\nFM()\nBEGIN\n#ASM\n\tCALL\tLOC\n#END\nEND;\n#END\n";
+        var (mainA, ovA, diagA) = BuildAll(EmptyMain + module);
+        var (mainB, ovB, diagB) = BuildAll("#ASM\n; @calls LOC\n#END\n" + EmptyMain + module);
+        Assert.Empty(Warnings(diagA));
+        Assert.Empty(Warnings(diagB));
+        Assert.Equal(0, Defs(mainA, "LOC"));
+        Assert.Equal(1, Defs(ovA.Single().Asm, "LOC"));
+        Assert.Equal(1, Defs(mainB, "LOC"));
+        Assert.Equal(0, Defs(ovB.Single().Asm, "LOC"));
+        Assert.Matches(@"(?m)^\s*CALL\s+LOC\b", ovB.Single().Asm);
     }
 
     [Theory]
@@ -213,7 +286,7 @@ RET
     {
         var path = Path.Combine(_dir, name);
         File.WriteAllText(path, text);
-        var paths = new PathResolver(new List<string>(), new List<string> { _repo });
+        var paths = new PathResolver(new List<string> { Path.Combine(_repo, "include") }, new List<string> { _repo });
         using var log = new StringWriter();
         var resolution = SlangCompilation.ResolveEnvironment(env, paths, log);
         Assert.True(resolution != null, log.ToString());
@@ -246,6 +319,15 @@ RET
         Assert.Equal(1, Defs(a.MainAsm!, "MULHLDE"));
         Assert.Equal(1, Defs(b.MainAsm!, "MULHLDE"));
         Assert.Equal(b.Overlays.Single().Asm, a.Overlays.Single().Asm);
+    }
+
+    [Fact]
+    public void Library_UserFunctionSameName_Error()
+    {
+        // 同梱のライブラリと、ランタイムと同じ名前 (MULHLDE) の利用者の関数: ライブラリの掛け算が利用者の関数を呼ばないよう、止める
+        var (r, log, diag) = Compile("x1", "U.SL", "#INCLUDE TILELIB.LIB\nMULHLDE(X, Y)\nBEGIN\n  RETURN X;\nEND;\n" + EmptyMain);
+        Assert.False(r.Ok);
+        Assert.Contains(diag.Diagnostics, d => d.Severity == DiagnosticSeverity.Error && d.Message.StartsWith("; @calls MULHLDE: MULHLDE is a user function"));
     }
 
     [Fact]
