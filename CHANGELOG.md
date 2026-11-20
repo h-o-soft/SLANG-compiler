@@ -6,10 +6,13 @@
 
 - ソースからビルドするには .NET 10 SDK が要る (前は .NET 8)。`global.json` で SDK を 10.0 系に決める。配布 zip は .NET を同梱しているので、zip を使うときは変わらない (#293)
 - slangbuild・hubasic2sl は、slangc・slangbuild が見つからないときに開発の木からビルドして動かすのをやめた。`--slangc`・`--slangbuild`、同梱のもの、開発の木で publish したもの、`PATH` の順に探し、どこにも無ければ止まる
-  (開発の木では `make publish-local` か `dotnet publish` で publish しておく)。配布 zip とインストールでは変わらない (#293)
+  (開発の木では `make publish-local` で publish しておく。`dotnet publish` で publish するときは、
+  `dotnet publish src/SLANGCompiler.CLI -c Release -r <RID> --self-contained true /p:PublishSingleFile=true` のように `-r <RID>` を付ける。
+  探す所は [docs/SLANG-spec.md](docs/SLANG-spec.md))。配布 zip とインストールでは変わらない (#293)
 - X1 の env で、自分で `STICK` という名前の関数を書いて呼んでいるプログラムは、ランタイムの `STICK` とラベルが重なってアセンブルで止まる。関数の名前を変える (#293)
-- 関数の外の `#ASM` に `; @calls 名前` の形の注釈があり、名前がランタイムの関数なら、そのランタイムがプログラムに入る (下の「関数の外の `#ASM` から使うランタイム」) (#298)
-- `CHIPLIB.LIB`・`TILELIB.LIB` を取り込むプログラムは、本体の関数に `MULHLDE` という名前を使えない (エラー) (#298)
+- 関数の外の `#ASM` に `; @calls 名前` の形の注釈があり、名前がランタイムの関数なら、そのランタイムがプログラムに入る (下の「関数の外の `#ASM` から使うランタイム」)。
+  書いた名前と同じ名前の関数を本体で書いていると、エラーになる。同梱の `CHIPLIB.LIB`・`TILELIB.LIB` がこの注釈で `MULHLDE` を求めるので、
+  それらを取り込むプログラムは、本体の関数に `MULHLDE` という名前を使えない。決まりは [docs/SLANG-spec.md](docs/SLANG-spec.md) (#298)
 - 式 (括弧・単項の演算子)・文・`#IF` の式・`#IF` のかたまりの入れ子は、256 段を越えるとエラー (前はスタックを使い果たして落ちていた) (#293)
 
 ### X1
@@ -18,8 +21,8 @@
   X1 の全部の env (`x1`・`lsx`・`sosx1`・`cpm`・`x1native`・`x1native_slfs`・`x1native_hufs`)。詳しくは [docs/X1.md](docs/X1.md) (#293)
 - `M8ALOAD` だけを呼び、`PRINT`・`WIDTH` などを呼ばないプログラムが、`x1` の env でアセンブルのエラーになっていたのを直した (#294)
 - `CHIPLIB.LIB` を取り込み、掛け算や `RND` などを使わないプログラムが、`MULHLDE` が無くてアセンブルのエラーになっていたのを直した (#296・#298)
-- `CHIPLIB.LIB`・`TILELIB.LIB` の自前の掛け算をやめ、ランタイムの `MULHLDE` を使う。ほかでも掛け算を使うプログラムは 21 バイト (両方のライブラリを使うなら 42 バイト) 小さくなり、
-  使わないプログラムは 21 バイト大きくなる (#298)
+- `TILELIB.LIB` の自前の掛け算をやめ、ランタイムの `MULHLDE` を使う (`CHIPLIB.LIB` は前からランタイムの `MULHLDE` を使っている)。
+  `TILELIB.LIB` を取り込むプログラムは、ほかでも掛け算 (や `RND` など) を使うなら 21 バイト小さくなり、使わないなら 21 バイト大きくなる (#298)
 - 見本 `examples/x1pen` (`x1` の env の画面・音・入力) を足し、配布 zip にも入れた (#293)
 
 ### 関数の外の `#ASM` から使うランタイム
