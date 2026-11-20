@@ -1,5 +1,50 @@
 # 更新履歴
 
+## Version 0.29.0
+
+### 動きが変わること (前の版から書き換えが要るかもしれないもの)
+
+- ソースからビルドするには .NET 10 SDK が要る (前は .NET 8)。`global.json` で SDK を 10.0 系に決める。配布 zip は .NET を同梱しているので、zip を使うときは変わらない (#293)
+- slangbuild・hubasic2sl は、slangc・slangbuild が見つからないときに開発の木からビルドして動かすのをやめた。`--slangc`・`--slangbuild`、同梱のもの、開発の木で publish したもの、`PATH` の順に探し、どこにも無ければ止まる
+  (開発の木では `make publish-local` で publish しておく。`dotnet publish` で publish するときは、
+  `dotnet publish src/SLANGCompiler.CLI -c Release -r <RID> --self-contained true /p:PublishSingleFile=true` のように `-r <RID>` を付ける。
+  探す所は [docs/SLANG-spec.md](docs/SLANG-spec.md))。配布 zip とインストールでは変わらない (#293)
+- X1 の env で、自分で `STICK` という名前の関数を書いて呼んでいるプログラムは、ランタイムの `STICK` とラベルが重なってアセンブルで止まる。関数の名前を変える (#293)
+- 関数の外の `#ASM` に `; @calls 名前` の形の注釈があり、名前がランタイムの関数なら、そのランタイムがプログラムに入る (下の「関数の外の `#ASM` から使うランタイム」)。
+  書いた名前と同じ名前の関数を本体で書いていると、エラーになる。同梱の `CHIPLIB.LIB`・`TILELIB.LIB` がこの注釈で `MULHLDE` を求めるので、
+  それらを取り込むプログラムは、本体の関数に `MULHLDE` という名前を使えない。決まりは [docs/SLANG-spec.md](docs/SLANG-spec.md) (#298)
+- 式 (括弧・単項の演算子)・文・`#IF` の式・`#IF` のかたまりの入れ子は、256 段を越えるとエラー (前はスタックを使い果たして落ちていた) (#293)
+
+### X1
+
+- `STICK(n)` を追加 — ジョイスティックのポート (PSG の I/O ポート A・B) の生の値を返す。押しているレバーとボタンのビットが 0 (何も押していなければ `$FF`)。
+  X1 の全部の env (`x1`・`lsx`・`sosx1`・`cpm`・`x1native`・`x1native_slfs`・`x1native_hufs`)。詳しくは [docs/X1.md](docs/X1.md) (#293)
+- `M8ALOAD` だけを呼び、`PRINT`・`WIDTH` などを呼ばないプログラムが、`x1` の env でアセンブルのエラーになっていたのを直した (#294)
+- `CHIPLIB.LIB` を取り込み、掛け算や `RND` などを使わないプログラムが、`MULHLDE` が無くてアセンブルのエラーになっていたのを直した (#296・#298)
+- `TILELIB.LIB` の自前の掛け算をやめ、ランタイムの `MULHLDE` を使う (`CHIPLIB.LIB` は前からランタイムの `MULHLDE` を使っている)。
+  `TILELIB.LIB` を取り込むプログラムは、ほかでも掛け算 (や `RND` など) を使うなら 21 バイト小さくなり、使わないなら 21 バイト大きくなる (#298)
+- 見本 `examples/x1pen` (`x1` の env の画面・音・入力) を足し、配布 zip にも入れた (#293)
+
+### 関数の外の `#ASM` から使うランタイム
+
+- 関数の外 (トップレベル) の `#ASM` の `CALL` だけでは、ランタイムの関数はプログラムに入らない。その `#ASM` に `; @calls 名前` の行を書くと入る
+  (ランタイムの `.asm` の `@calls` と同じ書き方。本体の SLANG からその関数を呼んだのと同じに扱う)。決まりは [docs/SLANG-spec.md](docs/SLANG-spec.md) (#298)
+
+### コンパイラの直し
+
+- 小数 (`1.5` など) を、OS の地域の設定に左右されずに読む。小数点が `,` の地域の設定では、`1.5` が黙って `15` になっていた (#293)
+- env の `libraries` に空の項目があると落ちていたのを、壊れた env としてエラーで止めるようにした (#293)
+- `#IF` の `-2147483648 / -1` で落ちていたのを、ほかの演算と同じく回り込むようにした (#293)
+- c64: `#ASM` を使えないというエラーの行を、`#ASM` の行にした (前は、その後ろの字句の行を指していた) (#298)
+
+### HuBASIC の形のディスク (`x1native_hufs`) と hubasic2sl
+
+- ディスクの起動名に `0:` を付けたとき、IPL の見出しの名前にも `0:` が残っていたのを直した (ディレクトリの項目と同じく付けない) (#293)
+- ファイルの命令を使う見本 `examples/hubasic/FILEIO` を足した (#293)
+- ブラウザ (wasm) 向けの一式で、slangc も動かせるようにした: ソースと env から ASM と診断を返す入口 (アセンブラは呼ばない) と、
+  `slangbuild --emit disk -E x1native_hufs` と同じディスクを作る入口。`x1` の env とそのランタイム・X1 向けの include も一式に入る。
+  詳しくは [docs/HUBASIC.md](docs/HUBASIC.md) の「ブラウザで使う」 (#293)
+
 ## Version 0.28.0
 
 ### 動きが変わること (前の版から書き換えが要るかもしれないもの)

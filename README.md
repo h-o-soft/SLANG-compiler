@@ -1,5 +1,5 @@
 # SLANG-compiler
-SLANG Compiler (Z80 + C64/oscar64) 0.28.0
+SLANG Compiler (Z80 + C64/oscar64) 0.29.0
 
 # 概要
 
@@ -37,7 +37,7 @@ X1 の HuBASIC のテキストを SLANG に変換するツール (アルファ�
 ## slangc 単体 (= compile のみ、 link しない)
 
 ```
-SLANG Compiler v0.28.0
+SLANG Compiler v0.29.0
 Usage: slangc [options] <input.sl>
 
 Options:
