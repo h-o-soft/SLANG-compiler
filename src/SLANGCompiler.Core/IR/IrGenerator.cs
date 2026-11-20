@@ -357,7 +357,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
     }
     private string NewLabel() => $"_L{_labelCount++}";
 
-    private void Emit(IrOp op, IrOperand dest = default, IrOperand src1 = default, IrOperand src2 = default, int dataSize = 2)
+    private IrInstruction Emit(IrOp op, IrOperand dest = default, IrOperand src1 = default, IrOperand src2 = default, int dataSize = 2)
     {
         var inst = new IrInstruction(op, dest, src1, src2) { DataSize = dataSize };
         CheckFloatOperands(inst);
@@ -365,6 +365,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
             _module.GlobalData.Add(inst);
         else
             _currentFunction.Instructions.Add(inst);
+        return inst;
     }
 
     // いま作っている文の場所 (Emit の FLOAT の検査のエラーの場所)
@@ -3128,7 +3129,7 @@ public class IrGenerator : IAstVisitor<IrOperand>
 
     public IrOperand VisitPlainAsm(PlainAsm node)
     {
-        Emit(IrOp.InlineAsm, IrOperand.Asm(node.AsmText));
+        Emit(IrOp.InlineAsm, IrOperand.Asm(node.AsmText)).Span = node.Span;
         return IrOperand.None;
     }
 

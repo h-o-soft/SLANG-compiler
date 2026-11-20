@@ -98,7 +98,7 @@ public class Parser
             case TokenKind.Org: return ParseOrg();
             case TokenKind.Work: return ParseWork();
             case TokenKind.Offset: return ParseOffset();
-            case TokenKind.Plain: return new PlainAsm(Advance().StringValue, Current.Span);
+            case TokenKind.Plain: { var asm = Advance(); return new PlainAsm(asm.StringValue, asm.Span); }
             case TokenKind.PreprocIf: return ParsePreprocIf();
             case TokenKind.PreprocElse: Advance(); return null;
             case TokenKind.PreprocEnd: Advance(); return null;
@@ -763,7 +763,7 @@ public class Parser
             case TokenKind.Return: return ParseReturn();
             case TokenKind.Goto: return ParseGoto();
             case TokenKind.Print: return ParsePrint();
-            case TokenKind.Plain: return new PlainAsm(Advance().StringValue, Current.Span);
+            case TokenKind.Plain: { var asm = Advance(); return new PlainAsm(asm.StringValue, asm.Span); }
             case TokenKind.Var:
             case TokenKind.Array:
             case TokenKind.Byte:

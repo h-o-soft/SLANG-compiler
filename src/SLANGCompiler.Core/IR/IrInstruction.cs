@@ -161,6 +161,7 @@ public class IrInstruction
     public int DataSize { get; set; } = 2;   // 1=byte, 2=word, 3=float
     public int[]? ArgSizes { get; set; }     // IrOp.Call のユーザー関数引数の各サイズ (MACHINE は FLOAT 2 つの [3,3] だけ)。null=全WORD互換
     public IrOperand ImplicitSrc { get; set; } // HL を暗に読む命令 (型の変換の呼び出し) が読む値
+    public SourceSpan Span { get; set; } = SourceSpan.Unknown; // トップレベルの #ASM の場所 (; @calls の警告の場所)
 
     public IrInstruction(IrOp op, IrOperand dest = default, IrOperand src1 = default, IrOperand src2 = default)
     {
