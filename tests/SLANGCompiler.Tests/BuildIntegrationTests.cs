@@ -217,6 +217,25 @@ public class BuildIntegrationTests : IDisposable
         Assert.Single(Regex.Matches(File.ReadAllText(Path.Combine(_tempDir, "chip.ASM")), @"(?m)^MULHLDE:"));
     }
 
+    [SkippableFact]
+    public void AsmCalls_NamespacedRuntime_CoexistsWithUserFunctions()
+    {
+        // @lib の関数 (M8ALOAD は [M8ALIB] の中) は、名前と本体の中のラベル (DRAWM8A) が名前空間の中に出るので、
+        // 同じ名前の利用者の関数があっても `; @calls` で入れられ、組み立てられる
+        Skip.IfNot(File.Exists(_ailz80AsmPath), "AILZ80ASM がない");
+        var slPath = Path.Combine(_tempDir, "nsr.SL");
+        File.WriteAllText(slPath,
+            "#ASM\n; @calls M8ALOAD\nLOADIT:\n\tCALL M8ALIB.M8ALOAD\n\tRET\n#END\n" +
+            "M8ALOAD(X)\nBEGIN\n  RETURN X;\nEND;\nDRAWM8A()\nBEGIN\nEND;\n" +
+            "MAIN()\nBEGIN\n  M8ALOAD(1);\n  DRAWM8A();\nEND;\n");
+        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "x1", "--keep-asm");
+        Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
+        Assert.True(File.Exists(Path.Combine(_tempDir, "nsr.bin")), $"bin not produced. stderr: {stderr}");
+        var asm = File.ReadAllText(Path.Combine(_tempDir, "nsr.ASM"));
+        Assert.Matches(@"(?m)^\[M8ALIB\]", asm);
+        Assert.DoesNotContain("@calls M8ALOAD is ignored", stderr);
+    }
+
     [Theory]
     [InlineData("", true)]
     [InlineData("ORG $D000;", false)]                              // コードが WORK に重なる

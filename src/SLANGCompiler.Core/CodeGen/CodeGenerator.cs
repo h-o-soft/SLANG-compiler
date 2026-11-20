@@ -682,8 +682,11 @@ public class CodeGenerator
                         _diagnostics?.Warning($"; @calls {name} is ignored: not a runtime function", inst.Span);
                         continue;
                     }
-                    var entry = _runtimeManager.Functions[name].Name;   // 別名なら正規名 (ランタイムの入口のラベル)
-                    var userEntry = userFuncs.Contains(name) ? name : userFuncs.Contains(entry) ? entry : null;
+                    var entryFunc = _runtimeManager.Functions[name];
+                    var entry = entryFunc.Name;   // 別名なら正規名 (ランタイムの入口のラベル)
+                    // @lib の関数は名前空間の中に出る (#ASM からは 名前空間.名前 で呼ぶ) ので、利用者の関数とは当たらない
+                    var userEntry = entryFunc.LibName != null ? null
+                        : userFuncs.Contains(name) ? name : userFuncs.Contains(entry) ? entry : null;
                     if (userEntry != null)
                     {
                         // 無視すると、この #ASM の CALL が黙って利用者の関数を呼ぶので、エラーにする
@@ -719,7 +722,8 @@ public class CodeGenerator
     /// <summary>
     /// `; @calls name` で入れると困るなら、その理由 (警告の文)。name と、別名を解き @calls をたどった先の関数を全部見る:
     /// プログラムの入口 (SLANGINIT と、<<CALLINITIALIZER>> を持つ入口の型)、差し替え用の版 (名前__版)、
-    /// 出すラベル (関数名・名前_INITIALIZE・@works・本体と初期化の中のラベル) が利用者の関数と同じ名前のもの、ZXN_MODULE
+    /// 出すラベル (関数名・名前_INITIALIZE・@works・本体と初期化の中のラベル。@lib の関数は名前空間の中に出るものを除く) が
+    /// 利用者の関数と同じ名前のもの、ZXN_MODULE
     /// </summary>
     private string? DeclaredCallProblem(string name, HashSet<string> userFuncs)
     {
@@ -736,11 +740,16 @@ public class CodeGenerator
             var cut = f.Name.LastIndexOf("__", StringComparison.Ordinal);
             if (cut > 0 && _runtimeManager.Functions.TryGetValue(f.Name[..cut], out var baseFunc) && baseFunc != f)
                 return $"{f.Name} is a replacement version of {baseFunc.Name}";
-            var labels = new List<string> { f.Name };
-            if (!string.IsNullOrEmpty(f.InitCode)) labels.Add($"{f.Name}_INITIALIZE");
-            if (f.Works != null) labels.AddRange(f.Works.Select(w => w.Label));
-            labels.AddRange(RuntimeBodyLabels(f.Code));
-            if (f.InitCode != null) labels.AddRange(RuntimeBodyLabels(f.InitCode));
+            var labels = new List<string>();
+            if (!string.IsNullOrEmpty(f.InitCode)) labels.Add($"{f.Name}_INITIALIZE");   // 初期化の入口は名前空間の外に出る
+            if (f.LibName == null)
+            {
+                // @lib の関数の名前・ワーク・本体の中のラベルは、名前空間の中に出るので当たらない
+                labels.Add(f.Name);
+                if (f.Works != null) labels.AddRange(f.Works.Select(w => w.Label));
+                labels.AddRange(RuntimeBodyLabels(f.Code));
+                if (f.InitCode != null) labels.AddRange(RuntimeBodyLabels(f.InitCode));
+            }
             var clash = labels.FirstOrDefault(userFuncs.Contains);
             if (clash != null)
                 return $"needs {clash}, which is a user function";
