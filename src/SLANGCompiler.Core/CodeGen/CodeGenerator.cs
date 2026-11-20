@@ -127,7 +127,7 @@ public class CodeGenerator
 
         // トップレベルの #ASM の `; @calls` は、本体の SLANG から呼んだのと同じに扱う (ユーザー関数の取り込みには使わない)
         var mainRuntimeCalled = new HashSet<string>(mainCalled, StringComparer.OrdinalIgnoreCase);
-        mainRuntimeCalled.UnionWith(GlobalAsmDeclaredCalls());
+        mainRuntimeCalled.UnionWith(GlobalAsmDeclaredCalls(mainCalled));
 
         _runtimePlan = RuntimePlanner.Build(mainRuntimeCalled, _module.Overlays,
             overlayCalled, _runtimeManager, inlineNames);
@@ -361,7 +361,7 @@ public class CodeGenerator
                 if (_runtimeManager.Functions.ContainsKey(dep))
                     _runtimeManager.MarkUsed(dep);
             }
-            foreach (var name in GlobalAsmDeclaredCalls())
+            foreach (var name in GlobalAsmDeclaredCalls(_calledFunctions))
                 _runtimeManager.MarkUsed(name);
         }
 
@@ -654,16 +654,18 @@ public class CodeGenerator
     /// DeclaredCallProblem に当たるもの (入口・差し替え用の版・利用者の関数と同じラベル・ZXN_MODULE)。
     /// 名前そのものが利用者の関数と同じなら、エラーにする (無視すると、#ASM の CALL が黙って利用者の関数を呼ぶ)。
     /// </summary>
-    private HashSet<string> GlobalAsmDeclaredCalls()
+    /// <param name="mainCalled">本体が呼ぶ名前 (本体から見えるモジュールの関数を知るため)</param>
+    private HashSet<string> GlobalAsmDeclaredCalls(IReadOnlySet<string> mainCalled)
     {
         if (_globalAsmCalls != null) return _globalAsmCalls;
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         _globalAsmCalls = result;
         if (_runtimeManager == null) return result;
 
-        var userFuncs = new HashSet<string>(
-            _module.Functions.Concat(_module.Overlays.SelectMany(o => o.Functions)).Select(f => f.Name),
-            StringComparer.OrdinalIgnoreCase);
+        // 本体の ASM に出る利用者の関数: 本体の関数と、本体が呼ぶモジュールの関数 (ランタイムは本体に入るので、ここだけ見る)
+        var userFuncs = new HashSet<string>(_module.Functions.Select(f => f.Name), StringComparer.OrdinalIgnoreCase);
+        foreach (var f in _module.Overlays.SelectMany(o => o.Functions))
+            if (mainCalled.Contains(f.Name)) userFuncs.Add(f.Name);
         foreach (var inst in _module.GlobalData)
         {
             if (inst.Op != IrOp.InlineAsm || inst.Dest.Kind != IrOperandKind.AsmString) continue;
@@ -680,10 +682,12 @@ public class CodeGenerator
                         _diagnostics?.Warning($"; @calls {name} is ignored: not a runtime function", inst.Span);
                         continue;
                     }
-                    if (userFuncs.Contains(name))
+                    var entry = _runtimeManager.Functions[name].Name;   // 別名なら正規名 (ランタイムの入口のラベル)
+                    var userEntry = userFuncs.Contains(name) ? name : userFuncs.Contains(entry) ? entry : null;
+                    if (userEntry != null)
                     {
                         // 無視すると、この #ASM の CALL が黙って利用者の関数を呼ぶので、エラーにする
-                        _diagnostics?.Error($"; @calls {name}: {name} is a user function, so the #ASM CALL would not reach the runtime function", inst.Span);
+                        _diagnostics?.Error($"; @calls {name}: {userEntry} is a user function, so the #ASM CALL would not reach the runtime function", inst.Span);
                         continue;
                     }
                     var reason = DeclaredCallProblem(name, userFuncs);
@@ -699,10 +703,23 @@ public class CodeGenerator
         return result;
     }
 
+    private static readonly System.Text.RegularExpressions.Regex RuntimeLabelLine =
+        new(@"^\s*([A-Za-z_][A-Za-z0-9_]*)(?::|\s+EQU\b)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>ランタイムの本体が決めるラベル (`名前:` と `名前 EQU`。`.` で始まるローカルのラベルは除く)</summary>
+    private static IEnumerable<string> RuntimeBodyLabels(string code)
+    {
+        foreach (var line in code.Split('\n'))
+        {
+            var m = RuntimeLabelLine.Match(line);
+            if (m.Success) yield return m.Groups[1].Value;
+        }
+    }
+
     /// <summary>
     /// `; @calls name` で入れると困るなら、その理由 (警告の文)。name と、別名を解き @calls をたどった先の関数を全部見る:
     /// プログラムの入口 (SLANGINIT と、<<CALLINITIALIZER>> を持つ入口の型)、差し替え用の版 (名前__版)、
-    /// 出すラベル (関数名・名前_INITIALIZE・@works) が利用者の関数と同じ名前のもの、ZXN_MODULE
+    /// 出すラベル (関数名・名前_INITIALIZE・@works・本体と初期化の中のラベル) が利用者の関数と同じ名前のもの、ZXN_MODULE
     /// </summary>
     private string? DeclaredCallProblem(string name, HashSet<string> userFuncs)
     {
@@ -722,6 +739,8 @@ public class CodeGenerator
             var labels = new List<string> { f.Name };
             if (!string.IsNullOrEmpty(f.InitCode)) labels.Add($"{f.Name}_INITIALIZE");
             if (f.Works != null) labels.AddRange(f.Works.Select(w => w.Label));
+            labels.AddRange(RuntimeBodyLabels(f.Code));
+            if (f.InitCode != null) labels.AddRange(RuntimeBodyLabels(f.InitCode));
             var clash = labels.FirstOrDefault(userFuncs.Contains);
             if (clash != null)
                 return $"needs {clash}, which is a user function";

@@ -198,13 +198,30 @@ RET
     }
 
     [Fact]
-    public void AliasOfUserFunction_WarnsAndIgnored()
+    public void AliasOfUserFunction_Error()
     {
-        // BIT は RBIT の別名。RBIT を入れると、利用者の RBIT とラベルが 2 つになる
-        var (asm, diag) = Build("#ASM\n; @calls BIT\n#END\nRBIT(X)\nBEGIN\n  RETURN X;\nEND;\n" + EmptyMain);
-        Assert.Equal(1, Defs(asm, "RBIT"));
-        Assert.Equal(new[] { "; @calls BIT is ignored: needs RBIT, which is a user function" }, Warnings(diag));
-        Assert.False(diag.HasErrors);
+        // BIT は RBIT の別名。ランタイムの入口 RBIT が利用者の関数なので、名前そのものが当たるときと同じくエラー
+        var (_, diag) = Build("#ASM\n; @calls BIT\n\tCALL RBIT\n#END\nRBIT(X)\nBEGIN\n  RETURN X;\nEND;\n" + EmptyMain);
+        var e = Assert.Single(diag.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
+        Assert.Equal("; @calls BIT: RBIT is a user function, so the #ASM CALL would not reach the runtime function", e.Message);
+    }
+
+    [Fact]
+    public void ModuleFunctionCalledFromMain_Error()
+    {
+        // 本体が呼ぶモジュールの関数は、本体の ASM から見える
+        var (_, diag) = Build("#ASM\n; @calls MULHLDE\n#END\nMAIN()\nBEGIN\n  MULHLDE(1, 2);\nEND;\n#MODULE $C000\nMULHLDE(X, Y)\nBEGIN\n  RETURN X;\nEND;\n#END\n");
+        Assert.Contains(diag.Diagnostics, d => d.Severity == DiagnosticSeverity.Error && d.Message.StartsWith("; @calls MULHLDE: MULHLDE is a user function"));
+    }
+
+    [Fact]
+    public void ModuleOnlyFunction_DoesNotBlock()
+    {
+        // 本体が呼ばないモジュールの関数は、別のアセンブルの単位なので、本体のランタイムとぶつからない
+        var (asm, diag) = Build("#ASM\n; @calls MULHLDE\n#END\n" + EmptyMain + "#MODULE $C000\nMULHLDE(X, Y)\nBEGIN\n  RETURN X;\nEND;\n#END\n");
+        Assert.False(diag.HasErrors, string.Join("; ", diag.Diagnostics));
+        Assert.Empty(Warnings(diag));
+        Assert.Equal(1, Defs(asm, "MULHLDE"));
     }
 
     [Fact]
@@ -249,9 +266,9 @@ RET
         Assert.Equal(1, Defs(mainB, "LOC"));
         Assert.Equal(0, Defs(ovB.Single().Asm, "LOC"));
         Assert.Matches(@"(?m)^\s*CALL\s+LOC\b", ovB.Single().Asm);
-        // 本体の番地を取り込む印
-        Assert.DoesNotMatch(@"(?m)^; EXTERN LOC\b", ovA.Single().Asm);
-        Assert.Matches(@"(?m)^; EXTERN LOC\b", ovB.Single().Asm);
+        // 本体の番地を取り込む印 (slangbuild が読むもの)
+        Assert.DoesNotContain("LOC", SLANGCompiler.Build.OverlayImportsBuilder.ExtractExternNames(ovA.Single().Asm));
+        Assert.Contains("LOC", SLANGCompiler.Build.OverlayImportsBuilder.ExtractExternNames(ovB.Single().Asm));
     }
 
     [Theory]
@@ -342,14 +359,27 @@ RET
     }
 
     [Theory]
-    [InlineData("RND_INITIALIZE")]   // RND の @init_code が出すラベル
-    [InlineData("RND_SEED1")]        // RND の @works
-    public void RuntimeGeneratedLabelIsUserFunction_WarnsAndIgnored(string userFunc)
+    [InlineData("RND", "RND_INITIALIZE")]   // RND の @init_code が出すラベル
+    [InlineData("RND", "RND_SEED1")]        // RND の @works
+    [InlineData("ABS", "ABSNEGCALL")]       // ABS の本体の中のラベル
+    public void RuntimeGeneratedLabelIsUserFunction_WarnsAndIgnored(string runtime, string userFunc)
     {
-        var (r, log, diag) = Compile("x1", "R.SL", $"#ASM\n; @calls RND\n#END\n{userFunc}()\nBEGIN\nEND;\n" + EmptyMain);
+        var (r, log, diag) = Compile("x1", "R.SL", $"#ASM\n; @calls {runtime}\n#END\n{userFunc}()\nBEGIN\nEND;\n" + EmptyMain);
         Assert.True(r.Ok, log);
-        Assert.Equal(0, Defs(r.MainAsm!, "RND"));
-        Assert.Equal(new[] { $"; @calls RND is ignored: needs {userFunc}, which is a user function" }, Warnings(diag));
+        Assert.Equal(0, Defs(r.MainAsm!, runtime));
+        Assert.Equal(1, Defs(r.MainAsm!, userFunc));
+        Assert.Equal(new[] { $"; @calls {runtime} is ignored: needs {userFunc}, which is a user function" }, Warnings(diag));
+    }
+
+    [Fact]
+    public void Library_ModuleOnlyMulhlde_Builds()
+    {
+        // 本体の TILELIB.LIB と、モジュールの中だけにある MULHLDE という関数は、別のアセンブルの単位なのでぶつからない
+        // (モジュールの中で SLANG から呼ぶと、モジュールにランタイムの MULHLDE も入って 2 つになるのは前から)
+        var (r, log, diag) = Compile("x1", "M.SL", "#INCLUDE TILELIB.LIB\nMAIN()\nBEGIN\nEND;\n#MODULE $C000\nMULHLDE(X, Y)\nBEGIN\n  RETURN X;\nEND;\n#END\n");
+        Assert.True(r.Ok, log);
+        Assert.False(diag.HasErrors);
+        Assert.Equal(1, Defs(r.MainAsm!, "MULHLDE"));
     }
 
     [Fact]
