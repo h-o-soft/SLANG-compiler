@@ -741,14 +741,18 @@ public class CodeGenerator
             if (cut > 0 && _runtimeManager.Functions.TryGetValue(f.Name[..cut], out var baseFunc) && baseFunc != f)
                 return $"{f.Name} is a replacement version of {baseFunc.Name}";
             var labels = new List<string>();
-            if (!string.IsNullOrEmpty(f.InitCode)) labels.Add($"{f.Name}_INITIALIZE");   // 初期化の入口は名前空間の外に出る
+            if (!string.IsNullOrEmpty(f.InitCode))
+            {
+                // 初期化 (入口と中のラベル) は、@lib の関数でも名前空間の外に出る
+                labels.Add($"{f.Name}_INITIALIZE");
+                labels.AddRange(RuntimeBodyLabels(f.InitCode));
+            }
             if (f.LibName == null)
             {
                 // @lib の関数の名前・ワーク・本体の中のラベルは、名前空間の中に出るので当たらない
                 labels.Add(f.Name);
                 if (f.Works != null) labels.AddRange(f.Works.Select(w => w.Label));
                 labels.AddRange(RuntimeBodyLabels(f.Code));
-                if (f.InitCode != null) labels.AddRange(RuntimeBodyLabels(f.InitCode));
             }
             var clash = labels.FirstOrDefault(userFuncs.Contains);
             if (clash != null)

@@ -227,13 +227,14 @@ public class BuildIntegrationTests : IDisposable
         File.WriteAllText(slPath,
             "#ASM\n; @calls M8ALOAD\nLOADIT:\n\tCALL M8ALIB.M8ALOAD\n\tRET\n#END\n" +
             "M8ALOAD(X)\nBEGIN\n  RETURN X;\nEND;\nDRAWM8A()\nBEGIN\nEND;\n" +
-            "MAIN()\nBEGIN\n  M8ALOAD(1);\n  DRAWM8A();\nEND;\n");
-        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "x1", "--keep-asm");
+            "MAIN()\nBEGIN\n  DRAWM8A();\nEND;\n");
+        // ランタイムの M8ALOAD を求めるのは `; @calls` だけ (SLANG からは呼ばない)。警告が見えるよう --verbose
+        var (code, stdout, stderr) = RunSlangbuild(slPath, "-E", "x1", "--keep-asm", "--verbose");
         Assert.True(code == 0, $"build failed. stdout: {stdout} stderr: {stderr}");
         Assert.True(File.Exists(Path.Combine(_tempDir, "nsr.bin")), $"bin not produced. stderr: {stderr}");
         var asm = File.ReadAllText(Path.Combine(_tempDir, "nsr.ASM"));
         Assert.Matches(@"(?m)^\[M8ALIB\]", asm);
-        Assert.DoesNotContain("@calls M8ALOAD is ignored", stderr);
+        Assert.DoesNotContain("@calls M8ALOAD", stdout + stderr);
     }
 
     [Theory]

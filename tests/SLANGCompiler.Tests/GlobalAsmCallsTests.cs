@@ -57,6 +57,16 @@ RET
 ; @resident local
 LD HL,7
 RET
+
+; @name NSI
+; @lib NSLIB
+; @init_code
+RESET_STATE:
+XOR A
+RET
+; @end_init
+NSBODY:
+RET
 ";
 
     private readonly string _repo = TestTools.RepoRoot();
@@ -233,6 +243,25 @@ RET
         Assert.Equal(1, Defs(asm, "DIVHLDE8"));
         Assert.Equal(new[] { "; @calls DIVHLDE is ignored: needs DIVHLDE8, which is a user function" }, Warnings(diag));
         Assert.False(diag.HasErrors);
+    }
+
+    [Fact]
+    public void NamespacedInitLabelIsUserFunction_WarnsAndIgnored()
+    {
+        // @lib の関数でも、初期化の中のラベルは名前空間の外に出るので、利用者の関数とぶつかる
+        var (asm, diag) = Build("#ASM\n; @calls NSI\n#END\nRESET_STATE()\nBEGIN\nEND;\n" + EmptyMain);
+        Assert.Equal(new[] { "; @calls NSI is ignored: needs RESET_STATE, which is a user function" }, Warnings(diag));
+        Assert.Equal(1, Defs(asm, "RESET_STATE"));
+        Assert.DoesNotContain("NSI_INITIALIZE", asm);
+    }
+
+    [Fact]
+    public void NamespacedBodyLabel_DoesNotClash()
+    {
+        // 本体の中のラベル (NSBODY) は名前空間の中なので、利用者の関数と分かれる
+        var (asm, diag) = Build("#ASM\n; @calls NSI\n#END\nNSBODY()\nBEGIN\nEND;\n" + EmptyMain);
+        Assert.Empty(Warnings(diag));
+        Assert.Contains("NSI_INITIALIZE", asm);
     }
 
     [Fact]
