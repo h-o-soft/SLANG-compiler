@@ -219,6 +219,14 @@ RET
     }
 
     [Fact]
+    public void AliasOnly_BringsCanonical()
+    {
+        var (asm, diag) = Build("#ASM\n; @calls BIT\n#END\n" + EmptyMain);
+        Assert.Equal(1, Defs(asm, "RBIT"));
+        Assert.Empty(Warnings(diag));
+    }
+
+    [Fact]
     public void Alias_BringsCanonicalOnce()
     {
         var (asm, diag) = Build("#ASM\n; @calls BIT, RBIT\n#END\n" + EmptyMain);
@@ -241,6 +249,9 @@ RET
         Assert.Equal(1, Defs(mainB, "LOC"));
         Assert.Equal(0, Defs(ovB.Single().Asm, "LOC"));
         Assert.Matches(@"(?m)^\s*CALL\s+LOC\b", ovB.Single().Asm);
+        // 本体の番地を取り込む印
+        Assert.DoesNotMatch(@"(?m)^; EXTERN LOC\b", ovA.Single().Asm);
+        Assert.Matches(@"(?m)^; EXTERN LOC\b", ovB.Single().Asm);
     }
 
     [Theory]
@@ -328,6 +339,38 @@ RET
         var (r, log, diag) = Compile("x1", "U.SL", "#INCLUDE TILELIB.LIB\nMULHLDE(X, Y)\nBEGIN\n  RETURN X;\nEND;\n" + EmptyMain);
         Assert.False(r.Ok);
         Assert.Contains(diag.Diagnostics, d => d.Severity == DiagnosticSeverity.Error && d.Message.StartsWith("; @calls MULHLDE: MULHLDE is a user function"));
+    }
+
+    [Theory]
+    [InlineData("RND_INITIALIZE")]   // RND の @init_code が出すラベル
+    [InlineData("RND_SEED1")]        // RND の @works
+    public void RuntimeGeneratedLabelIsUserFunction_WarnsAndIgnored(string userFunc)
+    {
+        var (r, log, diag) = Compile("x1", "R.SL", $"#ASM\n; @calls RND\n#END\n{userFunc}()\nBEGIN\nEND;\n" + EmptyMain);
+        Assert.True(r.Ok, log);
+        Assert.Equal(0, Defs(r.MainAsm!, "RND"));
+        Assert.Equal(new[] { $"; @calls RND is ignored: needs {userFunc}, which is a user function" }, Warnings(diag));
+    }
+
+    [Fact]
+    public void X1_Slanginit_WarnsAndIgnored()
+    {
+        var (r, log, diag) = Compile("x1", "S.SL", "#ASM\n; @calls SLANGINIT\n#END\n" + EmptyMain);
+        Assert.True(r.Ok, log);
+        Assert.Equal(0, Defs(r.MainAsm!, "SLANGINIT"));
+        Assert.Equal(new[] { "; @calls SLANGINIT is ignored: SLANGINIT is the program's startup code, not a routine" }, Warnings(diag));
+    }
+
+    [Theory]
+    [InlineData("SLANGINIT__NOROM", "SLANGINIT__NOROM is the program's startup code, not a routine")]
+    [InlineData("PRT__NOROM", "PRT__NOROM is a replacement version of PRT")]
+    public void Zxn_StartupOrVariant_WarnsAndIgnored(string name, string reason)
+    {
+        var (r, log, diag) = Compile("zxn", "V.SL", $"#ASM\n; @calls {name}\n#END\n" + EmptyMain);
+        Assert.True(r.Ok, log);
+        Assert.Equal(0, Defs(r.MainAsm!, name));
+        Assert.DoesNotContain("<<CALLINITIALIZER>>", r.MainAsm);
+        Assert.Equal(new[] { $"; @calls {name} is ignored: {reason}" }, Warnings(diag));
     }
 
     [Fact]

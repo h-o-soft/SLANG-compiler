@@ -651,8 +651,7 @@ public class CodeGenerator
     /// トップレベルの #ASM の `; @calls 名前,名前` の行から、入れるランタイムの名前を読む (ライブラリが求めるもの)。
     /// 行の頭が `;` のものだけ (行の途中の注釈は読まない)。関数の中の #ASM は読まない。
     /// 次の名前は警告を出して無視する (前と同じただの注釈になる): ランタイムに無い名前 (名前空間つきも)、
-    /// 別名や @calls をたどると利用者の関数と同じ名前に届くもの (入れるとラベルが 2 つになる)、
-    /// ZXN_MODULE に届くもの (#MODULE のページの検査はここをたどらない)。
+    /// DeclaredCallProblem に当たるもの (入口・差し替え用の版・利用者の関数と同じラベル・ZXN_MODULE)。
     /// 名前そのものが利用者の関数と同じなら、エラーにする (無視すると、#ASM の CALL が黙って利用者の関数を呼ぶ)。
     /// </summary>
     private HashSet<string> GlobalAsmDeclaredCalls()
@@ -687,13 +686,7 @@ public class CodeGenerator
                         _diagnostics?.Error($"; @calls {name}: {name} is a user function, so the #ASM CALL would not reach the runtime function", inst.Span);
                         continue;
                     }
-                    var closure = RuntimeClosure(name);
-                    string? reason = null;
-                    var clash = closure.FirstOrDefault(userFuncs.Contains);
-                    if (clash != null)
-                        reason = $"needs {clash}, which is a user function";
-                    else if (closure.Contains("ZXN_MODULE"))
-                        reason = "reaches ZXN_MODULE; call ZXN_MODULE(n) from SLANG";
+                    var reason = DeclaredCallProblem(name, userFuncs);
                     if (reason != null)
                     {
                         _diagnostics?.Warning($"; @calls {name} is ignored: {reason}", inst.Span);
@@ -706,21 +699,37 @@ public class CodeGenerator
         return result;
     }
 
-    /// <summary>ランタイムの name と、その @calls をたどった先の関数の正規名 (別名は正規名にする。入れると出るラベル)</summary>
-    private List<string> RuntimeClosure(string name)
+    /// <summary>
+    /// `; @calls name` で入れると困るなら、その理由 (警告の文)。name と、別名を解き @calls をたどった先の関数を全部見る:
+    /// プログラムの入口 (SLANGINIT と、<<CALLINITIALIZER>> を持つ入口の型)、差し替え用の版 (名前__版)、
+    /// 出すラベル (関数名・名前_INITIALIZE・@works) が利用者の関数と同じ名前のもの、ZXN_MODULE
+    /// </summary>
+    private string? DeclaredCallProblem(string name, HashSet<string> userFuncs)
     {
-        var result = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var stack = new Stack<string>();
         stack.Push(name);
+        var reached = false;
         while (stack.Count > 0)
         {
             if (!_runtimeManager!.Functions.TryGetValue(stack.Pop(), out var f)) continue;
             if (!seen.Add(f.Name)) continue;
-            result.Add(f.Name);
+            if (f.Name.Equals("SLANGINIT", StringComparison.OrdinalIgnoreCase) || f.Code.Contains("<<CALLINITIALIZER>>"))
+                return $"{f.Name} is the program's startup code, not a routine";
+            var cut = f.Name.LastIndexOf("__", StringComparison.Ordinal);
+            if (cut > 0 && _runtimeManager.Functions.TryGetValue(f.Name[..cut], out var baseFunc) && baseFunc != f)
+                return $"{f.Name} is a replacement version of {baseFunc.Name}";
+            var labels = new List<string> { f.Name };
+            if (!string.IsNullOrEmpty(f.InitCode)) labels.Add($"{f.Name}_INITIALIZE");
+            if (f.Works != null) labels.AddRange(f.Works.Select(w => w.Label));
+            var clash = labels.FirstOrDefault(userFuncs.Contains);
+            if (clash != null)
+                return $"needs {clash}, which is a user function";
+            if (f.Name.Equals("ZXN_MODULE", StringComparison.OrdinalIgnoreCase))
+                reached = true;
             for (int i = f.Dependencies.Count - 1; i >= 0; i--) stack.Push(f.Dependencies[i]);
         }
-        return result;
+        return reached ? "reaches ZXN_MODULE; call ZXN_MODULE(n) from SLANG" : null;
     }
 
     /// <summary>トップレベルのインラインASM（#ASMブロック）を出力</summary>
