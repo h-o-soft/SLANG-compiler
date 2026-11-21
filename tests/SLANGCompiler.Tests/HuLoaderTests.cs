@@ -11,7 +11,8 @@ public class HuLoaderTests
     private static byte[] Body(int n)
     {
         var b = new byte[n];
-        for (int i = 0; i < n; i++) b[i] = (byte)(i * 7 + 3);
+        // レコードごとに並びが違う (256 バイトごとにくり返さない) ので、レコードの順の取り違えも分かる
+        for (int i = 0; i < n; i++) b[i] = (byte)(i * 7 + 3 + (i >> 8) * 31);
         return b;
     }
 

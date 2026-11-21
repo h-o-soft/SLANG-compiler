@@ -345,7 +345,7 @@ public sealed class HuDiskImage
             throw new ArgumentException("本体が空です");
         if (load < HuLoader.MinLoadAddress)
             throw new ArgumentException($"ローダの形では、本体の読む番地は ${HuLoader.MinLoadAddress:X4} 以上です: ${load:X4}");
-        if (load + body.Length > 0x10000)
+        if (body.Length > 0x10000 - load)
             throw new ArgumentException(
                 $"本体が大きすぎます (読む番地 ${load:X4} + {body.Length} バイトが $10000 を越えます。上限 {0x10000 - load} バイト)");
         if (Find(mainName + ".Sys") != null) throw new InvalidOperationException($"同じ名前のファイルがあります: {mainName}.Sys");
