@@ -80,6 +80,8 @@ public class Driver
         public List<string> SlfsAddSpecs { get; } = new();
         /// <summary>`--hufs-add [name=]path[,bin|,text]` (repeatable)。disk.tool == "hufs-pack" 時に、ディスクに足すファイル</summary>
         public List<string> HufsAddSpecs { get; } = new();
+        /// <summary>`--hufs-loader`。disk.tool == "hufs-pack" 時に、ディスクをローダの形にする (docs/HUFS.md)</summary>
+        public bool HufsLoader { get; set; }
         /// <summary>`--disk-main-name &lt;name&gt;`。env の disk.main_name (= SLFS の IPL 起動名) を
         /// CLI override。 disk.tool == "slfs-pack" 時のみ。</summary>
         public string? DiskMainName { get; set; }
@@ -179,6 +181,11 @@ public class Driver
         if (_opts.HufsAddSpecs.Count > 0 && (_opts.EmitMode != "disk" || envConfig.Disk?.Tool != "hufs-pack"))
         {
             Console.Error.WriteLine("slangbuild: --hufs-add requires --emit disk + disk.tool: hufs-pack");
+            return 1;
+        }
+        if (_opts.HufsLoader && (_opts.EmitMode != "disk" || envConfig.Disk?.Tool != "hufs-pack"))
+        {
+            Console.Error.WriteLine("slangbuild: --hufs-loader requires --emit disk + disk.tool: hufs-pack");
             return 1;
         }
         if (_opts.EmitMode == "disk" && envConfig.Disk!.Tool == "hufs-pack" && _opts.SlfsAddSpecs.Count > 0)
@@ -1389,7 +1396,7 @@ public class Driver
 
         var builder = new DiskImageBuilder(envConfig.Disk, ndc, hudisk, udostool, mzd88,
                                            _opts.Verbose, templateOverride, _opts.SlfsAddSpecs, slfsMainName,
-                                           _opts.HufsAddSpecs);
+                                           _opts.HufsAddSpecs, _opts.HufsLoader);
         return builder.Build(mainBin, overlayBins, diskOut);
     }
 

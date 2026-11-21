@@ -33,6 +33,7 @@ public class DiskImageBuilder
     private readonly IList<string> _slfsAddSpecs;
     private readonly string? _slfsMainName;
     private readonly IList<string> _hufsAddSpecs;
+    private readonly bool _hufsLoader;
 
     // udostool は flag を大文字で受ける仕様 (= -IPL/-SUB/-SYS)。
     // Ordinal 比較で大文字固定、エラー文に "uppercase only" を明記して原因把握を助ける。
@@ -50,6 +51,7 @@ public class DiskImageBuilder
     /// <param name="templateOverride">--disk-template による env.Disk.Template の上書き</param>
     /// <param name="slfsMainName">tool == "slfs-pack" / "hufs-pack" 時の main file 名 (= <see cref="SlfsMainName"/> で決定済み)。null なら env 値</param>
     /// <param name="hufsAddSpecs">tool == "hufs-pack" 時にディスクに足すファイル (`--hufs-add`)</param>
+    /// <param name="hufsLoader">tool == "hufs-pack" 時に、ローダの形のディスクにする (`--hufs-loader`)</param>
     public DiskImageBuilder(DiskConfig disk,
                             ResolvedTool? ndc = null,
                             ResolvedTool? hudisk = null,
@@ -59,7 +61,8 @@ public class DiskImageBuilder
                             string? templateOverride = null,
                             IList<string>? slfsAddSpecs = null,
                             string? slfsMainName = null,
-                            IList<string>? hufsAddSpecs = null)
+                            IList<string>? hufsAddSpecs = null,
+                            bool hufsLoader = false)
     {
         _disk = disk;
         _ndc = ndc;
@@ -71,6 +74,7 @@ public class DiskImageBuilder
         _slfsAddSpecs = slfsAddSpecs ?? new List<string>();
         _slfsMainName = slfsMainName;
         _hufsAddSpecs = hufsAddSpecs ?? new List<string>();
+        _hufsLoader = hufsLoader;
     }
 
     /// <summary>
@@ -606,6 +610,7 @@ public class DiskImageBuilder
     // BuildHufsPack: Hu-BASIC と同じ形のディスク (x1native_hufs) 経路
     // ========================================================================
     // HuPack を直接呼ぶ。本体はクラスタ 2 から続けて置き、--hufs-add のファイルを名前の順に足す。
+    // --hufs-loader なら、ローダをクラスタ 2 に置いて IPL から指し、本体は空いた所に置く。
     private int BuildHufsPack(string mainBinPath, string outputDiskPath)
     {
         if (!File.Exists(mainBinPath))
@@ -625,9 +630,9 @@ public class DiskImageBuilder
             if (_verbose)
                 Console.Error.WriteLine(
                     $"slangbuild: hufs-pack: main={mainBinary.Length} byte, files={adds.Count}, " +
-                    $"load=${load:X4}, exec=${exec:X4}");
+                    $"load=${load:X4}, exec=${exec:X4}{(_hufsLoader ? ", loader" : "")}");
 
-            var d88 = HuPack.Build(mainBinary, mainName, load, exec, adds);
+            var d88 = HuPack.Build(mainBinary, mainName, load, exec, adds, _hufsLoader);
 
             var outputDir = Path.GetDirectoryName(Path.GetFullPath(outputDiskPath));
             if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))

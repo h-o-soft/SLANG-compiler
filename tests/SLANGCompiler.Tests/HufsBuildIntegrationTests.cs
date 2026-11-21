@@ -114,6 +114,45 @@ public class HufsBuildIntegrationTests
         }
     }
 
+    /// <summary>--hufs-loader: ローダの形のディスクができる。--emit disk なし・hufs-pack でない env ではエラー</summary>
+    [Fact]
+    public void HufsLoader_BuildsLoaderDisk_AndRequiresHufsPack()
+    {
+        var repo = RepoRoot();
+        var sample = Path.Combine(repo, "examples", "X1NATIVE_HUFS", "HUFSRAW.SL");
+        var greet = Path.Combine(repo, "examples", "X1NATIVE_HUFS", "files", "GREET.TXT");
+        var output = Path.Combine(Path.GetTempPath(), $"HUFSLDR_test_{Guid.NewGuid():N}");
+        try
+        {
+            var (rc, stdout, stderr) = RunSlangbuild("-E", "x1native_hufs", sample, "-o", output, "--emit", "disk",
+                "--hufs-add", $"GREET.TXT={greet},text", "--hufs-loader");
+            Assert.True(rc == 0, $"slangbuild failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            var bin = File.ReadAllBytes(output + ".bin");
+            var disk = HuDiskImage.FromD88(File.ReadAllBytes(output + ".d88"));
+            Assert.Equal(new[] { "HUFSMAIN.Sys", "HUFSMAIN.Bin", "GREET.TXT" }, disk.Entries().Select(e => e.DisplayName).ToArray());
+            Assert.Equal(HuLoader.Bytes, disk.Extract("HUFSMAIN.Sys"));
+            Assert.Equal(2, disk.Find("HUFSMAIN.Sys")!.StartCluster);
+            Assert.Equal(bin, disk.Extract("HUFSMAIN.Bin"));
+            Assert.Equal(0x1000, disk.Find("HUFSMAIN.Bin")!.LoadAddress);
+            var ipl = disk.ReadRecord(0);
+            Assert.Equal("Sys", Encoding.ASCII.GetString(ipl, 0x0E, 3));
+            Assert.Equal(0x0100, ipl[0x14] | ipl[0x15] << 8);
+
+            var (rc2, _, err2) = RunSlangbuild("-E", "x1native_hufs", sample, "-o", output, "--hufs-loader");
+            Assert.NotEqual(0, rc2);
+            Assert.Contains("--hufs-loader requires --emit disk + disk.tool: hufs-pack", err2);
+
+            var (rc3, _, err3) = RunSlangbuild("-E", "x1native_slfs", sample, "-o", output, "--emit", "disk", "--hufs-loader");
+            Assert.NotEqual(0, rc3);
+            Assert.Contains("--hufs-loader requires --emit disk + disk.tool: hufs-pack", err3);
+        }
+        finally
+        {
+            foreach (var ext in new[] { ".d88", ".bin", ".SL", ".asm", ".sym", ".LST" })
+                if (File.Exists(output + ext)) File.Delete(output + ext);
+        }
+    }
+
     [Fact]
     public void Hufs_RejectsSlfsAdd_AndHufsAddRequiresHufsPack()
     {

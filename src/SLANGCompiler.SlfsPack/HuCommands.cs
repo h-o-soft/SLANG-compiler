@@ -29,13 +29,13 @@ public static class HuCommands
         return 2;
     }
 
-    // ===== hu pack -o <d88> --main <bin> [--main-name 名前] [--main-load a] [--main-exec a] [--add spec]... =====
+    // ===== hu pack -o <d88> --main <bin> [--main-name 名前] [--main-load a] [--main-exec a] [--loader] [--add spec]... =====
     private static int Pack(string[] args)
     {
         string? output = null, main = null;
         string mainName = "HUFSMAIN";
         ushort load = 0x1000, exec = 0x1000;
-        bool execSet = false;
+        bool execSet = false, loader = false;
         var adds = new List<HuPack.AddSpec>();
         for (int i = 0; i < args.Length; i++)
         {
@@ -47,6 +47,7 @@ public static class HuCommands
                 case "--main-load": load = ParseAddress(args[++i]); break;
                 case "--main-exec": exec = ParseAddress(args[++i]); execSet = true; break;
                 case "--add": adds.Add(HuPack.ParseAddSpec(args[++i])); break;
+                case "--loader": loader = true; break;
                 default: throw new ArgumentException($"unknown option: {args[i]}");
             }
         }
@@ -56,7 +57,7 @@ public static class HuCommands
             return 2;
         }
         if (!execSet) exec = load;
-        var d88 = HuPack.Build(File.ReadAllBytes(main), mainName, load, exec, adds);
+        var d88 = HuPack.Build(File.ReadAllBytes(main), mainName, load, exec, adds, loader);
         File.WriteAllBytes(output, d88);
         Console.Error.WriteLine($"slfs-pack hu pack: wrote {output} ({d88.Length} byte, files={adds.Count + 1})");
         return 0;
@@ -144,7 +145,7 @@ public static class HuCommands
     {
         Console.Error.WriteLine("slfs-pack hu: Hu-BASIC (CZ-8FB01) と同じ形の 2D ディスク (x1native_hufs)");
         Console.Error.WriteLine();
-        Console.Error.WriteLine("  slfs-pack hu pack -o <out.d88> --main <main.bin> [--main-name <name>] [--main-load <a>] [--main-exec <a>] [--add <spec>]...");
+        Console.Error.WriteLine("  slfs-pack hu pack -o <out.d88> --main <main.bin> [--main-name <name>] [--main-load <a>] [--main-exec <a>] [--loader] [--add <spec>]...");
         Console.Error.WriteLine("  slfs-pack hu list <d88>");
         Console.Error.WriteLine("  slfs-pack hu extract <d88> <name> -o <file> [--text]");
         Console.Error.WriteLine("  slfs-pack hu add <d88> <spec>");
@@ -154,6 +155,8 @@ public static class HuCommands
         Console.Error.WriteLine("    ,text  LF・CRLF を CR にして $1A を付ける (種類 Asc。Hu-BASIC の順ファイル)");
         Console.Error.WriteLine("    ,bin   種類 Bin (大きさの欄に長さ)");
         Console.Error.WriteLine("    なし   中身そのまま、種類 Asc");
+        Console.Error.WriteLine("  --loader (pack)   ローダの形: 小さなローダを IPL で起動し、本体 (<name>.Bin) を FAT の鎖で読む。");
+        Console.Error.WriteLine("                    本体のクラスタは続いていなくてよい。読む番地は $1000 以上");
         Console.Error.WriteLine("  --text (extract)  $1A の前までにして CR を LF に");
     }
 }
