@@ -20,6 +20,7 @@ public class RuntimeAttributeLintTests
 
     private static readonly Regex WorksItem = new(@"^[A-Za-z_][A-Za-z0-9_]*:[0-9]+$");
     private static readonly Regex Number = new(@"^[0-9]+$");
+    private static readonly Regex Name = new(@"^[A-Za-z_][A-Za-z0-9_]*$");
 
     /// <summary>1 つのファイルの中身を調べ、形の悪い行を「ファイル:行: 内容」の形で返す</summary>
     internal static List<string> Lint(string text, string path)
@@ -52,6 +53,18 @@ public class RuntimeAttributeLintTests
                 case "stack_cleanup":
                     if (value != "callee")
                         problems.Add($"{where} (@stack_cleanup は callee だけ)");
+                    break;
+                case "calls":
+                case "requires":
+                    var names = value.Split(',', StringSplitOptions.TrimEntries);
+                    if (value.Length == 0)
+                        problems.Add($"{where} (@{key} が空)");
+                    else
+                        foreach (var n in names)
+                        {
+                            if (!Name.IsMatch(n))
+                                problems.Add($"{where} (@{key} の項目 '{n}' がランタイムの名前の形でない)");
+                        }
                     break;
                 case "works":
                     var items = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
@@ -109,6 +122,11 @@ public class RuntimeAttributeLintTests
     [InlineData("; @param_count x", "10 進")]
     [InlineData("; @resident both", "shared か local")]
     [InlineData("; @name", "@name が空")]
+    [InlineData("; @calls X1WORK で依存を満たす", "名前の形でない")]
+    [InlineData("; @calls FOO BAR", "名前の形でない")]
+    [InlineData("; @calls FOO,,BAR", "名前の形でない")]
+    [InlineData("; @calls", "@calls が空")]
+    [InlineData("; @requires FOO BAR", "名前の形でない")]
     [InlineData("; @stack_cleanup calle", "callee だけ")]
     [InlineData("; @works BUF:2147483648", "大きすぎる")]
     [InlineData("; @param_count 2147483648", "10 進")]

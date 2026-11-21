@@ -286,7 +286,7 @@ DB	$23
 ; @name X1WORK
 ; @resident shared
 ; LSX 系 libx1_print の X1WORK alias。 graphics 系 (libx1_grp / libx1_pcg 等) が
-; @calls X1WORK で link 上 declare する依存を満たす shim。
+; (@calls X1WORK) で link 上 declare する依存を満たす shim。
 ; - AT_WIDTH: x1native の sWORK 内 BSS で provide 済 (= 重複定義回避のため
 ;   X1WORK alias 側では持たない、 @works dedupe = 最初出現が勝ち)。
 ; - _TXADR ($EE8E): LSX 固定 addr のため意図的に提供しない (= x1native の
