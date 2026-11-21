@@ -623,6 +623,15 @@ public class DiskImageBuilder
         {
             var mainBinary = File.ReadAllBytes(mainBinPath);
             var adds = _hufsAddSpecs.Select(HuPack.ParseAddSpec).ToList();
+            // 16 ビットに詰める前に範囲を確かめる (黙って回り込んだ番地のディスクを作らない)
+            foreach (var (key, v) in new[] { ("main_load", _disk.MainLoad), ("main_exec", _disk.MainExec) })
+            {
+                if (v is int a && (a < 0 || a > 0xFFFF))
+                {
+                    Console.Error.WriteLine($"slangbuild: hufs-pack error: disk.{key} ${a:X} is out of range ($0000-$FFFF)");
+                    return 1;
+                }
+            }
             var load = (ushort)(_disk.MainLoad ?? 0x1000);
             var exec = (ushort)(_disk.MainExec ?? _disk.MainLoad ?? 0x1000);
             var mainName = _slfsMainName ?? SlfsMainName.Resolve(null, null, _disk.MainName).Name;

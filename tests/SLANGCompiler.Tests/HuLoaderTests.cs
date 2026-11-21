@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Text;
+using SLANGCompiler.Build;
+using SLANGCompiler.Runtime;
 using SLANGCompiler.SlfsPack;
 using Xunit;
 
@@ -183,6 +185,32 @@ public class HuLoaderTests
         var disk = HuDiskImage.CreateBlank();
         disk.AddFile(existing, Body(10));
         Assert.Throws<InvalidOperationException>(() => disk.SetMainWithLoader("GAME", Body(100), 0x1000, 0x1000));
+    }
+
+    /// <summary>env の main_load・main_exec が 16 ビットを越えたら、回り込ませずにエラーにし、ディスクを書かない</summary>
+    [Theory]
+    [InlineData(0x11000, null, true)]
+    [InlineData(0x1000, 0x10000, true)]
+    [InlineData(0x11000, null, false)]
+    [InlineData(-1, null, false)]
+    public void DiskImageBuilder_RejectsOutOfRangeAddresses(int load, int? exec, bool loader)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "slang_huaddr_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var bin = Path.Combine(dir, "main.bin");
+            File.WriteAllBytes(bin, Body(100));
+            var d88 = Path.Combine(dir, "out.d88");
+            var disk = new DiskConfig { Format = "d88", Tool = "hufs-pack", MainLoad = load, MainExec = exec };
+            var builder = new DiskImageBuilder(disk, hufsLoader: loader);
+            Assert.NotEqual(0, builder.Build(bin, new List<string>(), d88));
+            Assert.False(File.Exists(d88));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
     }
 
     /// <summary>HuPack: ローダの形でも、足すファイルは本体の後ろに名前の順に並ぶ。ローダなしは今までどおり</summary>

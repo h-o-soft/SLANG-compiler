@@ -37,6 +37,8 @@ public class SlfsBuildIntegrationTests
         psi.ArgumentList.Add("--project");
         psi.ArgumentList.Add(Path.Combine(repo, "src", "SLANGCompiler.Build"));
         psi.ArgumentList.Add("--no-build");
+        psi.ArgumentList.Add("-c");
+        psi.ArgumentList.Add(TestTools.BuildConfiguration);
         psi.ArgumentList.Add("--");
         foreach (var a in args)
             psi.ArgumentList.Add(a);

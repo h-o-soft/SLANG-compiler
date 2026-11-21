@@ -73,7 +73,7 @@ START:
             CALL    READREC
             JP      C, ERROR
 
-            ; ディレクトリ (レコード 16〜31) で「起動名.Bin」(種類の bit 0 が立った項目) を探す
+            ; ディレクトリ (レコード 16〜31) で「起動名.Bin」(種類の下 3 ビットが $01 = Bin の項目) を探す
             LD      DE, 16
 DIRREC:
             PUSH    DE                  ; レコード番号
@@ -86,8 +86,9 @@ DIRENT:
             LD      A, (HL)
             CP      0FFH
             JP      Z, ERROR            ; ここから後ろは使っていない: 見つからない
-            RRCA
-            JR      NC, NEXTENT         ; Bin でない (消したもの $00 も)
+            AND     07H
+            CP      01H
+            JR      NZ, NEXTENT         ; 種類が Bin でない (消したもの $00 も)
             PUSH    HL
             PUSH    BC
             INC     HL

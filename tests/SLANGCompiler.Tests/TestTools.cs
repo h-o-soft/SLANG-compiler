@@ -27,6 +27,14 @@ internal static class TestTools
         return dir!.FullName;
     }
 
+    /// <summary>
+    /// この試験を組んだ構成 (Debug / Release)。試験のプロジェクトは slangbuild を参照して同じ構成で組むので、
+    /// `dotnet run --no-build` で slangbuild を動かすときはこれを渡す (別の構成の古い組み立てを動かさないように)
+    /// </summary>
+    internal static string BuildConfiguration =>
+        AppContext.BaseDirectory.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Contains("Release")
+            ? "Release" : "Debug";
+
     internal static string CurrentRid()
     {
         var arch = RuntimeInformation.OSArchitecture == Architecture.Arm64 ? "arm64" : "x64";
