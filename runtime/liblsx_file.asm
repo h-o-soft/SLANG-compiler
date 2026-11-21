@@ -679,21 +679,43 @@ JP LSXXFIND
 ; @resident shared
 ; @calls FOPEN,FWORKX
 ; HL=書く先 (FCB+0 か FCB+10H)、DE=名前。ドライブと 8+3 の名前にする。
-; 名前の文字列 (0 か 0DH まで) に * か ? があれば、何も書かずに Cy=1
+; 名前は「ドライブ (A:〜H:、省ける) + 1〜8 文字 + (. + 0〜3 文字)」で、0 か 0DH で終わること。
+; そうでない (ワイルドカード・空白・長すぎる・区切りが多い・空) ときは、何も書かずに Cy=1
+; (8.3 に入らない分を黙って捨てて、別のファイルを消したり変えたりしないため)
 PUSH DE
-.scan
+INC DE
 LD A,(DE)
+DEC DE
+CP ':'
+JR NZ,.base
+LD A,(DE)
+OR $20
+SUB 'a'
+CP 8
+JR NC,.bad
+INC DE
+INC DE
+.base
+LD C,8
+CALL .part
+JR C,.bad
+LD A,B
+OR A
+JR Z,.bad
+LD A,(DE)
+CP '.'
+JR NZ,.tail
+INC DE
+LD C,3
+CALL .part
+JR C,.bad
+LD A,(DE)
+.tail
 OR A
 JR Z,.ok
 CP $0D
 JR Z,.ok
-CP '*'
-JR Z,.wild
-CP '?'
-JR Z,.wild
-INC DE
-JR .scan
-.wild
+.bad
 POP DE
 SCF
 RET
@@ -701,6 +723,42 @@ RET
 POP DE
 CALL PPATH
 OR A
+RET
+
+; C=いちばん長い文字数。名前に使える文字を進め、B=文字数。0・0DH・'.' で止まる。
+; 使えない文字か、C より長いときは Cy=1
+.part
+LD B,0
+.p1
+LD A,(DE)
+OR A
+RET Z
+CP $0D
+RET Z
+CP '.'
+RET Z
+CP $21
+RET C
+CP $7F
+JR Z,.pbad
+CP '*'
+JR Z,.pbad
+CP '?'
+JR Z,.pbad
+CP ':'
+JR Z,.pbad
+CP '/'
+JR Z,.pbad
+CP $5C
+JR Z,.pbad
+INC B
+LD A,C
+CP B
+JR C,.pbad
+INC DE
+JR .p1
+.pbad
+SCF
 RET
 
 
