@@ -28,13 +28,7 @@ public class HufsBuildIntegrationTests
             UseShellExecute = false,
         };
         psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
-        psi.ArgumentList.Add("run");
-        psi.ArgumentList.Add("--project");
-        psi.ArgumentList.Add(Path.Combine(repo, "src", "SLANGCompiler.Build"));
-        psi.ArgumentList.Add("--no-build");
-        psi.ArgumentList.Add("-c");
-        psi.ArgumentList.Add(TestTools.BuildConfiguration);
-        psi.ArgumentList.Add("--");
+        psi.ArgumentList.Add(TestTools.SlangbuildDll);
         foreach (var a in args) psi.ArgumentList.Add(a);
         psi.ArgumentList.Add("--slangc");
         psi.ArgumentList.Add(TestTools.SlangcPath);

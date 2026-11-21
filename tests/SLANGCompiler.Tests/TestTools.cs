@@ -28,12 +28,18 @@ internal static class TestTools
     }
 
     /// <summary>
-    /// この試験を組んだ構成 (Debug / Release)。試験のプロジェクトは slangbuild を参照して同じ構成で組むので、
-    /// `dotnet run --no-build` で slangbuild を動かすときはこれを渡す (別の構成の古い組み立てを動かさないように)
+    /// この試験と一緒に組まれた slangbuild (試験のプロジェクトが参照していて、試験と同じ出力のフォルダに置かれる)。
+    /// `dotnet &lt;これ&gt;` で動かす (dotnet run で別の構成・古い組み立てを動かさないように)
     /// </summary>
-    internal static string BuildConfiguration =>
-        AppContext.BaseDirectory.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).Contains("Release")
-            ? "Release" : "Debug";
+    internal static string SlangbuildDll
+    {
+        get
+        {
+            var dll = Path.Combine(AppContext.BaseDirectory, "slangbuild.dll");
+            Assert.True(File.Exists(dll), $"slangbuild.dll が試験の出力にありません: {dll}");
+            return dll;
+        }
+    }
 
     internal static string CurrentRid()
     {
