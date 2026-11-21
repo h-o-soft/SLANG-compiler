@@ -648,6 +648,11 @@ LD (LSXTFCB+16+13),A
 LD DE,LSXTFCB
 LD C,$17  ; _FREN
 CALL LSXXBDOS
+; LSX の名前の変更は、ディレクトリの緩衝を書き換えたところで戻る。ここでディスクに書き出す
+; (書けなかったときは、LSX のディスクの誤りの扱いになる)
+PUSH AF
+CALL LSXXFLUSH
+POP AF
 LD L,A
 LD H,0
 RET
@@ -688,9 +693,10 @@ JP LSXXFIND
 ; @resident shared
 ; @calls FWORKX
 ; HL=書く先 (FCB+0 か FCB+10H)、DE=名前 (0 で終わる)。ドライブと 8+3 の名前にする。
-; 名前は「ドライブ (A:〜H:、省ける) + 1〜8 バイト + (. + 0〜3 バイト)」。
+; 名前は「ドライブ (A:〜H:、省ける) + 1〜8 文字 + (. + 0〜3 文字)」。
 ; LSX が名前に使えない文字とする + , / : ; = \ も断る。
-; 半角の英小文字は大文字にし、全角の文字 (シフト JIS の 2 バイト) はそのまま写す。
+; 半角の英小文字は大文字にする (FOPEN と同じ)。使える $80 以上の文字は半角のカナ ($A1〜$DF) だけで、
+; 全角の文字は断る (FOPEN は全角の 2 バイト目も大文字にするので、同じ名前が FOPEN と別のファイルを指すため)。
 ; そうでない (ワイルドカード・空白や制御文字・長すぎる・区切りが多い・空・LSX が別の文字として
 ; 扱うバイト) ときは Cy=1 (その FCB は使わない)。
 ; 8.3 に入らない分を黙って捨てたり、LSX と違う読み方をしたりして、別のファイルを消したり変えたりしないため
@@ -747,9 +753,7 @@ SCF
 RET
 
 ; HL=書く先、C=いちばん長いバイト数、DE=名前。0・'.' で止まる。B=写したバイト数。
-; 使えない文字か、C より長いときは Cy=1。
-; LSX は $80〜$9F・$E0〜$FF を全角の 1 バイト目として、単独の $A0 を空白として扱うので、
-; 全角の 1 バイト目は $81〜$9F・$E0〜$FC だけを使い、単独の $80・$A0・$FD〜$FF は断る
+; 使えない文字か、C より長いときは Cy=1
 .part
 LD B,0
 .p1
@@ -782,15 +786,10 @@ CP '='
 JR Z,.pbad
 CP $80
 JR C,.one
-JR Z,.pbad
-CP $A0
-JR C,.two
-JR Z,.pbad
+CP $A1
+JR C,.pbad
 CP $E0
-JR C,.one
-CP $FD
-JR C,.two
-JR .pbad
+JR NC,.pbad
 .one
 INC B
 LD A,C
@@ -803,28 +802,6 @@ CP 'z'+1
 JR NC,.st
 SUB $20
 .st
-LD (HL),A
-INC HL
-INC DE
-JR .p1
-; シフト JIS の 2 バイトの文字: 2 バイト目を大文字にしない
-.two
-INC B
-INC B
-LD A,C
-CP B
-RET C
-LD A,(DE)
-LD (HL),A
-INC HL
-INC DE
-LD A,(DE)
-CP $40
-JR C,.pbad
-CP $7F
-JR Z,.pbad
-CP $FD
-JR NC,.pbad
 LD (HL),A
 INC HL
 INC DE
