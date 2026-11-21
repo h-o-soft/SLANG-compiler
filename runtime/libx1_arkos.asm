@@ -34,34 +34,34 @@
 ; @param_count 1
 ; HL = mode (0=non-CTC、 1=CTC) -> wrapper は L=mode 参照
 ; 注: wrapper の SND_CTC_PORT / VEC / ISR_* は事前 ARKOS_SET_CTC_PORT で書込が必要
-JP ARKOS_BASE + $00
+JP !ARKOS_BASE + $00
 
 
 ; @name ARKOS_BGM_PLAY
 ; @param_count 1
 ; HL = music data addr
-JP ARKOS_BASE + $03
+JP !ARKOS_BASE + $03
 
 
 ; @name ARKOS_BGM_STOP
 ; @param_count 0
-JP ARKOS_BASE + $06
+JP !ARKOS_BASE + $06
 
 
 ; @name ARKOS_BGM_PAUSE
 ; @param_count 0
-JP ARKOS_BASE + $09
+JP !ARKOS_BASE + $09
 
 
 ; @name ARKOS_BGM_RESUME
 ; @param_count 0
-JP ARKOS_BASE + $0C
+JP !ARKOS_BASE + $0C
 
 
 ; @name ARKOS_SFX_INIT
 ; @param_count 1
 ; HL = SFX table addr
-JP ARKOS_BASE + $0F
+JP !ARKOS_BASE + $0F
 
 
 ; @name ARKOS_SFX_PLAY
@@ -70,25 +70,25 @@ JP ARKOS_BASE + $0F
 ; wrapper: L = sfx_num, H = channel  -> SLANG 2 引数を L/H 詰め替えてから tail-call
 LD A, E
 LD H, A
-JP ARKOS_BASE + $12
+JP !ARKOS_BASE + $12
 
 
 ; @name ARKOS_SFX_STOP
 ; @param_count 1
 ; HL = channel (L use)
-JP ARKOS_BASE + $15
+JP !ARKOS_BASE + $15
 
 
 ; @name ARKOS_PSG_PROC
 ; @param_count 0
 ; polling mode で VSYNC ごとに caller (VSYNC_PROC) が call、 CTC mode 時は no-op
-JP ARKOS_BASE + $18
+JP !ARKOS_BASE + $18
 
 
 ; @name ARKOS_PSG_END
 ; @param_count 0
 ; CTC teardown + BGM stop + trampoline handler restore
-JP ARKOS_BASE + $1B
+JP !ARKOS_BASE + $1B
 
 
 ; @name ARKOS_SET_CTC_PORT
@@ -109,22 +109,22 @@ OR L
 JR NZ, _ARKOS_SCP_OK
 ; CTC unavailable: $1E-$23 全 clear (= stale 値で PSG_END / Init 誤動作回避)
 XOR A
-LD (ARKOS_BASE + $1E), A
-LD (ARKOS_BASE + $1F), A
-LD (ARKOS_BASE + $20), A
-LD (ARKOS_BASE + $21), A
-LD (ARKOS_BASE + $22), A
-LD (ARKOS_BASE + $23), A
+LD (!ARKOS_BASE + $1E), A
+LD (!ARKOS_BASE + $1F), A
+LD (!ARKOS_BASE + $20), A
+LD (!ARKOS_BASE + $21), A
+LD (!ARKOS_BASE + $22), A
+LD (!ARKOS_BASE + $23), A
 RET
 _ARKOS_SCP_OK:
 ; CTC/vector/trampoline 書換区間は DI + IFF2 guard (= 既存 PSG_INIT 流儀)
 LD A, I
 DI
 PUSH AF                         ; IFF2 -> AF.PV に保存
-LD (ARKOS_BASE + $1E), HL  ; SND_CTC_PORT
+LD (!ARKOS_BASE + $1E), HL  ; SND_CTC_PORT
 PUSH HL
 EX DE, HL
-LD (ARKOS_BASE + $20), HL  ; SND_CTCVEC
+LD (!ARKOS_BASE + $20), HL  ; SND_CTCVEC
 LD A, L                         ; A = vec low byte (= IM2 page)
 POP BC                          ; BC = CTC port (= _CTC convention)
 DEC C
@@ -134,16 +134,16 @@ OUT (C), A                      ; CTC IM2 vector page 設定
 ; x1native: trampoline 経由、 RETI
 ; 注: _ISRADR / _ISRHANDLER は work 変数、 中身 (= 括弧付き indirect) を渡す
 LD HL, (NAME_SPACE_DEFAULT._ISRADR)
-LD (ARKOS_BASE + $22), HL  ; SND_ISR_ENTRY
+LD (!ARKOS_BASE + $22), HL  ; SND_ISR_ENTRY
 LD HL, (NAME_SPACE_DEFAULT._ISRHANDLER)
-LD (ARKOS_BASE + $24), HL  ; SND_ISR_HANDLER_PTR
+LD (!ARKOS_BASE + $24), HL  ; SND_ISR_HANDLER_PTR
 XOR A
-LD (ARKOS_BASE + $26), A   ; RETURN_MODE = RETI
+LD (!ARKOS_BASE + $26), A   ; RETURN_MODE = RETI
 #ELSE
 ; OS_TYPE == 0 (x1/lsx) / 1 (sosx1): direct vector、 RETI
 XOR A
-LD (ARKOS_BASE + $22), A
-LD (ARKOS_BASE + $23), A
+LD (!ARKOS_BASE + $22), A
+LD (!ARKOS_BASE + $23), A
 #ENDIF
 POP AF                          ; IFF2 復元 (= AF.PV)
 RET PO                          ; PV reset (= IFF2=0 だった) -> EI せず RET

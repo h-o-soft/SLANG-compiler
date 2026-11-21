@@ -25,52 +25,52 @@
 ; @param_count 1
 ; HL = chip flag (BANJO_CHIP_AY=4 / _OPM=128 / _AY_OPM=132)。
 ; channel 数は driver build 時の BANJO_MAX_CHANNELS を wrapper が固定セットするので渡さない。
-JP BANJO_BASE + $00
+JP !BANJO_BASE + $00
 
 
 ; @name BANJO_PLAY
 ; @param_count 2
 ; HL = song data addr、 DE = loop (BANJO_LOOP_ON=1 / _OFF=0)。 wrapper が D=E に詰替えて
 ; banjo_play_song (HL=song, D=loop) を呼ぶ。
-JP BANJO_BASE + $03
+JP !BANJO_BASE + $03
 
 
 ; @name BANJO_UPDATE
 ; @param_count 0
 ; 1 フレームぶん再生を進める (= 毎 VSYNC に 1 回呼ぶ)。
-JP BANJO_BASE + $06
+JP !BANJO_BASE + $06
 
 
 ; @name BANJO_STOP
 ; @param_count 0
 ; 再生を停止する。
-JP BANJO_BASE + $09
+JP !BANJO_BASE + $09
 
 
 ; @name BANJO_END
 ; @param_count 0
 ; CTC teardown + 再生停止 (SFX も停止)。polling mode では SFX 停止 + BANJO_STOP 相当。
-JP BANJO_BASE + $0F
+JP !BANJO_BASE + $0F
 
 
 ; @name BANJO_SFX_INIT
 ; @param_count 0
 ; SFX エンジンの状態を初期化する (再生中に呼んでも安全な stop+init)。
 ; ※ BANJO_INIT が自動で初期化するため通常は呼ぶ必要なし。 SFX は AY (PSG) 専用。
-JP BANJO_BASE + $1B
+JP !BANJO_BASE + $1B
 
 
 ; @name BANJO_SFX_PLAY
 ; @param_count 1
 ; HL = SFX データ addr。 再生 ch は SFX データ変換時に固定。 再生で対応 BGM ch を mute、
 ; 停止で unmute。 同時に鳴らせる SFX は 1 つ。 SFX は AY (PSG) 専用。
-JP BANJO_BASE + $1E
+JP !BANJO_BASE + $1E
 
 
 ; @name BANJO_SFX_STOP
 ; @param_count 0
 ; 再生中の SFX を停止し、 mute していた BGM ch を unmute する。 SFX は AY (PSG) 専用。
-JP BANJO_BASE + $21
+JP !BANJO_BASE + $21
 
 
 ; @name BANJO_SET_CTC_PORT
@@ -83,15 +83,15 @@ OR L
 JR NZ, _BANJO_SCP_OK
 ; CTC unavailable: parameter area clear (= stale 値で init/end が誤動作しないようにする)
 XOR A
-LD (BANJO_BASE + $12), A
-LD (BANJO_BASE + $13), A
-LD (BANJO_BASE + $14), A
-LD (BANJO_BASE + $15), A
-LD (BANJO_BASE + $16), A
-LD (BANJO_BASE + $17), A
-LD (BANJO_BASE + $18), A
-LD (BANJO_BASE + $19), A
-LD (BANJO_BASE + $1A), A
+LD (!BANJO_BASE + $12), A
+LD (!BANJO_BASE + $13), A
+LD (!BANJO_BASE + $14), A
+LD (!BANJO_BASE + $15), A
+LD (!BANJO_BASE + $16), A
+LD (!BANJO_BASE + $17), A
+LD (!BANJO_BASE + $18), A
+LD (!BANJO_BASE + $19), A
+LD (!BANJO_BASE + $1A), A
 RET
 
 _BANJO_SCP_OK:
@@ -99,10 +99,10 @@ _BANJO_SCP_OK:
 LD A, I
 DI
 PUSH AF                         ; IFF2 -> AF.PV
-LD (BANJO_BASE + $12), HL       ; CTC port
+LD (!BANJO_BASE + $12), HL       ; CTC port
 PUSH HL
 EX DE, HL
-LD (BANJO_BASE + $14), HL       ; CTC vector base
+LD (!BANJO_BASE + $14), HL       ; CTC vector base
 LD A, L                         ; A = vec low byte (= IM2 page)
 POP BC                          ; BC = CTC port (= _CTC convention)
 DEC C
@@ -111,19 +111,19 @@ OUT (C), A
 #IF NAME_SPACE_DEFAULT.OS_TYPE == 4
 ; x1native: ISR trampoline 経由
 LD HL, (NAME_SPACE_DEFAULT._ISRADR)
-LD (BANJO_BASE + $16), HL       ; ISR_ENTRY
+LD (!BANJO_BASE + $16), HL       ; ISR_ENTRY
 LD HL, (NAME_SPACE_DEFAULT._ISRHANDLER)
-LD (BANJO_BASE + $18), HL       ; JP operand addr
+LD (!BANJO_BASE + $18), HL       ; JP operand addr
 XOR A
-LD (BANJO_BASE + $1A), A        ; RETURN_MODE = RETI
+LD (!BANJO_BASE + $1A), A        ; RETURN_MODE = RETI
 #ELSE
 ; x1/lsx, sosx1: direct vector。sosx1 turbo trampoline + RET は future。
 XOR A
-LD (BANJO_BASE + $16), A
-LD (BANJO_BASE + $17), A
-LD (BANJO_BASE + $18), A
-LD (BANJO_BASE + $19), A
-LD (BANJO_BASE + $1A), A
+LD (!BANJO_BASE + $16), A
+LD (!BANJO_BASE + $17), A
+LD (!BANJO_BASE + $18), A
+LD (!BANJO_BASE + $19), A
+LD (!BANJO_BASE + $1A), A
 #ENDIF
 POP AF
 RET PO
