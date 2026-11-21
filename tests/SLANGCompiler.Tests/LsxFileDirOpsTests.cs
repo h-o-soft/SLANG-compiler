@@ -99,10 +99,13 @@ END;
     public void AllFour_Assemble(string env)
     {
         var asm = Build(env, "ALL", UsesAll);
-        foreach (var label in new[] { "FDELETE", "FRENAME", "FFIRST", "FNEXT", "LSXXFIND", "PPATH" })
+        foreach (var label in new[] { "FDELETE", "FRENAME", "FFIRST", "FNEXT", "LSXXFIND", "LSXXNAME" })
             Assert.Matches(new Regex($@"(?m)^{label}:?\s*$"), asm);
         Assert.Contains("LSXTFCB", asm);
         Assert.Contains("LSXDTA", asm);
+        // 名前を消す・変えるだけなら、FOPEN とその作業 (8 つの FCB) は持ち込まない
+        Assert.DoesNotMatch(new Regex(@"(?m)^FOPEN:?\s*$"), asm);
+        Assert.DoesNotContain("LSXFCBS", asm);
     }
 
     [SkippableTheory]

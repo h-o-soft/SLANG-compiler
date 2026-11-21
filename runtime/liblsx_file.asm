@@ -636,6 +636,10 @@ INC A
 CP B
 JP NZ,LSXXERR
 .same
+; new の名前がもうあるかを調べるときに、隠し・システムのファイルとフォルダも見る
+; (LSX のファイルの作成と同じ $FF。名前の変更は項目の属性を書き換えない)
+LD A,$FF
+LD (LSXTFCB+16+13),A
 LD DE,LSXTFCB
 LD C,$17  ; _FREN
 CALL LSXXBDOS
@@ -677,55 +681,67 @@ JP LSXXFIND
 
 ; @name LSXXNAME
 ; @resident shared
-; @calls FOPEN,FWORKX
-; HL=書く先 (FCB+0 か FCB+10H)、DE=名前。ドライブと 8+3 の名前にする。
-; 名前は「ドライブ (A:〜H:、省ける) + 1〜8 文字 + (. + 0〜3 文字)」で、0 か 0DH で終わること。
-; そうでない (ワイルドカード・空白・長すぎる・区切りが多い・空) ときは、何も書かずに Cy=1
-; (8.3 に入らない分を黙って捨てて、別のファイルを消したり変えたりしないため)
-PUSH DE
+; @calls FWORKX
+; HL=書く先 (FCB+0 か FCB+10H)、DE=名前 (0 か 0DH で終わる)。ドライブと 8+3 の名前にする。
+; 名前は「ドライブ (A:〜H:、省ける) + 1〜8 バイト + (. + 0〜3 バイト)」。
+; 半角の英小文字は大文字にし、全角の文字 (シフト JIS の 2 バイト) はそのまま写す。
+; そうでない (ワイルドカード・空白・長すぎる・区切りが多い・空) ときは Cy=1 (その FCB は使わない)。
+; 8.3 に入らない分を黙って捨てて、別のファイルを消したり変えたりしないため
+XOR A
+LD (HL),A
 INC DE
 LD A,(DE)
 DEC DE
 CP ':'
-JR NZ,.base
+JR NZ,.nodrv
 LD A,(DE)
 OR $20
 SUB 'a'
 CP 8
-JR NC,.bad
+CCF
+RET C
+INC A
+LD (HL),A
 INC DE
 INC DE
-.base
+.nodrv
+INC HL
+PUSH HL
+LD B,11
+LD A,' '
+.fill
+LD (HL),A
+INC HL
+DJNZ .fill
+POP HL
+PUSH HL
 LD C,8
 CALL .part
-JR C,.bad
+POP HL
+RET C
 LD A,B
 OR A
-JR Z,.bad
+SCF
+RET Z
 LD A,(DE)
 CP '.'
 JR NZ,.tail
 INC DE
+LD BC,8
+ADD HL,BC
 LD C,3
 CALL .part
-JR C,.bad
+RET C
 LD A,(DE)
 .tail
 OR A
-JR Z,.ok
+RET Z
 CP $0D
-JR Z,.ok
-.bad
-POP DE
+RET Z
 SCF
 RET
-.ok
-POP DE
-CALL PPATH
-OR A
-RET
 
-; C=いちばん長い文字数。名前に使える文字を進め、B=文字数。0・0DH・'.' で止まる。
+; HL=書く先、C=いちばん長いバイト数、DE=名前。0・0DH・'.' で止まる。B=写したバイト数。
 ; 使えない文字か、C より長いときは Cy=1
 .part
 LD B,0
@@ -751,10 +767,50 @@ CP '/'
 JR Z,.pbad
 CP $5C
 JR Z,.pbad
+CP $81
+JR C,.one
+CP $A0
+JR C,.two
+CP $E0
+JR C,.one
+CP $FD
+JR C,.two
+.one
 INC B
 LD A,C
 CP B
+RET C
+LD A,(DE)
+CP 'a'
+JR C,.st
+CP 'z'+1
+JR NC,.st
+SUB $20
+.st
+LD (HL),A
+INC HL
+INC DE
+JR .p1
+; シフト JIS の 2 バイトの文字: 2 バイト目を大文字にしない
+.two
+INC B
+INC B
+LD A,C
+CP B
+RET C
+LD A,(DE)
+LD (HL),A
+INC HL
+INC DE
+LD A,(DE)
+CP $40
 JR C,.pbad
+CP $7F
+JR Z,.pbad
+CP $FD
+JR NC,.pbad
+LD (HL),A
+INC HL
 INC DE
 JR .p1
 .pbad
