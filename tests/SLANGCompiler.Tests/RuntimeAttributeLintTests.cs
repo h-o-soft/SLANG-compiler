@@ -45,6 +45,14 @@ public class RuntimeAttributeLintTests
             }
             switch (key)
             {
+                case "name":
+                    if (value.Length == 0)
+                        problems.Add($"{where} (@name が空)");
+                    break;
+                case "stack_cleanup":
+                    if (value != "callee")
+                        problems.Add($"{where} (@stack_cleanup は callee だけ)");
+                    break;
                 case "works":
                     var items = value.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
                     if (items.Length == 0)
@@ -53,11 +61,13 @@ public class RuntimeAttributeLintTests
                     {
                         if (!WorksItem.IsMatch(item))
                             problems.Add($"{where} (@works の項目 '{item}' が label:size の形でない)");
+                        else if (!int.TryParse(item[(item.IndexOf(':') + 1)..], out _))
+                            problems.Add($"{where} (@works の項目 '{item}' の大きさが大きすぎる)");
                     }
                     break;
                 case "param_count":
                 case "works_align":
-                    if (!Number.IsMatch(value))
+                    if (!Number.IsMatch(value) || !int.TryParse(value, out _))
                         problems.Add($"{where} (@{key} が 10 進の数でない)");
                     break;
                 case "resident":
@@ -85,7 +95,7 @@ public class RuntimeAttributeLintTests
     public void Lint_AcceptsWellFormedLines()
     {
         const string text = "; @name FOO\n; @param_count 2\n; @calls BAR, BAZ\n; @works FOOW:16,FOOX:2\n"
-            + "; @works_align 256\n; @resident local\n; @lib FOOLIB\nRET\n; ふつうの注釈 @works ではない\n";
+            + "; @works_align 256\n; @resident local\n; @lib FOOLIB\n; @stack_cleanup callee\nRET\n; ふつうの注釈 @works ではない\n";
         Assert.Empty(Lint(text, "t.asm"));
     }
 
@@ -98,6 +108,11 @@ public class RuntimeAttributeLintTests
     [InlineData("; @Name FOO", "知らない key")]
     [InlineData("; @param_count x", "10 進")]
     [InlineData("; @resident both", "shared か local")]
+    [InlineData("; @name", "@name が空")]
+    [InlineData("; @stack_cleanup calle", "callee だけ")]
+    [InlineData("; @works BUF:2147483648", "大きすぎる")]
+    [InlineData("; @param_count 2147483648", "10 進")]
+    [InlineData("; @works_align 2147483648", "10 進")]
     public void Lint_ReportsMalformedLines(string line, string expected)
     {
         var problems = Lint("; @name FOO\n" + line + "\nRET\n", "t.asm");
