@@ -37,6 +37,18 @@ BEGIN
 END;
 ";
 
+    // 一覧だけを使うプログラム (名前を FCB にする下回りを持ち込まなくても組める)
+    private const string UsesListOnly = @"ARRAY BYTE ENT[31];
+VAR R;
+MAIN()
+BEGIN
+    R = FFIRST(ENT);
+    WHILE R == 0 DO BEGIN
+        R = FNEXT(ENT);
+    END;
+END;
+";
+
     private const string UsesOpenOnly = @"VAR R;
 MAIN()
 BEGIN
@@ -91,6 +103,17 @@ END;
             Assert.Matches(new Regex($@"(?m)^{label}:?\s*$"), asm);
         Assert.Contains("LSXTFCB", asm);
         Assert.Contains("LSXDTA", asm);
+    }
+
+    [SkippableTheory]
+    [InlineData("lsx")]
+    [InlineData("msxlsx")]
+    [InlineData("x1")]
+    public void ListOnly_Assembles(string env)
+    {
+        var asm = Build(env, "LIST", UsesListOnly);
+        Assert.Matches(new Regex(@"(?m)^LSXXFIND:?\s*$"), asm);
+        Assert.DoesNotMatch(new Regex(@"(?m)^LSXXNAME:?\s*$"), asm);
     }
 
     [SkippableTheory]

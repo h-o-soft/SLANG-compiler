@@ -585,7 +585,7 @@ RET
 ; @name FDELETE
 ; @resident shared
 ; @param_count 1
-; @calls LSXCALLS,FOPEN,FWORKX
+; @calls LSXCALLS,FWORKX,LSXXNAME
 ; HL=name。消せたら 0、無い・消せないときは 255。
 ; 名前に * か ? があれば、何も消さずに 255 を返す (まとめて消さない)
 PUSH HL
@@ -605,9 +605,9 @@ RET
 ; @name FRENAME
 ; @resident shared
 ; @param_count 2
-; @calls LSXCALLS,FOPEN,FWORKX
+; @calls LSXCALLS,FWORKX,LSXXNAME
 ; HL=old DE=new。変えられたら 0、できないときは 255。
-; どちらかの名前に * か ? があれば 255
+; どちらかの名前に * か ? があるとき、new のドライブが old と違うときも 255
 PUSH DE
 PUSH HL
 CALL LSXXCLR
@@ -619,6 +619,23 @@ JP C,LSXXERR
 LD HL,LSXTFCB+16  ; 新しい名前は FCB+10H (ドライブ) と +11H (名前)
 CALL LSXXNAME
 JP C,LSXXERR
+; new にドライブを書いたら、old と同じドライブでなければならない (名前を変えるのは old のドライブの上)
+LD A,(LSXTFCB+16)
+OR A
+JR Z,.same
+LD B,A
+LD A,(LSXTFCB)
+OR A
+JR NZ,.cmp
+PUSH BC
+LD C,$19  ; _CURDRV (A:=0)
+CALL LSXXBDOS
+POP BC
+INC A
+.cmp
+CP B
+JP NZ,LSXXERR
+.same
 LD DE,LSXTFCB
 LD C,$17  ; _FREN
 CALL LSXXBDOS
@@ -641,6 +658,9 @@ LD A,'?'
 LD (HL),A
 INC HL
 DJNZ .wild
+; FCB+13 は検索で含める属性。隠し・システムのファイルとフォルダも出す (ボリュームラベルは出さない)
+LD A,$16
+LD (LSXTFCB+13),A
 LD C,$11  ; _SFIRST
 JP LSXXFIND
 
@@ -653,6 +673,35 @@ JP LSXXFIND
 PUSH HL
 LD C,$12  ; _SNEXT
 JP LSXXFIND
+
+
+; @name LSXXNAME
+; @resident shared
+; @calls FOPEN,FWORKX
+; HL=書く先 (FCB+0 か FCB+10H)、DE=名前。ドライブと 8+3 の名前にする。
+; 名前の文字列 (0 か 0DH まで) に * か ? があれば、何も書かずに Cy=1
+PUSH DE
+.scan
+LD A,(DE)
+OR A
+JR Z,.ok
+CP $0D
+JR Z,.ok
+CP '*'
+JR Z,.wild
+CP '?'
+JR Z,.wild
+INC DE
+JR .scan
+.wild
+POP DE
+SCF
+RET
+.ok
+POP DE
+CALL PPATH
+OR A
+RET
 
 
 ; @name FWORKX
@@ -670,24 +719,6 @@ XOR A
 LD (HL),A
 INC HL
 DJNZ .clr
-RET
-
-; HL=書く先 (FCB+0 か FCB+10H)、DE=名前。ドライブと 8+3 の名前にする。
-; ワイルドカード (* か ?) が入っていれば Cy=1
-LSXXNAME:
-PUSH HL
-CALL PPATH
-POP HL
-INC HL
-LD B,11
-.chk
-LD A,(HL)
-CP '?'
-SCF
-RET Z
-INC HL
-DJNZ .chk
-OR A
 RET
 
 LSXXERR:
