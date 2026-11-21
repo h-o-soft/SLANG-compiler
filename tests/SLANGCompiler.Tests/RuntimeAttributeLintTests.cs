@@ -47,8 +47,32 @@ public class RuntimeAttributeLintTests
             switch (key)
             {
                 case "name":
+                case "lib":
+                case "alias":
+                case "function_type":
                     if (value.Length == 0)
-                        problems.Add($"{where} (@name が空)");
+                        problems.Add($"{where} (@{key} が空)");
+                    else if (!Name.IsMatch(value))
+                        problems.Add($"{where} (@{key} '{value}' が 1 つの名前でない)");
+                    break;
+                case "param_types":
+                    if (value.Length == 0)
+                        problems.Add($"{where} (@param_types が空)");
+                    else
+                        foreach (var ty in value.Split(',', StringSplitOptions.TrimEntries))
+                        {
+                            if (ty != "int" && ty != "float")
+                                problems.Add($"{where} (@param_types の項目 '{ty}' は int か float)");
+                        }
+                    break;
+                case "result_type":
+                    if (value != "int" && value != "float")
+                        problems.Add($"{where} (@result_type は int か float)");
+                    break;
+                case "init_code":
+                case "end_init":
+                    if (value.Length != 0)
+                        problems.Add($"{where} (@{key} に値は書かない)");
                     break;
                 case "stack_cleanup":
                     if (value != "callee")
@@ -108,7 +132,8 @@ public class RuntimeAttributeLintTests
     public void Lint_AcceptsWellFormedLines()
     {
         const string text = "; @name FOO\n; @param_count 2\n; @calls BAR, BAZ\n; @works FOOW:16,FOOX:2\n"
-            + "; @works_align 256\n; @resident local\n; @lib FOOLIB\n; @stack_cleanup callee\nRET\n; ふつうの注釈 @works ではない\n";
+            + "; @works_align 256\n; @resident local\n; @lib FOOLIB\n; @stack_cleanup callee\n"
+            + "; @alias FOO2\n; @param_types float,int\n; @result_type float\n; @function_type Machine\n; @init_code\n; @end_init\nRET\n; ふつうの注釈 @works ではない\n";
         Assert.Empty(Lint(text, "t.asm"));
     }
 
@@ -122,6 +147,15 @@ public class RuntimeAttributeLintTests
     [InlineData("; @param_count x", "10 進")]
     [InlineData("; @resident both", "shared か local")]
     [InlineData("; @name", "@name が空")]
+    [InlineData("; @name FOO BAR", "1 つの名前でない")]
+    [InlineData("; @lib", "@lib が空")]
+    [InlineData("; @lib FOO LIB", "1 つの名前でない")]
+    [InlineData("; @alias FOO-2", "1 つの名前でない")]
+    [InlineData("; @param_types flaot,float", "int か float")]
+    [InlineData("; @param_types float,", "int か float")]
+    [InlineData("; @param_types", "@param_types が空")]
+    [InlineData("; @result_type flaot", "int か float")]
+    [InlineData("; @init_code FOO", "値は書かない")]
     [InlineData("; @calls X1WORK で依存を満たす", "名前の形でない")]
     [InlineData("; @calls FOO BAR", "名前の形でない")]
     [InlineData("; @calls FOO,,BAR", "名前の形でない")]
