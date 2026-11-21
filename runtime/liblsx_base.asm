@@ -96,7 +96,7 @@ CP	H
 JR	Z,sMSX2
 CALL	sPRINT
 INC	DE
-JR	MSX1
+JR	sMSX1
 sMSX2:
 POP	DE
 POP	AF
@@ -141,14 +141,14 @@ RET
 ; @name sNL
 ; @resident shared
 ; @param_count 0
-; @calls sZPRINT,sWORK
+; @calls sZPRINT,sWORK,sPCLR
 PUSH	AF
 LD	A,(sXYADR)
 OR	A
 JR	Z,.nlx
 CALL	sZPRINT
 DB	$0D,$0A,0
-CALL	PCLR
+CALL	sPCLR
 .nlx
 POP	AF
 RET
@@ -253,7 +253,7 @@ JR	NZ,.pause1
 .null
 CALL	sGETKY
 OR	A
-JR	NZ,NULL
+JR	NZ,.null
 CALL	sINKEY
 CALL	BRKEY1
 JR	Z,.pause2
