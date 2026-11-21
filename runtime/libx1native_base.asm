@@ -237,7 +237,7 @@ RET
 ; port C 値、 byte 15 = WK1FD0 値。 AT_VRCALC は byte 0-1 を WORD 読みして
 ; R1 (= width = byte 1) を取得する。
 ;
-; @works 経由 main __WORK__ 内 BSS として確保 (= Local mode overlay からも
+; (works 経由) main __WORK__ 内 BSS として確保 (= Local mode overlay からも
 ; main 共有 EXTERN で参照、 SLANGINIT INIT_CRTC で init 済値を読める)。
 ; 旧 `@name _CRTCD` DS 16 (= overlay 内 local copy で init 走らず壊滅) からの
 ; refactor。
