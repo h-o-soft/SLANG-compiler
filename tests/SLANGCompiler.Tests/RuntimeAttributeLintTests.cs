@@ -47,6 +47,12 @@ public class RuntimeAttributeLintTests
         {
             var line = lines[i].TrimEnd('\r');
             var t = line.TrimStart();
+            if (t.StartsWith(";@", StringComparison.Ordinal) || t.StartsWith(";\t@", StringComparison.Ordinal))
+            {
+                // slangc は `; @` (空白 1 つ) の形しか属性として読まない。書き間違いは黙って注釈になる
+                problems.Add($"{path}:{i + 1}: {t} (`;` と `@` の間は空白 1 つ)");
+                continue;
+            }
             if (!t.StartsWith("; @", StringComparison.Ordinal))
                 continue;
             var meta = t[3..];
@@ -184,7 +190,7 @@ public class RuntimeAttributeLintTests
     {
         const string text = "; @name FOO\n; @param_count 2\n; @calls BAR, BAZ\n; @works FOOW:16,FOOX:2\n"
             + "; @works_align 256\n; @resident local\n; @lib FOOLIB\n; @stack_cleanup callee\n"
-            + "; @alias FOO2\n; @param_types float,float\n; @result_type float\n; @function_type Machine\n; @init_code\n; @end_init\nRET\n; ふつうの注釈 @works ではない\n";
+            + "; @alias FOO2\n; @param_types float,float\n; @result_type float\n; @function_type Machine\n; @init_code\n; @end_init\nRET\n; ふつうの注釈 @works ではない\n;   @param_count 2 を説明する注釈\n";
         Assert.Empty(Lint(text, "t.asm"));
     }
 
@@ -223,6 +229,8 @@ public class RuntimeAttributeLintTests
     [InlineData("; @param_types int,float", "float か float,float だけ")]
     [InlineData("; @param_types float,float,float", "float か float,float だけ")]
     [InlineData("; @end_init", "対になる @init_code がない")]
+    [InlineData(";@stack_cleanup callee", "空白 1 つ")]
+    [InlineData(";\t@param_count 2", "空白 1 つ")]
     public void Lint_ReportsMalformedLines(string line, string expected)
     {
         var problems = Lint("; @name FOO\n" + line + "\nRET\n", "t.asm");
