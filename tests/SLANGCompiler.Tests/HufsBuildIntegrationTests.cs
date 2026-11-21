@@ -145,6 +145,11 @@ public class HufsBuildIntegrationTests
             var (rc3, _, err3) = RunSlangbuild("-E", "x1native_slfs", sample, "-o", output, "--emit", "disk", "--hufs-loader");
             Assert.NotEqual(0, rc3);
             Assert.Contains("--hufs-loader requires --emit disk + disk.tool: hufs-pack", err3);
+
+            // OscarC の env (c64) でも、黙って無視せずにエラー
+            var (rc4, _, err4) = RunSlangbuild("-E", "c64", sample, "-o", output, "--hufs-loader");
+            Assert.NotEqual(0, rc4);
+            Assert.Contains("--hufs-loader requires --emit disk + disk.tool: hufs-pack", err4);
         }
         finally
         {

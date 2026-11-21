@@ -157,6 +157,23 @@ public class HuLoaderTests
         Assert.Equal(body, disk.Extract("GAME.Bin"));
     }
 
+    /// <summary>空きが足りずに失敗したら、ディスクは 1 バイトも変わらない (ローダだけが残らない)</summary>
+    [Fact]
+    public void SetMainWithLoader_LeavesImageUnchangedOnFailure()
+    {
+        var disk = HuDiskImage.CreateBlank();
+        // 空きを 2 クラスタだけ残す: ローダは置けるが、本体 (2 クラスタ) は置けない
+        disk.AddFile("FILL", Body((HuDiskImage.Clusters - HuDiskImage.FirstDataCluster - 2) * HuDiskImage.ClusterSize));
+        Assert.Equal(2, disk.FreeClusters());
+        var before = disk.ToRaw();
+        Assert.Throws<IOException>(() => disk.SetMainWithLoader("GAME", Body(5000), 0x1000, 0x1000));
+        Assert.Equal(before, disk.ToRaw());
+        Assert.Null(disk.Find("GAME.Sys"));
+        // 同じ名前でもう一度試せる (入る大きさなら通る)
+        disk.SetMainWithLoader("GAME", Body(100), 0x1000, 0x1000);
+        Assert.Equal(Body(100), disk.Extract("GAME.Bin"));
+    }
+
     [Theory]
     [InlineData("GAME.Sys")]
     [InlineData("GAME.Bin")]

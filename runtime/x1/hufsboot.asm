@@ -11,7 +11,7 @@
 ;   0100H〜03FFH  このローダ (768 バイト以下)
 ;   0400H〜04FFH  緩衝 (ディレクトリ・最後のレコード)
 ;   0500H〜05FFH  FAT (レコード 14)
-;   0600H〜061FH  作業
+;   0600H〜0620H  作業
 ;   0FFEH から下  スタック
 ; 本体は 1000H 以上にしか読まない (ローダのコード・緩衝・スタックに重ならないように)。
 ;
@@ -22,6 +22,7 @@
 ;   - 最後のクラスタの印 $80+n では、n + 1 が残りのレコード数とちょうど同じ
 ;   - クラスタは 78 個まで (輪になっていても止まる)
 ;   - セクタはちょうど 256 バイト (違えば読み損ないとして扱い、256 バイトより後ろは書かない)
+;   - 読む命令を出した後の待ちにも上限 (約 11 秒) を付ける
 ; 最後のレコードは緩衝に読み、残りのバイトだけを写す (L + S より先には書かない)。
 ;
 ; FDC の下回りは libx1native_hufs.asm の読む所を写したもの (待ちの上限・同じシリンダならシークしない・
@@ -45,6 +46,7 @@ CLUSTER     EQU     061CH       ; 今のクラスタ
 NEXTCL      EQU     061DH       ; FAT の値
 COUNT       EQU     061EH       ; 残りのクラスタの数の上限
 ISLAST      EQU     061FH       ; 1 なら最後のクラスタを読んでいる
+TMOH        EQU     0620H       ; 読む命令の待ちの数えの上の桁
 STACKTOP    EQU     0FFEH
 
 MINLOAD     EQU     1000H       ; 本体を読める一番下の番地
@@ -366,7 +368,8 @@ MOTOROFF:
             RET
 
 ; 1 セクタを読む。A = セクタ (0 から)、HL = 緩衝。戻り値 A = 状態 (時間切れは 80H)
-; 緩衝に書くのは 256 バイトまで。セクタが 256 バイトでなければ RNF ($10) を足して返す
+; 緩衝に書くのは 256 バイトまで。ちょうど 256 バイトでなければ (0 バイト・短い・長い) RNF ($10) を足して返す。
+; 命令を出した後も待ちに上限を付ける (約 11 秒。FDC が止まったら強制割り込みを出して時間切れにする)
 FDCREAD:
             LD      BC, 0FFAH
             INC     A                   ; 1 から数える番号に
@@ -377,39 +380,72 @@ FDCREAD:
             LD      A, 80H              ; 読む
             OUT     (C), A
             CALL    WAIT1
-            LD      B, 0                ; 256 バイト
+            LD      A, 8
+            LD      (TMOH), A
+            LD      B, 0                ; 残り 256 バイト
+            LD      C, 0                ; 待ちの数え (C・D・TMOH)
+            LD      D, 0
+            LD      E, 0                ; 1 なら 256 バイト読んだ
 FRLOOP:
             LD      A, 0FH
             IN      A, (0F8H)
             RRCA
-            JR      NC, FRDONE
+            JR      NC, FRDONE          ; BUSY が落ちた
             RRCA
-            JR      NC, FRLOOP
+            JR      C, FRDATA           ; DRQ
+            CALL    FRWAIT
+            JR      NZ, FRLOOP
+            JR      FRSTALL
+FRDATA:
             LD      A, 0FH
             IN      A, (0FBH)
             LD      (HL), A
             INC     HL
             DJNZ    FRLOOP
+            INC     E                   ; 256 バイト読んだ
 FRDRAIN:                                ; 256 バイトより後ろは書かずに読み捨てる
             LD      A, 0FH
             IN      A, (0F8H)
             RRCA
             JR      NC, FRDONE
             RRCA
-            JR      NC, FRDRAIN
+            JR      C, FRLONG
+            CALL    FRWAIT
+            JR      NZ, FRDRAIN
+            JR      FRSTALL
+FRLONG:
             LD      A, 0FH
             IN      A, (0FBH)
             LD      B, 1                ; 長すぎた印
             JR      FRDRAIN
 FRDONE:
             RLCA                        ; 状態の bit を戻す
+            DEC     E
+            JR      NZ, FRBAD           ; 256 バイトに届かなかった
             INC     B
             DEC     B
             RET     Z                   ; ちょうど 256 バイト
+FRBAD:
             OR      10H
             RET
+FRSTALL:                                ; 命令が終わらない: 打ち切って時間切れ
+            LD      BC, 0FF8H
+            LD      A, 0D0H
+            OUT     (C), A
 FRTMO:
             LD      A, 80H
+            RET
+
+; 待ちを 1 回数える (C・D・TMOH の順に減らす)。尽きたら Z
+FRWAIT:
+            DEC     C
+            RET     NZ
+            DEC     D
+            RET     NZ
+            PUSH    HL
+            LD      HL, TMOH
+            DEC     (HL)
+            POP     HL
             RET
 
 ; シーク。A = シリンダ。NZ ならエラー

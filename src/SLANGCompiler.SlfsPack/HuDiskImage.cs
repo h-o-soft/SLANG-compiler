@@ -353,6 +353,22 @@ public sealed class HuDiskImage
         var loader = HuLoader.Bytes;
         var (sn, se) = HuName.Parse(mainName + ".Sys");
         var (bn, be) = HuName.Parse(mainName + ".Bin");
+        // ローダと本体の 2 つを置く途中で失敗したら (空きが足りないなど)、ディスクを元のままにする
+        var before = (byte[])_raw.Clone();
+        try
+        {
+            return PlaceWithLoader(loader, sn, se, bn, be, body, load, exec);
+        }
+        catch
+        {
+            before.CopyTo(_raw, 0);
+            throw;
+        }
+    }
+
+    private (HuDirEntry Loader, HuDirEntry Main) PlaceWithLoader(byte[] loader, byte[] sn, byte[] se, byte[] bn, byte[] be,
+                                                              byte[] body, ushort load, ushort exec)
+    {
 
         int loaderIndex = FreeEntryIndex();
         var (loaderChain, _) = PlaceData(loader, contiguous: true);

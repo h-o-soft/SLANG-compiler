@@ -59,7 +59,7 @@ public static class HuCommands
         if (!execSet) exec = load;
         var d88 = HuPack.Build(File.ReadAllBytes(main), mainName, load, exec, adds, loader);
         File.WriteAllBytes(output, d88);
-        Console.Error.WriteLine($"slfs-pack hu pack: wrote {output} ({d88.Length} byte, files={adds.Count + 1})");
+        Console.Error.WriteLine($"slfs-pack hu pack: wrote {output} ({d88.Length} byte, files={adds.Count + (loader ? 2 : 1)})");
         return 0;
     }
 
