@@ -2,7 +2,8 @@ namespace SLANGCompiler.SlfsPack;
 
 /// <summary>
 /// x1native_hufs のディスクを作る (slangbuild の disk.tool: hufs-pack と、slfs-pack hu pack の共通)。
-/// 本体はクラスタ 2 から続けて置き、足すファイルは本体の後ろに名前の順で置く。日付はすべて 0
+/// 本体はクラスタ 2 から続けて置き (ローダの形では、ローダをクラスタ 2 に、本体をその後ろに置く)、
+/// 足すファイルは本体の後ろに名前の順で置く。日付はすべて 0
 /// (組み立てるたびに同じ中身になるように)。
 /// </summary>
 public static class HuPack
@@ -31,11 +32,15 @@ public static class HuPack
         return new AddSpec(name, path, kind);
     }
 
-    /// <summary>ディスクを作って D88 を返す</summary>
-    public static byte[] Build(byte[] mainBinary, string mainName, ushort load, ushort exec, IEnumerable<AddSpec> adds)
+    /// <summary>
+    /// ディスクを作って D88 を返す。loader が真なら、本体をローダの形で置く (<see cref="HuDiskImage.SetMainWithLoader"/>)
+    /// </summary>
+    public static byte[] Build(byte[] mainBinary, string mainName, ushort load, ushort exec, IEnumerable<AddSpec> adds,
+                               bool loader = false)
     {
         var disk = HuDiskImage.CreateBlank();
-        disk.SetMain(mainName, mainBinary, load, exec);
+        if (loader) disk.SetMainWithLoader(mainName, mainBinary, load, exec);
+        else disk.SetMain(mainName, mainBinary, load, exec);
         foreach (var a in adds.OrderBy(a => a.Name, StringComparer.Ordinal))
             disk.AddFile(a.Name, File.ReadAllBytes(a.Path), a.Kind);
         return disk.ToD88("HUFS");

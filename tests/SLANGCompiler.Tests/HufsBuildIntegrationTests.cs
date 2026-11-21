@@ -28,11 +28,7 @@ public class HufsBuildIntegrationTests
             UseShellExecute = false,
         };
         psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
-        psi.ArgumentList.Add("run");
-        psi.ArgumentList.Add("--project");
-        psi.ArgumentList.Add(Path.Combine(repo, "src", "SLANGCompiler.Build"));
-        psi.ArgumentList.Add("--no-build");
-        psi.ArgumentList.Add("--");
+        psi.ArgumentList.Add(TestTools.SlangbuildDll);
         foreach (var a in args) psi.ArgumentList.Add(a);
         psi.ArgumentList.Add("--slangc");
         psi.ArgumentList.Add(TestTools.SlangcPath);
@@ -110,6 +106,50 @@ public class HufsBuildIntegrationTests
         finally
         {
             foreach (var ext in new[] { ".d88", ".bin", ".SL", ".asm", ".ASM", ".sym", ".LST" })
+                if (File.Exists(output + ext)) File.Delete(output + ext);
+        }
+    }
+
+    /// <summary>--hufs-loader: ローダの形のディスクができる。--emit disk なし・hufs-pack でない env ではエラー</summary>
+    [Fact]
+    public void HufsLoader_BuildsLoaderDisk_AndRequiresHufsPack()
+    {
+        var repo = RepoRoot();
+        var sample = Path.Combine(repo, "examples", "X1NATIVE_HUFS", "HUFSRAW.SL");
+        var greet = Path.Combine(repo, "examples", "X1NATIVE_HUFS", "files", "GREET.TXT");
+        var output = Path.Combine(Path.GetTempPath(), $"HUFSLDR_test_{Guid.NewGuid():N}");
+        try
+        {
+            var (rc, stdout, stderr) = RunSlangbuild("-E", "x1native_hufs", sample, "-o", output, "--emit", "disk",
+                "--hufs-add", $"GREET.TXT={greet},text", "--hufs-loader");
+            Assert.True(rc == 0, $"slangbuild failed exit={rc}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            var bin = File.ReadAllBytes(output + ".bin");
+            var disk = HuDiskImage.FromD88(File.ReadAllBytes(output + ".d88"));
+            Assert.Equal(new[] { "HUFSMAIN.Sys", "HUFSMAIN.Bin", "GREET.TXT" }, disk.Entries().Select(e => e.DisplayName).ToArray());
+            Assert.Equal(HuLoader.Bytes, disk.Extract("HUFSMAIN.Sys"));
+            Assert.Equal(2, disk.Find("HUFSMAIN.Sys")!.StartCluster);
+            Assert.Equal(bin, disk.Extract("HUFSMAIN.Bin"));
+            Assert.Equal(0x1000, disk.Find("HUFSMAIN.Bin")!.LoadAddress);
+            var ipl = disk.ReadRecord(0);
+            Assert.Equal("Sys", Encoding.ASCII.GetString(ipl, 0x0E, 3));
+            Assert.Equal(0x0100, ipl[0x14] | ipl[0x15] << 8);
+
+            var (rc2, _, err2) = RunSlangbuild("-E", "x1native_hufs", sample, "-o", output, "--hufs-loader");
+            Assert.NotEqual(0, rc2);
+            Assert.Contains("--hufs-loader requires --emit disk + disk.tool: hufs-pack", err2);
+
+            var (rc3, _, err3) = RunSlangbuild("-E", "x1native_slfs", sample, "-o", output, "--emit", "disk", "--hufs-loader");
+            Assert.NotEqual(0, rc3);
+            Assert.Contains("--hufs-loader requires --emit disk + disk.tool: hufs-pack", err3);
+
+            // OscarC の env (c64) でも、黙って無視せずにエラー
+            var (rc4, _, err4) = RunSlangbuild("-E", "c64", sample, "-o", output, "--hufs-loader");
+            Assert.NotEqual(0, rc4);
+            Assert.Contains("--hufs-loader requires --emit disk + disk.tool: hufs-pack", err4);
+        }
+        finally
+        {
+            foreach (var ext in new[] { ".d88", ".bin", ".SL", ".asm", ".sym", ".LST" })
                 if (File.Exists(output + ext)) File.Delete(output + ext);
         }
     }

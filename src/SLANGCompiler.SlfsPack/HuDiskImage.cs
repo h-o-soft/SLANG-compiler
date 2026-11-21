@@ -332,6 +332,90 @@ public sealed class HuDiskImage
         return entry;
     }
 
+    /// <summary>
+    /// ローダの形で本体を置く (docs/HUFS.md の「ローダの形のディスク」)。
+    /// 小さなローダ (<see cref="HuLoader"/>) を「起動名.Sys」として続いたクラスタ (空のディスクではクラスタ 2) に置いて
+    /// レコード 0 の IPL から指し、本体は「起動名.Bin」として空いたクラスタに置く (続いていなくてよい)。
+    /// どちらも種類 Bin・書き込み禁止。本体の読む番地は 1000H 以上で、読む番地 + 大きさは 10000H 以下
+    /// (ローダの決まりと同じ検査。外れたら ArgumentException)。同じ名前があれば InvalidOperationException
+    /// </summary>
+    public (HuDirEntry Loader, HuDirEntry Main) SetMainWithLoader(string mainName, byte[] body, ushort load, ushort exec)
+    {
+        if (body.Length == 0)
+            throw new ArgumentException("本体が空です");
+        if (load < HuLoader.MinLoadAddress)
+            throw new ArgumentException($"ローダの形では、本体の読む番地は ${HuLoader.MinLoadAddress:X4} 以上です: ${load:X4}");
+        if (body.Length > 0x10000 - load)
+            throw new ArgumentException(
+                $"本体が大きすぎます (読む番地 ${load:X4} + {body.Length} バイトが $10000 を越えます。上限 {0x10000 - load} バイト)");
+        if (Find(mainName + ".Sys") != null) throw new InvalidOperationException($"同じ名前のファイルがあります: {mainName}.Sys");
+        if (Find(mainName + ".Bin") != null) throw new InvalidOperationException($"同じ名前のファイルがあります: {mainName}.Bin");
+        var loader = HuLoader.Bytes;
+        var (sn, se) = HuName.Parse(mainName + ".Sys");
+        var (bn, be) = HuName.Parse(mainName + ".Bin");
+        // ローダと本体の 2 つを置く途中で失敗したら (空きが足りないなど)、ディスクを元のままにする
+        var before = (byte[])_raw.Clone();
+        try
+        {
+            return PlaceWithLoader(loader, sn, se, bn, be, body, load, exec);
+        }
+        catch
+        {
+            before.CopyTo(_raw, 0);
+            throw;
+        }
+    }
+
+    private (HuDirEntry Loader, HuDirEntry Main) PlaceWithLoader(byte[] loader, byte[] sn, byte[] se, byte[] bn, byte[] be,
+                                                              byte[] body, ushort load, ushort exec)
+    {
+
+        int loaderIndex = FreeEntryIndex();
+        var (loaderChain, _) = PlaceData(loader, contiguous: true);
+        var loaderEntry = new HuDirEntry
+        {
+            Index = loaderIndex,
+            Type = TypeBin | AttrProtect,
+            NameBytes = sn,
+            ExtBytes = se,
+            Size = (ushort)loader.Length,
+            LoadAddress = HuLoader.Address,
+            ExecAddress = HuLoader.Address,
+            StartCluster = (byte)loaderChain[0],
+        };
+        WriteEntry(loaderEntry);
+
+        int mainIndex = FreeEntryIndex();
+        var (mainChain, _) = PlaceData(body, contiguous: false);
+        var mainEntry = new HuDirEntry
+        {
+            Index = mainIndex,
+            Type = TypeBin | AttrProtect,
+            NameBytes = bn,
+            ExtBytes = be,
+            Size = (ushort)body.Length,
+            LoadAddress = load,
+            ExecAddress = exec,
+            StartCluster = (byte)mainChain[0],
+        };
+        WriteEntry(mainEntry);
+
+        var ipl = new SlfsBootHeader
+        {
+            Extension = "Sys",
+            DataSize = (ushort)loader.Length,
+            LoadAddress = HuLoader.Address,
+            ExecuteAddress = HuLoader.Address,
+            DiskOffset = loaderChain[0] * ClusterSize,
+        };
+        var rec0 = new byte[RecordSize];
+        ipl.ToBytes().CopyTo(rec0, 0);
+        // 起動名はディレクトリの項目と同じバイト (半角カナも)。ローダはこの 13 バイトで本体の項目を探す
+        sn.CopyTo(rec0, 0x01);
+        rec0.CopyTo(_raw, 0);
+        return (loaderEntry, mainEntry);
+    }
+
     /// <summary>データを置いて鎖を作る。空のデータも 1 クラスタ・1 レコードを取る (Hu-BASIC と同じ)</summary>
     private (List<int> Chain, int LastRecords) PlaceData(byte[] body, bool contiguous)
     {

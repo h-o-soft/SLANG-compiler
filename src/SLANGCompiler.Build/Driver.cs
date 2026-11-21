@@ -80,6 +80,8 @@ public class Driver
         public List<string> SlfsAddSpecs { get; } = new();
         /// <summary>`--hufs-add [name=]path[,bin|,text]` (repeatable)。disk.tool == "hufs-pack" 時に、ディスクに足すファイル</summary>
         public List<string> HufsAddSpecs { get; } = new();
+        /// <summary>`--hufs-loader`。disk.tool == "hufs-pack" 時に、ディスクをローダの形にする (docs/HUFS.md)</summary>
+        public bool HufsLoader { get; set; }
         /// <summary>`--disk-main-name &lt;name&gt;`。env の disk.main_name (= SLFS の IPL 起動名) を
         /// CLI override。 disk.tool == "slfs-pack" 時のみ。</summary>
         public string? DiskMainName { get; set; }
@@ -123,6 +125,18 @@ public class Driver
             return 1;
         }
         var (envConfig, envPath) = resolved.Value;
+
+        // hufs-pack だけのオプションは、どの backend でも先に確かめる (OscarC で黙って無視しない)
+        if (_opts.HufsAddSpecs.Count > 0 && (_opts.EmitMode != "disk" || envConfig.Disk?.Tool != "hufs-pack"))
+        {
+            Console.Error.WriteLine("slangbuild: --hufs-add requires --emit disk + disk.tool: hufs-pack");
+            return 1;
+        }
+        if (_opts.HufsLoader && (_opts.EmitMode != "disk" || envConfig.Disk?.Tool != "hufs-pack"))
+        {
+            Console.Error.WriteLine("slangbuild: --hufs-loader requires --emit disk + disk.tool: hufs-pack");
+            return 1;
+        }
 
         // === Backend dispatch ===
         // OscarC backend は AILZ80ASM 前提の組み立てを通らない。Z80 とは
@@ -176,11 +190,6 @@ public class Driver
         // SLFS の IPL 起動名: 引数 > 入力 SL 頭の `// disk-main-name:` > env > 既定。
         // 不正な名前は compile 前に reject (= silent truncate しない)
         string? slfsMainName = null;
-        if (_opts.HufsAddSpecs.Count > 0 && (_opts.EmitMode != "disk" || envConfig.Disk?.Tool != "hufs-pack"))
-        {
-            Console.Error.WriteLine("slangbuild: --hufs-add requires --emit disk + disk.tool: hufs-pack");
-            return 1;
-        }
         if (_opts.EmitMode == "disk" && envConfig.Disk!.Tool == "hufs-pack" && _opts.SlfsAddSpecs.Count > 0)
         {
             Console.Error.WriteLine("slangbuild: --slfs-add can't be used with disk.tool: hufs-pack (use --hufs-add)");
@@ -1389,7 +1398,7 @@ public class Driver
 
         var builder = new DiskImageBuilder(envConfig.Disk, ndc, hudisk, udostool, mzd88,
                                            _opts.Verbose, templateOverride, _opts.SlfsAddSpecs, slfsMainName,
-                                           _opts.HufsAddSpecs);
+                                           _opts.HufsAddSpecs, _opts.HufsLoader);
         return builder.Build(mainBin, overlayBins, diskOut);
     }
 
