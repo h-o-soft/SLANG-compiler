@@ -598,6 +598,11 @@ CALL LSXXFLUSH
 LD DE,LSXTFCB
 LD C,$13  ; _FDEL
 CALL LSXXBDOS
+; LSX は、クラスタの無いファイルを消すとき、ディレクトリの緩衝を書き換えたところで戻る。
+; ここでディスクに書き出す (書けなかったときは、LSX のディスクの誤りの扱いになる)
+PUSH AF
+CALL LSXXFLUSH
+POP AF
 LD L,A
 LD H,0
 RET
