@@ -580,3 +580,150 @@ RET
 ;
 
 
+
+
+; @name FDELETE
+; @resident shared
+; @param_count 1
+; @calls LSXCALLS,FOPEN,FWORKX
+; HL=name。消せたら 0、無い・消せないときは 255。
+; 名前に * か ? があれば、何も消さずに 255 を返す (まとめて消さない)
+PUSH HL
+CALL LSXXCLR
+POP DE
+LD HL,LSXTFCB
+CALL LSXXNAME
+JP C,LSXXERR
+LD DE,LSXTFCB
+LD C,$13  ; _FDEL
+CALL LSXXBDOS
+LD L,A
+LD H,0
+RET
+
+
+; @name FRENAME
+; @resident shared
+; @param_count 2
+; @calls LSXCALLS,FOPEN,FWORKX
+; HL=old DE=new。変えられたら 0、できないときは 255。
+; どちらかの名前に * か ? があれば 255
+PUSH DE
+PUSH HL
+CALL LSXXCLR
+POP DE
+LD HL,LSXTFCB
+CALL LSXXNAME
+POP DE
+JP C,LSXXERR
+LD HL,LSXTFCB+16  ; 新しい名前は FCB+10H (ドライブ) と +11H (名前)
+CALL LSXXNAME
+JP C,LSXXERR
+LD DE,LSXTFCB
+LD C,$17  ; _FREN
+CALL LSXXBDOS
+LD L,A
+LD H,0
+RET
+
+
+; @name FFIRST
+; @resident shared
+; @param_count 1
+; @calls LSXCALLS,FWORKX
+; HL=buf (32 バイト)。今のドライブの今のフォルダの最初の項目を buf に写して 0、無ければ $FFFF
+PUSH HL
+CALL LSXXCLR
+LD HL,LSXTFCB+1
+LD B,11
+LD A,'?'
+.wild
+LD (HL),A
+INC HL
+DJNZ .wild
+LD C,$11  ; _SFIRST
+JP LSXXFIND
+
+
+; @name FNEXT
+; @resident shared
+; @param_count 1
+; @calls LSXCALLS,FWORKX
+; HL=buf (32 バイト)。FFIRST の続きの項目を buf に写して 0、もう無ければ $FFFF
+PUSH HL
+LD C,$12  ; _SNEXT
+JP LSXXFIND
+
+
+; @name FWORKX
+; @resident shared
+; @calls LSXCALLS
+; @works LSXTFCB:37,LSXDTA:33
+; FDELETE・FRENAME・FFIRST・FNEXT の作業の FCB と DTA、共通の下回り
+
+; 作業の FCB を 0 で埋める
+LSXXCLR:
+LD HL,LSXTFCB
+LD B,37
+XOR A
+.clr
+LD (HL),A
+INC HL
+DJNZ .clr
+RET
+
+; HL=書く先 (FCB+0 か FCB+10H)、DE=名前。ドライブと 8+3 の名前にする。
+; ワイルドカード (* か ?) が入っていれば Cy=1
+LSXXNAME:
+PUSH HL
+CALL PPATH
+POP HL
+INC HL
+LD B,11
+.chk
+LD A,(HL)
+CP '?'
+SCF
+RET Z
+INC HL
+DJNZ .chk
+OR A
+RET
+
+LSXXERR:
+LD HL,255
+RET
+
+LSXXBDOS:
+PUSH IY
+CALL BDOS
+POP IY
+RET
+
+; C=11H か 12H、スタックの上に buf (呼んだ側から JP で来る)。
+; 見つかれば項目 32 バイトを buf に写して HL=0、無ければ HL=$FFFF。
+; どちらでも、戻る前に DTA を既定の 0080H に戻す (今の DTA を読む呼び出しが無いので、元の値には戻せない)
+LSXXFIND:
+PUSH BC
+LD DE,LSXDTA
+LD C,$1A  ; _SETDTA
+CALL LSXXBDOS
+POP BC
+LD DE,LSXTFCB
+CALL LSXXBDOS
+PUSH AF
+LD DE,$0080
+LD C,$1A  ; _SETDTA
+CALL LSXXBDOS
+POP AF
+POP DE
+OR A
+JR NZ,.none
+LD HL,LSXDTA+1
+LD BC,32
+LDIR
+LD HL,0
+RET
+.none
+LD HL,$FFFF
+RET
