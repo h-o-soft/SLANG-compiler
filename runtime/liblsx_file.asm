@@ -594,6 +594,7 @@ POP DE
 LD HL,LSXTFCB
 CALL LSXXNAME
 JP C,LSXXERR
+CALL LSXXFLUSH
 LD DE,LSXTFCB
 LD C,$13  ; _FDEL
 CALL LSXXBDOS
@@ -619,23 +620,27 @@ JP C,LSXXERR
 LD HL,LSXTFCB+16  ; 新しい名前は FCB+10H (ドライブ) と +11H (名前)
 CALL LSXXNAME
 JP C,LSXXERR
-; new にドライブを書いたら、old と同じドライブでなければならない (名前を変えるのは old のドライブの上)
-LD A,(LSXTFCB+16)
-OR A
-JR Z,.same
-LD B,A
+; 名前を変えるのは old のドライブの上。old のドライブを決め (省いたら今のドライブ)、
+; new にドライブを書いたらそれと同じでなければならない。new のドライブも old と同じにしておく
+; (省いたまま 0 にすると、LSX は new を今のドライブの名前として調べることがある)
 LD A,(LSXTFCB)
 OR A
-JR NZ,.cmp
-PUSH BC
+JR NZ,.od
 LD C,$19  ; _CURDRV (A:=0)
 CALL LSXXBDOS
-POP BC
 INC A
-.cmp
+LD (LSXTFCB),A
+.od
+LD B,A
+LD A,(LSXTFCB+16)
+OR A
+JR Z,.setnew
 CP B
 JP NZ,LSXXERR
-.same
+.setnew
+LD A,B
+LD (LSXTFCB+16),A
+CALL LSXXFLUSH
 ; new の名前がもうあるかを調べるときに、隠し・システムのファイルとフォルダも見る
 ; (LSX のファイルの作成と同じ $FF。名前の変更は項目の属性を書き換えない)
 LD A,$FF
@@ -684,6 +689,7 @@ JP LSXXFIND
 ; @calls FWORKX
 ; HL=書く先 (FCB+0 か FCB+10H)、DE=名前 (0 で終わる)。ドライブと 8+3 の名前にする。
 ; 名前は「ドライブ (A:〜H:、省ける) + 1〜8 バイト + (. + 0〜3 バイト)」。
+; LSX が名前に使えない文字とする + , / : ; = \ も断る。
 ; 半角の英小文字は大文字にし、全角の文字 (シフト JIS の 2 バイト) はそのまま写す。
 ; そうでない (ワイルドカード・空白や制御文字・長すぎる・区切りが多い・空・LSX が別の文字として
 ; 扱うバイト) ときは Cy=1 (その FCB は使わない)。
@@ -766,6 +772,14 @@ CP '/'
 JR Z,.pbad
 CP $5C
 JR Z,.pbad
+CP '+'
+JR Z,.pbad
+CP ','
+JR Z,.pbad
+CP ';'
+JR Z,.pbad
+CP '='
+JR Z,.pbad
 CP $80
 JR C,.one
 JR Z,.pbad
@@ -846,6 +860,15 @@ PUSH IY
 CALL BDOS
 POP IY
 RET
+
+; ディスクの緩衝を書き出す (BDOS 5FH)。LSX は最後に検索で見つけた項目の写しを持っていて、
+; 同じ名前を消す・変えるときにディスクの項目でなくその写しを書き換えてしまう (FAT だけが空く)。
+; 5FH はその写しを捨てるので、消す・変える前に呼ぶ
+LSXXFLUSH:
+LD B,$FF
+LD D,0
+LD C,$5F  ; _FLUSH
+JP LSXXBDOS
 
 ; C=11H か 12H、スタックの上に buf (呼んだ側から JP で来る)。
 ; 見つかれば項目 32 バイトを buf に写して HL=0、無ければ HL=$FFFF。
