@@ -580,3 +580,302 @@ RET
 ;
 
 
+
+
+; @name FDELETE
+; @resident shared
+; @param_count 1
+; @calls LSXCALLS,FWORKX,LSXXNAME
+; HL=name。消せたら 0、無い・消せないときは 255。
+; 名前に * か ? があれば、何も消さずに 255 を返す (まとめて消さない)
+PUSH HL
+CALL LSXXCLR
+POP DE
+LD HL,LSXTFCB
+CALL LSXXNAME
+JP C,LSXXERR
+CALL LSXXFLUSH
+LD DE,LSXTFCB
+LD C,$13  ; _FDEL
+CALL LSXXBDOS
+; LSX は、クラスタの無いファイルを消すとき、ディレクトリの緩衝を書き換えたところで戻る。
+; ここでディスクに書き出す (書けなかったときは、LSX のディスクの誤りの扱いになる)
+PUSH AF
+CALL LSXXFLUSH
+POP AF
+LD L,A
+LD H,0
+RET
+
+
+; @name FRENAME
+; @resident shared
+; @param_count 2
+; @calls LSXCALLS,FWORKX,LSXXNAME
+; HL=old DE=new。変えられたら 0、できないときは 255。
+; どちらかの名前に * か ? があるとき、new のドライブが old と違うときも 255
+PUSH DE
+PUSH HL
+CALL LSXXCLR
+POP DE
+LD HL,LSXTFCB
+CALL LSXXNAME
+POP DE
+JP C,LSXXERR
+LD HL,LSXTFCB+16  ; 新しい名前は FCB+10H (ドライブ) と +11H (名前)
+CALL LSXXNAME
+JP C,LSXXERR
+; 名前を変えるのは old のドライブの上。old のドライブを決め (省いたら今のドライブ)、
+; new にドライブを書いたらそれと同じでなければならない。new のドライブも old と同じにしておく
+; (省いたまま 0 にすると、LSX は new を今のドライブの名前として調べることがある)
+LD A,(LSXTFCB)
+OR A
+JR NZ,.od
+LD C,$19  ; _CURDRV (A:=0)
+CALL LSXXBDOS
+INC A
+LD (LSXTFCB),A
+.od
+LD B,A
+LD A,(LSXTFCB+16)
+OR A
+JR Z,.setnew
+CP B
+JP NZ,LSXXERR
+.setnew
+LD A,B
+LD (LSXTFCB+16),A
+CALL LSXXFLUSH
+; new の名前がもうあるかを調べるときに、隠し・システムのファイルとフォルダも見る
+; (LSX のファイルの作成と同じ $FF。名前の変更は項目の属性を書き換えない)
+LD A,$FF
+LD (LSXTFCB+16+13),A
+LD DE,LSXTFCB
+LD C,$17  ; _FREN
+CALL LSXXBDOS
+; LSX の名前の変更は、ディレクトリの緩衝を書き換えたところで戻る。ここでディスクに書き出す
+; (書けなかったときは、LSX のディスクの誤りの扱いになる)
+PUSH AF
+CALL LSXXFLUSH
+POP AF
+LD L,A
+LD H,0
+RET
+
+
+; @name FFIRST
+; @resident shared
+; @param_count 1
+; @calls LSXCALLS,FWORKX
+; HL=buf (32 バイト)。今のドライブの今のフォルダの最初の項目を buf に写して 0、無ければ $FFFF
+PUSH HL
+CALL LSXXCLR
+LD HL,LSXTFCB+1
+LD B,11
+LD A,'?'
+.wild
+LD (HL),A
+INC HL
+DJNZ .wild
+; FCB+13 は検索で含める属性。隠し・システムのファイルとフォルダも出す (ボリュームラベルは出さない)
+LD A,$16
+LD (LSXTFCB+13),A
+LD C,$11  ; _SFIRST
+JP LSXXFIND
+
+
+; @name FNEXT
+; @resident shared
+; @param_count 1
+; @calls LSXCALLS,FWORKX
+; HL=buf (32 バイト)。FFIRST の続きの項目を buf に写して 0、もう無ければ $FFFF
+PUSH HL
+LD C,$12  ; _SNEXT
+JP LSXXFIND
+
+
+; @name LSXXNAME
+; @resident shared
+; @calls FWORKX
+; HL=書く先 (FCB+0 か FCB+10H)、DE=名前 (0 で終わる)。ドライブと 8+3 の名前にする。
+; 名前は「ドライブ (A:〜H:、省ける) + 1〜8 文字 + (. + 0〜3 文字)」。
+; LSX が名前に使えない文字とする + , / : ; = \ も断る。
+; 半角の英小文字は大文字にする (FOPEN と同じ)。使える $80 以上の文字は半角のカナ ($A1〜$DF) だけで、
+; 全角の文字は断る (FOPEN は全角の 2 バイト目も大文字にするので、同じ名前が FOPEN と別のファイルを指すため)。
+; そうでない (ワイルドカード・空白や制御文字・長すぎる・区切りが多い・空・LSX が別の文字として
+; 扱うバイト) ときは Cy=1 (その FCB は使わない)。
+; 8.3 に入らない分を黙って捨てたり、LSX と違う読み方をしたりして、別のファイルを消したり変えたりしないため
+XOR A
+LD (HL),A
+INC DE
+LD A,(DE)
+DEC DE
+CP ':'
+JR NZ,.nodrv
+LD A,(DE)
+OR $20
+SUB 'a'
+CP 8
+CCF
+RET C
+INC A
+LD (HL),A
+INC DE
+INC DE
+.nodrv
+INC HL
+PUSH HL
+LD B,11
+LD A,' '
+.fill
+LD (HL),A
+INC HL
+DJNZ .fill
+POP HL
+PUSH HL
+LD C,8
+CALL .part
+POP HL
+RET C
+LD A,B
+OR A
+SCF
+RET Z
+LD A,(DE)
+CP '.'
+JR NZ,.tail
+INC DE
+LD BC,8
+ADD HL,BC
+LD C,3
+CALL .part
+RET C
+LD A,(DE)
+.tail
+OR A
+RET Z
+SCF
+RET
+
+; HL=書く先、C=いちばん長いバイト数、DE=名前。0・'.' で止まる。B=写したバイト数。
+; 使えない文字か、C より長いときは Cy=1
+.part
+LD B,0
+.p1
+LD A,(DE)
+OR A
+RET Z
+CP '.'
+RET Z
+CP $21
+RET C
+CP $7F
+JR Z,.pbad
+CP '*'
+JR Z,.pbad
+CP '?'
+JR Z,.pbad
+CP ':'
+JR Z,.pbad
+CP '/'
+JR Z,.pbad
+CP $5C
+JR Z,.pbad
+CP '+'
+JR Z,.pbad
+CP ','
+JR Z,.pbad
+CP ';'
+JR Z,.pbad
+CP '='
+JR Z,.pbad
+CP $80
+JR C,.one
+CP $A1
+JR C,.pbad
+CP $E0
+JR NC,.pbad
+.one
+INC B
+LD A,C
+CP B
+RET C
+LD A,(DE)
+CP 'a'
+JR C,.st
+CP 'z'+1
+JR NC,.st
+SUB $20
+.st
+LD (HL),A
+INC HL
+INC DE
+JR .p1
+.pbad
+SCF
+RET
+
+
+; @name FWORKX
+; @resident shared
+; @calls LSXCALLS
+; @works LSXTFCB:37,LSXDTA:33
+; FDELETE・FRENAME・FFIRST・FNEXT の作業の FCB と DTA、共通の下回り
+
+; 作業の FCB を 0 で埋める
+LSXXCLR:
+LD HL,LSXTFCB
+LD B,37
+XOR A
+.clr
+LD (HL),A
+INC HL
+DJNZ .clr
+RET
+
+LSXXERR:
+LD HL,255
+RET
+
+LSXXBDOS:
+PUSH IY
+CALL BDOS
+POP IY
+RET
+
+; ディスクの緩衝を書き出す (BDOS 5FH)。LSX は最後に検索で見つけた項目の写しを持っていて、
+; 同じ名前を消す・変えるときにディスクの項目でなくその写しを書き換えてしまう (FAT だけが空く)。
+; 5FH はその写しを捨てるので、消す・変える前に呼ぶ
+LSXXFLUSH:
+LD B,$FF
+LD D,0
+LD C,$5F  ; _FLUSH
+JP LSXXBDOS
+
+; C=11H か 12H、スタックの上に buf (呼んだ側から JP で来る)。
+; 見つかれば項目 32 バイトを buf に写して HL=0、無ければ HL=$FFFF。
+; どちらでも、戻る前に DTA を既定の 0080H に戻す (今の DTA を読む呼び出しが無いので、元の値には戻せない)
+LSXXFIND:
+PUSH BC
+LD DE,LSXDTA
+LD C,$1A  ; _SETDTA
+CALL LSXXBDOS
+POP BC
+LD DE,LSXTFCB
+CALL LSXXBDOS
+PUSH AF
+LD DE,$0080
+LD C,$1A  ; _SETDTA
+CALL LSXXBDOS
+POP AF
+POP DE
+OR A
+JR NZ,.none
+LD HL,LSXDTA+1
+LD BC,32
+LDIR
+LD HL,0
+RET
+.none
+LD HL,$FFFF
+RET
