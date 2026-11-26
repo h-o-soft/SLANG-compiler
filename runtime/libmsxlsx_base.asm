@@ -4,8 +4,6 @@
 ; @name SLANGINIT
 ; @resident local
 ; @calls sWORK,LSXCALLS
-LD HL,($0001)
-LD (WBOOTBK),HL
 
 #IF MSXROMADR>0
 ; SOURCE COPY
@@ -22,6 +20,10 @@ LD DE,__WORK__+1
 LD BC,__WORKEND__-__WORK__-1
 LD (HL),A
 LDIR
+
+; WBOOTBK は WORK の中にあるので、0 にした後で控える
+LD HL,($0001)
+LD (WBOOTBK),HL
 
 <<CALLINITIALIZER>>
 
