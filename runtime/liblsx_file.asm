@@ -58,12 +58,20 @@ LD (LSXFCB),HL
 ; CALL BDOS
 CALL PPATH
 
-; FCB+12(セクタインデックス)と+32(カレントレコード)をクリア
-; _FOPENはFCB+12をセクタインデックスとして使用するため、0にしておく必要がある
+; FCB+12(セクタインデックス)、+14〜15(開くディレクトリ)と+32(カレントレコード)をクリア
+; _FOPENはFCB+12をセクタインデックス、+14〜15をディレクトリのクラスタ番号+1 (0 = カレント
+; ディレクトリ) として使用するため、0にしておく必要がある (LSX-Dodgers の LDFCB.TXT)。
+; FREAD/FWRITE は +14〜15 をレコードサイズ 1 にするので、そのままでは同じ fnum で開き直すと
+; ルートディレクトリを探す
 PUSH HL
 LD HL,(LSXFCB)
 LD BC,12
 ADD HL,BC
+LD (HL),0
+INC HL
+INC HL
+LD (HL),0
+INC HL
 LD (HL),0
 LD HL,(LSXFCB)
 LD BC,32
