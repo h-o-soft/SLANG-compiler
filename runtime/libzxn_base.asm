@@ -204,6 +204,7 @@ RET
 ; @name ULA_VISIBLE
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL 0 = invisible / 1 = visible
 ; 0 <-> 1
 LD A,L
@@ -222,6 +223,7 @@ RET
 ; @name SET_PAL
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL = Selects palette for read or write($43)
 ; DE = IDX
 ; BC = COLOR
@@ -251,6 +253,7 @@ RET
 ; @name SET_PALALL
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL = Selects palette for read or write($43)
 ; DE = COLOR Address
 ; 番号の自動の進みが要るので、7 ビット目を落とす (SET_PAL の注釈)
@@ -282,6 +285,7 @@ RET
 ; @name SET_PAL9
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL = Selects palette for read or write($43)
 ; DE = IDX
 ; BC = COLOR(9bits)
@@ -312,6 +316,7 @@ RET
 ; @name SET_PAL9ALL
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL = Selects palette for read or write($43)
 ; DE = COLOR Address
 ; 番号の自動の進みが要るので、7 ビット目を落とす (SET_PAL の注釈)
@@ -455,6 +460,7 @@ RET
 ; @name TILE_INIT
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL 0 = 40x32 / 1 = 80x32
 ; DE 0 = 2byte / 1 = 1byte
 LD A,(TILE_CTRL)
@@ -476,6 +482,7 @@ RET
 ; @name TILE_VISIBLE
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL 0 = Invisible / 1 = Visible
 LD A,(TILE_CTRL)
 AND $7F
@@ -663,7 +670,7 @@ RET
 ; @name TILE_SETMAP
 ; @requires next
 ; @resident shared
-; @calls MULHLDE
+; @calls MULHLDE,ZXNWORK
 ; HL = X
 ; DE = Y
 ; BC = tile value
@@ -722,6 +729,7 @@ RET
 ; @name LAYER_PRIORITY
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL
 ; 0 S L U
 ; 1 L S U
@@ -800,6 +808,7 @@ RET
 ; @name SPR_SET
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ;
 ; スタックには近い順に(RETADR)PAT,Y,X,IDXが積まれている
 ; PatはAttribute 2が上位、Attribute 3が下位に来た値であるが、特例としてX座標の最上位ビットはX側が使われる

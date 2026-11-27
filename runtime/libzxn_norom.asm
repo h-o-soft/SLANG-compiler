@@ -7,12 +7,13 @@
 ; @name PRT__NOROM
 ; @resident shared
 ; @param_count 1
-; @calls ZXNWORK,ZXN_FONT
+; @calls ZXNWORK,ZXN_FONT,ZXN_SCROLL,ZXN_PUTATR
 ; PRT と同じ動き。画面の番地は素の Z80 で、字の形は ZXN_FONT から (ROM の 3D00H と Z80N の PIXELAD を使わない)
 PUSH HL
 ; PSTR は回数を DE に持って呼ぶので、DE・BC も残す
 PUSH DE
 PUSH BC
+CALL ZXN_SCROLL
 CP $0D
 JR Z,.NEXTLINE
 
@@ -48,6 +49,8 @@ LD (HL),A
 INC DE
 INC H
 DJNZ .drawfont
+
+CALL ZXN_PUTATR
 
 LD A,(LOCX)
 INC A
