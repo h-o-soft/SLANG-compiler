@@ -993,8 +993,11 @@ RET
 ; @resident shared
 ; @param_count 3
 ; SPR_UPDATE(first, adr, len): スプライト first から、adr の len バイトを属性のポート (57H) へ続けて書く。
-; 1 つ 4 バイト (X の下位、Y、attribute 2、3)、attribute 3 のビット 6 が 1 なら attribute 4 も足して 5 バイト。len = 0 なら書かない
+; 1 つ 4 バイト (X の下位、Y、attribute 2、3)、attribute 3 のビット 6 が 1 なら attribute 4 も足して 5 バイト。len = 0 なら何もしない
 ; HL = first、DE = adr、BC = len
+LD A,B
+OR C
+RET Z               ; len = 0 なら、スプライトの番号も選ばない
 LD A,L
 PUSH BC
 LD BC,$303B

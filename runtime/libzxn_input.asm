@@ -51,7 +51,7 @@ JP GETLIN
 ; @param_count 1
 ; @calls ZXN_GETLINE
 ; GETL(格納アドレス): キーボードから 1 行 (255 字まで) を読んで格納アドレスに置き、行の長さを返す。行の終わりは 0。
-; EDIT (CAPS SHIFT + 1) で取り消すと、格納アドレスに 1BH を置いて -1 を返す
+; EDIT (CAPS SHIFT + 1) か BREAK (CAPS SHIFT + SPACE) で取り消すと、格納アドレスに 1BH を置いて -1 を返す
 LD C,0
 JP ZXN_GETLINE
 
@@ -75,7 +75,7 @@ JP ZXN_GETLINE
 ; @calls GETC,PRT,ZXN_SCROLL,ZXNWORK
 ; HL = 置き場、C = 最大の字数 (0 なら 255)。カーソルの所から 1 行を読む。HL = 長さ (取り消しなら -1)。
 ; 打った字は PRT で出す。カーソルの印は _。キーは離すのを待ってから次を読む (GETC を回して見る。HALT は使わず、割り込みの状態も変えない)。
-; 20H〜7EH を受ける。DELETE (0CH) で 1 字戻す。ENTER (0DH) で終わり、EDIT (07H) で取り消す。どちらも改行を出す
+; 20H〜7EH を受ける。DELETE (0CH) で 1 字戻す。ENTER (0DH) で終わり、EDIT (07H) か BREAK (CAPS SHIFT + SPACE) で取り消す。どちらも改行を出す
 LD A,C
 OR A
 JR NZ,.max
@@ -101,6 +101,16 @@ CP $07
 JR Z,.cancel
 CP $20
 JR C,.loop
+JR NZ,.char
+; 空白は CAPS SHIFT (FEFEH のビット 0。0 = 押している) と一緒なら BREAK なので取り消す
+PUSH BC
+LD BC,$FEFE
+IN A,(C)
+POP BC
+RRCA
+LD A,$20
+JR NC,.cancel
+.char
 CP $7F
 JR NC,.loop
 LD L,A

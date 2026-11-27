@@ -6,12 +6,14 @@
 ; @name PRT__ZXS
 ; @resident shared
 ; @param_count 1
-; @calls ZXNWORK
+; @calls ZXNWORK,ZXN_SCROLL,ZXN_PUTATR
 ; PRT と同じ動き。画面の番地は素の Z80 で、字の形は 48 BASIC の ROM の 3D00H から (BASIC の読み込み口から USR で入ったときは、48K・128K・+2A とも 0000H に 48 BASIC の ROM がある)
 PUSH HL
 ; PSTR は回数を DE に持って呼ぶので、DE・BC も残す
 PUSH DE
 PUSH BC
+; 前の字で一番下の行 (23) を越えていたら、ここで画面を 1 行上げる (PRT と同じ)
+CALL ZXN_SCROLL
 CP $0D
 JR Z,.NEXTLINE
 
@@ -47,6 +49,9 @@ LD (HL),A
 INC DE
 INC H
 DJNZ .drawfont
+
+; COLOR の色 (0 なら書かない)
+CALL ZXN_PUTATR
 
 LD A,(LOCX)
 INC A
