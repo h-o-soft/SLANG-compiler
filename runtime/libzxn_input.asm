@@ -308,12 +308,23 @@ ld e, a	; main key to A
 ; C は KEY_SCAN が入れた FEH のまま (KEY_CODE の DEC C で負になり、K/L/C の道へ)
 ; KEY_CODE は字のキーで BIT 3,(IY+$30) (ROM の FLAGS2 の CAPS LOCK) を見る。SLANG の IY は局所の変数の場所なので、
 ; 呼ぶ間だけ 0 のバイトを指させる (いつも CAPS LOCK が切れているときの値。GETC__NOROM と同じ)
+; その間は割り込みを止める。ROM の IM 1 の処理 (0038H) は (IY+1) を ROM の FLAGS と思って SET 5 を書くので、
+; ここで割り込みが来ると .caps_off-$2F (この前の断片の命令) を書き替える。終わったら前の割り込みの状態に戻す
+ld a,i              ; P/V = 割り込みが開いているか
+jp pe,.ion
+ld a,i              ; NMOS の Z80 は、LD A,I の間に割り込みを受けると P/V を 0 と読むので、もう一度読む
+.ion
+di
+push af
 push iy
 ld iy, .caps_off-$30
 call KEY_CODE ; routine K-DECODE
 pop iy
-
 ld l,a
+pop af
+ld a,l
+ret po
+ei
 ret
 
 .EMPTY_INKEY
