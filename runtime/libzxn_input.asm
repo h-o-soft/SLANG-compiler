@@ -321,6 +321,7 @@ ld iy, .caps_off-$30
 call KEY_CODE ; routine K-DECODE
 pop iy
 ld l,a
+ld h,0              ; KEY_CODE は H に ROM の表の番地 (02xxH) を残す。INKEY・GETC__NOROM と同じく H = 0 で返す
 pop af
 ld a,l
 ret po
@@ -330,6 +331,7 @@ ret
 .EMPTY_INKEY
 xor a
 ld l,a
+ld h,a              ; H は呼ぶ前の値か KEY_SCAN の残り
 ret
 
 .caps_off
