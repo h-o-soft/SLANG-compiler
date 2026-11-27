@@ -204,6 +204,7 @@ RET
 ; @name ULA_VISIBLE
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL 0 = invisible / 1 = visible
 ; 0 <-> 1
 LD A,L
@@ -222,6 +223,7 @@ RET
 ; @name SET_PAL
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL = Selects palette for read or write($43)
 ; DE = IDX
 ; BC = COLOR
@@ -251,6 +253,7 @@ RET
 ; @name SET_PALALL
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL = Selects palette for read or write($43)
 ; DE = COLOR Address
 ; 番号の自動の進みが要るので、7 ビット目を落とす (SET_PAL の注釈)
@@ -282,6 +285,7 @@ RET
 ; @name SET_PAL9
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL = Selects palette for read or write($43)
 ; DE = IDX
 ; BC = COLOR(9bits)
@@ -312,6 +316,7 @@ RET
 ; @name SET_PAL9ALL
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL = Selects palette for read or write($43)
 ; DE = COLOR Address
 ; 番号の自動の進みが要るので、7 ビット目を落とす (SET_PAL の注釈)
@@ -455,6 +460,7 @@ RET
 ; @name TILE_INIT
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL 0 = 40x32 / 1 = 80x32
 ; DE 0 = 2byte / 1 = 1byte
 LD A,(TILE_CTRL)
@@ -476,6 +482,7 @@ RET
 ; @name TILE_VISIBLE
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL 0 = Invisible / 1 = Visible
 LD A,(TILE_CTRL)
 AND $7F
@@ -663,7 +670,7 @@ RET
 ; @name TILE_SETMAP
 ; @requires next
 ; @resident shared
-; @calls MULHLDE
+; @calls MULHLDE,ZXNWORK
 ; HL = X
 ; DE = Y
 ; BC = tile value
@@ -722,6 +729,7 @@ RET
 ; @name LAYER_PRIORITY
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ; HL
 ; 0 S L U
 ; 1 L S U
@@ -800,6 +808,7 @@ RET
 ; @name SPR_SET
 ; @requires next
 ; @resident shared
+; @calls ZXNWORK
 ;
 ; スタックには近い順に(RETADR)PAT,Y,X,IDXが積まれている
 ; PatはAttribute 2が上位、Attribute 3が下位に来た値であるが、特例としてX座標の最上位ビットはX側が使われる
@@ -976,6 +985,71 @@ DB $ED,$92,$34
 ; Attribute 3
 XOR A
 DB $ED,$92,$38
+RET
+
+
+; @name SPR_UPDATE
+; @requires next
+; @resident shared
+; @param_count 3
+; SPR_UPDATE(first, adr, len): スプライト first から、adr の len バイトを属性のポート (57H) へ続けて書く。
+; 1 つ 4 バイト (X の下位、Y、attribute 2、3)、attribute 3 のビット 6 が 1 なら attribute 4 も足して 5 バイト。len = 0 なら何もしない
+; HL = first、DE = adr、BC = len
+LD A,B
+OR C
+RET Z               ; len = 0 なら、スプライトの番号も選ばない
+LD A,L
+PUSH BC
+LD BC,$303B
+OUT (C),A
+POP BC
+EX DE,HL
+LD A,B              ; 256 バイトの塊の数
+LD D,C              ; 余り
+LD C,$57
+OR A
+JR Z,.rest
+.chunk
+LD B,0              ; OTIR を 256 回
+OTIR
+DEC A
+JR NZ,.chunk
+.rest
+LD A,D
+OR A
+RET Z
+LD B,A
+OTIR
+RET
+
+
+; @name SPR_STATUS
+; @requires next
+; @resident shared
+; @param_count 0
+; ポート 303BH を読む。ビット 0: どれかのスプライトが透明でない所で重なった、ビット 1: 1 行に出しきれなかった。読むと 0 に戻る
+LD BC,$303B
+IN L,(C)
+LD H,0
+RET
+
+
+; @name MOUSE
+; @requires next
+; @resident shared
+; @param_count 1
+; Kempston マウス。0: 横の位置 (FBDFH)、1: 縦の位置 (FFDFH)、2 (ほか): ボタン (押すと 0。ビット 0 右、1 左、2 中) とホイール (ビット 4〜7) (FADFH)
+LD A,L
+LD BC,$FBDF
+OR A
+JR Z,.read
+LD B,$FF
+DEC A
+JR Z,.read
+LD B,$FA
+.read
+IN L,(C)
+LD H,0
 RET
 
 
