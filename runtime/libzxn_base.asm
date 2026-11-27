@@ -988,6 +988,68 @@ DB $ED,$92,$38
 RET
 
 
+; @name SPR_UPDATE
+; @requires next
+; @resident shared
+; @param_count 3
+; SPR_UPDATE(first, adr, len): スプライト first から、adr の len バイトを属性のポート (57H) へ続けて書く。
+; 1 つ 4 バイト (X の下位、Y、attribute 2、3)、attribute 3 のビット 6 が 1 なら attribute 4 も足して 5 バイト。len = 0 なら書かない
+; HL = first、DE = adr、BC = len
+LD A,L
+PUSH BC
+LD BC,$303B
+OUT (C),A
+POP BC
+EX DE,HL
+LD A,B              ; 256 バイトの塊の数
+LD D,C              ; 余り
+LD C,$57
+OR A
+JR Z,.rest
+.chunk
+LD B,0              ; OTIR を 256 回
+OTIR
+DEC A
+JR NZ,.chunk
+.rest
+LD A,D
+OR A
+RET Z
+LD B,A
+OTIR
+RET
+
+
+; @name SPR_STATUS
+; @requires next
+; @resident shared
+; @param_count 0
+; ポート 303BH を読む。ビット 0: どれかのスプライトが透明でない所で重なった、ビット 1: 1 行に出しきれなかった。読むと 0 に戻る
+LD BC,$303B
+IN L,(C)
+LD H,0
+RET
+
+
+; @name MOUSE
+; @requires next
+; @resident shared
+; @param_count 1
+; Kempston マウス。0: 横の位置 (FBDFH)、1: 縦の位置 (FFDFH)、2 (ほか): ボタン (押すと 0。ビット 0 右、1 左、2 中) とホイール (ビット 4〜7) (FADFH)
+LD A,L
+LD BC,$FBDF
+OR A
+JR Z,.read
+LD B,$FF
+DEC A
+JR Z,.read
+LD B,$FA
+.read
+IN L,(C)
+LD H,0
+RET
+
+
 ; @name STICK
 ; @resident shared
 ; HL = 0 (JOYSTICK 1) or 1 (JOYSTICK2)

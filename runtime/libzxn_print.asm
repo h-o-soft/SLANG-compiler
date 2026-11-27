@@ -452,6 +452,40 @@ EX (SP),HL
 RET
 
 
+; @name CLS
+; @resident shared
+; @param_count 0
+; @calls ZXNWORK
+; 文字の画面の点を消す。COLOR の色が 0 でなければ、全部の桁をその色にする (0 なら色はそのまま)。カーソルを左上へ
+LD HL,$4000
+LD DE,$4001
+LD BC,6143
+LD (HL),0
+LDIR
+LD A,(TXTATR)
+OR A
+JR Z,.home
+LD HL,$5800
+LD DE,$5801
+LD BC,767
+LD (HL),A
+LDIR
+.home
+LD HL,0
+LD (LOCX),HL
+RET
+
+
+; @name BORDER
+; @resident shared
+; @param_count 1
+; 枠の色 (0〜7)
+LD A,L
+AND 7
+OUT ($FE),A
+RET
+
+
 ; @name COLOR
 ; @resident shared
 ; @calls ZXNWORK
