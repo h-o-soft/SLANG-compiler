@@ -25,7 +25,8 @@
 ;  - よって wrapper jump table へは `JP ARKOS_BASE + offset` で tail-call する
 ;    (= wrapper handler が末尾 RET するので、 そのまま SLANG 側へ復帰)
 ;  - ただし ARKOS_BGM_STOP / ARKOS_BGM_PAUSE / ARKOS_PSG_END は DI して CALL し、
-;    前の割り込みの状態に戻してから RET する (= 再生部の Stop が SP を自分の表に向けるため)
+;    前の割り込みの状態に戻してから RET する (= 再生部の Stop が SP の置き場・PSG を割り込みの
+;    側の Play と共有し、 AKM は SP を自分の表に向けるため。 ARKOS_BGM_STOP の注釈参照)
 ;
 ; Arkos Tracker player 本体は Targhan/Arkos の MIT License (= runtime/x1/ の各 file header)。
 ; 本 file は SLANG ABI <-> wrapper ABI の薄い変換層、 SLANG プロジェクトの一部 (MIT)。
@@ -47,8 +48,11 @@ JP !ARKOS_BASE + $03
 
 ; @name ARKOS_BGM_STOP
 ; @param_count 0
-; 再生部の Stop は PSG に書く間 SP を自分の表に向けるので、割り込みを止めて呼ぶ
-; (CTC で鳴らしている間に割り込みが来ると、戻り先をその表に積んで壊す)。終わったら前の割り込みの状態に戻す
+; 再生部の Stop (PLY_AKM_Stop・PLY_AKG_Stop) は割り込みを止めて呼び、終わったら前の割り込みの状態に戻す。
+; CTC で鳴らしている間に Stop の途中で割り込みが来ると、次のことが起きるため:
+;  - AKM は PSG に書く間 SP を自分の表に向けるので、割り込みが戻り先をその表に積んで壊す
+;  - AKM・AKG とも、SP を取っておく所を割り込みの側の Play と共有する (Play が上書きすると、Stop は違う SP に戻る)
+;  - AKM・AKG とも、PSG のレジスタの番号と値を続けて書く間に、割り込みの側も PSG に書く
 ; NMOS の Z80 は、LD A,I の間に割り込みを受けると P/V を 0 と読むので、0 ならもう一度読む
 LD A,I
 JP PE,.ion
